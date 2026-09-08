@@ -1,0 +1,26 @@
+{
+  "name": "bracket-craft-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.8.0",
+  "scripts": {
+    "dev": "nuxt dev --host 0.0.0.0",
+    "build": "nuxt build",
+    "preview": "nuxt preview --host 0.0.0.0",
+    "typecheck": "nuxt prepare && vue-tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.11.3",
+    "@vue-flow/core": "^1.48.2",
+    "nuxt": "^3.15.4",
+    "pinia": "^3.0.4",
+    "socket.io-client": "^4.8.1",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^2.2.12"
+  }
+}
