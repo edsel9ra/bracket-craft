@@ -12,8 +12,6 @@ const workspaceError = ref<string | null>(null);
 const showCreateForm = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
-const organizationSwitchError = ref<string | null>(null);
-const switchingOrganization = ref(false);
 const publishingTournamentId = ref<string | null>(null);
 let realtimeRefreshPending = false;
 const createForm = reactive({
@@ -108,35 +106,6 @@ async function createTournament() {
   }
 }
 
-async function switchOrganization(event: Event) {
-  const nextOrganizationId = (event.target as HTMLSelectElement).value;
-  const previousOrganizationId = auth.organizationId;
-  switchingOrganization.value = true;
-  organizationSwitchError.value = null;
-  realtime.disconnect();
-  tournamentsStore.clear();
-  try {
-    auth.organizationId = nextOrganizationId;
-    await auth.verifyWorkspace();
-    await tournamentsStore.load();
-    if (!disposed) connectRealtime();
-  } catch (cause) {
-    if (await redirectOnSessionFailure(cause)) return;
-    auth.organizationId = previousOrganizationId;
-    await tournamentsStore.load().catch(() => undefined);
-    if (!disposed) connectRealtime();
-    organizationSwitchError.value = failureMessage(cause);
-  } finally {
-    switchingOrganization.value = false;
-  }
-}
-
-async function logout() {
-  realtime.disconnect();
-  await auth.logout();
-  await navigateTo('/');
-}
-
 async function publishTournament(tournament: { id: string; draft_version_id?: string | null }) {
   if (!tournament.draft_version_id) return;
   if (import.meta.client && !window.confirm(t('workspace.confirmPublish'))) return;
@@ -188,27 +157,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main id="main-content" class="workspace-shell">
-    <header class="container workspace-topbar">
-      <NuxtLink to="/" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
-      <div class="topbar-actions">
-        <select
-          v-if="auth.organizations.length > 1"
-          class="organization-select"
-          :value="auth.organizationId || ''"
-          :disabled="switchingOrganization"
-           :aria-label="t('workspace.activeOrganization')"
-          @change="switchOrganization"
-        >
-          <option v-for="organization in auth.organizations" :key="organization.id" :value="organization.id">
-            {{ organization.name }}
-          </option>
-        </select>
-        <span v-else-if="auth.organizations.length" class="organization-label">{{ auth.organizations[0].name }}</span>
-         <button class="button-secondary" type="button" @click="logout">{{ t('common.logout') }}</button>
-      </div>
-    </header>
-
+  <WorkspaceShell :breadcrumbs="[{ label: t('shell.tournaments'), current: true }]">
+   <main id="main-content" class="workspace-shell">
     <section class="container workspace-hero">
       <div class="hero-line">
          <p class="eyebrow">{{ t('workspace.private') }}</p>
@@ -234,7 +184,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-       <div v-if="organizationSwitchError" class="form-error" role="alert">{{ organizationSwitchError }}</div>
        <Transition name="panel-reveal" mode="out-in">
          <form v-if="showCreateForm" key="create-tournament" class="creation-panel" :aria-busy="creating" @submit.prevent="createTournament">
            <div class="creation-heading">
@@ -300,26 +249,19 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </section>
-  </main>
+   </main>
+  </WorkspaceShell>
 </template>
 
 <style scoped>
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
-.workspace-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
-.brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.brand-mark:hover { color: var(--accent); }
-.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.topbar-actions { display: flex; align-items: center; gap: 14px; }
-.organization-label { color: var(--muted); font-size: 0.82rem; }
-.organization-select { padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); }
-.organization-select:hover, .organization-select:focus { border-color: var(--accent); }
-.workspace-hero { padding: 9vh 0 8vh; animation: rise-in 700ms var(--ease-out) both; }
+.workspace-hero { padding: 5vh 0 5vh; animation: rise-in 700ms var(--ease-out) both; }
 .hero-line { display: flex; align-items: center; gap: 18px; }
 .live-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .live-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
 .live-status.realtime-reconnecting span, .live-status.realtime-error span { background: #ffcb7a; box-shadow: 0 0 12px rgba(255, 203, 122, 0.7); }
 .realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.7rem; text-decoration: underline; }
-.workspace-hero h1 { max-width: 760px; margin: 14px 0; font-size: clamp(3rem, 8vw, 7rem); line-height: 0.9; letter-spacing: -0.08em; }
+.workspace-hero h1 { max-width: 760px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
 .workspace-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
 .workspace-content { padding-bottom: 80px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
@@ -353,8 +295,6 @@ input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); bor
   .tournament-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 375px) {
-  .workspace-topbar, .topbar-actions { align-items: stretch; flex-direction: column; }
-  .topbar-actions > * { width: 100%; justify-content: center; text-align: center; }
   .empty-state { align-items: stretch; flex-direction: column; }
 }
 </style>

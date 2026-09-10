@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.permissions import require_permission
 from app.core.storage import StorageError, get_object_storage
 from app.core.tenancy import AuthContext, get_auth_context
-from app.modules.rules_engine.engine import validate_rules_config
+from app.modules.rules_engine.engine import remap_stage_overrides, validate_rules_config
 from app.modules.rules_engine.schemas import CreateTournamentRequest, UpdateRulesConfigRequest
 from app.modules.tournaments.schemas import (
     CreateDraftVersionRequest,
@@ -330,6 +330,23 @@ async def _create_draft_version_record(
             },
         )
 
+    cloned_rules_config = remap_stage_overrides(source["rules_config"], stage_map)
+    await db.execute(
+        text("""
+            UPDATE tournament_versions
+            SET rules_config = CAST(:rules AS jsonb)
+            WHERE id = :version_id
+              AND tournament_id = :tournament_id
+              AND organization_id = :organization_id
+        """),
+        {
+            "rules": json.dumps(cloned_rules_config),
+            "version_id": str(new_version_id),
+            "tournament_id": str(tournament_id),
+            "organization_id": str(context.organization_id),
+        },
+    )
+
     group_result = await db.execute(
         text("""
             SELECT id, stage_id, name
@@ -566,7 +583,7 @@ async def _create_draft_version_record(
             WHERE id = :tournament_id AND organization_id = :organization_id
         """),
         {
-            "rules": json.dumps(source["rules_config"]),
+            "rules": json.dumps(cloned_rules_config),
             "tournament_id": str(tournament_id),
             "organization_id": str(context.organization_id),
         },

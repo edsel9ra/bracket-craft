@@ -1,7 +1,8 @@
 import { isForbidden, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
+import type { RouteLocationNormalized } from 'vue-router';
 
-export default defineNuxtRouteMiddleware(async (to) => {
+export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => {
   const auth = useAuthStore();
   const { request } = useApi();
 

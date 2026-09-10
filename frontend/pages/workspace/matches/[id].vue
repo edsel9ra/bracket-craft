@@ -271,6 +271,16 @@ useHead({
 
 const match = computed(() => operation.value?.match || null);
 const isTerminal = computed(() => ['finished', 'cancelled', 'administrative_resolution'].includes(match.value?.status || ''));
+const workspaceBreadcrumbs = computed(() => [
+  { label: t('shell.tournaments'), to: '/workspace' },
+  ...(match.value
+    ? [{ label: match.value.tournament_name, to: `/workspace/tournaments/${match.value.tournament_id}` }]
+    : []),
+  { label: match.value ? `${match.value.home_team_name || t('public.toDefine')} vs ${match.value.away_team_name || t('public.toDefine')}` : t('match.matchReport'), current: true },
+]);
+const tournamentContext = computed(() => match.value
+  ? { id: match.value.tournament_id, name: match.value.tournament_name }
+  : null);
 const selectedSegment = computed(() => operation.value?.segments.find((segment) => segment.id === selectedSegmentId.value));
 const activeSegment = computed(() => operation.value?.segments.find((segment) => segment.status === 'active'));
 const selectedSegmentIsActive = computed(() => selectedSegment.value?.status === 'active');
@@ -856,20 +866,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main id="main-content" class="operation-shell">
-    <header class="container operation-topbar">
-      <NuxtLink to="/workspace" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
-      <div class="operation-actions">
-        <span v-if="realtimeStatusLabel" class="realtime-status" :class="`realtime-${realtime.status.value}`" role="status">{{ realtimeStatusLabel }}</span>
-        <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.connect()">{{ t('common.retry') }}</button>
-        <NuxtLink v-if="match" :to="`/workspace/tournaments/${match.tournament_id}`" class="button-secondary">{{ t('common.back') }}</NuxtLink>
-      </div>
-    </header>
-
+  <WorkspaceShell
+    :breadcrumbs="workspaceBreadcrumbs"
+    :tournament="tournamentContext"
+    active-section="operation"
+  >
+   <main id="main-content" class="operation-shell">
     <section class="container operation-hero">
       <div class="hero-line">
-        <p class="eyebrow">{{ t('match.matchReport') }}</p>
-        <span class="status-pill" :class="{ finished: isTerminal, interrupted: match?.status === 'interrupted' }">{{ statusLabel(match?.status) }}</span>
+         <p class="eyebrow">{{ t('match.matchReport') }}</p>
+         <span v-if="realtimeStatusLabel" class="realtime-status" :class="`realtime-${realtime.status.value}`" role="status">{{ realtimeStatusLabel }}</span>
+         <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.connect()">{{ t('common.retry') }}</button>
+         <span class="status-pill" :class="{ finished: isTerminal, interrupted: match?.status === 'interrupted' }">{{ statusLabel(match?.status) }}</span>
       </div>
       <div v-if="match" class="match-heading">
         <div>
@@ -885,7 +893,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="container operation-content">
+    <section id="operacion" class="container operation-content">
       <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('match.loadingOperation') }}</div>
        <div v-else-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="retryOperation">{{ t('common.retry') }}</button></div>
       <template v-else-if="operation && match">
@@ -1054,20 +1062,16 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </section>
-  </main>
+   </main>
+  </WorkspaceShell>
 </template>
 
 <style scoped>
 .operation-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.09), transparent 30rem), #0c0f0c; }
-.operation-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
-.operation-actions { display: flex; align-items: center; gap: 12px; }
 .realtime-status { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .realtime-error, .realtime-reconnecting { color: #ffcb7a; }
 .realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.68rem; text-decoration: underline; }
-.brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.brand-mark:hover { color: var(--accent); }
-.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.operation-hero { padding: 7vh 0 5vh; animation: rise-in 700ms var(--ease-out) both; }
+.operation-hero { padding: 4vh 0 3vh; animation: rise-in 700ms var(--ease-out) both; }
 .hero-line, .panel-heading, .team-heading, .close-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .status-pill, .check-item { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; padding: 0.42rem 0.7rem; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .status-pill.finished { color: var(--accent); border-color: rgba(212, 243, 106, 0.4); }
@@ -1075,7 +1079,7 @@ onBeforeUnmount(() => {
 .match-heading { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-top: 18px; }
 .context-line, .workspace-copy, .panel-description { color: var(--muted); }
 .context-line { margin: 0; font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.match-heading h1 { max-width: 880px; margin: 12px 0; font-size: clamp(2.4rem, 6vw, 5.4rem); line-height: 0.93; letter-spacing: -0.08em; }
+.match-heading h1 { max-width: 880px; margin: 12px 0; font-size: clamp(2.2rem, 5vw, 4.6rem); line-height: 0.94; letter-spacing: -0.08em; }
 .match-heading h1 span { color: var(--accent); font-weight: 400; }
 .workspace-copy { line-height: 1.5; }
 .scoreboard { display: flex; align-items: center; gap: 9px; color: var(--accent); font-size: clamp(2.8rem, 7vw, 6rem); font-weight: 800; letter-spacing: -0.09em; white-space: nowrap; }
@@ -1152,6 +1156,6 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
 @media (max-width: 1000px) { .event-form { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .container { width: min(100% - 28px, 620px); } .match-heading, .close-actions { align-items: start; flex-direction: column; } .scoreboard { align-self: end; } .operation-grid, .sub-grid, .roster-columns, .formation-config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } .official-row, .event-form, .score-form { grid-template-columns: 1fr; } .close-button { width: 100%; } }
-@media (max-width: 480px) { .operation-topbar { align-items: start; flex-direction: column; } .player-row { grid-template-columns: 27px minmax(0, 1fr); } .player-row select { grid-column: 2; } .position-placeholder { grid-column: 2; } }
+@media (max-width: 480px) { .player-row { grid-template-columns: 27px minmax(0, 1fr); } .player-row select { grid-column: 2; } .position-placeholder { grid-column: 2; } }
 @media (max-width: 375px) { .operation-actions, .draft-status-group { align-items: stretch; flex-direction: column; } .operation-actions > * { justify-content: center; text-align: center; } .panel { padding: 16px; } .scoreboard { align-self: stretch; justify-content: center; } }
 </style>

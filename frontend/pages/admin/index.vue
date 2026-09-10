@@ -144,24 +144,12 @@ async function toggleStatus(path: string, currentValue: boolean, key: string) {
   }
 }
 
-async function logoutAndGoHome() {
-  await auth.logout();
-  await navigateTo('/');
-}
-
 await load();
 </script>
 
 <template>
-  <main id="main-content" class="admin-shell">
-    <header class="container admin-topbar">
-      <NuxtLink to="/" class="brand-mark">BRACKET CRAFT</NuxtLink>
-      <div class="topbar-actions">
-         <NuxtLink to="/workspace" class="button-secondary">{{ t('home.workspace') }}</NuxtLink>
-         <button class="button-secondary" type="button" @click="logoutAndGoHome">{{ t('common.logout') }}</button>
-      </div>
-    </header>
-
+  <WorkspaceShell :breadcrumbs="[{ label: t('shell.administration'), current: true }]">
+   <main id="main-content" class="admin-shell">
     <section class="container admin-hero">
       <div class="hero-line">
          <p class="eyebrow">{{ t('admin.platformControl') }}</p>
@@ -272,20 +260,17 @@ await load();
          </section>
       </template>
     </section>
-  </main>
+   </main>
+  </WorkspaceShell>
 </template>
 
 <style scoped>
 .admin-shell { min-height: 100vh; background: radial-gradient(circle at 88% 4%, rgba(212, 243, 106, 0.1), transparent 30rem), #0c0f0c; }
-.admin-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
-.brand-mark { color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.brand-mark:hover { color: var(--accent); }
-.topbar-actions { display: flex; gap: 12px; }
-.admin-hero { padding: 9vh 0 7vh; animation: rise-in 700ms var(--ease-out) both; }
+.admin-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
 .hero-line { display: flex; align-items: center; gap: 18px; }
 .admin-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .admin-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.admin-hero h1 { max-width: 900px; margin: 14px 0; font-size: clamp(3rem, 8vw, 7rem); line-height: 0.9; letter-spacing: -0.08em; }
+.admin-hero h1 { max-width: 900px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
 .admin-copy { max-width: 560px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
 .admin-content { padding-bottom: 80px; }
 .admin-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
@@ -325,12 +310,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-gl
   .admin-toolbar { align-items: stretch; flex-direction: column; }
 }
 @media (max-width: 560px) {
-  .admin-topbar, .topbar-actions { align-items: start; flex-direction: column; }
   .resource-row, .audit-row { align-items: start; flex-direction: column; }
   .form-error { align-items: stretch; flex-direction: column; }
-}
-@media (max-width: 375px) {
-  .admin-topbar, .topbar-actions { align-items: stretch; }
-  .topbar-actions > * { justify-content: center; text-align: center; }
 }
 </style>

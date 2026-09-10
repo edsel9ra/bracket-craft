@@ -1,6 +1,15 @@
 <script setup lang="ts">
+import { getStageFormatOptions, type StageFormat } from '~/constants/stageFormats';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
+import {
+  DEFAULT_RULES_CONFIG,
+  RULES_VALIDATION_MESSAGE_KEYS,
+  buildRulesRequest,
+  normalizeRulesConfig,
+  validateRulesConfig,
+  type RulesConfig,
+} from '~/utils/rulesConfig';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -19,7 +28,7 @@ interface StageSummary {
   id: string;
   tournament_version_id: string;
   name: string;
-  stage_type: string;
+  stage_type: StageFormat;
   stage_order: number;
   version_status: string;
 }
@@ -60,6 +69,7 @@ interface MatchSummary {
 
 const route = useRoute();
 const auth = useAuthStore();
+const tournamentsStore = useTournamentsStore();
 const { request } = useApi();
 const { t, statusLabel, stageTypeLabel, dateLocale, errorMessage } = useI18n();
 const tournamentId = String(route.params.id);
@@ -83,7 +93,7 @@ const loadError = ref<string | null>(null);
 const error = ref<string | null>(null);
 const selectedVersionId = ref('');
 const selectedStageId = ref('');
-const stageForm = reactive({ name: '', stage_type: 'round_robin', stage_order: 1 });
+const stageForm = reactive<{ name: string; stage_type: StageFormat; stage_order: number }>({ name: '', stage_type: 'round_robin', stage_order: 1 });
 const teamForm = reactive({ name: '', short_code: '' });
 const matchForm = reactive({ home_team_id: '', away_team_id: '', matchday: 1, match_date: '' });
 const bulkTeamText = ref('');
@@ -100,41 +110,9 @@ const rosterImportWarnings = ref<string[]>([]);
 const rosterBusy = ref(false);
 const photoBusyRosterId = ref<string | null>(null);
 const knownStageTeamAssignments = ref<Record<string, string[]>>({});
-const rulesJson = ref('');
+const rulesConfig = ref<RulesConfig | null>(null);
 const rulesError = ref<string | null>(null);
 const CONFIG_PAGE_SIZE = 200;
-
-const DEFAULT_RULES_CONFIG: Record<string, unknown> = {
-  schema_version: '3.2.0',
-  engine_version: '2026.1',
-  points_system: { win: 3, draw: 1, loss: 0 },
-  ranking_pipeline: [
-    { step: 1, criterion: 'points', params: {} },
-    { step: 2, criterion: 'head_to_head', params: { total_rounds_expected: 1 } },
-    { step: 3, criterion: 'goal_difference', params: {} },
-    { step: 4, criterion: 'goals_for', params: {} },
-    { step: 5, criterion: 'fair_play_points', params: {} },
-  ],
-  substitutions: { max_per_team: 5, max_windows: 3, allow_reentry: false },
-  discipline: {
-    yellow_card_limit: 3,
-    yellow_card_suspension_matches: 1,
-    direct_red_suspension_matches: 1,
-    clear_yellows_on_stage_change: true,
-    fair_play_penalties: { yellow_card: 1, double_yellow_red: 3, direct_red: 3 },
-  },
-  transfers: {
-    allow_mid_season_transfers: true,
-    same_matchday_participation_allowed: false,
-    roster_lock_matchday: null,
-  },
-  stage_defaults: {
-    extra_time_enabled: false,
-    penalties_enabled: false,
-    walkover_score: { winner: 3, loser: 0 },
-  },
-  stage_overrides: {},
-};
 
 useHead({
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
@@ -142,11 +120,17 @@ useHead({
 
 const activeVersion = computed(() => versions.value.find((version) => version.id === selectedVersionId.value));
 const draftVersion = computed(() => versions.value.find((version) => version.status === 'draft'));
+const rulesEditable = computed(() => activeVersion.value?.status === 'draft');
+const stageFormatOptions = computed(() => getStageFormatOptions(t));
+const selectedStageFormatDescription = computed(() => stageFormatOptions.value.find((format) => format.value === stageForm.stage_type)?.description || '');
 const selectedVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === selectedVersionId.value));
 const selectedVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === selectedVersionId.value));
 const draftVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === draftVersion.value?.id));
 const draftVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === draftVersion.value?.id));
 const selectedStageTeams = computed(() => teams.value.filter((team) => team.stage_ids.includes(selectedStageId.value)));
+const availableAwayTeams = computed(() => selectedStageTeams.value.filter((team) => team.team_id !== matchForm.home_team_id));
+const tournamentName = computed(() => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null);
+const tournamentLabel = computed(() => tournamentName.value || t('shell.tournament'));
 
 function assignmentKey(versionId: string, stageId: string): string {
   return `${versionId}:${stageId}`;
@@ -180,11 +164,31 @@ const setupChecks = computed(() => [
 ]);
 const canPublish = computed(() => Boolean(draftVersion.value && draftVersionStages.value.length && draftAssignedStageTeamCount.value >= 2 && draftVersionMatches.value.length));
 
+function syncRulesForVersion(versionId: string) {
+  const version = versions.value.find((candidate) => candidate.id === versionId);
+  rulesError.value = null;
+  if (version?.rules_config) {
+    rulesConfig.value = normalizeRulesConfig(version.rules_config);
+  } else {
+    rulesConfig.value = null;
+  }
+}
+
+function updateRulesConfig(value: RulesConfig) {
+  rulesConfig.value = normalizeRulesConfig(value);
+  rulesError.value = null;
+}
+
 watch(selectedVersionId, (versionId) => {
   const nextStages = stages.value.filter((stage) => stage.tournament_version_id === versionId);
   if (!nextStages.some((stage) => stage.id === selectedStageId.value)) {
     selectedStageId.value = nextStages[0]?.id || '';
   }
+  syncRulesForVersion(versionId);
+});
+
+watch(() => matchForm.home_team_id, (homeTeamId) => {
+  if (homeTeamId && matchForm.away_team_id === homeTeamId) matchForm.away_team_id = '';
 });
 
 function failureMessage(cause: unknown, fallback: string): string {
@@ -193,13 +197,13 @@ function failureMessage(cause: unknown, fallback: string): string {
 
 function setRulesConfig(config: unknown): boolean {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return false;
-  rulesJson.value = JSON.stringify(config, null, 2) || '';
+  rulesConfig.value = normalizeRulesConfig(config);
   rulesError.value = null;
   return true;
 }
 
 function useDefaultRules() {
-  if (!draftVersion.value) return;
+  if (!rulesEditable.value) return;
   if (import.meta.client && !window.confirm(t('setup.confirmReplaceRules'))) return;
   setRulesConfig(DEFAULT_RULES_CONFIG);
 }
@@ -269,9 +273,7 @@ function applyConfiguration(configuration: ConfigurationData) {
   if (!selectedStageId.value || !versionStages.some((stage) => stage.id === selectedStageId.value)) {
     selectedStageId.value = versionStages[0]?.id || '';
   }
-  const selectedVersion = configuration.versions.find((version) => version.id === selectedVersionId.value);
-  if (selectedVersion?.rules_config) setRulesConfig(selectedVersion.rules_config);
-  else rulesJson.value = '';
+  syncRulesForVersion(selectedVersionId.value);
   if (!rosterTeamId.value || !configuration.teams.some((team) => team.team_id === rosterTeamId.value)) {
     rosterTeamId.value = configuration.teams[0]?.team_id || '';
   }
@@ -586,9 +588,9 @@ async function createDraftVersion() {
       method: 'POST',
       body: {},
     });
-    setRulesConfig(created.rules_config);
     await loadConfiguration();
     selectedVersionId.value = created.id;
+    setRulesConfig(created.rules_config);
   } catch (cause) {
     if (await redirectOnSessionFailure(cause)) return;
     error.value = failureMessage(cause, t('setup.noVersion'));
@@ -598,28 +600,36 @@ async function createDraftVersion() {
 }
 
 async function saveRules() {
-  if (!draftVersion.value || !rulesJson.value.trim()) return;
-  let rulesConfig: unknown;
-  try {
-    rulesConfig = JSON.parse(rulesJson.value);
-  } catch {
-    rulesError.value = t('setup.rulesInvalid');
+  const versionId = selectedVersionId.value;
+  const version = versions.value.find((candidate) => candidate.id === versionId);
+  if (!version || version.status !== 'draft') {
+    rulesError.value = t('rules.error.draftOnly');
     return;
   }
-  if (!rulesConfig || typeof rulesConfig !== 'object' || Array.isArray(rulesConfig)) {
-    rulesError.value = t('setup.rulesInvalid');
+  if (!rulesConfig.value) {
+    rulesError.value = t('rules.error.noConfig');
+    return;
+  }
+  const validationErrors = validateRulesConfig(rulesConfig.value);
+  if (validationErrors.length) {
+    rulesError.value = t(RULES_VALIDATION_MESSAGE_KEYS[validationErrors[0].code]);
     return;
   }
 
   saving.value = true;
   rulesError.value = null;
   try {
-    const updated = await request<VersionDetail>(`/tournaments/${tournamentId}/versions/${draftVersion.value.id}/rules`, {
+    const updated = await request<VersionDetail>(`/tournaments/${tournamentId}/versions/${versionId}/rules`, {
       method: 'PATCH',
-      body: { rules_config: rulesConfig },
+      body: buildRulesRequest(rulesConfig.value),
     });
+    if (selectedVersionId.value !== versionId || updated.id !== versionId) {
+      rulesError.value = t('rules.error.versionChanged');
+      return;
+    }
     setRulesConfig(updated.rules_config);
     await loadConfiguration();
+    if (selectedVersionId.value === versionId) syncRulesForVersion(versionId);
   } catch (cause) {
     if (await redirectOnSessionFailure(cause)) return;
     rulesError.value = failureMessage(cause, t('setup.noRulesUpdate'));
@@ -644,13 +654,16 @@ loading.value = false;
 </script>
 
 <template>
-  <main id="main-content" class="workspace-shell">
-    <header class="container workspace-topbar">
-      <NuxtLink to="/workspace" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
-      <NuxtLink to="/workspace" class="button-secondary">{{ t('common.back') }}</NuxtLink>
-    </header>
-
-    <section class="container config-hero">
+  <WorkspaceShell
+    :breadcrumbs="[
+      { label: t('shell.tournaments'), to: '/workspace' },
+      { label: tournamentLabel, current: true },
+    ]"
+    :tournament="{ id: tournamentId, name: tournamentName }"
+    active-section="configuration"
+  >
+   <main id="main-content" class="workspace-shell">
+    <section id="resumen" class="container config-hero">
       <div class="hero-line">
         <p class="eyebrow">{{ t('setup.tournamentSetup') }}</p>
         <span class="draft-status"><span aria-hidden="true" /> {{ draftVersion ? t('setup.editableDraft') : t('setup.publishedVersion') }}</span>
@@ -664,8 +677,8 @@ loading.value = false;
         <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><button class="button-secondary" type="button" @click="retryConfiguration">{{ t('common.retry') }}</button></div>
         <template v-else>
           <div class="config-toolbar">
-          <label>
-             {{ t('setup.version') }}
+           <label>
+              {{ t('setup.version') }}
             <select v-model="selectedVersionId">
               <option v-for="version in versions" :key="version.id" :value="version.id">
                  v{{ version.version_number }} · {{ statusLabel(version.status) }}
@@ -677,20 +690,29 @@ loading.value = false;
            </button>
             <button v-else-if="activeVersion?.status === 'published'" class="button-secondary" type="button" :disabled="saving" @click="createDraftVersion">
               {{ saving ? t('common.saving') : t('setup.createDraftVersion') }}
-            </button>
+           </button>
           </div>
 
-          <form class="panel panel-wide rules-panel" :aria-busy="saving" @submit.prevent="saveRules">
-            <div class="panel-heading">
-              <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2>{{ t('setup.editRules') }}</h2></div>
-              <button v-if="draftVersion && !rulesJson" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
-            </div>
-            <p class="field-hint">{{ t('setup.rulesDescription') }}</p>
-            <textarea v-model="rulesJson" :disabled="!draftVersion" rows="14" maxlength="30000" :placeholder="t('setup.rulesPlaceholder')" :aria-label="t('setup.editRules')" />
-            <p v-if="!rulesJson && draftVersion" class="muted-note">{{ t('setup.rulesLoadNote') }}</p>
-            <p v-if="rulesError" class="form-error" role="alert">{{ rulesError }}</p>
-            <button class="button-primary" type="submit" :disabled="saving || !draftVersion || !rulesJson.trim()">{{ saving ? t('common.saving') : t('setup.saveRules') }}</button>
-          </form>
+           <form id="configuracion" class="panel panel-wide rules-panel" :aria-busy="saving" @submit.prevent="saveRules">
+             <div class="panel-heading">
+               <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2>{{ t('setup.editRules') }}</h2></div>
+               <div class="rules-heading-actions">
+                 <span v-if="activeVersion && !rulesEditable" class="muted-note">{{ t('rules.readOnlyVersion') }}</span>
+                 <button v-if="rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
+               </div>
+             </div>
+             <p class="field-hint">{{ t('setup.rulesDescription') }}</p>
+             <RulesEditor
+               :model-value="rulesConfig"
+               :stages="selectedVersionStages"
+               :disabled="!rulesEditable"
+               :aria-label="t('setup.editRules')"
+               @update:model-value="updateRulesConfig"
+             />
+             <p v-if="!rulesConfig && rulesEditable" class="muted-note">{{ t('setup.rulesLoadNote') }}</p>
+             <p v-if="rulesError" class="form-error" role="alert">{{ rulesError }}</p>
+             <button class="button-primary" type="submit" :disabled="saving || !rulesEditable || !rulesConfig">{{ saving ? t('common.saving') : t('setup.saveRules') }}</button>
+           </form>
 
           <div class="setup-checklist" :aria-label="t('setup.operationalChecklist')">
            <div class="checklist-heading"><div><p class="eyebrow">{{ t('setup.beforePublish') }}</p><h2>{{ t('setup.operationalChecklist') }}</h2></div><span class="muted-note">{{ t('setup.rosterNote') }}</span></div>
@@ -703,15 +725,12 @@ loading.value = false;
              <p class="eyebrow">{{ t('setup.stagesEyebrow') }}</p>
              <h2>{{ t('setup.definePath') }}</h2>
              <label>{{ t('workspace.name') }}<input v-model="stageForm.name" minlength="2" maxlength="50" required /></label>
-             <label>{{ t('setup.type') }}
-               <select v-model="stageForm.stage_type">
-                  <option value="round_robin">{{ stageTypeLabel('round_robin') }}</option>
-                  <option value="single_elimination">{{ stageTypeLabel('single_elimination') }}</option>
-                  <option value="custom_group">{{ stageTypeLabel('custom_group') }}</option>
-                  <option value="swiss">{{ stageTypeLabel('swiss') }}</option>
-                  <option value="double_elimination">{{ stageTypeLabel('double_elimination') }}</option>
-               </select>
-             </label>
+              <label>{{ t('setup.type') }}
+                <select v-model="stageForm.stage_type">
+                   <option v-for="format in stageFormatOptions" :key="format.value" :value="format.value" :title="format.description">{{ format.label }}</option>
+                </select>
+                <span class="field-hint stage-format-description">{{ selectedStageFormatDescription }}</span>
+              </label>
              <label>{{ t('setup.order') }}<input v-model.number="stageForm.stage_order" type="number" min="1" required /></label>
              <button class="button-primary" type="submit" :disabled="saving || activeVersion?.status !== 'draft'">{{ t('setup.addStage') }}</button>
              <TransitionGroup name="card-list" tag="ul" class="resource-list">
@@ -719,7 +738,7 @@ loading.value = false;
              </TransitionGroup>
           </form>
 
-           <form class="panel" :aria-busy="saving" @submit.prevent="createTeam">
+            <form id="equipos" class="panel" :aria-busy="saving" @submit.prevent="createTeam">
              <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
              <h2>{{ t('setup.nameTheField') }}</h2>
              <label>{{ t('setup.stage') }}
@@ -750,8 +769,8 @@ loading.value = false;
               </div>
             </form>
 
-           <form class="panel panel-wide" :aria-busy="saving" @submit.prevent="createMatch">
-              <p class="eyebrow">03 · {{ t('setup.calendarEyebrow') }}</p>
+           <form id="calendario" class="panel panel-wide" :aria-busy="saving" @submit.prevent="createMatch">
+              <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
               <h2>{{ t('setup.scheduleMatch') }}</h2>
               <div class="match-form-grid">
                 <label>{{ t('setup.home') }}
@@ -763,19 +782,19 @@ loading.value = false;
                 <label>{{ t('setup.away') }}
                   <select v-model="matchForm.away_team_id">
                     <option value="">{{ t('setup.noDefine') }}</option>
-                   <option v-for="team in selectedStageTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
+                   <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
                   </select>
                 </label>
                 <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" type="number" min="1" required /></label>
                 <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" type="datetime-local" required /></label>
                 <button class="button-primary match-submit" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
               </div>
-              <TransitionGroup name="card-list" tag="ul" class="resource-list match-list">
+              <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
                 <li v-for="match in selectedVersionMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
               </TransitionGroup>
            </form>
 
-           <section class="panel panel-wide roster-import-panel">
+           <section id="plantillas" class="panel panel-wide roster-import-panel">
              <div class="panel-heading"><div><p class="eyebrow">04 · {{ t('setup.rosterImport') }}</p><h2>{{ t('setup.importRoster') }}</h2></div><span class="muted-note">{{ t('setup.rosterPhotoHint') }}</span></div>
              <div class="roster-import-controls">
                <label>{{ t('setup.team') }}<select v-model="rosterTeamId" required><option value="" disabled>{{ t('match.selectTeam') }}</option><option v-for="team in teams" :key="`roster-${team.team_id}`" :value="team.team_id">{{ team.name }}</option></select></label>
@@ -814,21 +833,18 @@ loading.value = false;
          <div v-if="error" class="form-error" role="alert">{{ error }}</div>
       </template>
     </section>
-  </main>
+   </main>
+  </WorkspaceShell>
 </template>
 
 <style scoped>
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
-.workspace-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
-.brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.brand-mark:hover { color: var(--accent); }
-.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.config-hero { padding: 9vh 0 7vh; }
+.config-hero { padding: 4vh 0 4vh; }
 .config-hero { animation: rise-in 700ms var(--ease-out) both; }
 .hero-line { display: flex; align-items: center; gap: 18px; }
 .draft-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .draft-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.config-hero h1 { max-width: 800px; margin: 14px 0; font-size: clamp(3rem, 8vw, 7rem); line-height: 0.9; letter-spacing: -0.08em; }
+.config-hero h1 { max-width: 800px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
 .workspace-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
 .config-content { padding-bottom: 80px; }
 .config-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
@@ -853,8 +869,10 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .panel h2 { margin: 0 0 10px; font-size: 1.6rem; letter-spacing: -0.05em; }
 .panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .panel-heading h2 { margin-bottom: 0; }
+.rules-heading-actions { display: flex; align-items: center; justify-content: end; gap: 10px; }
 .rules-panel { margin-bottom: 20px; }
 .rules-panel textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; }
+.stage-format-description { line-height: 1.35; }
 .resource-list { position: relative; display: grid; gap: 8px; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; }
 .resource-list li { display: flex; justify-content: space-between; gap: 10px; color: var(--ink); font-size: 0.85rem; }
 .resource-list button { width: 100%; padding: 8px; border-radius: 8px; color: inherit; background: transparent; text-align: left; }

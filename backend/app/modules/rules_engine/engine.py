@@ -1,7 +1,8 @@
+from copy import deepcopy
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any
+from typing import Any, Mapping
 from uuid import UUID
 
 from jsonschema import Draft7Validator
@@ -161,6 +162,23 @@ def validate_rules_config(config: dict[str, Any]) -> None:
             rounds_expected = item["params"].get("total_rounds_expected")
             if type(rounds_expected) is not int or rounds_expected not in {1, 2}:
                 raise ValueError("head_to_head requiere total_rounds_expected igual a 1 o 2")
+
+
+def remap_stage_overrides(
+    config: Mapping[str, Any],
+    stage_map: Mapping[str, UUID | str],
+) -> dict[str, Any]:
+    """Copy a rules config while moving per-stage overrides to cloned stage IDs."""
+    cloned = deepcopy(dict(config))
+    overrides = cloned.get("stage_overrides")
+    if not isinstance(overrides, dict):
+        return cloned
+
+    cloned["stage_overrides"] = {
+        str(stage_map.get(str(stage_id), stage_id)): override
+        for stage_id, override in overrides.items()
+    }
+    return cloned
 
 
 @dataclass(frozen=True)

@@ -5,12 +5,45 @@ import pytest
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
 from app.modules.matches.service import CloseMatchReportService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.rules_engine.engine import compute_match_outcome, evaluate_suspensions, validate_rules_config
+from app.modules.rules_engine.engine import (
+    compute_match_outcome,
+    evaluate_suspensions,
+    remap_stage_overrides,
+    validate_rules_config,
+)
 from app.modules.rules_engine.schemas import CreateTournamentRequest, TournamentRulesConfig
 
 
 def test_default_rules_are_valid():
     validate_rules_config(DEFAULT_RULES_CONFIG)
+
+
+def test_stage_overrides_are_remapped_when_stage_ids_are_cloned():
+    old_group = uuid4()
+    old_final = uuid4()
+    new_group = uuid4()
+    new_final = uuid4()
+    config = {
+        **DEFAULT_RULES_CONFIG,
+        "stage_overrides": {
+            str(old_group): {"extra_time_enabled": True},
+            str(old_final): {"penalties_enabled": True},
+        },
+    }
+
+    cloned = remap_stage_overrides(config, {
+        str(old_group): new_group,
+        str(old_final): new_final,
+    })
+
+    assert cloned["stage_overrides"] == {
+        str(new_group): {"extra_time_enabled": True},
+        str(new_final): {"penalties_enabled": True},
+    }
+    assert config["stage_overrides"] == {
+        str(old_group): {"extra_time_enabled": True},
+        str(old_final): {"penalties_enabled": True},
+    }
 
 
 def test_tournament_request_uses_typed_default_rules():
