@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.core.database import get_db
 from app.main import api, app
 
 
@@ -14,6 +15,26 @@ async def client():
 async def socketio_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as value:
         yield value
+
+
+class EmptyResult:
+    def mappings(self):
+        return self
+
+    def all(self):
+        return []
+
+    def scalar_one_or_none(self):
+        return None
+
+
+class EmptyDatabase:
+    async def execute(self, *args, **kwargs):
+        return EmptyResult()
+
+
+async def empty_db():
+    yield EmptyDatabase()
 
 
 @pytest.mark.asyncio
@@ -48,9 +69,13 @@ async def test_platform_admin_requires_authentication(client):
 async def test_public_tournament_projections_are_anonymous(client):
     missing_id = "00000000-0000-0000-0000-000000000000"
 
-    listing = await client.get("/api/v1/tournaments/public")
-    standings = await client.get(f"/api/v1/tournaments/public/{missing_id}/standings")
-    matches = await client.get(f"/api/v1/tournaments/public/{missing_id}/matches")
+    api.dependency_overrides[get_db] = empty_db
+    try:
+        listing = await client.get("/api/v1/tournaments/public")
+        standings = await client.get(f"/api/v1/tournaments/public/{missing_id}/standings")
+        matches = await client.get(f"/api/v1/tournaments/public/{missing_id}/matches")
+    finally:
+        api.dependency_overrides.pop(get_db, None)
 
     assert listing.status_code == 200
     assert isinstance(listing.json(), list)

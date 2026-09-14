@@ -2,9 +2,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+import jwt
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt.exceptions import PyJWTError
 from pwdlib import PasswordHash
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,7 +65,7 @@ def decode_access_token_claims(credentials_or_token: HTTPAuthorizationCredential
         UUID(payload["sub"])
         UUID(payload["jti"])
         return payload
-    except (JWTError, KeyError, TypeError, ValueError) as exc:
+    except (PyJWTError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido") from exc
 
 
