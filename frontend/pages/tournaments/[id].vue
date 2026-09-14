@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick } from 'vue';
 import type { FormationCode } from '~/constants/formations';
 import { useRealtime } from '~/composables/useRealtime';
 
@@ -106,7 +107,9 @@ const { data, status, error: dataError, refresh } = await useAsyncData<PublicTou
 const tournament = computed(() => data.value?.tournament ?? null);
 const standings = computed(() => data.value?.standings ?? []);
 const matches = computed(() => data.value?.matches ?? []);
-const lineupModes = ref<Record<string, 'tactical' | 'list'>>({});
+const selectedLineupMatchId = ref<string | null>(null);
+const lineupTrigger = ref<HTMLButtonElement | null>(null);
+const selectedLineupMatch = computed(() => matches.value.find((match) => match.id === selectedLineupMatchId.value) ?? null);
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
 const standingsHasMore = ref(Boolean(data.value?.standings.length === PAGE_SIZE));
@@ -145,30 +148,17 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function playerName(player: PublicLineupPlayer): string {
-  return `${player.first_name} ${player.last_name}`;
+function openLineup(match: PublicMatch, event: MouseEvent) {
+  if (!match.lineup) return;
+  selectedLineupMatchId.value = match.id;
+  lineupTrigger.value = event.currentTarget as HTMLButtonElement;
 }
 
-function positionLabel(position: string | null): string {
-  return position ? position.replace('_', ' ') : '';
-}
-
-function hasTacticalLineup(match: PublicMatch): boolean {
-  const teams = [match.lineup?.home, match.lineup?.away];
-  return teams.every((team) => Boolean(
-    team?.formation_code
-    && team.starters.length > 0
-    && team.starters.every((player) => Boolean(player.position_slot)),
-  ));
-}
-
-function lineupMode(match: PublicMatch): 'tactical' | 'list' {
-  if (!hasTacticalLineup(match)) return 'list';
-  return lineupModes.value[match.id] || 'tactical';
-}
-
-function setLineupMode(matchId: string, mode: 'tactical' | 'list') {
-  lineupModes.value[matchId] = mode;
+function closeLineup() {
+  const trigger = lineupTrigger.value;
+  selectedLineupMatchId.value = null;
+  lineupTrigger.value = null;
+  void nextTick(() => trigger?.focus());
 }
 
 function payloadTargetsTournament(payload: unknown): boolean {
@@ -247,12 +237,6 @@ onBeforeUnmount(() => {
   realtime.disconnect();
 });
 
-function lineupTeams(match: PublicMatch): Array<{ side: string; lineup: PublicTeamLineup }> {
-  const teams: Array<{ side: string; lineup: PublicTeamLineup }> = [];
-  if (match.lineup?.home) teams.push({ side: 'home', lineup: match.lineup.home });
-  if (match.lineup?.away) teams.push({ side: 'away', lineup: match.lineup.away });
-  return teams;
-}
 </script>
 
 <template>
@@ -341,44 +325,17 @@ function lineupTeams(match: PublicMatch): Array<{ side: string; lineup: PublicTe
                     <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
                   </div>
                   <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
-                  <details v-if="match.lineup" class="lineup-details">
-                    <summary>{{ t('public.viewLineup') }}</summary>
-                    <div class="lineup-content">
-                      <div class="lineup-toolbar">
-                        <span>{{ hasTacticalLineup(match) ? t('public.formationAvailable') : t('public.classicLineup') }}</span>
-                        <div v-if="hasTacticalLineup(match)" class="lineup-switcher" role="group" :aria-label="t('public.lineupView')">
-                           <button type="button" :aria-pressed="lineupMode(match) === 'tactical'" :class="{ active: lineupMode(match) === 'tactical' }" @click.prevent="setLineupMode(match.id, 'tactical')">{{ t('public.tacticalView') }}</button>
-                           <button type="button" :aria-pressed="lineupMode(match) === 'list'" :class="{ active: lineupMode(match) === 'list' }" @click.prevent="setLineupMode(match.id, 'list')">{{ t('public.listView') }}</button>
-                        </div>
-                      </div>
-                      <PublicMatchPitch
-                        v-if="lineupMode(match) === 'tactical' && match.lineup.home && match.lineup.away"
-                        :home="match.lineup.home"
-                        :away="match.lineup.away"
-                      />
-                      <div v-else class="lineup-lists">
-                        <div v-for="team in lineupTeams(match)" :key="team.lineup.team_id" class="lineup-team-list">
-                          <div class="lineup-team-heading"><strong>{{ team.lineup.team_name }}</strong><span>{{ team.lineup.formation_code || t('public.classicLineup') }}</span></div>
-                          <div class="lineup-role-list">
-                            <div>
-                              <small>{{ t('public.starters') }}</small>
-                              <template v-if="team.lineup.starters.length">
-                                <p v-for="player in team.lineup.starters" :key="`starter-${player.player_id}`"><b>#{{ player.dorsal_number ?? '—' }}</b> {{ playerName(player) }}<em v-if="player.position_slot">{{ positionLabel(player.position_slot) }}</em></p>
-                              </template>
-                              <p v-else class="lineup-empty">{{ t('public.noLineup') }}</p>
-                            </div>
-                            <div>
-                              <small>{{ t('public.substitutes') }}</small>
-                              <template v-if="team.lineup.substitutes.length">
-                                <p v-for="player in team.lineup.substitutes" :key="`substitute-${player.player_id}`"><b>#{{ player.dorsal_number ?? '—' }}</b> {{ playerName(player) }}</p>
-                              </template>
-                              <p v-else class="lineup-empty">{{ t('public.noLineup') }}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
+                  <button
+                    v-if="match.lineup"
+                    class="lineup-trigger"
+                    type="button"
+                    aria-controls="public-lineup-dialog"
+                    aria-haspopup="dialog"
+                    :aria-expanded="selectedLineupMatchId === match.id"
+                    @click="openLineup(match, $event)"
+                  >
+                    {{ t('public.viewLineup') }}
+                  </button>
                </article>
              </TransitionGroup>
              <button v-if="matchesHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
@@ -386,8 +343,13 @@ function lineupTeams(match: PublicMatch): Array<{ side: string; lineup: PublicTe
              </button>
            </div>
         </section>
-      </div>
+     </div>
     </Transition>
+    <PublicLineupModal
+      :open="Boolean(selectedLineupMatch)"
+      :match="selectedLineupMatch"
+      @close="closeLineup"
+    />
   </main>
 </template>
 
@@ -426,24 +388,8 @@ td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72
 .match-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 22px 0; font-size: 0.9rem; }
 .match-teams span:last-child { text-align: right; }
 .match-teams strong { color: var(--accent); font-size: 1.2rem; }
-.lineup-details { margin-top: 14px; border-top: 1px solid rgba(166, 170, 159, 0.14); }
-.lineup-details summary { padding-top: 13px; cursor: pointer; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; list-style-position: inside; text-transform: uppercase; }
-.lineup-content { display: grid; gap: 13px; padding-top: 13px; }
-.lineup-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.7rem; }
-.lineup-switcher { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; }
-.lineup-switcher button { padding: 5px 8px; border-radius: 5px; background: transparent; color: var(--muted); font-size: 0.67rem; }
-.lineup-switcher button.active { background: var(--accent); color: #0c0f0c; font-weight: 800; }
-.lineup-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.lineup-team-list { min-width: 0; padding: 12px; border: 1px solid rgba(166, 170, 159, 0.14); border-radius: 11px; background: rgba(12, 15, 12, 0.28); }
-.lineup-team-heading { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.lineup-team-heading strong { overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
-.lineup-team-heading span { color: var(--accent); font-size: 0.64rem; white-space: nowrap; }
-.lineup-role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 10px; }
-.lineup-role-list small { color: var(--muted); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.lineup-role-list p { margin: 6px 0 0; color: var(--ink); font-size: 0.72rem; line-height: 1.35; }
-.lineup-role-list b { color: var(--accent); }
-.lineup-role-list em { display: block; color: var(--muted); font-size: 0.62rem; font-style: normal; text-transform: uppercase; }
-.lineup-empty { color: var(--muted) !important; }
+.lineup-trigger { display: block; width: 100%; margin-top: 14px; padding: 13px 0 0; border-top: 1px solid rgba(166, 170, 159, 0.14); background: transparent; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.lineup-trigger:hover { color: var(--ink); }
 .empty-state { padding: 28px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
 .loading-state { display: flex; align-items: center; gap: 12px; }
 .loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
@@ -457,8 +403,6 @@ td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72
   .container { width: min(100% - 28px, 620px); }
   .tournament-hero { align-items: start; flex-direction: column; padding-top: 8vh; }
   .hero-stamp { align-self: end; }
-  .lineup-lists, .lineup-role-list { grid-template-columns: 1fr; }
-  .lineup-toolbar { align-items: start; flex-direction: column; }
 }
 @media (max-width: 375px) {
   .detail-topbar, .detail-actions { align-items: stretch; flex-direction: column; }

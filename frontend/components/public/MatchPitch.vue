@@ -19,11 +19,16 @@ interface TeamLineup {
   substitutes: LineupPlayer[];
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   home: TeamLineup;
   away: TeamLineup;
-}>();
+  showBench?: boolean;
+}>(), {
+  showBench: true,
+});
 const { t } = useI18n();
+const OWN_HALF_START_Y = 52;
+const OWN_HALF_SCALE = 0.42;
 
 function playerName(player: LineupPlayer): string {
   return player.last_name || player.first_name;
@@ -39,9 +44,10 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
   if (!formation) return {};
   const point = FORMATIONS_GRID[formation][player.position_slot];
   if (!point) return {};
+  const homeHalfY = OWN_HALF_START_Y + point.y * OWN_HALF_SCALE;
   return {
     left: `${point.x}%`,
-    top: `${side === 'home' ? point.y : 100 - point.y}%`,
+    top: `${side === 'home' ? homeHalfY : 100 - homeHalfY}%`,
   };
 }
 </script>
@@ -84,7 +90,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
         <span class="player-position">{{ positionLabel(player.position_slot || '') }}</span>
       </div>
     </div>
-    <div class="bench-grid">
+    <div v-if="showBench" class="bench-grid">
       <div class="bench-team">
         <small>{{ home.team_name }} · {{ t('public.substitutes') }}</small>
         <span v-for="player in home.substitutes" :key="`home-sub-${player.player_id}`" class="bench-player">#{{ player.dorsal_number ?? '—' }} {{ playerName(player) }}</span>
