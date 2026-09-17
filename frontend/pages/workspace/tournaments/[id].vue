@@ -131,6 +131,7 @@ const selectedStageTeams = computed(() => teams.value.filter((team) => team.stag
 const availableAwayTeams = computed(() => selectedStageTeams.value.filter((team) => team.team_id !== matchForm.home_team_id));
 const tournamentName = computed(() => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null);
 const tournamentLabel = computed(() => tournamentName.value || t('shell.tournament'));
+const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
 
 function assignmentKey(versionId: string, stageId: string): string {
   return `${versionId}:${stageId}`;
@@ -685,10 +686,10 @@ loading.value = false;
               </option>
             </select>
           </label>
-           <button v-if="draftVersion" class="button-primary" type="button" :disabled="saving || !canPublish" @click="publishVersion">
+             <button v-if="canManageTournaments && draftVersion" class="button-primary" type="button" :disabled="saving || !canPublish" @click="publishVersion">
              {{ saving ? t('common.saving') : t('setup.publishDraft') }}
            </button>
-            <button v-else-if="activeVersion?.status === 'published'" class="button-secondary" type="button" :disabled="saving" @click="createDraftVersion">
+             <button v-else-if="canManageTournaments && activeVersion?.status === 'published'" class="button-secondary" type="button" :disabled="saving" @click="createDraftVersion">
               {{ saving ? t('common.saving') : t('setup.createDraftVersion') }}
            </button>
           </div>
@@ -698,20 +699,20 @@ loading.value = false;
                <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2>{{ t('setup.editRules') }}</h2></div>
                <div class="rules-heading-actions">
                  <span v-if="activeVersion && !rulesEditable" class="muted-note">{{ t('rules.readOnlyVersion') }}</span>
-                 <button v-if="rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
+                <button v-if="canManageTournaments && rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
                </div>
              </div>
              <p class="field-hint">{{ t('setup.rulesDescription') }}</p>
              <RulesEditor
                :model-value="rulesConfig"
                :stages="selectedVersionStages"
-               :disabled="!rulesEditable"
+                :disabled="!canManageTournaments || !rulesEditable"
                :aria-label="t('setup.editRules')"
                @update:model-value="updateRulesConfig"
              />
              <p v-if="!rulesConfig && rulesEditable" class="muted-note">{{ t('setup.rulesLoadNote') }}</p>
              <p v-if="rulesError" class="form-error" role="alert">{{ rulesError }}</p>
-             <button class="button-primary" type="submit" :disabled="saving || !rulesEditable || !rulesConfig">{{ saving ? t('common.saving') : t('setup.saveRules') }}</button>
+              <button v-if="canManageTournaments" class="button-primary" type="submit" :disabled="saving || !rulesEditable || !rulesConfig">{{ saving ? t('common.saving') : t('setup.saveRules') }}</button>
            </form>
 
           <div class="setup-checklist" :aria-label="t('setup.operationalChecklist')">
@@ -724,15 +725,15 @@ loading.value = false;
           <form class="panel" :aria-busy="saving" @submit.prevent="createStage">
              <p class="eyebrow">{{ t('setup.stagesEyebrow') }}</p>
              <h2>{{ t('setup.definePath') }}</h2>
-             <label>{{ t('workspace.name') }}<input v-model="stageForm.name" minlength="2" maxlength="50" required /></label>
+              <label>{{ t('workspace.name') }}<input v-model="stageForm.name" :disabled="!canManageTournaments" minlength="2" maxlength="50" required /></label>
               <label>{{ t('setup.type') }}
-                <select v-model="stageForm.stage_type">
+                 <select v-model="stageForm.stage_type" :disabled="!canManageTournaments">
                    <option v-for="format in stageFormatOptions" :key="format.value" :value="format.value" :title="format.description">{{ format.label }}</option>
                 </select>
                 <span class="field-hint stage-format-description">{{ selectedStageFormatDescription }}</span>
               </label>
-             <label>{{ t('setup.order') }}<input v-model.number="stageForm.stage_order" type="number" min="1" required /></label>
-             <button class="button-primary" type="submit" :disabled="saving || activeVersion?.status !== 'draft'">{{ t('setup.addStage') }}</button>
+              <label>{{ t('setup.order') }}<input v-model.number="stageForm.stage_order" :disabled="!canManageTournaments" type="number" min="1" required /></label>
+              <button v-if="canManageTournaments" class="button-primary" type="submit" :disabled="saving || activeVersion?.status !== 'draft'">{{ t('setup.addStage') }}</button>
              <TransitionGroup name="card-list" tag="ul" class="resource-list">
                 <li v-for="stage in selectedVersionStages" :key="stage.id" :class="{ active: stage.id === selectedStageId }"><button type="button" :aria-pressed="stage.id === selectedStageId" @click="selectedStageId = stage.id">{{ stage.stage_order }}. {{ stage.name }} <small>{{ stageTypeLabel(stage.stage_type) }}</small></button></li>
              </TransitionGroup>
@@ -742,18 +743,18 @@ loading.value = false;
              <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
              <h2>{{ t('setup.nameTheField') }}</h2>
              <label>{{ t('setup.stage') }}
-               <select v-model="selectedStageId" required>
+                <select v-model="selectedStageId" :disabled="!canManageTournaments" required>
                  <option value="" disabled>{{ t('setup.selectStage') }}</option>
                <option v-for="stage in selectedVersionStages" :key="stage.id" :value="stage.id">{{ stage.name }}</option>
               </select>
             </label>
-             <label>{{ t('workspace.name') }}<input v-model="teamForm.name" minlength="2" maxlength="100" required /></label>
-             <label>{{ t('setup.code') }}<input v-model="teamForm.short_code" minlength="2" maxlength="10" pattern="[A-Za-z0-9_\-]+" required /></label>
-             <button class="button-primary" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.registerTeam') }}</button>
+              <label>{{ t('workspace.name') }}<input v-model="teamForm.name" :disabled="!canManageTournaments" minlength="2" maxlength="100" required /></label>
+              <label>{{ t('setup.code') }}<input v-model="teamForm.short_code" :disabled="!canManageTournaments" minlength="2" maxlength="10" pattern="[A-Za-z0-9_\-]+" required /></label>
+              <button v-if="canManageTournaments" class="button-primary" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.registerTeam') }}</button>
                <TransitionGroup name="card-list" tag="ul" class="resource-list">
                  <li v-for="team in teams" :key="team.team_id"><span>{{ team.name }}</span><small>{{ team.short_code }}</small></li>
                </TransitionGroup>
-               <div class="bulk-import">
+                <div v-if="canManageTournaments" class="bulk-import">
                   <div><p class="eyebrow">{{ t('setup.bulkImport') }}</p><h3>{{ t('setup.pasteCsv') }}</h3><p class="field-hint">{{ t('setup.csvHint', { columns: 'name,short_code,logo_url' }) }}</p></div>
                  <div class="csv-file-actions">
                    <label class="button-secondary file-picker">
@@ -774,20 +775,20 @@ loading.value = false;
               <h2>{{ t('setup.scheduleMatch') }}</h2>
               <div class="match-form-grid">
                 <label>{{ t('setup.home') }}
-                  <select v-model="matchForm.home_team_id">
+                 <select v-model="matchForm.home_team_id" :disabled="!canManageTournaments">
                     <option value="">{{ t('setup.noDefine') }}</option>
                    <option v-for="team in selectedStageTeams" :key="`home-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
                   </select>
                 </label>
                 <label>{{ t('setup.away') }}
-                  <select v-model="matchForm.away_team_id">
+                   <select v-model="matchForm.away_team_id" :disabled="!canManageTournaments">
                     <option value="">{{ t('setup.noDefine') }}</option>
                    <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
                   </select>
                 </label>
-                <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" type="number" min="1" required /></label>
-                <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" type="datetime-local" required /></label>
-                <button class="button-primary match-submit" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
+                 <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" :disabled="!canManageTournaments" type="number" min="1" required /></label>
+                 <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required /></label>
+                 <button v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
               </div>
               <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
                 <li v-for="match in selectedVersionMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
@@ -796,28 +797,28 @@ loading.value = false;
 
            <section id="plantillas" class="panel panel-wide roster-import-panel">
              <div class="panel-heading"><div><p class="eyebrow">04 · {{ t('setup.rosterImport') }}</p><h2>{{ t('setup.importRoster') }}</h2></div><span class="muted-note">{{ t('setup.rosterPhotoHint') }}</span></div>
-             <div class="roster-import-controls">
+              <div v-if="canManageTournaments" class="roster-import-controls">
                <label>{{ t('setup.team') }}<select v-model="rosterTeamId" required><option value="" disabled>{{ t('match.selectTeam') }}</option><option v-for="team in teams" :key="`roster-${team.team_id}`" :value="team.team_id">{{ team.name }}</option></select></label>
                <label class="button-secondary file-picker">{{ t('setup.chooseRosterCsv') }}<input ref="rosterCsvInput" class="file-input" type="file" accept=".csv,.txt,text/csv,text/plain" @change="chooseRosterCsv" /></label>
                <label class="button-secondary file-picker">{{ t('setup.choosePhotosZip') }}<input ref="rosterZipInput" class="file-input" type="file" accept=".zip,application/zip" @change="chooseRosterZip" /></label>
              </div>
-             <div class="selected-roster-files">
+              <div v-if="canManageTournaments" class="selected-roster-files">
                <span v-if="rosterCsvFile">{{ t('setup.selectedRosterCsv', { name: rosterCsvFile.name }) }}</span>
                <span v-if="rosterZipFile">{{ t('setup.selectedPhotosZip', { name: rosterZipFile.name }) }}</span>
                <button v-if="rosterCsvFile || rosterZipFile" class="file-clear" type="button" @click="clearRosterFiles()">{{ t('setup.clearFiles') }}</button>
              </div>
-             <p class="field-hint">{{ t('setup.rosterCsvHint') }}</p>
+              <p v-if="canManageTournaments" class="field-hint">{{ t('setup.rosterCsvHint') }}</p>
              <p v-if="rosterImportError" class="form-error" role="alert">{{ rosterImportError }}</p>
              <ul v-if="rosterImportWarnings.length" class="warning-list">
                <li v-for="warning in rosterImportWarnings" :key="warning">{{ warning }}</li>
              </ul>
-             <button class="button-primary" type="button" :disabled="rosterBusy || !rosterTeamId || !rosterCsvFile" @click="importRoster">{{ rosterBusy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
+              <button v-if="canManageTournaments" class="button-primary" type="button" :disabled="rosterBusy || !rosterTeamId || !rosterCsvFile" @click="importRoster">{{ rosterBusy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
              <div v-if="rosters.length" class="roster-list">
                <div v-for="roster in rosters" :key="roster.roster_id" class="roster-card">
                  <img v-if="roster.photo_url && roster.photo_consent" :src="roster.photo_url" :alt="`${roster.first_name} ${roster.last_name}`" class="roster-photo" />
                  <div v-else class="roster-photo roster-photo-empty" aria-hidden="true">{{ roster.first_name.charAt(0) }}</div>
                  <div class="roster-card-info"><strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong><small>{{ teamName(roster.team_id) }}</small></div>
-                  <div class="photo-actions">
+                   <div v-if="canManageTournaments" class="photo-actions">
                     <button class="photo-consent" type="button" :disabled="photoBusyRosterId === roster.roster_id" @click="toggleRosterPhotoConsent(roster)">
                       {{ roster.photo_consent ? t('setup.revokePhotoConsent') : t('setup.grantPhotoConsent') }}
                     </button>

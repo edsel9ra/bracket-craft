@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from app.core.config import (
     DEVELOPMENT_DATABASE_PASSWORD,
+    DEVELOPMENT_INVITATION_TOKEN_KEY,
     DEVELOPMENT_JWT_SECRET,
     DEVELOPMENT_PLAYER_DATA_KEY,
     Settings,
@@ -20,14 +21,17 @@ def test_production_settings_accept_explicit_secrets():
         database_url=f"postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
         jwt_secret="production-secret-" + "x" * 48,
         player_data_key="production-player-key-" + "x" * 48,
+        invitation_token_key="production-invitation-key-" + "x" * 48,
         storage_access_key="production-access-key",
         storage_secret_key="production-storage-secret",
+        auth_cookie_secure=True,
     )
 
     assert settings.app_env == "production"
     assert DEVELOPMENT_DATABASE_PASSWORD not in settings.database_url
     assert settings.jwt_secret != DEVELOPMENT_JWT_SECRET
     assert settings.player_data_key != DEVELOPMENT_PLAYER_DATA_KEY
+    assert settings.invitation_token_key != DEVELOPMENT_INVITATION_TOKEN_KEY
 
 
 def test_jwt_algorithm_is_whitelisted():

@@ -8,6 +8,7 @@ const tournamentsStore = useTournamentsStore();
 const realtime = useRealtime();
 const { request } = useApi();
 const { t, statusLabel, errorMessage } = useI18n();
+const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
 const workspaceError = ref<string | null>(null);
 const showCreateForm = ref(false);
 const creating = ref(false);
@@ -179,7 +180,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="section-actions">
             <span v-if="tournamentsStore.loading" class="muted" role="status">{{ t('common.loading') }}</span>
-             <button v-if="!showCreateForm" class="button-primary" type="button" @click="openCreateForm">
+             <button v-if="canManageTournaments && !showCreateForm" class="button-primary" type="button" @click="openCreateForm">
              {{ t('workspace.newTournament') }}
           </button>
         </div>

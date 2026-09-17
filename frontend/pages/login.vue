@@ -53,7 +53,7 @@ async function submit() {
     return;
   }
 
-  if (auth.organizationId) {
+  if (auth.organizationId || redirectPath.value.startsWith('/invitations/')) {
     await navigateTo(redirectPath.value);
   } else {
     try {

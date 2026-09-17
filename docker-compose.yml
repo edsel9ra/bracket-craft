@@ -45,12 +45,22 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-bracket-craft-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bracket-craft-web}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:-replace-this-development-player-key-with-at-least-32-characters}
+      INVITATION_TOKEN_KEY: ${INVITATION_TOKEN_KEY:-replace-this-development-invitation-key-with-at-least-32-characters}
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AUTH_LOGIN_RATE_LIMIT: ${AUTH_LOGIN_RATE_LIMIT:-10}
       AUTH_REGISTER_RATE_LIMIT: ${AUTH_REGISTER_RATE_LIMIT:-5}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      INVITATION_EXPIRE_HOURS: ${INVITATION_EXPIRE_HOURS:-48}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@bracketcraft.local}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-s3}
       STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-http://minio:9000}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}

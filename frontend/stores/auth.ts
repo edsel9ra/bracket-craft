@@ -18,6 +18,14 @@ export interface OrganizationSummary {
   organization_user_id: string;
 }
 
+export interface OrganizationAccess {
+  organization_id: string;
+  organization_user_id: string;
+  user_id: string;
+  role_code: 'owner' | 'administrator' | 'operator' | 'referee' | 'viewer' | string;
+  permissions: string[];
+}
+
 interface ApiFailure {
   status?: number;
   statusCode?: number;
@@ -46,6 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
     secure: !import.meta.dev,
   });
   const organizations = ref<OrganizationSummary[]>([]);
+  const access = ref<OrganizationAccess | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const sessionVersion = ref(0);
@@ -57,6 +66,12 @@ export const useAuthStore = defineStore('auth', () => {
     sessionVersion.value += 1;
     userId.value = response.user_id;
     organizationId.value = normalizeOrganizationId(response.organization_id);
+    access.value = null;
+  }
+
+  async function adoptSession(response: AuthResponse) {
+    saveSession(response);
+    await loadOrganizations();
   }
 
   function clearSession() {
@@ -64,6 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
     userId.value = null;
     organizationId.value = null;
     organizations.value = [];
+    access.value = null;
     useTournamentsStore().clear();
   }
 
@@ -73,7 +89,21 @@ export const useAuthStore = defineStore('auth', () => {
     if (!organizationId.value && result.length) {
       organizationId.value = result[0].id;
     }
+    if (organizationId.value) await loadAccess();
     return result;
+  }
+
+  async function loadAccess() {
+    if (!organizationId.value) {
+      access.value = null;
+      return null;
+    }
+    access.value = await request<OrganizationAccess>('/organizations/current/access');
+    return access.value;
+  }
+
+  function hasPermission(permission: string): boolean {
+    return Boolean(access.value?.permissions.includes(permission));
   }
 
   async function login(email: string, password: string) {
@@ -128,6 +158,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await request('/organizations/current');
       if (!organizations.value.length) await loadOrganizations();
+      await loadAccess();
     } catch (cause) {
       if (isUnauthorized(cause) || isNotFound(cause)) clearSession();
       throw cause;
@@ -148,6 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
     organizationId,
     sessionVersion,
     organizations,
+    access,
     loading,
     error,
     isAuthenticated,
@@ -155,6 +187,9 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     verifyWorkspace,
     loadOrganizations,
+    loadAccess,
+    hasPermission,
     logout,
+    adoptSession,
   };
 });

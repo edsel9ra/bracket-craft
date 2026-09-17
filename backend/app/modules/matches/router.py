@@ -36,6 +36,7 @@ async def _load_operation_match(
     db: AsyncSession,
     context: AuthContext,
     match_id: UUID,
+    require_operation_permission: bool = True,
 ) -> dict[str, Any]:
     result = await db.execute(
         text("""
@@ -76,16 +77,17 @@ async def _load_operation_match(
     match = result.mappings().one_or_none()
     if match is None:
         raise HTTPException(status_code=404, detail="Partido no encontrado")
-    try:
-        await require_permission(
-            db,
-            context,
-            "CLOSE_MATCH_REPORT",
-            tournament_id=match["tournament_id"],
-            match_id=match_id,
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if require_operation_permission:
+        try:
+            await require_permission(
+                db,
+                context,
+                "CLOSE_MATCH_REPORT",
+                tournament_id=match["tournament_id"],
+                match_id=match_id,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     return dict(match)
 
 
@@ -182,7 +184,7 @@ async def get_match_operation(
 ) -> MatchOperationResponse:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
-        match = await _load_operation_match(db, context, match_id)
+        match = await _load_operation_match(db, context, match_id, require_operation_permission=False)
         segment_result = await db.execute(
             text("""
                 SELECT id, segment_number, minute_start, minute_end, status

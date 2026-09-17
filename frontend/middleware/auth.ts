@@ -15,6 +15,7 @@ export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => 
 
   try {
     await useApi().request('/organizations/current');
+    await auth.loadAccess();
   } catch (cause) {
     if (isUnauthorized(cause) || isNotFound(cause)) {
       await auth.logout();

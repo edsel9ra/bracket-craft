@@ -271,6 +271,15 @@ useHead({
 
 const match = computed(() => operation.value?.match || null);
 const isTerminal = computed(() => ['finished', 'cancelled', 'administrative_resolution'].includes(match.value?.status || ''));
+const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
+const canOperateMatch = computed(() => {
+  if (!auth.hasPermission('CLOSE_MATCH_REPORT')) return false;
+  const role = auth.access?.role_code;
+  if (role === 'owner' || role === 'administrator' || role === 'operator') return true;
+  return Boolean(auth.access?.organization_user_id && operation.value?.officials.some(
+    (official) => official.organization_user_id === auth.access?.organization_user_id,
+  ));
+});
 const workspaceBreadcrumbs = computed(() => [
   { label: t('shell.tournaments'), to: '/workspace' },
   ...(match.value
@@ -927,8 +936,8 @@ onBeforeUnmount(() => {
                    <strong>{{ statusLabel(selectedSegment.status) }}</strong>
                  </div>
                  <p v-if="!activeSegment" class="segment-warning">{{ t('match.noActiveSegment') }}</p>
-                  <button class="button-primary" type="button" :disabled="Boolean(busyAction) || isTerminal" @click="createSegment">{{ activeSegment ? t('match.createSegment') : t('match.startNextSegment') }}</button>
-                 <form v-if="activeSegment" class="interruption-form" @submit.prevent="interruptSegment">
+                   <button v-if="canOperateMatch" class="button-primary" type="button" :disabled="Boolean(busyAction) || isTerminal" @click="createSegment">{{ activeSegment ? t('match.createSegment') : t('match.startNextSegment') }}</button>
+                  <form v-if="canOperateMatch && activeSegment" class="interruption-form" @submit.prevent="interruptSegment">
                    <h3>{{ t('match.interruptSegment') }}</h3>
                    <p class="muted-note">{{ t('match.interruptionHint') }}</p>
                    <label>{{ t('match.interruptReason') }}<select v-model="interruptionForm.reason"><option value="lighting_failure">{{ t('match.reasonLightingFailure') }}</option><option value="weather">{{ t('match.reasonWeather') }}</option><option value="pitch_invasion">{{ t('match.reasonPitchInvasion') }}</option><option value="other">{{ t('match.reasonOther') }}</option></select></label>
@@ -945,13 +954,13 @@ onBeforeUnmount(() => {
 
               <div class="soft-panel">
                 <h3>{{ t('match.officials') }}</h3>
-                <form class="field-row official-row" @submit.prevent="assignOfficial">
+                <form v-if="canManageTournaments" class="field-row official-row" @submit.prevent="assignOfficial">
                   <label>{{ t('match.person') }}<select v-model="officialForm.organization_user_id" required><option value="" disabled>{{ t('match.selectOfficial') }}</option><option v-for="official in operation.eligible_officials" :key="official.organization_user_id" :value="official.organization_user_id">{{ official.full_name }} · {{ official.email }}</option></select></label>
                   <label>{{ t('match.role') }}<select v-model="officialForm.official_role"><option v-for="role in officialRoles" :key="role.value" :value="role.value">{{ t(role.labelKey) }}</option></select></label>
                   <button class="button-secondary compact-button" type="submit" :disabled="Boolean(busyAction) || isTerminal">{{ t('match.assign') }}</button>
                  </form>
                 <ul v-if="operation.officials.length" class="compact-list">
-                  <li v-for="official in operation.officials" :key="official.id"><span><strong>{{ officialLabel(official.official_role) }}</strong> · {{ official.full_name }}</span><button type="button" class="text-button" :disabled="Boolean(busyAction) || isTerminal" @click="removeOfficial(official)">{{ t('match.remove') }}</button></li>
+                   <li v-for="official in operation.officials" :key="official.id"><span><strong>{{ officialLabel(official.official_role) }}</strong> · {{ official.full_name }}</span><button v-if="canManageTournaments" type="button" class="text-button" :disabled="Boolean(busyAction) || isTerminal" @click="removeOfficial(official)">{{ t('match.remove') }}</button></li>
                 </ul>
                 <p v-else class="muted-note">{{ t('match.noOfficials') }}</p>
               </div>
@@ -960,7 +969,7 @@ onBeforeUnmount(() => {
 
           <section class="panel">
             <div class="panel-heading"><div><p class="eyebrow">02 · {{ t('match.roster') }}</p><h2>{{ t('match.roster') }}</h2></div></div>
-            <form class="roster-form" @submit.prevent="addRosterPlayer">
+            <form v-if="canManageTournaments" class="roster-form" @submit.prevent="addRosterPlayer">
               <label>{{ t('setup.teams') }}<select v-model="rosterForm.team_id" required><option value="" disabled>{{ t('match.selectTeam') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
               <div class="field-row"><label>{{ t('match.firstName') }}<input v-model="rosterForm.first_name" required maxlength="100" /></label><label>{{ t('match.lastName') }}<input v-model="rosterForm.last_name" required maxlength="100" /></label></div>
               <label>{{ t('match.document') }} <span class="field-hint">{{ t('match.encryptedOnServer') }}</span><input v-model="rosterForm.national_id" required maxlength="100" autocomplete="off" /></label>
@@ -971,7 +980,7 @@ onBeforeUnmount(() => {
           </section>
 
            <section class="panel panel-wide">
-              <div class="panel-heading"><div><p class="eyebrow">03 · {{ t('match.roster') }}</p><h2>{{ t('match.definePlayers') }}</h2></div><button class="button-primary" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="saveLineup">{{ busyAction === 'lineup' ? t('match.savingLineup') : t('match.saveLineup') }}</button></div>
+               <div class="panel-heading"><div><p class="eyebrow">03 · {{ t('match.roster') }}</p><h2>{{ t('match.definePlayers') }}</h2></div><button v-if="canOperateMatch" class="button-primary" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="saveLineup">{{ busyAction === 'lineup' ? t('match.savingLineup') : t('match.saveLineup') }}</button></div>
               <p class="panel-description">{{ t('match.selectRoles', { segment: selectedSegment?.segment_number || t('match.activeSegment') }) }}</p>
               <p v-if="!selectedSegmentIsActive" class="segment-warning">{{ t('match.noActiveSegment') }}</p>
              <div class="formation-config-grid">
@@ -983,12 +992,12 @@ onBeforeUnmount(() => {
                    </span>
                  </div>
                  <label>{{ t('match.formation') }}
-                   <select :value="lineupFormations[team.team_id] || ''" :disabled="!team.team_id || isTerminal || !selectedSegmentIsActive" @change="setFormation(team.team_id, $event)">
+                    <select :value="lineupFormations[team.team_id] || ''" :disabled="!canOperateMatch || !team.team_id || isTerminal || !selectedSegmentIsActive" @change="setFormation(team.team_id, $event)">
                      <option value="">{{ t('match.classicLineup') }}</option>
                      <option v-for="formation in FORMATION_OPTIONS" :key="formation" :value="formation">{{ formation }}</option>
                    </select>
                  </label>
-                 <button v-if="team.team_id && lineupFormations[team.team_id]" class="text-button publication-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !tacticalRowsForTeam(team.team_id).length" @click="toggleLineupPublication(team.team_id)">
+                  <button v-if="canOperateMatch && team.team_id && lineupFormations[team.team_id]" class="text-button publication-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !tacticalRowsForTeam(team.team_id).length" @click="toggleLineupPublication(team.team_id)">
                    {{ isTeamLineupPublic(team.team_id) ? t('match.unpublishLineup') : t('match.publishLineup') }}
                  </button>
                </div>
@@ -999,8 +1008,8 @@ onBeforeUnmount(() => {
                  <div v-if="team.players.length" class="player-list">
                    <label v-for="player in team.players" :key="player.roster_id" class="player-row">
                      <span class="player-number">{{ player.dorsal_number }}</span><span class="player-name">{{ playerName(player) }}</span>
-                      <select v-model="lineupRoles[player.roster_id]" :disabled="!player.is_active || isTerminal || !selectedSegmentIsActive" :aria-label="`${t('match.role')} ${playerName(player)}`"><option value="">{{ t('match.notParticipating') }}</option><option value="starter">{{ t('match.starter') }}</option><option value="substitute">{{ t('match.substitute') }}</option></select>
-                      <select v-if="lineupRoles[player.roster_id] === 'starter'" v-model="lineupPositions[player.roster_id]" :disabled="!player.is_active || isTerminal || !selectedSegmentIsActive || !lineupFormations[team.team_id]" :aria-label="`${t('match.position')} ${playerName(player)}`">
+                       <select v-model="lineupRoles[player.roster_id]" :disabled="!canOperateMatch || !player.is_active || isTerminal || !selectedSegmentIsActive" :aria-label="`${t('match.role')} ${playerName(player)}`"><option value="">{{ t('match.notParticipating') }}</option><option value="starter">{{ t('match.starter') }}</option><option value="substitute">{{ t('match.substitute') }}</option></select>
+                       <select v-if="lineupRoles[player.roster_id] === 'starter'" v-model="lineupPositions[player.roster_id]" :disabled="!canOperateMatch || !player.is_active || isTerminal || !selectedSegmentIsActive || !lineupFormations[team.team_id]" :aria-label="`${t('match.position')} ${playerName(player)}`">
                         <option value="">{{ t('match.selectPosition') }}</option>
                         <option v-for="position in availablePositions(team.team_id)" :key="position" :value="position">{{ positionLabel(position) }}</option>
                       </select>
@@ -1020,7 +1029,7 @@ onBeforeUnmount(() => {
                  <span class="muted-note">{{ t('match.pendingEvents', { count: draftEvents.length }) }}</span>
                </div>
              </div>
-            <div class="event-form">
+             <div v-if="canOperateMatch" class="event-form">
               <label>{{ t('match.eventType') }}<select v-model="eventForm.event_type"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select></label>
               <label>{{ t('setup.teams') }}<select v-model="eventForm.team_id"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                <label>{{ t('match.player') }}<select v-model="eventForm.player_id"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select></label>
@@ -1030,10 +1039,10 @@ onBeforeUnmount(() => {
               <label v-if="eventForm.event_type === 'own_goal'">{{ t('match.beneficiary') }}<select v-model="eventForm.beneficiary_team_id" required><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive" @click="addEvent">{{ t('match.addEvent') }}</button>
             </div>
-             <ul v-if="draftEvents.length" class="event-list">
-               <li v-for="event in draftEvents" :key="event.client_event_id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ teamName(event.team_id) }} · {{ operation.rosters.find((player) => player.player_id === event.player_id)?.first_name }} {{ operation.rosters.find((player) => player.player_id === event.player_id)?.last_name }}</span><button type="button" class="text-button" @click="removeEvent(event.client_event_id)">{{ t('match.remove') }}</button></li>
+              <ul v-if="draftEvents.length" class="event-list">
+                <li v-for="event in draftEvents" :key="event.client_event_id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ teamName(event.team_id) }} · {{ operation.rosters.find((player) => player.player_id === event.player_id)?.first_name }} {{ operation.rosters.find((player) => player.player_id === event.player_id)?.last_name }}</span><button v-if="canOperateMatch" type="button" class="text-button" @click="removeEvent(event.client_event_id)">{{ t('match.remove') }}</button></li>
              </ul>
-             <button v-if="hasUnsavedDraft" class="text-button draft-discard" type="button" @click="discardDraft">{{ t('match.discardDraft') }}</button>
+              <button v-if="canOperateMatch && hasUnsavedDraft" class="text-button draft-discard" type="button" @click="discardDraft">{{ t('match.discardDraft') }}</button>
              <ul v-if="!draftEvents.length && operation.events.length" class="event-list persisted-events">
                <li v-for="event in operation.events" :key="event.id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ event.team_name }} · {{ event.first_name }} {{ event.last_name }}</span><small>{{ event.is_voided ? t('match.voided') : t('match.confirmed') }}</small></li>
             </ul>
@@ -1042,20 +1051,20 @@ onBeforeUnmount(() => {
 
            <section class="panel close-panel panel-wide">
             <div class="panel-heading"><div><p class="eyebrow">05 · {{ t('match.result') }}</p><h2>{{ t('match.closeReport') }}</h2></div><span class="muted-note">{{ rulesDefaults.extra_time_enabled ? t('match.overtimeEnabled') : t('match.noOvertime') }}</span></div>
-            <div class="score-form">
-              <label>{{ t('match.resolution') }}<select v-model="closeForm.resolution_type" :disabled="isTerminal"><option value="regular">{{ t('match.regularTime') }}</option><option value="extra_time" :disabled="!rulesDefaults.extra_time_enabled">{{ t('match.overtime') }}</option><option value="penalties" :disabled="!rulesDefaults.penalties_enabled">{{ t('match.penaltyShootout') }}</option><option value="walkover">{{ t('match.walkover') }}</option><option value="administrative">{{ t('match.administrative') }}</option></select></label>
-              <label>{{ match.home_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="isTerminal" /></label>
-              <label>{{ match.away_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="isTerminal" /></label>
+             <div class="score-form">
+               <label>{{ t('match.resolution') }}<select v-model="closeForm.resolution_type" :disabled="!canOperateMatch || isTerminal"><option value="regular">{{ t('match.regularTime') }}</option><option value="extra_time" :disabled="!rulesDefaults.extra_time_enabled">{{ t('match.overtime') }}</option><option value="penalties" :disabled="!rulesDefaults.penalties_enabled">{{ t('match.penaltyShootout') }}</option><option value="walkover">{{ t('match.walkover') }}</option><option value="administrative">{{ t('match.administrative') }}</option></select></label>
+               <label>{{ match.home_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+               <label>{{ match.away_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
               <template v-if="closeForm.resolution_type !== 'regular'">
-                 <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="isTerminal" /></label>
-                 <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="isTerminal" /></label>
-                 <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="isTerminal" /></label>
-                 <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="isTerminal" /></label>
-                  <label>{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
+                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+                   <label>{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                </template>
-               <label v-if="closeForm.resolution_type === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="isTerminal" /></label>
+                <label v-if="closeForm.resolution_type === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="!canOperateMatch || isTerminal" /></label>
              </div>
-               <div class="close-actions"><p class="muted-note">{{ t('match.backendValidation') }}</p><button class="button-primary close-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="closeMatch">{{ busyAction === 'close' ? t('match.closing') : isTerminal ? t('match.closed') : t('match.confirmReport') }}</button></div>
+                <div class="close-actions"><p class="muted-note">{{ t('match.backendValidation') }}</p><button v-if="canOperateMatch" class="button-primary close-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="closeMatch">{{ busyAction === 'close' ? t('match.closing') : isTerminal ? t('match.closed') : t('match.confirmReport') }}</button></div>
           </section>
         </div>
       </template>

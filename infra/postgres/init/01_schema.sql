@@ -84,8 +84,8 @@ CREATE TABLE organization_user_roles (
 
 INSERT INTO role_definitions (code, name, description, system_permissions)
 VALUES
-    ('owner', 'Owner', 'Control total de la organización', '["MANAGE_ORGANIZATION", "MANAGE_TOURNAMENTS", "CLOSE_MATCH_REPORT", "RESOLVE_MATCH_ADMINISTRATIVELY"]'),
-    ('administrator', 'Administrator', 'Administración de torneos', '["MANAGE_TOURNAMENTS", "CLOSE_MATCH_REPORT", "RESOLVE_MATCH_ADMINISTRATIVELY"]'),
+    ('owner', 'Owner', 'Control total de la organización', '["MANAGE_ORGANIZATION", "MANAGE_TOURNAMENTS", "MANAGE_MEMBERS", "CLOSE_MATCH_REPORT", "RESOLVE_MATCH_ADMINISTRATIVELY"]'),
+    ('administrator', 'Administrator', 'Administración de torneos', '["MANAGE_TOURNAMENTS", "MANAGE_MEMBERS", "CLOSE_MATCH_REPORT", "RESOLVE_MATCH_ADMINISTRATIVELY"]'),
     ('operator', 'Operator', 'Carga de resultados y actas', '["CLOSE_MATCH_REPORT"]'),
     ('referee', 'Referee', 'Cierre de partidos asignados', '["CLOSE_MATCH_REPORT"]'),
     ('viewer', 'Viewer', 'Consulta interna', '[]'::jsonb)

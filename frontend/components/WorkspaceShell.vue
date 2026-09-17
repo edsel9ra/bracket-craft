@@ -39,6 +39,8 @@ const platformAccess = useState<'unknown' | 'allowed' | 'denied'>('workspace-pla
 
 const isAdminRoute = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'));
 const showAdminLink = computed(() => isAdminRoute.value || platformAccess.value === 'allowed');
+const canManageMembers = computed(() => auth.hasPermission('MANAGE_MEMBERS'));
+const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
 const organizationName = computed(() => {
   const active = auth.organizations.find((organization: { id: string; name: string }) => organization.id === auth.organizationId);
   return active?.name || auth.organizations[0]?.name || t('shell.organization');
@@ -55,8 +57,13 @@ const primaryLinks = computed(() => [
     key: 'tournaments',
     label: t('shell.tournaments'),
     to: '/workspace',
-    current: route.path === '/workspace' || route.path.startsWith('/workspace/'),
-  },
+     current: route.path === '/workspace'
+       || route.path.startsWith('/workspace/tournaments/')
+       || route.path.startsWith('/workspace/matches/'),
+   },
+   ...(canManageMembers.value
+     ? [{ key: 'members', label: t('shell.members'), to: '/workspace/members', current: route.path === '/workspace/members' }]
+     : []),
   ...(showAdminLink.value
     ? [{ key: 'administration', label: t('shell.administration'), to: '/admin', current: isAdminRoute.value }]
     : []),
@@ -67,7 +74,9 @@ const tournamentLinks = computed(() => {
   const base = `/workspace/tournaments/${props.tournament.id}`;
   return [
     { key: 'summary' as WorkspaceSection, label: t('shell.summary'), to: `${base}#resumen` },
-    { key: 'configuration' as WorkspaceSection, label: t('shell.configuration'), to: `${base}#configuracion` },
+    ...(canManageTournaments.value
+      ? [{ key: 'configuration' as WorkspaceSection, label: t('shell.configuration'), to: `${base}#configuracion` }]
+      : []),
     { key: 'calendar' as WorkspaceSection, label: t('shell.calendar'), to: `${base}#calendario` },
     { key: 'teams' as WorkspaceSection, label: t('shell.teams'), to: `${base}#equipos` },
     { key: 'rosters' as WorkspaceSection, label: t('shell.rosters'), to: `${base}#plantillas` },

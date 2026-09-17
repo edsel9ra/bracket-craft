@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEVELOPMENT_DATABASE_PASSWORD = "bracket_app_dev_password"
 DEVELOPMENT_JWT_SECRET = "replace-this-development-secret-with-at-least-32-characters"
 DEVELOPMENT_PLAYER_DATA_KEY = "replace-this-development-player-key-with-at-least-32-characters"
+DEVELOPMENT_INVITATION_TOKEN_KEY = "replace-this-development-invitation-key-with-at-least-32-characters"
 DEVELOPMENT_DATABASE_URL = (
     "postgresql+asyncpg://bracket_app:bracket_app_dev_password@localhost:5432/bracket_craft"
 )
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "bracket-craft-api"
     jwt_audience: str = "bracket-craft-web"
     player_data_key: str = Field(default=DEVELOPMENT_PLAYER_DATA_KEY, min_length=32)
+    invitation_token_key: str = Field(default=DEVELOPMENT_INVITATION_TOKEN_KEY, min_length=32)
     auth_cookie_name: str = "bc_access_token"
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     auth_cookie_secure: bool | None = None
@@ -54,6 +56,15 @@ class Settings(BaseSettings):
     storage_max_archive_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     storage_max_archive_files: int = Field(default=200, ge=1, le=1000)
     max_request_body_bytes: int = Field(default=32 * 1024 * 1024, ge=1, le=200 * 1024 * 1024)
+    frontend_base_url: str = "http://localhost:3000"
+    invitation_expire_hours: int = Field(default=48, ge=1, le=168)
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "noreply@bracketcraft.local"
+    smtp_use_tls: bool = True
+    smtp_timeout_seconds: int = Field(default=10, ge=1, le=120)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -65,6 +76,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET debe cambiarse antes de ejecutar fuera de desarrollo")
             if self.player_data_key == DEVELOPMENT_PLAYER_DATA_KEY:
                 raise ValueError("PLAYER_DATA_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
+            if self.invitation_token_key == DEVELOPMENT_INVITATION_TOKEN_KEY:
+                raise ValueError("INVITATION_TOKEN_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
             if self.database_url == DEVELOPMENT_DATABASE_URL or DEVELOPMENT_DATABASE_PASSWORD in self.database_url:
                 raise ValueError("DATABASE_URL no puede usar la contraseña de desarrollo fuera de desarrollo")
             database_user = unquote(urlparse(self.database_url).username or "").strip().casefold()

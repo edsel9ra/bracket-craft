@@ -36,31 +36,6 @@ async def require_permission(
                     AND mo.organization_user_id = :organization_user_id
               )
           )
-        UNION ALL
-        SELECT 1
-        FROM roles r
-        JOIN role_definitions rd ON rd.id = r.role_definition_id
-        JOIN tournament_user_roles tur
-          ON tur.role_id = r.id
-         AND tur.organization_id = :organization_id
-        WHERE tur.organization_user_id = :organization_user_id
-          AND (CAST(:tournament_id AS UUID) IS NOT NULL AND tur.tournament_id = CAST(:tournament_id AS UUID))
-           AND r.permissions @> CAST(:permission AS jsonb)
-           AND (
-               CAST(:role_codes AS TEXT[]) IS NULL
-               OR rd.code = ANY(CAST(:role_codes AS TEXT[]))
-           )
-           AND (
-               CAST(:match_id AS UUID) IS NULL
-               OR rd.code IN ('owner', 'administrator', 'operator')
-               OR EXISTS (
-                  SELECT 1
-                  FROM match_officials mo
-                  WHERE mo.match_id = CAST(:match_id AS UUID)
-                    AND mo.organization_id = :organization_id
-                    AND mo.organization_user_id = :organization_user_id
-              )
-          )
         LIMIT 1
     """)
     result = await db.execute(

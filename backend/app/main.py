@@ -17,6 +17,7 @@ from app.core.database import SessionFactory, set_rls_context, validate_applicat
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
 from app.modules.identity.router import router as identity_router
+from app.modules.invitations.router import router as invitations_router
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.router import router as organizations_router
 from app.modules.platform.router import router as platform_router
@@ -67,26 +68,6 @@ async def _load_role_fingerprint(db, organization_id: UUID, user_id: UUID) -> st
                   AND ou.user_id = :user_id
                   AND ou.is_active = TRUE
 
-                UNION ALL
-
-                SELECT
-                    'tournament:' || tur.tournament_id::TEXT AS scope,
-                    r.id AS role_id,
-                    rd.code,
-                    r.permissions,
-                    rd.system_permissions
-                FROM public.organization_users ou
-                JOIN public.tournament_user_roles tur
-                  ON tur.organization_user_id = ou.id
-                 AND tur.organization_id = ou.organization_id
-                JOIN public.roles r
-                  ON r.id = tur.role_id
-                 AND r.organization_id = tur.organization_id
-                LEFT JOIN public.role_definitions rd
-                  ON rd.id = r.role_definition_id
-                WHERE ou.organization_id = :organization_id
-                  AND ou.user_id = :user_id
-                  AND ou.is_active = TRUE
             ) AS effective_roles
         """),
         {"organization_id": str(organization_id), "user_id": str(user_id)},
@@ -449,6 +430,7 @@ async def readiness() -> dict[str, object]:
 
 
 api.include_router(identity_router, prefix="/api/v1")
+api.include_router(invitations_router, prefix="/api/v1")
 api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")

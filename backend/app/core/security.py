@@ -131,3 +131,39 @@ async def get_current_user_id(
     if session is None or not session["is_active"] or session["revoked_at"] is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida")
     return user_id
+
+
+async def get_optional_current_user_id(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+) -> UUID | None:
+    """Resolve a session when present without making public token pages private."""
+
+    settings = get_settings()
+    raw_token = credentials.credentials if credentials else request.cookies.get(settings.auth_cookie_name)
+    if not raw_token:
+        return None
+    try:
+        claims = decode_access_token_claims(raw_token)
+        user_id = UUID(claims["sub"])
+        session_id = UUID(claims["jti"])
+    except (HTTPException, KeyError, TypeError, ValueError):
+        return None
+
+    async with db.begin():
+        result = await db.execute(
+            text("""
+                SELECT u.is_active, s.revoked_at, s.expires_at
+                FROM users u
+                JOIN user_sessions s ON s.user_id = u.id
+                WHERE u.id = :user_id
+                  AND s.id = :session_id
+                  AND s.expires_at > CURRENT_TIMESTAMP
+            """),
+            {"user_id": str(user_id), "session_id": str(session_id)},
+        )
+        session = result.mappings().one_or_none()
+    if session is None or not session["is_active"] or session["revoked_at"] is not None:
+        return None
+    return user_id
