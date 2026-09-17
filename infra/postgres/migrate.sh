@@ -39,6 +39,12 @@ SELECT pg_advisory_unlock(hashtext('bracket_craft:schema_migrations'));
 SQL
 
 MIGRATIONS_DIR=${MIGRATIONS_DIR:-$(dirname "$0")/migrations}
+MIGRATION_SQL=$(mktemp "${TMPDIR:-/tmp}/bracket-craft-migration.XXXXXX")
+cleanup() {
+    rm -f "$MIGRATION_SQL"
+}
+trap cleanup EXIT HUP INT TERM
+
 for migration in "$MIGRATIONS_DIR"/[0-9]*.sql; do
     [ -f "$migration" ] || continue
 
@@ -47,12 +53,17 @@ for migration in "$MIGRATIONS_DIR"/[0-9]*.sql; do
     name=${filename#*_}
     name=${name%.sql}
     checksum=$(sha256sum "$migration" | awk '{print $1}')
+    sed \
+        -e '1{/^[[:space:]]*BEGIN;[[:space:]]*$/d;}' \
+        -e '${/^[[:space:]]*COMMIT;[[:space:]]*$/d;}' \
+        "$migration" > "$MIGRATION_SQL"
 
     run_psql \
         -v migration_version="$version" \
         -v migration_name="$name" \
         -v migration_checksum="$checksum" \
-        -v migration_path="$migration" <<'SQL'
+        -v migration_path="$MIGRATION_SQL" <<'SQL'
+BEGIN;
 SELECT pg_advisory_lock(hashtext('bracket_craft:schema_migrations'));
 SELECT
     COALESCE(
@@ -68,6 +79,8 @@ FROM public.schema_migrations
 WHERE version = :'migration_version';
 \gset
 \if :checksum_mismatch
+SELECT pg_advisory_unlock(hashtext('bracket_craft:schema_migrations'));
+ROLLBACK;
 \quit 3
 \endif
 \if :should_apply
@@ -81,6 +94,7 @@ SET checksum = COALESCE(checksum, :'migration_checksum'),
 WHERE version = :'migration_version';
 \endif
 SELECT pg_advisory_unlock(hashtext('bracket_craft:schema_migrations'));
+COMMIT;
 SQL
 done
 

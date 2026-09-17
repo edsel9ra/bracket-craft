@@ -13,6 +13,22 @@ engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionFactory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+async def validate_application_role() -> None:
+    """Fail closed if the application connects with a role that bypasses RLS."""
+
+    async with engine.connect() as connection:
+        result = await connection.execute(
+            text("""
+                SELECT r.rolsuper, r.rolbypassrls
+                FROM pg_roles r
+                WHERE r.rolname = CURRENT_USER
+            """)
+        )
+        role = result.mappings().one_or_none()
+    if role is None or role["rolsuper"] or role["rolbypassrls"]:
+        raise RuntimeError("La conexión de la aplicación debe usar un rol no superusuario sin BYPASSRLS")
+
+
 async def get_db() -> AsyncIterator[AsyncSession]:
     async with SessionFactory() as session:
         yield session

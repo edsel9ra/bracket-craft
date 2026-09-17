@@ -222,6 +222,17 @@ class PublicTournamentSummaryResponse(BaseModel):
     status: str
 
 
+class PublicStageResponse(BaseModel):
+    id: UUID
+    name: str
+    stage_type: StageType
+    stage_order: int
+
+
+class PublicTournamentResponse(PublicTournamentSummaryResponse):
+    stages: list[PublicStageResponse] = Field(default_factory=list)
+
+
 class PublicStandingResponse(BaseModel):
     tournament_id: UUID
     stage_id: UUID
@@ -276,6 +287,7 @@ class PublicMatchResponse(BaseModel):
     stage_order: int
     group_id: UUID | None = None
     group_name: str | None = None
+    bracket_code: str | None = None
     matchday: int | None = None
     match_date: datetime | None = None
     home_team_id: UUID | None = None

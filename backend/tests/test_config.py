@@ -48,6 +48,19 @@ def test_production_settings_require_secure_auth_cookies():
         )
 
 
+def test_production_settings_reject_postgres_database_role():
+    with pytest.raises(ValidationError):
+        Settings(
+            app_env="production",
+            database_url="postgresql+asyncpg://postgres:production-password@db:5432/bracket_craft",
+            jwt_secret="production-secret-" + "x" * 48,
+            player_data_key="production-player-key-" + "x" * 48,
+            storage_access_key="production-access-key",
+            storage_secret_key="production-storage-secret",
+            auth_cookie_secure=True,
+        )
+
+
 def test_google_oauth_requires_a_matching_audience():
     with pytest.raises(ValidationError):
         Settings(

@@ -28,12 +28,14 @@ services:
       AUTH_COOKIE_SECURE: "true"
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2}
+    ports: []
     volumes: []
 
   worker:
     environment:
       APP_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:?PLAYER_DATA_KEY must be set}
     volumes: []
 
@@ -47,4 +49,5 @@ services:
       NUXT_PUBLIC_SOCKET_BASE: ${NUXT_PUBLIC_SOCKET_BASE:?NUXT_PUBLIC_SOCKET_BASE must be set}
       NUXT_API_INTERNAL_BASE: ${NUXT_API_INTERNAL_BASE:?NUXT_API_INTERNAL_BASE must be set}
     command: node .output/server/index.mjs
+    ports: []
     volumes: []

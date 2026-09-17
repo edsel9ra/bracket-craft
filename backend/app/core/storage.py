@@ -1,5 +1,6 @@
 import asyncio
 from functools import lru_cache
+from threading import Lock
 from urllib.parse import quote, unquote, urlparse
 
 try:
@@ -26,6 +27,8 @@ class ObjectStorage:
 
     def __init__(self):
         self.settings = get_settings()
+        self._bucket_ready = False
+        self._bucket_lock = Lock()
 
     def _client(self, endpoint_url: str | None = None):
         if self.settings.storage_provider not in {"s3", "gcs"}:
@@ -46,27 +49,30 @@ class ObjectStorage:
         return boto3.client("s3", **client_kwargs)
 
     def _ensure_bucket(self, client) -> None:
-        try:
-            client.head_bucket(Bucket=self.settings.storage_bucket)
-        except ClientError as exc:
-            code = str(exc.response.get("Error", {}).get("Code", ""))
-            if code not in {"404", "NoSuchBucket", "NotFound"}:
-                raise
-            create_kwargs = {"Bucket": self.settings.storage_bucket}
-            if self.settings.storage_region != "us-east-1":
-                create_kwargs["CreateBucketConfiguration"] = {
-                    "LocationConstraint": self.settings.storage_region,
-                }
-            client.create_bucket(**create_kwargs)
-        # Existing local buckets may have received the old public/* policy.
-        # Remove it rather than relying on a deployment-time bucket setting.
-        if self.settings.storage_endpoint_url:
+        with self._bucket_lock:
+            if self._bucket_ready:
+                return
             try:
-                client.delete_bucket_policy(Bucket=self.settings.storage_bucket)
+                client.head_bucket(Bucket=self.settings.storage_bucket)
             except ClientError as exc:
                 code = str(exc.response.get("Error", {}).get("Code", ""))
-                if code not in {"404", "NoSuchBucketPolicy", "NoSuchBucket", "NotFound"}:
+                if code not in {"404", "NoSuchBucket", "NotFound"}:
                     raise
+                create_kwargs = {"Bucket": self.settings.storage_bucket}
+                if self.settings.storage_region != "us-east-1":
+                    create_kwargs["CreateBucketConfiguration"] = {
+                        "LocationConstraint": self.settings.storage_region,
+                    }
+                client.create_bucket(**create_kwargs)
+            # Harden an existing local bucket once per process, not once per upload.
+            if self.settings.storage_endpoint_url:
+                try:
+                    client.delete_bucket_policy(Bucket=self.settings.storage_bucket)
+                except ClientError as exc:
+                    code = str(exc.response.get("Error", {}).get("Code", ""))
+                    if code not in {"404", "NoSuchBucketPolicy", "NoSuchBucket", "NotFound"}:
+                        raise
+            self._bucket_ready = True
 
     async def put_bytes(self, key: str, content: bytes, content_type: str) -> str:
         if len(content) > self.settings.storage_max_image_bytes:

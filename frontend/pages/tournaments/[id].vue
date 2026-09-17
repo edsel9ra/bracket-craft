@@ -1,82 +1,20 @@
 <script setup lang="ts">
 import { nextTick } from 'vue';
-import type { FormationCode } from '~/constants/formations';
 import { useRealtime } from '~/composables/useRealtime';
-
-interface PublicTournament {
-  id: string;
-  name: string;
-  season: string;
-  start_date: string;
-  status: string;
-}
-
-interface PublicStanding {
-  stage_id: string;
-  stage_name: string;
-  stage_order: number;
-  group_id: string | null;
-  group_name: string | null;
-  team_id: string;
-  team_name: string;
-  short_code: string;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
-  goals_for: number;
-  goals_against: number;
-  goal_difference: number;
-  points: number;
-  fair_play_points: number;
-  rank: number;
-}
-
-interface PublicMatch {
-  id: string;
-  stage_name: string;
-  group_name: string | null;
-  matchday: number | null;
-  match_date: string | null;
-  home_team_name: string | null;
-  home_team_short_code: string | null;
-  away_team_name: string | null;
-  away_team_short_code: string | null;
-  home_score: number | null;
-  away_score: number | null;
-  home_penalties: number | null;
-  away_penalties: number | null;
-  status: string;
-  resolution_type: string | null;
-  lineup: PublicMatchLineup | null;
-}
-
-interface PublicLineupPlayer {
-  player_id: string;
-  first_name: string;
-  last_name: string;
-  dorsal_number: number | null;
-  role: 'starter' | 'substitute';
-  position_slot: string | null;
-  photo_url: string | null;
-}
-
-interface PublicTeamLineup {
-  team_id: string;
-  team_name: string;
-  formation_code: FormationCode | null;
-  starters: PublicLineupPlayer[];
-  substitutes: PublicLineupPlayer[];
-}
-
-interface PublicMatchLineup {
-  home: PublicTeamLineup | null;
-  away: PublicTeamLineup | null;
-}
+import {
+  getPublicStagePresentation,
+  sortPublicStages,
+  usesCurrentDoubleEliminationFormat,
+  type PublicMatch,
+  type PublicStanding,
+  type PublicStage,
+  type PublicTournament,
+  type PublicStagePresentation,
+} from '~/utils/publicTournament';
 
 const route = useRoute();
 const { request } = useApi();
-const { t, statusLabel, dateLocale, errorMessage } = useI18n();
+const { t, statusLabel, stageTypeLabel, dateLocale, errorMessage } = useI18n();
 const realtime = useRealtime();
 const tournamentId = String(route.params.id);
 const PAGE_SIZE = 50;
@@ -104,9 +42,11 @@ const { data, status, error: dataError, refresh } = await useAsyncData<PublicTou
   },
 );
 
-const tournament = computed(() => data.value?.tournament ?? null);
-const standings = computed(() => data.value?.standings ?? []);
-const matches = computed(() => data.value?.matches ?? []);
+const tournament = computed<PublicTournament | null>(() => data.value?.tournament ?? null);
+const standings = computed<PublicStanding[]>(() => data.value?.standings ?? []);
+const matches = computed<PublicMatch[]>(() => data.value?.matches ?? []);
+const stages = computed(() => sortPublicStages(tournament.value?.stages ?? []));
+const stageAwareLayout = computed(() => stages.value.length > 0 && !usesCurrentDoubleEliminationFormat(stages.value));
 const selectedLineupMatchId = ref<string | null>(null);
 const lineupTrigger = ref<HTMLButtonElement | null>(null);
 const selectedLineupMatch = computed(() => matches.value.find((match) => match.id === selectedLineupMatchId.value) ?? null);
@@ -119,6 +59,25 @@ const refreshing = ref(false);
 const listError = ref<string | null>(null);
 let refreshGeneration = 0;
 let publicRefreshTimer: number | null = null;
+
+function stagePresentation(stage: PublicStage): PublicStagePresentation {
+  return getPublicStagePresentation(stage.stage_type);
+}
+
+function standingsForStage(stageId: string): PublicStanding[] {
+  return standings.value.filter((standing) => standing.stage_id === stageId);
+}
+
+function matchesForStage(stageId: string): PublicMatch[] {
+  return matches.value.filter((match) => match.stage_id === stageId);
+}
+
+const firstStandingsStageId = computed(() => stages.value.find(
+  (stage) => stagePresentation(stage) === 'standings',
+)?.id ?? null);
+const firstMatchesStageId = computed(() => stages.value.find(
+  (stage) => matchesForStage(stage.id).length > 0,
+)?.id ?? stages.value[0]?.id ?? null);
 
 useHead(() => ({
   title: tournament.value ? `${tournament.value.name} | Bracket Craft` : `${t('public.tournament')} | Bracket Craft`,
@@ -268,13 +227,13 @@ onBeforeUnmount(() => {
            <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
         </section>
 
-        <section class="container public-grid">
-          <div class="panel standings-panel">
-           <div class="panel-heading">
-              <div>
+         <section v-if="!stageAwareLayout" class="container public-grid">
+           <div class="panel standings-panel">
+             <div class="panel-heading">
+               <div>
                  <p class="eyebrow">{{ t('public.table') }}</p>
                  <h2>{{ t('public.standings') }}</h2>
-              </div>
+               </div>
                <span class="muted">{{ t('public.teamsCount', { count: standings.length }) }}</span>
              </div>
              <div v-if="listError" class="list-error" role="alert">{{ listError }}</div>
@@ -285,64 +244,182 @@ onBeforeUnmount(() => {
                  <thead>
                    <tr>
                      <th scope="col">#</th>
-                      <th scope="col">{{ t('setup.teams') }}</th>
-                      <th scope="col">{{ t('public.played') }}</th>
-                      <th scope="col">{{ t('public.goalDifference') }}</th>
-                      <th scope="col">{{ t('public.points') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="standing in standings" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
-                    <td class="rank">{{ standing.rank }}</td>
-                    <td><strong>{{ standing.team_name }}</strong><small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small></td>
-                    <td>{{ standing.played }}</td>
-                    <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
-                    <td class="points">{{ standing.points }}</td>
-                  </tr>
-                </tbody>
+                     <th scope="col">{{ t('setup.teams') }}</th>
+                     <th scope="col">{{ t('public.played') }}</th>
+                     <th scope="col">{{ t('public.goalDifference') }}</th>
+                     <th scope="col">{{ t('public.points') }}</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   <tr v-for="standing in standings" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
+                     <td class="rank">{{ standing.rank }}</td>
+                     <td><strong>{{ standing.team_name }}</strong><small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small></td>
+                     <td>{{ standing.played }}</td>
+                     <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
+                     <td class="points">{{ standing.points }}</td>
+                   </tr>
+                 </tbody>
                </table>
              </div>
              <button v-if="standingsHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings')">
                {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
              </button>
-          </div>
+           </div>
 
-          <div class="panel matches-panel">
-            <div class="panel-heading">
-              <div>
+           <div class="panel matches-panel">
+             <div class="panel-heading">
+               <div>
                  <p class="eyebrow">{{ t('public.fixtures') }}</p>
                  <h2>{{ t('public.matches') }}</h2>
-              </div>
+               </div>
                <span class="muted">{{ t('public.matchesCount', { count: matches.length }) }}</span>
-            </div>
+             </div>
              <div v-if="!matches.length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
-            <TransitionGroup v-else name="card-list" tag="div" class="match-list">
-              <article v-for="match in matches" :key="match.id" class="match-card">
+             <TransitionGroup v-else name="card-list" tag="div" class="match-list">
+               <article v-for="match in matches" :key="match.id" class="match-card">
                  <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
-                  <div class="match-teams">
-                    <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
-                    <strong>{{ formatScore(match) }}</strong>
-                    <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
-                  </div>
-                  <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
-                  <button
-                    v-if="match.lineup"
-                    class="lineup-trigger"
-                    type="button"
-                    aria-controls="public-lineup-dialog"
-                    aria-haspopup="dialog"
-                    :aria-expanded="selectedLineupMatchId === match.id"
-                    @click="openLineup(match, $event)"
-                  >
-                    {{ t('public.viewLineup') }}
-                  </button>
+                 <div class="match-teams">
+                   <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                   <strong>{{ formatScore(match) }}</strong>
+                   <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                 </div>
+                 <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                 <button
+                   v-if="match.lineup"
+                   class="lineup-trigger"
+                   type="button"
+                   aria-controls="public-lineup-dialog"
+                   aria-haspopup="dialog"
+                   :aria-expanded="selectedLineupMatchId === match.id"
+                   @click="openLineup(match, $event)"
+                 >
+                   {{ t('public.viewLineup') }}
+                 </button>
                </article>
              </TransitionGroup>
              <button v-if="matchesHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
                {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
              </button>
            </div>
-        </section>
+         </section>
+
+         <section v-else class="container phase-stack">
+           <div v-if="listError" class="list-error" role="alert">{{ listError }}</div>
+           <section v-for="stage in stages" :key="stage.id" class="panel phase-panel">
+             <div class="panel-heading">
+               <div>
+                 <p class="eyebrow">{{ stageTypeLabel(stage.stage_type) }}</p>
+                 <h2>{{ stage.name }}</h2>
+               </div>
+               <span class="muted">
+                 {{ stagePresentation(stage) === 'standings'
+                   ? t('public.teamsCount', { count: standingsForStage(stage.id).length })
+                   : t('public.matchesCount', { count: matchesForStage(stage.id).length }) }}
+               </span>
+             </div>
+
+             <template v-if="stagePresentation(stage) === 'standings'">
+               <div v-if="!standingsForStage(stage.id).length" class="empty-state compact">{{ t('public.noStandings') }}</div>
+               <div v-else class="table-scroll">
+                 <table>
+                   <caption class="visually-hidden">{{ `${t('public.standings')} · ${stage.name}` }}</caption>
+                   <thead>
+                     <tr>
+                       <th scope="col">#</th>
+                       <th scope="col">{{ t('setup.teams') }}</th>
+                       <th scope="col">{{ t('public.played') }}</th>
+                       <th scope="col">{{ t('public.goalDifference') }}</th>
+                       <th scope="col">{{ t('public.points') }}</th>
+                     </tr>
+                   </thead>
+                   <tbody>
+                     <tr v-for="standing in standingsForStage(stage.id)" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
+                       <td class="rank">{{ standing.rank }}</td>
+                       <td><strong>{{ standing.team_name }}</strong><small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small></td>
+                       <td>{{ standing.played }}</td>
+                       <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
+                       <td class="points">{{ standing.points }}</td>
+                     </tr>
+                   </tbody>
+                 </table>
+               </div>
+               <button v-if="standingsHasMore && firstStandingsStageId === stage.id" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings')">
+                 {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
+               </button>
+
+               <div class="phase-matches">
+                 <div class="panel-heading phase-subheading">
+                   <div>
+                     <p class="eyebrow">{{ t('public.fixtures') }}</p>
+                     <h3>{{ t('public.matches') }}</h3>
+                   </div>
+                   <span class="muted">{{ t('public.matchesCount', { count: matchesForStage(stage.id).length }) }}</span>
+                 </div>
+                 <div v-if="!matchesForStage(stage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
+                 <TransitionGroup v-else name="card-list" tag="div" class="match-list">
+                   <article v-for="match in matchesForStage(stage.id)" :key="match.id" class="match-card">
+                     <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+                     <div class="match-teams">
+                       <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                       <strong>{{ formatScore(match) }}</strong>
+                       <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                     </div>
+                     <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                     <button
+                       v-if="match.lineup"
+                       class="lineup-trigger"
+                       type="button"
+                       aria-controls="public-lineup-dialog"
+                       aria-haspopup="dialog"
+                       :aria-expanded="selectedLineupMatchId === match.id"
+                       @click="openLineup(match, $event)"
+                     >
+                       {{ t('public.viewLineup') }}
+                     </button>
+                   </article>
+                 </TransitionGroup>
+                 <button v-if="matchesHasMore && firstMatchesStageId === stage.id" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
+                   {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
+                 </button>
+               </div>
+             </template>
+
+             <PublicBracket
+               v-else-if="stagePresentation(stage) === 'bracket'"
+               :matches="matchesForStage(stage.id)"
+               @open-lineup="openLineup"
+             />
+
+             <template v-else>
+               <div v-if="!matchesForStage(stage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
+               <TransitionGroup v-else name="card-list" tag="div" class="match-list">
+                 <article v-for="match in matchesForStage(stage.id)" :key="match.id" class="match-card">
+                   <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+                   <div class="match-teams">
+                     <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                     <strong>{{ formatScore(match) }}</strong>
+                     <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                   </div>
+                   <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                   <button
+                     v-if="match.lineup"
+                     class="lineup-trigger"
+                     type="button"
+                     aria-controls="public-lineup-dialog"
+                     aria-haspopup="dialog"
+                     :aria-expanded="selectedLineupMatchId === match.id"
+                     @click="openLineup(match, $event)"
+                   >
+                     {{ t('public.viewLineup') }}
+                   </button>
+                 </article>
+               </TransitionGroup>
+               <button v-if="matchesHasMore && firstMatchesStageId === stage.id" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
+                 {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
+               </button>
+             </template>
+           </section>
+         </section>
      </div>
     </Transition>
     <PublicLineupModal
@@ -368,9 +445,13 @@ onBeforeUnmount(() => {
 .tournament-meta, .muted { color: var(--muted); }
 .hero-stamp { padding: 14px; border: 1px solid var(--accent); color: var(--accent); font-size: 0.7rem; font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
 .public-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); gap: 18px; }
+.phase-stack { display: grid; gap: 18px; }
 .panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14); }
+.phase-panel { animation: rise-in 500ms var(--ease-out) both; }
 .panel-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 20px; }
 .panel-heading h2 { margin: 7px 0 0; font-size: 2rem; letter-spacing: -0.06em; }
+.phase-subheading { margin-top: 28px; margin-bottom: 14px; }
+.phase-subheading h3 { margin: 6px 0 0; font-size: 1.35rem; letter-spacing: -0.04em; }
 .eyebrow { margin: 0; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 430px; }

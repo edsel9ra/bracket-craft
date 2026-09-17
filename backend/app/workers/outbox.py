@@ -5,11 +5,11 @@ import logging
 from redis.asyncio import Redis
 from sqlalchemy import text
 
-from app.core.database import SessionFactory
+from app.core.database import SessionFactory, validate_application_role
 from app.core.config import get_settings
+from app.core.outbox import OUTBOX_STREAM
 
 
-OUTBOX_CHANNEL = "bracket_craft.events"
 logger = logging.getLogger(__name__)
 
 
@@ -33,9 +33,7 @@ async def process_once() -> int:
                     "payload": event["payload"],
                 }, default=str)
                 try:
-                    subscribers = await redis.publish(OUTBOX_CHANNEL, message)
-                    if subscribers < 1:
-                        raise RuntimeError("No hay consumidores del canal de eventos")
+                    await redis.xadd(OUTBOX_STREAM, {"event": message})
                 except Exception as exc:
                     async with db.begin():
                         await db.execute(
@@ -63,6 +61,8 @@ async def process_once() -> int:
 
 
 async def main():
+    if get_settings().app_env.lower().strip() not in {"development", "dev", "local"}:
+        await validate_application_role()
     while True:
         try:
             await process_once()

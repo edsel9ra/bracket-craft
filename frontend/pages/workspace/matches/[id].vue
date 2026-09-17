@@ -532,14 +532,12 @@ function syncTacticalEditor() {
   }
   lineupFormations.value = formations;
   lineupPositions.value = positions;
-  if (rows.length) {
-    for (const roster of operation.value?.rosters || []) {
-      if (roster.team_id === match.value?.home_team_id || roster.team_id === match.value?.away_team_id) {
-        roles[roster.roster_id] ||= '';
-      }
+  for (const roster of operation.value?.rosters || []) {
+    if (roster.team_id === match.value?.home_team_id || roster.team_id === match.value?.away_team_id) {
+      roles[roster.roster_id] ||= '';
     }
-    lineupRoles.value = roles;
   }
+  lineupRoles.value = roles;
 }
 
 function setFormation(teamId: string, event: Event) {

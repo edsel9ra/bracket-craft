@@ -49,13 +49,14 @@ export function useRealtime() {
 
     const validOrganizationId = normalizeOrganizationId(organizationId.value);
     const validPublicTournamentId = normalizeUuid(requestedPublicTournamentId);
-    if ((!auth.userId || !validOrganizationId) && !validPublicTournamentId) {
+    const usePublicScope = Boolean(validPublicTournamentId);
+    if (!usePublicScope && (!auth.userId || !validOrganizationId)) {
       disconnect();
       return;
     }
-    const scopeKey = validOrganizationId && auth.userId
-      ? `organization:${validOrganizationId}`
-      : `public:${validPublicTournamentId}`;
+    const scopeKey = usePublicScope
+      ? `public:${validPublicTournamentId}`
+      : `organization:${validOrganizationId}`;
 
     if (
       socket
@@ -72,9 +73,9 @@ export function useRealtime() {
     setStatus('connecting');
 
     socket = io(config.public.socketBase, {
-      auth: validOrganizationId && auth.userId
-        ? { organization_id: validOrganizationId }
-        : { tournament_id: validPublicTournamentId },
+      auth: usePublicScope
+        ? { tournament_id: validPublicTournamentId }
+        : { organization_id: validOrganizationId },
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: Infinity,

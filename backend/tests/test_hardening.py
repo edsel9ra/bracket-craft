@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,7 @@ from app.core import storage as storage_module
 from app.core.csrf import validate_csrf_request
 from app.core.rate_limit import enforce_rate_limit
 from app.core.storage import ObjectStorage, StorageError
+from app.main import _buffer_request_body, _relay_outbox_messages, sio
 
 
 ALLOWED_ORIGINS = {"http://localhost:3000"}
@@ -172,6 +174,97 @@ async def test_storage_rejects_path_traversal_before_signing(monkeypatch):
 
     with pytest.raises(StorageError):
         await storage.signed_url("private/organizations/../other/photo.jpg")
+
+
+@pytest.mark.asyncio
+async def test_request_body_limit_counts_chunked_messages_and_replays_small_bodies():
+    messages = [
+        {"type": "http.request", "body": b"abc", "more_body": True},
+        {"type": "http.request", "body": b"def", "more_body": False},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    request = Request(
+        {"type": "http", "method": "POST", "path": "/", "headers": []},
+        receive,
+    )
+
+    assert await _buffer_request_body(request, 6) is True
+    downstream = Request(request.scope, request.receive)
+    assert await downstream.body() == b"abcdef"
+
+
+@pytest.mark.asyncio
+async def test_request_body_limit_rejects_chunked_messages_over_limit():
+    messages = [
+        {"type": "http.request", "body": b"abc", "more_body": True},
+        {"type": "http.request", "body": b"def", "more_body": False},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    request = Request(
+        {"type": "http", "method": "POST", "path": "/", "headers": []},
+        receive,
+    )
+
+    assert await _buffer_request_body(request, 5) is False
+
+
+@pytest.mark.asyncio
+async def test_outbox_relay_skips_malformed_stream_entries(monkeypatch):
+    emitted = []
+
+    async def fake_emit(*args, **kwargs):
+        emitted.append((args, kwargs))
+
+    monkeypatch.setattr(sio, "emit", fake_emit)
+    messages = [
+        (
+            "bracket_craft.events",
+            [
+                ("1-0", {"event": "{}"}),
+                (
+                    "2-0",
+                    {
+                        "event": json.dumps(
+                            {
+                                "event_type": "MATCH_UPDATED",
+                                "organization_id": "org-1",
+                                "payload": {"tournament_id": "tournament-1"},
+                            }
+                        )
+                    },
+                ),
+            ],
+        )
+    ]
+
+    assert await _relay_outbox_messages(messages) == "2-0"
+    assert len(emitted) == 2
+
+
+def test_storage_hardens_an_endpoint_bucket_only_once(monkeypatch):
+    settings = storage_settings()
+    monkeypatch.setattr(storage_module, "get_settings", lambda: settings)
+    storage = ObjectStorage()
+    calls = {"head": 0, "delete_policy": 0}
+
+    class FakeClient:
+        def head_bucket(self, **kwargs):
+            calls["head"] += 1
+
+        def delete_bucket_policy(self, **kwargs):
+            calls["delete_policy"] += 1
+
+    client = FakeClient()
+    storage._ensure_bucket(client)
+    storage._ensure_bucket(client)
+
+    assert calls == {"head": 1, "delete_policy": 1}
 
 
 def test_sql_hardening_keeps_migrations_immutable_and_guards_sensitive_writes():

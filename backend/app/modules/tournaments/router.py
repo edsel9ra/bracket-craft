@@ -25,6 +25,7 @@ from app.modules.tournaments.schemas import (
     CreateRosterPlayerRequest,
     PublicMatchResponse,
     PublicStandingResponse,
+    PublicTournamentResponse,
     PublicTournamentSummaryResponse,
     PublishVersionResponse,
     StageSummaryResponse,
@@ -1784,8 +1785,8 @@ async def list_public_tournaments(
     return [dict(row) for row in result.mappings().all()]
 
 
-@router.get("/public/{tournament_id}", response_model=PublicTournamentSummaryResponse)
-async def public_tournament(tournament_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicTournamentSummaryResponse:
+@router.get("/public/{tournament_id}", response_model=PublicTournamentResponse)
+async def public_tournament(tournament_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicTournamentResponse:
     result = await db.execute(
         text("""
             SELECT id, name, season, start_date, status
@@ -1797,7 +1798,19 @@ async def public_tournament(tournament_id: UUID, db: AsyncSession = Depends(get_
     tournament = result.mappings().one_or_none()
     if tournament is None:
         raise HTTPException(status_code=404, detail="Torneo público no encontrado")
-    return dict(tournament)
+    stages_result = await db.execute(
+        text("""
+            SELECT id, name, stage_type, stage_order
+            FROM v_public_stages
+            WHERE tournament_id = :tournament_id
+            ORDER BY stage_order, id
+        """),
+        {"tournament_id": str(tournament_id)},
+    )
+    return {
+        **dict(tournament),
+        "stages": [dict(stage) for stage in stages_result.mappings().all()],
+    }
 
 
 @router.get("/public/{tournament_id}/standings")
@@ -1847,7 +1860,7 @@ async def public_matches(
     result = await db.execute(
         text("""
             SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
-                   matchday, match_date, home_team_id, home_team_name, home_team_short_code,
+                   bracket_code, matchday, match_date, home_team_id, home_team_name, home_team_short_code,
                    away_team_id, away_team_name, away_team_short_code, home_score_regular,
                    away_score_regular, home_score, away_score, home_penalties, away_penalties,
                    winner_team_id, status, resolution_type
@@ -1855,7 +1868,8 @@ async def public_matches(
             WHERE tournament_id = :tournament_id
               AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
               AND (CAST(:group_id AS UUID) IS NULL OR group_id = CAST(:group_id AS UUID))
-             ORDER BY match_date NULLS LAST, matchday NULLS LAST, id
+              ORDER BY stage_order, stage_id, matchday NULLS LAST, bracket_code NULLS LAST,
+                       match_date NULLS LAST, id
              LIMIT :limit OFFSET :offset
         """),
         {

@@ -5,7 +5,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.matches.schemas import MatchEventPayload, MatchLineupEntry, SaveMatchLineupRequest
-from app.modules.tournaments.schemas import CreateMatchRequest, CreateRosterPlayerRequest
+from app.modules.tournaments.schemas import (
+    CreateMatchRequest,
+    CreateRosterPlayerRequest,
+    PublicMatchResponse,
+    PublicStageResponse,
+    PublicTournamentResponse,
+)
 
 
 def test_own_goal_requires_a_different_beneficiary():
@@ -87,3 +93,44 @@ def test_match_rejects_a_naive_scheduled_datetime():
             stage_id=uuid4(),
             match_date=datetime(2026, 9, 7, 15, 30),
         )
+
+
+def test_public_tournament_response_exposes_ordered_stage_metadata():
+    league = PublicStageResponse(
+        id=uuid4(),
+        name="Liga",
+        stage_type="swiss",
+        stage_order=1,
+    )
+    knockout = PublicStageResponse(
+        id=uuid4(),
+        name="Playoffs",
+        stage_type="single_elimination",
+        stage_order=2,
+    )
+
+    response = PublicTournamentResponse(
+        id=uuid4(),
+        name="Copa",
+        season="2026",
+        start_date=date(2026, 9, 7),
+        status="published",
+        stages=[league, knockout],
+    )
+
+    assert [stage.stage_type for stage in response.stages] == ["swiss", "single_elimination"]
+    assert [stage.stage_order for stage in response.stages] == [1, 2]
+
+
+def test_public_match_response_exposes_bracket_code():
+    response = PublicMatchResponse(
+        id=uuid4(),
+        tournament_id=uuid4(),
+        stage_id=uuid4(),
+        stage_name="Playoffs",
+        stage_order=1,
+        bracket_code="QF1",
+        status="finished",
+    )
+
+    assert response.bracket_code == "QF1"

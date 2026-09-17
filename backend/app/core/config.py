@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import unquote, urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,6 +67,11 @@ class Settings(BaseSettings):
                 raise ValueError("PLAYER_DATA_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
             if self.database_url == DEVELOPMENT_DATABASE_URL or DEVELOPMENT_DATABASE_PASSWORD in self.database_url:
                 raise ValueError("DATABASE_URL no puede usar la contraseña de desarrollo fuera de desarrollo")
+            database_user = unquote(urlparse(self.database_url).username or "").strip().casefold()
+            if not database_user:
+                raise ValueError("DATABASE_URL debe indicar un usuario de aplicación explícito")
+            if database_user == "postgres":
+                raise ValueError("DATABASE_URL no puede usar el superusuario postgres fuera de desarrollo")
             if self.storage_access_key == DEVELOPMENT_STORAGE_ACCESS_KEY:
                 raise ValueError("STORAGE_ACCESS_KEY no puede usar las credenciales de MinIO fuera de desarrollo")
             if self.storage_secret_key == DEVELOPMENT_STORAGE_SECRET_KEY:
