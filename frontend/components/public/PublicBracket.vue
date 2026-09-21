@@ -65,7 +65,7 @@ function isWinner(match: PublicMatch, teamId: string | null): boolean {
     <div class="bracket-grid">
       <section v-for="round in rounds" :key="round.key" class="bracket-round">
         <header class="bracket-round-heading">
-          <p class="eyebrow">{{ t('public.roundLabel') }}</p>
+          <!--<p class="eyebrow">{{ t('public.roundLabel') }}</p>-->
           <h3>{{ round.label }}</h3>
         </header>
         <div class="bracket-match-list">

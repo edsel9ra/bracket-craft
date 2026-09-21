@@ -1,7 +1,10 @@
+from uuid import uuid4
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import get_db
+from app.core.security import get_current_user_id
 from app.main import api, app
 
 
@@ -30,6 +33,38 @@ class EmptyResult:
 
 class EmptyDatabase:
     async def execute(self, *args, **kwargs):
+        return EmptyResult()
+
+
+class MappingResult:
+    def __init__(self, value):
+        self.value = value
+
+    def mappings(self):
+        return self
+
+    def one_or_none(self):
+        return self.value
+
+
+class FakeTransaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class PlatformAccessDatabase:
+    def __init__(self, role_code):
+        self.role_code = role_code
+
+    def begin(self):
+        return FakeTransaction()
+
+    async def execute(self, statement, *args, **kwargs):
+        if "get_platform_admin_context" in str(statement):
+            return MappingResult({"role_code": self.role_code})
         return EmptyResult()
 
 
@@ -63,6 +98,39 @@ async def test_platform_admin_requires_authentication(client):
     response = await client.get("/api/v1/platform/users")
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_platform_access_requires_authentication(client):
+    response = await client.get("/api/v1/platform/access")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role_code", "allowed"),
+    [("platform_admin", True), (None, False)],
+)
+async def test_platform_access_reports_status_without_forbidden(client, role_code, allowed):
+    user_id = uuid4()
+
+    async def current_user():
+        return user_id
+
+    async def database():
+        yield PlatformAccessDatabase(role_code)
+
+    api.dependency_overrides[get_current_user_id] = current_user
+    api.dependency_overrides[get_db] = database
+    try:
+        response = await client.get("/api/v1/platform/access")
+    finally:
+        api.dependency_overrides.pop(get_current_user_id, None)
+        api.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": allowed}
 
 
 @pytest.mark.asyncio

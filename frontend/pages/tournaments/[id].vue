@@ -4,7 +4,6 @@ import { useRealtime } from '~/composables/useRealtime';
 import {
   getPublicStagePresentation,
   sortPublicStages,
-  usesCurrentDoubleEliminationFormat,
   type PublicMatch,
   type PublicStanding,
   type PublicStage,
@@ -46,7 +45,7 @@ const tournament = computed<PublicTournament | null>(() => data.value?.tournamen
 const standings = computed<PublicStanding[]>(() => data.value?.standings ?? []);
 const matches = computed<PublicMatch[]>(() => data.value?.matches ?? []);
 const stages = computed(() => sortPublicStages(tournament.value?.stages ?? []));
-const stageAwareLayout = computed(() => stages.value.length > 0 && !usesCurrentDoubleEliminationFormat(stages.value));
+const stageAwareLayout = computed(() => stages.value.length > 0);
 const selectedLineupMatchId = ref<string | null>(null);
 const lineupTrigger = ref<HTMLButtonElement | null>(null);
 const selectedLineupMatch = computed(() => matches.value.find((match) => match.id === selectedLineupMatchId.value) ?? null);

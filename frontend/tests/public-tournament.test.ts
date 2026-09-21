@@ -26,7 +26,7 @@ test('maps league and elimination formats to their public presentation', () => {
   assert.equal(getPublicStagePresentation('custom_group'), 'standings');
   assert.equal(getPublicStagePresentation('swiss'), 'standings');
   assert.equal(getPublicStagePresentation('single_elimination'), 'bracket');
-  assert.equal(getPublicStagePresentation('double_elimination'), 'current');
+  assert.equal(getPublicStagePresentation('double_elimination'), 'bracket');
 });
 
 test('keeps the current layout only for an all-double-elimination tournament', () => {

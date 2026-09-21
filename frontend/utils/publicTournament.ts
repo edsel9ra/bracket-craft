@@ -91,7 +91,7 @@ export type PublicStagePresentation = 'standings' | 'bracket' | 'current';
 
 export function getPublicStagePresentation(stageType: StageFormat): PublicStagePresentation {
   if (stageType === 'single_elimination') return 'bracket';
-  if (stageType === 'double_elimination') return 'current';
+  if (stageType === 'double_elimination') return 'bracket';
   return 'standings';
 }
 

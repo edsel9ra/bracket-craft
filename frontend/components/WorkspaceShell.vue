@@ -91,8 +91,8 @@ const tournamentLinks = computed(() => {
 async function resolvePlatformAccess() {
   if (isAdminRoute.value || platformAccess.value !== 'unknown') return;
   try {
-    await request('/platform/users?limit=1');
-    platformAccess.value = 'allowed';
+    const access = await request<{ allowed: boolean }>('/platform/access');
+    platformAccess.value = access.allowed ? 'allowed' : 'denied';
   } catch (cause) {
     if (isUnauthorized(cause) || isForbidden(cause)) platformAccess.value = 'denied';
   }

@@ -130,6 +130,44 @@ class CreateMatchRequest(BaseModel):
         return value
 
 
+class GenerateSingleEliminationRequest(BaseModel):
+    version_id: UUID
+    stage_id: UUID
+    start_date: datetime
+    round_interval_days: int = Field(default=7, ge=1, le=365)
+    match_interval_hours: int = Field(default=2, ge=1, le=168)
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    replace_existing: bool = False
+    legs: Literal[1, 2] = 2
+    group_count: int | None = Field(default=None, ge=2, le=64)
+    use_group_heads: bool = False
+    head_team_ids: list[UUID] = Field(default_factory=list, max_length=64)
+    swiss_rounds: int = Field(default=8, ge=1, le=64)
+    swiss_round: int = Field(default=1, ge=1, le=64)
+    swiss_home_target: int | None = Field(default=None, ge=0, le=64)
+    swiss_away_target: int | None = Field(default=None, ge=0, le=64)
+
+    @field_validator("start_date")
+    @classmethod
+    def validate_start_date_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("start_date debe incluir zona horaria")
+        return value
+
+
+class GenerateSingleEliminationResponse(BaseModel):
+    version_id: UUID
+    stage_id: UUID
+    stage_type: StageType
+    seed: int
+    bracket_size: int | None = None
+    round_count: int
+    match_count: int
+    bye_count: int
+    group_count: int = 0
+    round_number: int | None = None
+
+
 class TournamentCreateResponse(BaseModel):
     id: UUID
     version_id: UUID
@@ -187,6 +225,7 @@ class TournamentMatchSummaryResponse(BaseModel):
     tournament_version_id: UUID
     stage_id: UUID
     group_id: UUID | None = None
+    bracket_code: str | None = None
     matchday: int | None = None
     match_date: datetime | None = None
     home_team_id: UUID | None = None

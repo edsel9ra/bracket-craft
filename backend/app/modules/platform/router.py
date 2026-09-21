@@ -7,10 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, set_rls_context
 from app.core.platform import PlatformContext, get_platform_context, require_platform_write
+from app.core.security import get_current_user_id
 from app.modules.platform.schemas import (
     CreateMembershipRequest,
     OutboxReprocessRequest,
     PlatformListResponse,
+    PlatformAccessResponse,
     SetActiveRequest,
 )
 
@@ -56,6 +58,18 @@ async def _set_active(
         if translated:
             raise translated from exc
         raise
+
+
+@router.get("/access", response_model=PlatformAccessResponse)
+async def get_platform_access(
+    user_id: UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    async with db.begin():
+        await set_rls_context(db, None, user_id)
+        result = await db.execute(text("SELECT role_code FROM get_platform_admin_context()"))
+        context = result.mappings().one_or_none()
+    return {"allowed": bool(context and context["role_code"])}
 
 
 @router.get("/users", response_model=PlatformListResponse)

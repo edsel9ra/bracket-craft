@@ -56,6 +56,7 @@ interface MatchSummary {
   id: string;
   tournament_version_id: string;
   stage_id: string;
+  bracket_code: string | null;
   home_team_id: string | null;
   away_team_id: string | null;
   matchday: number | null;
@@ -65,6 +66,19 @@ interface MatchSummary {
   status: string;
   home_score: number | null;
   away_score: number | null;
+}
+
+interface ScheduleGenerationResponse {
+  version_id: string;
+  stage_id: string;
+  stage_type: StageFormat;
+  seed: number;
+  bracket_size: number | null;
+  round_count: number;
+  match_count: number;
+  bye_count: number;
+  group_count: number;
+  round_number: number | null;
 }
 
 const route = useRoute();
@@ -96,6 +110,22 @@ const selectedStageId = ref('');
 const stageForm = reactive<{ name: string; stage_type: StageFormat; stage_order: number }>({ name: '', stage_type: 'round_robin', stage_order: 1 });
 const teamForm = reactive({ name: '', short_code: '' });
 const matchForm = reactive({ home_team_id: '', away_team_id: '', matchday: 1, match_date: '' });
+const scheduleForm = reactive({
+  start_date: '',
+  round_interval_days: 7,
+  match_interval_hours: 2,
+  seed: '',
+  legs: 2 as 1 | 2,
+  group_count: 2,
+  use_group_heads: false,
+  head_team_ids: [] as string[],
+  swiss_rounds: 8,
+  swiss_round: 1,
+  swiss_home_target: 4,
+  swiss_away_target: 4,
+});
+const scheduleBusy = ref(false);
+const scheduleResult = ref<ScheduleGenerationResponse | null>(null);
 const bulkTeamText = ref('');
 const bulkTeamError = ref<string | null>(null);
 const bulkFileName = ref('');
@@ -127,11 +157,28 @@ const selectedVersionStages = computed(() => stages.value.filter((stage) => stag
 const selectedVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === selectedVersionId.value));
 const draftVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === draftVersion.value?.id));
 const draftVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === draftVersion.value?.id));
+const selectedStage = computed(() => selectedVersionStages.value.find((stage) => stage.id === selectedStageId.value));
 const selectedStageTeams = computed(() => teams.value.filter((team) => team.stage_ids.includes(selectedStageId.value)));
+const selectedStageMatches = computed(() => selectedVersionMatches.value.filter((match) => match.stage_id === selectedStageId.value));
+const visibleStageMatches = computed(() => selectedStageMatches.value.filter((match) => match.status !== 'cancelled'));
+const selectedRosters = computed(() => rosters.value.filter((roster) => roster.team_id === rosterTeamId.value));
 const availableAwayTeams = computed(() => selectedStageTeams.value.filter((team) => team.team_id !== matchForm.home_team_id));
 const tournamentName = computed(() => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null);
 const tournamentLabel = computed(() => tournamentName.value || t('shell.tournament'));
 const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
+const canGenerateSchedule = computed(() => Boolean(
+  canManageTournaments.value
+  && selectedStage.value
+  && selectedStageTeams.value.length >= 2
+  && (selectedStage.value.stage_type !== 'swiss'
+    || (scheduleForm.swiss_round >= 1 && scheduleForm.swiss_round <= scheduleForm.swiss_rounds))
+  && (
+    activeVersion.value?.status === 'draft'
+    || (selectedStage.value.stage_type === 'swiss'
+      && activeVersion.value?.status === 'published'
+      && scheduleForm.swiss_round > 1)
+  )
+));
 
 function assignmentKey(versionId: string, stageId: string): string {
   return `${versionId}:${stageId}`;
@@ -274,6 +321,24 @@ function applyConfiguration(configuration: ConfigurationData) {
   if (!selectedStageId.value || !versionStages.some((stage) => stage.id === selectedStageId.value)) {
     selectedStageId.value = versionStages[0]?.id || '';
   }
+  const selectedStageConfig = versionStages.find((stage) => stage.id === selectedStageId.value);
+  if (selectedStageConfig?.stage_type === 'swiss') {
+    const swissMatches = configuration.matches.filter((match) => match.tournament_version_id === selectedVersionId.value
+      && match.stage_id === selectedStageId.value
+      && match.bracket_code?.startsWith('SW'));
+    const configuredRounds = swissMatches.reduce((highest, match) => Math.max(highest, match.matchday || 0), 0);
+    const highestGeneratedRound = swissMatches
+      .filter((match) => match.status !== 'cancelled')
+      .reduce((highest, match) => Math.max(highest, match.matchday || 0), 0);
+    if (configuredRounds > 0 && !scheduleResult.value) {
+      scheduleForm.swiss_rounds = configuredRounds;
+      scheduleForm.swiss_home_target = Math.floor(configuredRounds / 2);
+      scheduleForm.swiss_away_target = configuredRounds - scheduleForm.swiss_home_target;
+    }
+    if (highestGeneratedRound > 0) {
+      scheduleForm.swiss_round = Math.min(highestGeneratedRound + 1, scheduleForm.swiss_rounds + 1);
+    }
+  }
   syncRulesForVersion(selectedVersionId.value);
   if (!rosterTeamId.value || !configuration.teams.some((team) => team.team_id === rosterTeamId.value)) {
     rosterTeamId.value = configuration.teams[0]?.team_id || '';
@@ -365,6 +430,97 @@ async function createMatch() {
      error.value = failureMessage(cause, t('setup.noMatch'));
   } finally {
     saving.value = false;
+  }
+}
+
+async function drawStageSchedule() {
+  if (!selectedStageId.value || !selectedVersionId.value) return;
+  if (!scheduleForm.start_date) {
+    error.value = t('setup.scheduleStartRequired');
+    return;
+  }
+  if (
+    !Number.isInteger(scheduleForm.round_interval_days)
+    || scheduleForm.round_interval_days < 1
+    || scheduleForm.round_interval_days > 365
+    || !Number.isInteger(scheduleForm.match_interval_hours)
+    || scheduleForm.match_interval_hours < 1
+    || scheduleForm.match_interval_hours > 168
+  ) {
+    error.value = t('setup.scheduleIntervalsInvalid');
+    return;
+  }
+
+  if ((selectedStage.value?.stage_type === 'custom_group')
+    && (!Number.isInteger(scheduleForm.group_count)
+      || scheduleForm.group_count < 2
+      || scheduleForm.group_count > selectedStageTeams.value.length)) {
+    error.value = t('setup.groupCountInvalid');
+    return;
+  }
+  if (selectedStage.value?.stage_type === 'custom_group'
+    && scheduleForm.use_group_heads
+    && scheduleForm.head_team_ids.length !== scheduleForm.group_count) {
+    error.value = t('setup.groupHeadsInvalid');
+    return;
+  }
+  if (selectedStage.value?.stage_type === 'swiss') {
+    if (!Number.isInteger(scheduleForm.swiss_rounds) || scheduleForm.swiss_rounds < 1 || scheduleForm.swiss_rounds > 64
+      || !Number.isInteger(scheduleForm.swiss_round) || scheduleForm.swiss_round < 1 || scheduleForm.swiss_round > scheduleForm.swiss_rounds) {
+      error.value = t('setup.swissRoundsInvalid');
+      return;
+    }
+    if (scheduleForm.swiss_home_target + scheduleForm.swiss_away_target !== scheduleForm.swiss_rounds) {
+      error.value = t('setup.swissHomeAwayInvalid');
+      return;
+    }
+  }
+
+  const seed = scheduleForm.seed.trim() ? Number(scheduleForm.seed) : null;
+  if (seed !== null && (!Number.isSafeInteger(seed) || seed < 0)) {
+    error.value = t('setup.scheduleSeedInvalid');
+    return;
+  }
+
+  const replaceExisting = selectedStage.value?.stage_type === 'swiss'
+    ? scheduleForm.swiss_round === 1 && visibleStageMatches.value.length > 0
+    : visibleStageMatches.value.length > 0;
+  if (replaceExisting && import.meta.client && !window.confirm(t('setup.confirmRegenerateSchedule'))) return;
+
+  scheduleBusy.value = true;
+  error.value = null;
+  scheduleResult.value = null;
+  try {
+    const result = await request<ScheduleGenerationResponse>(`/tournaments/${tournamentId}/matches/draw`, {
+      method: 'POST',
+      body: {
+        version_id: selectedVersionId.value,
+        stage_id: selectedStageId.value,
+        start_date: new Date(scheduleForm.start_date).toISOString(),
+        round_interval_days: scheduleForm.round_interval_days,
+        match_interval_hours: scheduleForm.match_interval_hours,
+        seed,
+        replace_existing: replaceExisting,
+        legs: scheduleForm.legs,
+        group_count: selectedStage.value?.stage_type === 'custom_group' ? scheduleForm.group_count : null,
+        use_group_heads: scheduleForm.use_group_heads,
+        head_team_ids: scheduleForm.head_team_ids,
+        swiss_rounds: scheduleForm.swiss_rounds,
+        swiss_round: scheduleForm.swiss_round,
+        swiss_home_target: selectedStage.value?.stage_type === 'swiss' ? scheduleForm.swiss_home_target : null,
+        swiss_away_target: selectedStage.value?.stage_type === 'swiss' ? scheduleForm.swiss_away_target : null,
+      },
+    });
+    scheduleResult.value = result;
+    if (result.stage_type === 'swiss' && result.round_number && result.round_number < scheduleForm.swiss_rounds) {
+      scheduleForm.swiss_round = result.round_number + 1;
+    }
+    await loadConfiguration();
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    error.value = failureMessage(cause, t('setup.noScheduleGeneration'));
+  } finally {
+    scheduleBusy.value = false;
   }
 }
 
@@ -770,32 +926,7 @@ loading.value = false;
               </div>
             </form>
 
-           <form id="calendario" class="panel panel-wide" :aria-busy="saving" @submit.prevent="createMatch">
-              <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
-              <h2>{{ t('setup.scheduleMatch') }}</h2>
-              <div class="match-form-grid">
-                <label>{{ t('setup.home') }}
-                 <select v-model="matchForm.home_team_id" :disabled="!canManageTournaments">
-                    <option value="">{{ t('setup.noDefine') }}</option>
-                   <option v-for="team in selectedStageTeams" :key="`home-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
-                  </select>
-                </label>
-                <label>{{ t('setup.away') }}
-                   <select v-model="matchForm.away_team_id" :disabled="!canManageTournaments">
-                    <option value="">{{ t('setup.noDefine') }}</option>
-                   <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
-                  </select>
-                </label>
-                 <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" :disabled="!canManageTournaments" type="number" min="1" required /></label>
-                 <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required /></label>
-                 <button v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
-              </div>
-              <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
-                <li v-for="match in selectedVersionMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
-              </TransitionGroup>
-           </form>
-
-           <section id="plantillas" class="panel panel-wide roster-import-panel">
+            <section id="plantillas" class="panel panel-wide roster-import-panel">
              <div class="panel-heading"><div><p class="eyebrow">04 · {{ t('setup.rosterImport') }}</p><h2>{{ t('setup.importRoster') }}</h2></div><span class="muted-note">{{ t('setup.rosterPhotoHint') }}</span></div>
               <div v-if="canManageTournaments" class="roster-import-controls">
                <label>{{ t('setup.team') }}<select v-model="rosterTeamId" required><option value="" disabled>{{ t('match.selectTeam') }}</option><option v-for="team in teams" :key="`roster-${team.team_id}`" :value="team.team_id">{{ team.name }}</option></select></label>
@@ -813,8 +944,8 @@ loading.value = false;
                <li v-for="warning in rosterImportWarnings" :key="warning">{{ warning }}</li>
              </ul>
               <button v-if="canManageTournaments" class="button-primary" type="button" :disabled="rosterBusy || !rosterTeamId || !rosterCsvFile" @click="importRoster">{{ rosterBusy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
-             <div v-if="rosters.length" class="roster-list">
-               <div v-for="roster in rosters" :key="roster.roster_id" class="roster-card">
+              <div v-if="selectedRosters.length" class="roster-list">
+                <div v-for="roster in selectedRosters" :key="roster.roster_id" class="roster-card">
                  <img v-if="roster.photo_url && roster.photo_consent" :src="roster.photo_url" :alt="`${roster.first_name} ${roster.last_name}`" class="roster-photo" />
                  <div v-else class="roster-photo roster-photo-empty" aria-hidden="true">{{ roster.first_name.charAt(0) }}</div>
                  <div class="roster-card-info"><strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong><small>{{ teamName(roster.team_id) }}</small></div>
@@ -825,11 +956,84 @@ loading.value = false;
                     <label v-if="roster.photo_consent" class="photo-picker">{{ roster.photo_url ? t('setup.replacePhoto') : t('setup.uploadPhoto') }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="photoBusyRosterId === roster.roster_id" @change="uploadRosterPhoto($event, roster.roster_id)" /></label>
                   </div>
                </div>
-             </div>
-             <p v-else class="muted-note">{{ t('setup.noRosterPlayers') }}</p>
-           </section>
+              </div>
+              <p v-else class="muted-note">{{ t('setup.noRosterPlayers') }}</p>
+            </section>
 
-         </div>
+             <form id="calendario" class="panel panel-wide" :aria-busy="saving || scheduleBusy" @submit.prevent="createMatch">
+                <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
+                <h2>{{ t('setup.scheduleMatch') }}</h2>
+                <div class="match-form-grid">
+                 <label>{{ t('setup.home') }}
+                  <select v-model="matchForm.home_team_id" :disabled="!canManageTournaments">
+                     <option value="">{{ t('setup.noDefine') }}</option>
+                    <option v-for="team in selectedStageTeams" :key="`home-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
+                   </select>
+                 </label>
+                 <label>{{ t('setup.away') }}
+                    <select v-model="matchForm.away_team_id" :disabled="!canManageTournaments">
+                     <option value="">{{ t('setup.noDefine') }}</option>
+                    <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
+                   </select>
+                 </label>
+                  <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" :disabled="!canManageTournaments" type="number" min="1" required /></label>
+                   <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required /></label>
+                   <button v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || scheduleBusy || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
+                </div>
+                <div v-if="selectedStage" class="schedule-generator">
+                   <div class="schedule-generator-heading">
+                     <div><p class="eyebrow">{{ t('setup.generatorEyebrow') }}</p><h3>{{ t('setup.drawSchedule') }}</h3></div>
+                     <span class="muted-note">{{ t('setup.generatorDescription') }}</span>
+                   </div>
+                   <div class="schedule-generator-grid">
+                     <label>{{ t('setup.generatorStart') }}<input v-model="scheduleForm.start_date" :disabled="!canManageTournaments" type="datetime-local" /></label>
+                     <label>{{ t('setup.generatorRoundInterval') }}<input v-model.number="scheduleForm.round_interval_days" :disabled="!canManageTournaments" type="number" min="1" max="365" /></label>
+                     <label>{{ t('setup.generatorMatchInterval') }}<input v-model.number="scheduleForm.match_interval_hours" :disabled="!canManageTournaments" type="number" min="1" max="168" /></label>
+                     <label>{{ t('setup.generatorSeed') }}<input v-model="scheduleForm.seed" :disabled="!canManageTournaments" type="number" min="0" step="1" :placeholder="t('setup.generatorSeedOptional')" /></label>
+                   </div>
+                   <div v-if="selectedStage.stage_type === 'round_robin' || selectedStage.stage_type === 'custom_group'" class="schedule-generator-options">
+                     <label>{{ t('setup.generatorLegs') }}
+                       <select v-model.number="scheduleForm.legs" :disabled="!canManageTournaments">
+                         <option :value="2">{{ t('setup.generatorHomeAway') }}</option>
+                         <option :value="1">{{ t('setup.generatorSingleLeg') }}</option>
+                       </select>
+                     </label>
+                     <label v-if="selectedStage.stage_type === 'custom_group'">{{ t('setup.groupCount') }}<input v-model.number="scheduleForm.group_count" :disabled="!canManageTournaments" type="number" min="2" :max="selectedStageTeams.length" /></label>
+                   </div>
+                   <div v-if="selectedStage.stage_type === 'custom_group'" class="group-head-options">
+                     <label class="checkbox-label"><input v-model="scheduleForm.use_group_heads" :disabled="!canManageTournaments" type="checkbox" /> {{ t('setup.useGroupHeads') }}</label>
+                     <div v-if="scheduleForm.use_group_heads" class="team-head-picker">
+                       <span class="field-hint">{{ t('setup.selectGroupHeads', { count: scheduleForm.group_count }) }}</span>
+                       <label v-for="team in selectedStageTeams" :key="`head-${team.team_id}`" class="checkbox-label">
+                         <input v-model="scheduleForm.head_team_ids" :disabled="!canManageTournaments" type="checkbox" :value="team.team_id" />
+                         {{ team.name }}
+                       </label>
+                     </div>
+                   </div>
+                   <div v-if="selectedStage.stage_type === 'swiss'" class="schedule-generator-options">
+                     <label>{{ t('setup.swissRounds') }}<input v-model.number="scheduleForm.swiss_rounds" :disabled="!canManageTournaments" type="number" min="1" max="64" /></label>
+                     <label>{{ t('setup.swissRound') }}<input v-model.number="scheduleForm.swiss_round" :disabled="!canManageTournaments" type="number" min="1" :max="scheduleForm.swiss_rounds" /></label>
+                     <label>{{ t('setup.swissHomeTarget') }}<input v-model.number="scheduleForm.swiss_home_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
+                     <label>{{ t('setup.swissAwayTarget') }}<input v-model.number="scheduleForm.swiss_away_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
+                   </div>
+                   <p class="field-hint">{{ t('setup.generatorHint') }}</p>
+                   <div class="schedule-generator-actions">
+                     <button v-if="canManageTournaments" class="button-secondary" type="button" :disabled="scheduleBusy || saving || !canGenerateSchedule || !scheduleForm.start_date" @click="drawStageSchedule">
+                       {{ scheduleBusy ? t('setup.generatingSchedule') : selectedStage.stage_type === 'swiss' && scheduleForm.swiss_round > 1 ? t('setup.drawNextSwissRound') : visibleStageMatches.length ? t('setup.regenerateSchedule') : t('setup.generateSchedule') }}
+                     </button>
+                     <span v-if="selectedStageTeams.length < 2" class="muted-note">{{ t('setup.generatorNeedsTeams') }}</span>
+                   </div>
+                  <p v-if="scheduleResult" class="schedule-result" role="status">
+                    {{ t('setup.scheduleGenerated', { matches: scheduleResult.match_count, rounds: scheduleResult.round_count, byes: scheduleResult.bye_count }) }}
+                    <code>{{ scheduleResult.seed }}</code>
+                  </p>
+                </div>
+                   <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
+                   <li v-for="match in visibleStageMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span><strong v-if="match.bracket_code">{{ match.bracket_code }} · </strong>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
+                </TransitionGroup>
+             </form>
+
+          </div>
          </Transition>
          <div v-if="error" class="form-error" role="alert">{{ error }}</div>
       </template>
@@ -882,6 +1086,18 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .resource-list a:hover { background: rgba(212, 243, 106, 0.06); }
 .match-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 14px; }
 .match-submit { min-height: 47px; }
+.schedule-generator { display: grid; gap: 12px; margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+.schedule-generator-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.schedule-generator-heading h3 { margin: 0; font-size: 1.05rem; letter-spacing: -0.03em; }
+.schedule-generator-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; }
+.schedule-generator-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; }
+.group-head-options { display: grid; gap: 10px; }
+.checkbox-label { display: flex; grid-template-columns: none; align-items: center; gap: 8px; color: var(--ink); }
+.checkbox-label input { width: auto; }
+.team-head-picker { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.schedule-generator-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.schedule-result { margin: 0; padding: 11px 12px; border: 1px solid rgba(212, 243, 106, 0.28); border-radius: 10px; background: rgba(212, 243, 106, 0.06); color: var(--muted); font-size: 0.78rem; }
+.schedule-result code { margin-left: 4px; }
 .match-list { margin-top: 2px; }
 .resource-list li.active { color: var(--accent); }
 .resource-list li.active button { background: rgba(212, 243, 106, 0.08); }
@@ -921,7 +1137,7 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 textarea { width: 100%; resize: vertical; padding: 0.8rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); font: inherit; line-height: 1.5; }
 textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); outline: none; }
 code { color: var(--accent); font-size: 0.75rem; }
-@media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } .roster-import-controls, .match-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } }
+@media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } .roster-import-controls, .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } }
 @media (max-width: 900px) { .checklist-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 620px) { .container { width: min(100% - 28px, 620px); } .config-toolbar, .checklist-heading, .panel-heading { align-items: stretch; flex-direction: column; } .checklist-items { grid-template-columns: 1fr; } .roster-card { grid-template-columns: 42px minmax(0, 1fr); } .photo-actions { grid-column: 2; justify-self: start; justify-content: start; } .photo-picker { grid-column: auto; justify-self: start; } .roster-import-controls, .match-form-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .container { width: min(100% - 28px, 620px); } .config-toolbar, .checklist-heading, .panel-heading, .schedule-generator-heading { align-items: stretch; flex-direction: column; } .checklist-items { grid-template-columns: 1fr; } .roster-card { grid-template-columns: 42px minmax(0, 1fr); } .photo-actions { grid-column: 2; justify-self: start; justify-content: start; } .photo-picker { grid-column: auto; justify-self: start; } .roster-import-controls, .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: 1fr; } }
 </style>

@@ -5,6 +5,10 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class PlatformAccessResponse(BaseModel):
+    allowed: bool
+
+
 class PlatformUserResponse(BaseModel):
     id: UUID
     email: str

@@ -96,6 +96,8 @@ class CloseMatchReportService:
                 dto.away_penalties,
                 dto.winner_team_id,
             )
+            if match.get("bracket_code") in {"GF1", "GF2"} and outcome.winner_team_id is None:
+                raise ValueError("La gran final de doble eliminación debe tener un ganador")
 
             target_status = "administrative_resolution" if dto.resolution_type == "administrative" else "finished"
             await self.db.execute(
@@ -212,6 +214,7 @@ class CloseMatchReportService:
         result = await self.db.execute(
             text("""
                 SELECT m.id, m.tournament_id, m.tournament_version_id, m.matchday, m.match_date,
+                       m.bracket_code,
                        m.status, m.stage_id, m.home_team_id, m.away_team_id,
                        tv.rules_config, tv.status AS version_status
                 FROM matches m
@@ -593,4 +596,6 @@ class CloseMatchReportService:
     async def _advance_bracket(self, context, match_id, match, outcome):
         from app.modules.advancement.service import AdvancementService
 
-        await AdvancementService(self.db).advance_from_match(context, match_id, match, outcome)
+        advancement = AdvancementService(self.db)
+        await advancement.advance_from_match(context, match_id, match, outcome)
+        await advancement.activate_double_elimination_reset(context, match, outcome)
