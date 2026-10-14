@@ -1,0 +1,151 @@
+# Constitución de Bracket Craft
+
+**Ruta:** `docs/constitution.md`
+**Versión:** 1.0.0
+**Última actualización:** 2026-10-14
+**Ámbito:** Este documento define los principios y reglas que gobiernan el desarrollo de Bracket Craft. Tiene precedencia sobre cualquier otra guía del repositorio. `README.md` describe el producto, `AGENTS.md` describe cómo trabajar en el repositorio y `ci.yml` automatiza la verificación; ninguno puede contradecir esta constitución.
+
+## 1. Propósito
+
+Bracket Craft es una plataforma multi-tenant para crear y operar torneos de fútbol con reglas configurables, fases componibles y resultados en tiempo real.
+
+Esta constitución existe para garantizar que cada cambio, hecho por una persona o por un agente, preserve cuatro cosas:
+
+1. **Aislamiento entre organizaciones:** ninguna organización puede ver ni modificar datos de otra.
+2. **Integridad deportiva:** los resultados, las tablas y las versiones publicadas son confiables y trazables.
+3. **Privacidad de las personas:** los datos de jugadores se exponen solo con base y consentimiento explícitos.
+4. **Reproducibilidad:** cualquiera puede levantar, verificar y desplegar el proyecto de forma consistente.
+
+## 2. Principios Innegociables
+
+Estos principios no se relajan por urgencia, conveniencia ni preferencia. Solo pueden cambiarse enmendando esta constitución (ver sección 5).
+
+1. **El aislamiento por tenant lo garantiza la base de datos.** Toda tabla propiedad de un tenant usa Row Level Security. La aplicación no sustituye a RLS ni lo elude.
+2. **La aplicación nunca tiene privilegios de saltarse RLS.** El rol de base de datos de la aplicación no es superusuario y no tiene `BYPASSRLS`.
+3. **Lo publicado es inmutable.** Las versiones de torneo publicadas y los resultados cerrados no se editan directamente, ni siquiera desde la administración global.
+4. **El historial de esquema es append-only.** Los cambios de base de datos se hacen únicamente con nuevas migraciones numeradas. Una migración aplicada nunca se edita.
+5. **Lo público es una proyección mínima.** Las vistas y endpoints públicos no exponen documentos de identidad ni fechas de nacimiento. Las fotos solo se publican con consentimiento de imagen. La formación táctica solo es pública tras publicarse explícitamente.
+6. **Ningún secreto por defecto fuera de desarrollo.** Los valores de `.env.example` son solo para desarrollo local. Fuera de él, los secretos se inyectan externamente y el backend rechaza los defaults conocidos.
+7. **La administración global está separada y auditada.** Las acciones de plataforma viven en `/admin`, requieren pertenecer a `platform_admins` y quedan registradas en `platform_audit_logs`.
+8. **Nada se da por terminado sin verificación.** Un cambio que no pasa las verificaciones de CI no está listo, y un cambio no verificado se declara como tal.
+9. **El código de desarrollo no llega a producción.** Los scripts de seed y los datos demo solo corren en entornos de desarrollo/local.
+
+## 3. Reglas de Implementación
+
+### 3.1 Base de datos y multi-tenancy
+
+- Llama a `set_rls_context()` dentro de la transacción y antes de cualquier consulta tenant, fijando `app.current_organization_id` y `app.current_user_id`.
+- Toda tabla nueva propiedad de un tenant nace con RLS habilitado y sus políticas definidas en la misma migración.
+- Cada cambio de esquema es la siguiente migración SQL numerada en `infra/postgres/migrations/`. `infra/postgres/migrate.sh` registra checksums SHA-256 y rechaza ediciones de migraciones aplicadas.
+- Si una migración ya aplicada tiene un defecto, se corrige con una migración posterior, no editándola.
+
+### 3.2 Backend
+
+- Cada funcionalidad vive en su propio módulo bajo `backend/app/modules/`, y su router se registra en `backend/app/main.py`.
+- El acceso a datos es asíncrono (SQLAlchemy async).
+- Las tareas diferidas y los efectos secundarios de dominio (por ejemplo, el cierre de actas) pasan por el outbox y el worker, no por llamadas síncronas dentro del request.
+- Las reglas deportivas configurables (puntuación, desempates, disciplina, transferencias) se expresan como configuración JSON de la versión del torneo, no como constantes en el código.
+
+### 3.3 Frontend
+
+- Toda llamada a la API usa `frontend/composables/useApi.ts`, que selecciona la URL base de servidor/cliente y transporta organización, cookies y CSRF.
+- Las rutas públicas (`/`, `/tournaments/{id}`) no dependen de sesión. El Workspace (`/workspace`) exige sesión y organización activa validada.
+
+### 3.4 Seguridad y configuración
+
+- Mantén los defaults de desarrollo únicamente en `.env.example`.
+- Fuera de desarrollo se cambian `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, las credenciales de base de datos y de almacenamiento, y se habilita `AUTH_COOKIE_SECURE`.
+- Los datos personales de jugadores se almacenan protegidos con `PLAYER_DATA_KEY` y nunca se incluyen en logs ni en proyecciones públicas.
+- Las dependencias deben pasar `pip-audit`, `pnpm audit --prod --audit-level high` y el escaneo Trivy de CI.
+
+### 3.5 Infraestructura y CI
+
+- Python 3.12, Node 22 y pnpm 11.8.0 son las versiones de referencia. Cambiarlas exige actualizar `ci.yml`, `AGENTS.md` y el README en el mismo cambio.
+- Mantén `aquasecurity/trivy-action@v0.36.0` mientras no se valide una versión posterior; `v0.28.0` está roto.
+- El lockfile del frontend (`pnpm-lock.yaml`) permanece versionado; la instalación usa `--frozen-lockfile`.
+- `docker compose config -q` debe validar tanto la configuración de desarrollo como la de producción.
+
+## 4. Criterios Obligatorios para Cada Cambio
+
+Ningún cambio se fusiona sin cumplir todo lo siguiente que le aplique.
+
+**Para todos los cambios**
+
+- [ ] Pasa el job de CI correspondiente (`backend`, `frontend`, `infrastructure` y `security`).
+- [ ] No introduce secretos, credenciales ni datos personales en el repositorio.
+- [ ] Si altera el comportamiento observable, actualiza la documentación afectada (`README.md`, `AGENTS.md` o esta constitución).
+- [ ] Tiene pruebas para el comportamiento nuevo o corregido, o documenta por qué no son posibles.
+
+**Para cambios de base de datos**
+
+- [ ] Es una nueva migración con el siguiente número, sin editar migraciones aplicadas.
+- [ ] Las tablas tenant nuevas incluyen RLS y políticas.
+- [ ] Se verificó que funciona sobre un volumen limpio y sobre uno ya migrado (ver nota sobre la migración 002 en `AGENTS.md`).
+- [ ] `sh -n infra/postgres/migrate.sh` sigue pasando.
+
+**Para cambios de API o backend**
+
+- [ ] Las consultas tenant corren con `set_rls_context()` dentro de la transacción.
+- [ ] Los endpoints públicos no exponen campos sensibles.
+- [ ] El router nuevo está registrado en `backend/app/main.py`.
+- [ ] `pytest -q` y `python -m compileall -q app` pasan.
+
+**Para cambios de frontend**
+
+- [ ] Las llamadas HTTP usan `useApi.ts`.
+- [ ] `pnpm test`, `pnpm run typecheck` y `pnpm run build` pasan.
+
+**Para cambios de infraestructura o despliegue**
+
+- [ ] `docker compose config -q` pasa.
+- [ ] No hay defaults de desarrollo accesibles en el perfil de producción.
+
+**Para cambios de dependencias**
+
+- [ ] Los lockfiles están actualizados y las auditorías de seguridad pasan.
+
+## 5. Excepciones y Evolución
+
+### 5.1 Excepciones
+
+- Un **principio innegociable** (sección 2) no admite excepciones. Si un requerimiento lo contradice, se cambia el requerimiento o se enmienda la constitución.
+- Una **regla de implementación** (sección 3) o un **criterio de cambio** (sección 4) puede exceptuarse solo si se cumple todo lo siguiente:
+  1. La excepción está justificada por escrito en la descripción del cambio.
+  2. Es acotada: indica qué regla se omite, dónde y por qué.
+  3. Tiene un responsable y, cuando es temporal, una fecha o condición de retiro.
+  4. Un revisor distinto del autor la aprueba explícitamente.
+- Las excepciones temporales vencidas se tratan como incumplimiento.
+
+### 5.2 Evolución
+
+- Esta constitución se enmienda mediante un cambio propio, revisado y aprobado, que no se mezcla con cambios funcionales.
+- Toda enmienda indica el motivo, qué reglas cambian y su impacto en el código existente.
+- Versionado:
+  - **Mayor (X.0.0):** se agrega, elimina o modifica un principio innegociable.
+  - **Menor (0.X.0):** se agregan o cambian reglas de implementación o criterios.
+  - **Parche (0.0.X):** aclaraciones y correcciones que no alteran el significado.
+- Toda enmienda se registra en la sección 7 y se refleja en `AGENTS.md` y el README cuando corresponda.
+
+## 6. Definición de Cumplimiento
+
+Un cambio **cumple** esta constitución cuando:
+
+1. Respeta todos los principios innegociables, sin excepción.
+2. Cumple las reglas de implementación aplicables, o tiene una excepción válida según la sección 5.1.
+3. Satisface todos los criterios obligatorios de la sección 4 que le apliquen.
+4. Pasa todos los jobs de CI en verde.
+5. Fue revisado por una persona distinta del autor. Un cambio hecho por un agente requiere revisión humana.
+
+Un cambio **no cumple** si:
+
+- Viola un principio innegociable.
+- Omite una regla o criterio sin excepción aprobada.
+- Declara una verificación como realizada sin haberla ejecutado.
+
+Los incumplimientos detectados después de fusionar se corrigen con prioridad. Si afectan al aislamiento entre tenants, a la privacidad o a la integridad de resultados publicados, el cambio se revierte o se mitiga de inmediato, antes de continuar con trabajo funcional.
+
+## 7. Historial de Cambios
+
+| Versión | Fecha | Cambio | Impacto |
+|---------|-------|--------|---------|
+| 1.0.0 | 2026-10-14 | Creación inicial de la constitución, derivada de `README.md`, `AGENTS.md` y `ci.yml`. | Establece principios, reglas, criterios y definición de cumplimiento. |
