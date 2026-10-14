@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { STAGE_FORMATS, getStageFormatOptions } from '../constants/stageFormats.ts';
+import { STAGE_FORMATS, getStageFormatOptions } from '../app/constants/stageFormats.ts';
 
 test('keeps one catalog with the backend stage format values', () => {
   assert.deepEqual(

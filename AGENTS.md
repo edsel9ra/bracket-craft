@@ -15,7 +15,7 @@ Ante cualquier duda, consulta en este orden:
 7. `infra/postgres/migrations/`: fuente de verdad del esquema de base de datos (migraciones numeradas).
 8. `backend/app/main.py`: registro de routers y punto de entrada de la API.
 9. `backend/app/modules/`: límites de cada funcionalidad del backend.
-10. `frontend/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
+10. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
 11. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (se ejecuta en cada `push` y `pull_request`, con permisos `contents: read`).
 12. Documentación interactiva de la API en `http://localhost:8000/docs`.
 
@@ -24,10 +24,10 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 ## Stack
 
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.12 en CI).
-- **Frontend:** Nuxt 3, Vue 3 y Pinia (Node 22 y pnpm 11.8.0 en CI).
+- **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.11.2 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
 - **Procesamiento:** Redis y worker asíncrono de outbox.
 - **Tiempo real:** Socket.IO.
-- **Almacenamiento de archivos:** MinIO (fotos de jugadores).
+- **Almacenamiento de archivos:** SeaweedFS con API S3 (fotos de jugadores). Antes: MinIO (repositorio archivado el 2026-04-25).
 - **Infraestructura:** Docker Compose.
 
 ## Límites del Proyecto
@@ -62,7 +62,7 @@ docker compose up --build
 
 - Frontend: `http://localhost:3000`
 - API / documentación: `http://localhost:8000/docs`
-- MinIO: `http://localhost:9001`
+- Almacenamiento (SeaweedFS): `http://localhost:9001` (UI de archivos); API S3 en `http://localhost:9000`
 
 ### Datos demo (solo desarrollo)
 
@@ -108,7 +108,7 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 
 ## Runtime
 
-- **Servicios de Docker Compose:** PostgreSQL, `db-migrate` (job de una sola ejecución), API, worker, Redis, MinIO y web.
+- **Servicios de Docker Compose:** PostgreSQL, `db-migrate` (job de una sola ejecución), API, worker, Redis, `storage` (SeaweedFS) y web.
 - **Inicialización de PostgreSQL:** `infra/postgres/init/` solo corre en el primer arranque del volumen.
 - **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256.
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que elimina volúmenes de código, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
@@ -131,8 +131,8 @@ backend/                     API FastAPI (async SQLAlchemy)
   app/modules/               Límites por funcionalidad
   scripts/                   Utilidades (p. ej. seed_demo, solo desarrollo)
   tests/                     Pruebas pytest
-frontend/                    Nuxt 3 / Vue 3 / Pinia
-  composables/useApi.ts      Cliente HTTP centralizado
+frontend/                    Nuxt 4 / Vue 3 / Pinia (código de app en frontend/app/)
+  app/composables/useApi.ts   Cliente HTTP centralizado
 infra/postgres/
   init/                      Configuración inicial de la base de datos
   migrations/                Migraciones SQL numeradas
@@ -147,7 +147,7 @@ docker-compose.production.yml  Perfil de producción
 - **RLS obligatorio:** llama a `set_rls_context()` dentro de la transacción y **antes** de cualquier consulta tenant, fijando ambos valores de sesión.
 - **Rol de base de datos:** el rol de la aplicación no debe ser superusuario ni tener `BYPASSRLS`.
 - **Migraciones:** cada cambio de esquema es la siguiente migración SQL numerada. Nunca edites una ya aplicada (el checksum la rechaza).
-- **Frontend:** toda llamada a la API pasa por `frontend/composables/useApi.ts`, que elige la URL base de servidor/cliente y lleva organización, cookies y CSRF.
+- **Frontend:** toda llamada a la API pasa por `frontend/app/composables/useApi.ts`, que elige la URL base de servidor/cliente y lleva organización, cookies y CSRF.
 - **Nuevos módulos backend:** crea el módulo bajo `backend/app/modules/` y registra su router en `backend/app/main.py`.
 - **Vistas públicas:** no agregues campos sensibles (documentos, fechas de nacimiento) a las proyecciones públicas.
 - **Configuración:** mantén los defaults de desarrollo únicamente en `.env.example`.
@@ -172,9 +172,9 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 ## Rarezas y Gotchas
 
 - **Trivy en CI:** mantén `aquasecurity/trivy-action@v0.36.0`. La referencia `v0.28.0` falla por su dependencia faltante `setup-trivy@v0.2.1`. El escaneo falla (`exit-code: 1`) ante vulnerabilidades CRITICAL o HIGH con corrección disponible (`ignore-unfixed`), y omite `frontend/node_modules`, `frontend/.pnpm-store` y `.venv`.
-- **Versiones fijadas en CI:** Python 3.12, Node 22 y pnpm 11.8.0 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
+- **Versiones fijadas en CI:** Python 3.12, Node 24 y pnpm 12.11.2 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
 - **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
-- **Migración 002:** un volumen limpio de PostgreSQL ha fallado antes con `cannot drop columns from view`. Es un problema de la cadena de migraciones anterior a la 014, no de las pruebas de invitaciones.
+- **Migración 002:** un volumen limpio de PostgreSQL había fallado antes con `cannot drop columns from view`. Causa raíz: `infra/postgres/init/02_public_projections.sql` había sido actualizado para reflejar el estado post-012 (`v_public_stages` y `bracket_code` en `v_public_matches`), pero la migración 001 reescribe `v_public_matches` sin `bracket_code`, y `CREATE OR REPLACE VIEW` no puede soltar columnas. La corrección fue revertir `init/02` al estado pre-012 (los scripts de init no son migraciones y no tienen checksum), de modo que 012 introduzca esos cambios en el orden correcto. Solo afecta a volúmenes limpios; los existentes no re-ejecutan init.
 - **Windows/WSL:** si pnpm falla con `EPERM` al enlazar `node_modules`, construye y ejecuta mediante el servicio `web` de Docker.
 - **Seed demo:** solo admite entornos de desarrollo/local; no lo ejecutes contra producción.
 - **Init de PostgreSQL:** los scripts de `init/` no se re-ejecutan en volúmenes existentes; para reiniciar desde cero hay que borrar el volumen.

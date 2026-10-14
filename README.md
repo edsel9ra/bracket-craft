@@ -5,7 +5,7 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy Async y PostgreSQL.
-- Frontend: Nuxt 3, Vue 3 y Pinia.
+- Frontend: Nuxt 4, Vue 3 y Pinia.
 - Procesamiento: Redis y worker asíncrono de outbox.
 - Tiempo real: Socket.IO.
 - Infraestructura: Docker Compose.
@@ -42,7 +42,7 @@ La portada y las rutas `/tournaments/{id}` son públicas. El Workspace de gesti�
 
 Las proyecciones públicas de torneos, tablas y partidos se sirven desde `/api/v1/tournaments/public`, `/api/v1/tournaments/public/{id}/standings` y `/api/v1/tournaments/public/{id}/matches`. Los partidos incluyen la planilla pública cuando existe; la formación táctica solo aparece después de publicarse explícitamente desde el Workspace.
 
-La configuración local incluye MinIO en `http://localhost:9001`. La importación de plantillas acepta CSV/TXT con `first_name`, `last_name`, `national_id`, `birth_date` y `dorsal_number`; `photo_filename` vincula imágenes JPG, PNG o WEBP incluidas en un ZIP opcional. La proyección pública solo devuelve `photo_url` cuando el roster tiene consentimiento de imagen.
+La configuración local incluye un almacenamiento S3-compatible (SeaweedFS) con interfaz de archivos en `http://localhost:9001`. La importación de plantillas acepta CSV/TXT con `first_name`, `last_name`, `national_id`, `birth_date` y `dorsal_number`; `photo_filename` vincula imágenes JPG, PNG o WEBP incluidas en un ZIP opcional. La proyección pública solo devuelve `photo_url` cuando el roster tiene consentimiento de imagen.
 
 Para ejecutar únicamente el frontend fuera de Docker:
 

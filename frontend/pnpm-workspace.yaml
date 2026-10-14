@@ -1,3 +1,6 @@
 allowBuilds:
   esbuild: true
   vue-demi: true
+minimumReleaseAgeExclude:
+  - '@pinia/nuxt@1.0.3'
+  - pinia@4.1.0

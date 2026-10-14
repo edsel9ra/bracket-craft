@@ -1,20 +1,5 @@
 BEGIN;
 
-CREATE OR REPLACE VIEW v_public_stages
-WITH (security_barrier = true) AS
-SELECT
-    st.id,
-    st.tournament_id,
-    st.name,
-    st.stage_type,
-    st.stage_order
-FROM stages st
-JOIN tournaments tr
-  ON tr.id = st.tournament_id
- AND tr.organization_id = st.organization_id
-WHERE tr.status IN ('published', 'live', 'finished')
-  AND st.tournament_version_id = tr.published_version_id;
-
 CREATE OR REPLACE VIEW v_public_standings
 WITH (security_barrier = true) AS
 SELECT
@@ -82,8 +67,7 @@ SELECT
     m.away_penalties,
     m.winner_team_id,
     m.status,
-    m.resolution_type,
-    m.bracket_code
+    m.resolution_type
 FROM matches m
 JOIN tournaments tr
   ON tr.id = m.tournament_id
@@ -107,7 +91,7 @@ WHERE tr.status IN ('published', 'live', 'finished')
   AND m.tournament_version_id = tr.published_version_id
   AND m.status IN ('scheduled', 'live', 'finished', 'administrative_resolution');
 
-REVOKE ALL ON v_public_stages, v_public_standings, v_public_matches FROM PUBLIC;
-GRANT SELECT ON v_public_stages, v_public_standings, v_public_matches TO bracket_app;
+REVOKE ALL ON v_public_standings, v_public_matches FROM PUBLIC;
+GRANT SELECT ON v_public_standings, v_public_matches TO bracket_app;
 
 COMMIT;

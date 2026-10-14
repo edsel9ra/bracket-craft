@@ -48,7 +48,7 @@ Estos principios no se relajan por urgencia, conveniencia ni preferencia. Solo p
 
 ### 3.3 Frontend
 
-- Toda llamada a la API usa `frontend/composables/useApi.ts`, que selecciona la URL base de servidor/cliente y transporta organización, cookies y CSRF.
+- Toda llamada a la API usa `frontend/app/composables/useApi.ts`, que selecciona la URL base de servidor/cliente y transporta organización, cookies y CSRF.
 - Las rutas públicas (`/`, `/tournaments/{id}`) no dependen de sesión. El Workspace (`/workspace`) exige sesión y organización activa validada.
 
 ### 3.4 Seguridad y configuración
@@ -149,3 +149,4 @@ Los incumplimientos detectados después de fusionar se corrigen con prioridad. S
 | Versión | Fecha | Cambio | Impacto |
 |---------|-------|--------|---------|
 | 1.0.0 | 2026-10-14 | Creación inicial de la constitución, derivada de `README.md`, `AGENTS.md` y `ci.yml`. | Establece principios, reglas, criterios y definición de cumplimiento. |
+| 1.0.1 | 2026-10-14 | Ruta de `useApi.ts` actualizada por la migración a Nuxt 4 (el código de app vive en `frontend/app/`). | Sin cambio de significado; solo actualiza referencias a su ubicación real. |

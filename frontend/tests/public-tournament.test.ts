@@ -6,7 +6,7 @@ import {
   sortPublicStages,
   usesCurrentDoubleEliminationFormat,
   type PublicStage,
-} from '../utils/publicTournament.ts';
+} from '../app/utils/publicTournament.ts';
 
 function stage(id: string, stage_order: number, stage_type: PublicStage['stage_type']): PublicStage {
   return { id, name: id, stage_order, stage_type };

@@ -10,7 +10,7 @@ import {
   recalculatePipeline,
   serializeRulesConfig,
   validateRulesConfig,
-} from '../utils/rulesConfig.ts';
+} from '../app/utils/rulesConfig.ts';
 
 test('normalizes incomplete rules while keeping a detached configuration', () => {
   const source = { points_system: { win: 5 } };

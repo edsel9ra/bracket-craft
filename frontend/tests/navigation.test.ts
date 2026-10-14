@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getApiStatus, isForbidden, isUnauthorized } from '../utils/api.ts';
-import { safeInternalRedirect } from '../utils/navigation.ts';
-import { isSafeCsrfToken, normalizeOrganizationId, normalizeUuid } from '../utils/validation.ts';
+import { getApiStatus, isForbidden, isUnauthorized } from '../app/utils/api.ts';
+import { safeInternalRedirect } from '../app/utils/navigation.ts';
+import { isSafeCsrfToken, normalizeOrganizationId, normalizeUuid } from '../app/utils/validation.ts';
 
 test('accepts a same-origin internal path', () => {
   assert.equal(safeInternalRedirect('/workspace?tab=matches'), '/workspace?tab=matches');
