@@ -1,8 +1,8 @@
 # Constitución de Bracket Craft
 
 **Ruta:** `docs/constitution.md`
-**Versión:** 1.0.0
-**Última actualización:** 2026-10-14
+**Versión:** 1.1.0
+**Última actualización:** 2026-10-19
 **Ámbito:** Este documento define los principios y reglas que gobiernan el desarrollo de Bracket Craft. Tiene precedencia sobre cualquier otra guía del repositorio. `README.md` describe el producto, `AGENTS.md` describe cómo trabajar en el repositorio y `ci.yml` automatiza la verificación; ninguno puede contradecir esta constitución.
 
 ## 1. Propósito
@@ -60,7 +60,7 @@ Estos principios no se relajan por urgencia, conveniencia ni preferencia. Solo p
 
 ### 3.5 Infraestructura y CI
 
-- Python 3.14, Node 24 y pnpm 12.12.2 son las versiones de referencia. Cambiarlas exige actualizar `ci.yml`, `AGENTS.md` y el README en el mismo cambio.
+- Python 3.14, Node 24 y pnpm 12.12.1 son las versiones de referencia. Cambiarlas exige actualizar `ci.yml`, `AGENTS.md` y el README en el mismo cambio.
 - Mantén `aquasecurity/trivy-action@v0.36.0` mientras no se valide una versión posterior; `v0.28.0` está roto.
 - El lockfile del frontend (`pnpm-lock.yaml`) permanece versionado; la instalación usa `--frozen-lockfile`.
 - `docker compose config -q` debe validar tanto la configuración de desarrollo como la de producción.
@@ -150,3 +150,4 @@ Los incumplimientos detectados después de fusionar se corrigen con prioridad. S
 |---------|-------|--------|---------|
 | 1.0.0 | 2026-10-14 | Creación inicial de la constitución, derivada de `README.md`, `AGENTS.md` y `ci.yml`. | Establece principios, reglas, criterios y definición de cumplimiento. |
 | 1.0.1 | 2026-10-14 | Ruta de `useApi.ts` actualizada por la migración a Nuxt 4 (el código de app vive en `frontend/app/`). | Sin cambio de significado; solo actualiza referencias a su ubicación real. |
+| 1.1.0 | 2026-10-19 | **Reglas afectadas:** §3.5 (Infraestructura y CI). Regulariza el cambio que ya estaba presente en el repositorio, donde §3.5 declaraba Python 3.14, Node 24 y la versión 12.12.2 de pnpm sin haber subido la versión de la constitución, y lo corrige a pnpm 12.12.1 (la 12.12.2 no existe en el registro npm; las publicadas cercanas son 12.12.0, 12.12.1, 12.13.0 y 12.14.0). **Motivo:** cerrar la deriva documental de versiones de referencia (R04 de la auditoría técnica del 2026-10-19) y dejar cabecera, §3.5 e historial coherentes. **Incremento menor** porque cambia el contenido de una regla de implementación, no una simple aclaración; no corresponde un parche. | No altera principios ni criterios. Fija una única combinación de versiones de referencia —Python 3.14, Node 24 y pnpm 12.12.1— que debe mantenerse alineada en `ci.yml`, los Dockerfiles, el `packageManager` del frontend, `AGENTS.md`, el README y esta §3.5 en el mismo cambio. La alineación técnica de esas fuentes se tramita en un commit separado de esta enmienda. Sin impacto funcional en el código existente. |
