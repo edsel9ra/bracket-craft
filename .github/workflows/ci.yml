@@ -11,6 +11,20 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bracket_craft
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bracket_craft"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,8 +34,42 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
         run: python -m pip install -r backend/requirements.txt
-      - name: Run tests
+      - name: Run unit tests without database
         working-directory: backend
+        run: pytest -q
+      - name: Create application role
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/infra/postgres:/infra:ro" \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 \
+            -e POSTGRES_DB=bracket_craft -e POSTGRES_USER=postgres \
+            -e PGPASSWORD=postgres_test_password \
+            -e BRACKET_DB_PASSWORD=bracket_app_test_password \
+            -e APP_ENV=development \
+            postgres:17-alpine bash /infra/init/00_roles.sh
+      - name: Initialize database schema
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/infra/postgres:/infra:ro" \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 \
+            -e PGUSER=postgres -e PGPASSWORD=postgres_test_password \
+            -e PGDATABASE=bracket_craft \
+            postgres:17-alpine sh -c \
+            'psql -v ON_ERROR_STOP=1 -f /infra/init/01_schema.sql &&
+             psql -v ON_ERROR_STOP=1 -f /infra/init/02_public_projections.sql &&
+             psql -v ON_ERROR_STOP=1 -f /infra/init/03_hardening.sql'
+      - name: Apply migrations with administrator role
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/infra/postgres:/infra:ro" \
+            -e DATABASE_URL="postgresql://postgres:postgres_test_password@127.0.0.1:5432/bracket_craft" \
+            postgres:17-alpine sh /infra/migrate.sh
+      - name: Run database tests with application role
+        working-directory: backend
+        env:
+          RUN_DATABASE_TESTS: '1'
+          DATABASE_URL: postgresql+asyncpg://bracket_app:bracket_app_test_password@127.0.0.1:5432/bracket_craft
+          DATABASE_ADMIN_URL: postgresql+asyncpg://postgres:postgres_test_password@127.0.0.1:5432/bracket_craft
         run: pytest -q
       - name: Compile application
         working-directory: backend
