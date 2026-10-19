@@ -60,7 +60,7 @@ Estos principios no se relajan por urgencia, conveniencia ni preferencia. Solo p
 
 ### 3.5 Infraestructura y CI
 
-- Python 3.12, Node 22 y pnpm 11.8.0 son las versiones de referencia. Cambiarlas exige actualizar `ci.yml`, `AGENTS.md` y el README en el mismo cambio.
+- Python 3.14, Node 24 y pnpm 12.12.2 son las versiones de referencia. Cambiarlas exige actualizar `ci.yml`, `AGENTS.md` y el README en el mismo cambio.
 - Mantén `aquasecurity/trivy-action@v0.36.0` mientras no se valide una versión posterior; `v0.28.0` está roto.
 - El lockfile del frontend (`pnpm-lock.yaml`) permanece versionado; la instalación usa `--frozen-lockfile`.
 - `docker compose config -q` debe validar tanto la configuración de desarrollo como la de producción.

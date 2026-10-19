@@ -28,3 +28,9 @@ En `.agents/skills/` además de `sdd` y `find-skills`: `fastapi`, `python-testin
 - Contenedor `web` escribe `.nuxt` como root en volumen del host: borrar con `docker run -v ... alpine:3 rm -rf` antes de builds locales.
 - Healthcheck de SeaweedFS con `localhost` falla (IPv6): usar `127.0.0.1` + `start_period` (boot de raft/filer tarda ~30-60s).
 - Los /tmp de opencode son EFÍMEROS al reinicar el server: recrear venv/pnpm-sandboxes.
+
+## Auditoría técnica integral (2026-10-19)
+- Informe completo en `docs/auditoria-2026-10-19.md` (3 pasadas: backend/datos, API/seguridad/pruebas, frontend/infra).
+- ALTOS: `players` sin RLS filtra PII cross-tenant vía dedupe HMAC; compose de producción no resetea ports/volumes (usar `!reset []`); inmutabilidad de resultados cerrados sin trigger en BD; constitución §3.5 desalineada de ci.yml y sin commit.
+- Plan priorizado P0-P2 y matriz R01-R32 en el informe. `specs/` sigue vacía.
+- No ejecutado en la auditoría (sin toolchain/Docker): pytest, docker compose config, pip-audit/pnpm audit/Trivy.
