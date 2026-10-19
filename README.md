@@ -71,6 +71,86 @@ Requisitos y comportamiento:
 
 La CI valida el merge real con variables dummy y las aserciones de `infra/scripts/assert_production_compose.py`; el comando exacto está en `AGENTS.md`.
 
+## Cifrado de la fecha de nacimiento y runbook de despliegue
+
+La fecha de nacimiento de los jugadores se almacena cifrada con `PLAYER_DATA_KEY` en `players.birth_date_encrypted`. El rol de aplicación puede insertarla, pero no leer el texto cifrado ni, desde la migración 017, la fecha en claro. La edad (`age_at_reference` y `age_reference_year`) se materializa por jugador y se ajusta con el año de inicio del torneo; la fecha completa no se expone en la API, el Workspace, las proyecciones públicas, los errores ni los logs.
+
+Sobre una base con datos históricos, el cambio se aplica en dos fases con una ventana de mantenimiento. La secuencia es **017 → imagen nueva → backfill → 018**; no apliques la 018 hasta que el backfill termine con salida 0. `MIGRATION_TARGET` es una variable no secreta del servicio `db-migrate`: vacía aplica todas las migraciones pendientes y `017`/`018` limitan la aplicación a esa versión. El runner sigue validando los checksums de todos los archivos, también los posteriores al target.
+
+Los comandos siguientes usan el perfil de producción; en desarrollo, define `COMPOSE="docker compose"`. En local, carga el `.env` en la shell (`set -a; . ./.env; set +a`) para que `POSTGRES_PASSWORD`, `POSTGRES_DB` y `PLAYER_DATA_KEY` estén exportados. En producción, los secretos se inyectan con el gestor externo y nunca se guardan en el repositorio.
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+```
+
+1. **Copia de seguridad verificada (estado 016).** No continúes sin un archivo restaurable. Guárdalo fuera del repositorio (contiene datos personales) y protégelo; no lo commitees.
+
+   ```sh
+   $COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre017.dump"
+   $COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre017.dump" >/dev/null && echo "backup OK"
+   ```
+
+2. **Ventana de mantenimiento.** Detén `api` y `worker` para que ninguna instancia antigua escriba la fecha en claro. La 017 revoca el `SELECT`/`INSERT` de `birth_date` a `bracket_app`; no arranques la aplicación hasta completar la 018.
+
+   ```sh
+   $COMPOSE stop api worker
+   $COMPOSE ps
+   ```
+
+3. **Migración 017 (esquema intermedio).** Aplica el campo cifrado, la edad y los permisos, y deja la fecha en claro solo para el backfill administrativo.
+
+   ```sh
+   MIGRATION_TARGET=017 $COMPOSE run --rm db-migrate
+   ```
+
+4. **Imagen nueva del backend.** Debe contener `scripts.encrypt_birth_dates`; en producción despliega la imagen publicada por el pipeline en lugar de construirla en el host.
+
+   ```sh
+   $COMPOSE build api
+   ```
+
+5. **Backfill one-off.** Se ejecuta sobre la imagen del backend (`api`) con la conexión administrativa `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY`, y con `--no-deps` para no disparar `db-migrate` (el target por defecto aplicaría la 018 antes de tiempo). La salida debe ser 0. Si se interrumpe, se reanuda con el mismo comando: solo procesa filas pendientes. Una clave incorrecta o un HMAC que no coincide aborta sin escribir. Los logs solo muestran conteos, lotes y duración.
+
+   ```sh
+   export DATABASE_ADMIN_URL="postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bracket_craft}"
+   $COMPOSE run --rm --no-deps \
+     -e DATABASE_ADMIN_URL -e PLAYER_DATA_KEY \
+     api python -m scripts.encrypt_birth_dates
+   ```
+
+6. **Migración 018 (cierre).** Verifica que no queden pendientes, hace obligatorio el cifrado y elimina `birth_date`. Falla de forma cerrada si el backfill no terminó, sin dejar cambios parciales.
+
+   ```sh
+   MIGRATION_TARGET=018 $COMPOSE run --rm db-migrate
+   ```
+
+7. **Arranque y smoke.** Confirma la salud del stack, la proyección pública y el flujo del Workspace.
+
+   ```sh
+   $COMPOSE up -d api worker
+   $COMPOSE exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready').read().decode())"
+   $COMPOSE exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/tournaments/public').status)"
+   $COMPOSE ps
+   ```
+
+   Smoke funcional: inicia sesión en el Workspace, abre un torneo, registra un jugador y comprueba que el listado muestra `Edad: {age}`; abre la página pública del torneo y confirma que muestra la edad y nunca la fecha. En desarrollo, ejecuta el seed con `docker compose exec api python -m scripts.seed_demo`.
+
+**Instalación nueva.** `docker compose up --build` aplica todas las migraciones; la 018 no encuentra pendientes porque la tabla está vacía y no se ejecuta el backfill. El seed de desarrollo usa el esquema final.
+
+### Reversión
+
+- **Antes de 017:** restaura la copia de seguridad y despliega la imagen anterior.
+
+  ```sh
+  $COMPOSE stop api worker
+  $COMPOSE exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < "$HOME/backup-pre017.dump"
+  $COMPOSE up -d api worker
+  ```
+
+- **Entre 017 y 018:** la aplicación antigua no puede insertar la fecha porque la 017 revocó el permiso. No vuelvas a la imagen antigua sobre el esquema intermedio: corrige la clave o los datos y reintenta el backfill. Para una reversión total, restaura la copia previa a la 017 y despliega la imagen anterior.
+- **Después de 018:** no hay vuelta atrás de código; solo *forward-fix* con una migración nueva. No edites la 018 ni restaures la fecha en claro a mano. Los snapshots anteriores a la 017 pueden contenerla: su tratamiento y la rotación de `PLAYER_DATA_KEY` son deuda separada.
+- **Fallo de la 018:** es transaccional; corrige los pendientes, reintenta el backfill y vuelve a ejecutar la 018. Si el backfill reporta una fecha imposible, corrige los datos reportados (solo ids internos) y reanuda.
+
 ## Alcance inicial
 
 - Registro y login por email/password.
@@ -86,6 +166,8 @@ La CI valida el merge real con variables dummy y las aserciones de `infra/script
 ## Seguridad
 
 El backend establece `app.current_organization_id` y `app.current_user_id` dentro de cada transacción. Las tablas tenant-owned tienen RLS y las vistas públicas no exponen documentos ni fechas de nacimiento.
+
+La fecha de nacimiento se almacena cifrada con `PLAYER_DATA_KEY` y el rol de aplicación no puede leer el texto cifrado (patrón *write-only*, igual que el documento). Desde la migración 017 tampoco puede leer ni insertar la fecha en claro; solo escribe el campo cifrado y la edad derivada. La API y el Workspace exponen la edad (`age` solo en `GET /tournaments/{id}/rosters`), nunca la fecha completa. La exposición declarada —la edad y el año de referencia permiten inferir el año de nacimiento— es el mismo dato derivado que la proyección pública ya mostraba. La rotación de `PLAYER_DATA_KEY` y el tratamiento de copias anteriores a la 017 son deuda separada.
 
 La administración global está separada del workspace en `/admin`. Requiere un registro en `platform_admins`; para el primer arranque local se puede indicar `PLATFORM_ADMIN_EMAIL` en `.env` después de registrar la cuenta. Las acciones de usuarios, organizaciones y membresías se auditan en `platform_audit_logs` y no permiten editar directamente resultados ni versiones publicadas.
 

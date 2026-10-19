@@ -36,6 +36,8 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - Las rutas `/` y `/tournaments/{id}` son **públicas**. El Workspace (`/workspace`) requiere sesión y una organización activa validada.
 - La administración global vive en `/admin`, separada del Workspace. Requiere un registro en `platform_admins` y no puede editar resultados ni versiones publicadas.
 - `scripts.seed_demo` es solo para desarrollo/local: no es una migración ni un comando de producción.
+- `scripts.encrypt_birth_dates` es un comando operativo de despliegue, no un seed: requiere `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY` y se ejecuta como servicio one-off entre las migraciones 017 y 018.
+- La fecha de nacimiento de los jugadores se almacena solo cifrada (`players.birth_date_encrypted`) y es *write-only* para el rol de aplicación; la edad y el año de referencia son los datos derivados legibles.
 - Las proyecciones públicas **nunca** exponen documentos de identidad ni fechas de nacimiento. `photo_url` solo se devuelve si el roster tiene consentimiento de imagen.
 - La formación táctica solo es pública después de publicarse explícitamente desde el Workspace.
 - Las versiones de torneo son inmutables una vez publicadas.
@@ -84,6 +86,27 @@ pnpm install
 pnpm dev
 ```
 
+### Cifrado de la fecha de nacimiento (runbook)
+
+La fecha completa se guarda cifrada en `players.birth_date_encrypted` y queda fuera del `SELECT` de `bracket_app`; `age_at_reference` y `age_reference_year` alimentan `age`. Sobre una base con datos históricos aplica la secuencia **017 → imagen nueva → backfill → 018** con `api` y `worker` detenidos. `MIGRATION_TARGET` es una variable no secreta del servicio `db-migrate` (vacía aplica todas las migraciones). El runbook completo, con copia de seguridad verificada, smoke y reversión, está en `README.md`.
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre017.dump"
+$COMPOSE stop api worker
+MIGRATION_TARGET=017 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+export DATABASE_ADMIN_URL="postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bracket_craft}"
+$COMPOSE run --rm --no-deps -e DATABASE_ADMIN_URL -e PLAYER_DATA_KEY \
+  api python -m scripts.encrypt_birth_dates
+MIGRATION_TARGET=018 $COMPOSE run --rm db-migrate
+$COMPOSE up -d api worker
+```
+
+- El backfill debe salir 0; es idempotente y reanudable y solo procesa filas pendientes.
+- `--no-deps` evita que el one-off dispare `db-migrate` con el target por defecto y aplique la 018 antes de tiempo.
+- Reversión: antes de 017, restaurar el backup y la imagen anterior; entre 017 y 018, corregir y reintentar el backfill (la app antigua no puede escribir la fecha); después de 018, solo *forward-fix* con una migración nueva.
+
 ### Verificación (mismos checks que CI)
 
 ```sh
@@ -95,6 +118,11 @@ cd frontend && pnpm test
 cd frontend && pnpm run typecheck
 cd frontend && pnpm run build
 sh -n infra/postgres/migrate.sh
+# Runner de MIGRATION_TARGET (requiere PostgreSQL local; misma prueba que CI)
+docker run --rm --network host -v "$PWD/infra:/infra:ro" \
+  -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGUSER=postgres \
+  -e PGPASSWORD=postgres_test_password \
+  postgres:17-alpine sh /infra/scripts/test_migrate_target.sh
 docker compose config -q
 pip-audit -r backend/requirements.txt
 cd frontend && pnpm audit --prod --audit-level high
@@ -136,7 +164,8 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 
 - **Servicios de Docker Compose:** PostgreSQL, `db-migrate` (job de una sola ejecución), API, worker, Redis, `storage` (SeaweedFS) y web.
 - **Inicialización de PostgreSQL:** `infra/postgres/init/` solo corre en el primer arranque del volumen.
-- **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256.
+- **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256. `MIGRATION_TARGET` (vacía o `NNN`; no existe una bandera `--target`) limita la aplicación a esa versión, valida los checksums de todos los archivos y no desaplica nada.
+- **Cifrado de la fecha de nacimiento:** las migraciones 017 y 018 se aplican en dos fases con `MIGRATION_TARGET` y el backfill one-off `python -m scripts.encrypt_birth_dates` (`DATABASE_ADMIN_URL` + `PLAYER_DATA_KEY`, `--no-deps`). La 018 falla de forma cerrada si quedan pendientes.
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
@@ -156,7 +185,7 @@ specs/
 backend/                     API FastAPI (async SQLAlchemy)
   app/main.py                Registro de routers
   app/modules/               Límites por funcionalidad
-  scripts/                   Utilidades (p. ej. seed_demo, solo desarrollo)
+  scripts/                   Utilidades de desarrollo (seed_demo) y operativas (encrypt_birth_dates)
   tests/                     Pruebas pytest
 frontend/                    Nuxt 4 / Vue 3 / Pinia (código de app en frontend/app/)
   app/composables/useApi.ts   Cliente HTTP centralizado
@@ -167,6 +196,7 @@ infra/postgres/
 infra/scripts/
   assert_production_compose.py  Aserciones del merge dev+prod (CI)
   verify_version_sources.py    Consistencia de versiones de referencia (CI)
+  test_migrate_target.sh       Pruebas del runner con MIGRATION_TARGET (CI)
 docker-compose.yml           Entorno de desarrollo
 docker-compose.production.yml  Perfil de producción
 .env.example                 Defaults solo de desarrollo
@@ -205,6 +235,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 - **Versiones fijadas en CI:** Python 3.14, Node 24 y pnpm 12.12.1 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
 - **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
 - **Compose y secuencias:** `ports: []` y `volumes: []` **no** anulan las secuencias heredadas de desarrollo; el merge las concatena. El overlay de producción usa `!reset []`/`!override` (Compose ≥2.24.4) y la CI valida el JSON renderizado con `infra/scripts/assert_production_compose.py`. No vuelvas a `[]`.
+- **Cifrado de la fecha (017/018):** la 017 revoca `SELECT`/`INSERT` de `birth_date` y la 018 falla de forma cerrada si el backfill dejó pendientes. En una base con datos no uses el flujo por defecto: sigue el runbook y ejecuta el one-off con `--no-deps`. Tras la 018 no hay reversión de código, solo *forward-fix*.
 - **Migración 002:** un volumen limpio de PostgreSQL había fallado antes con `cannot drop columns from view`. Causa raíz: `infra/postgres/init/02_public_projections.sql` había sido actualizado para reflejar el estado post-012 (`v_public_stages` y `bracket_code` en `v_public_matches`), pero la migración 001 reescribe `v_public_matches` sin `bracket_code`, y `CREATE OR REPLACE VIEW` no puede soltar columnas. La corrección fue revertir `init/02` al estado pre-012 (los scripts de init no son migraciones y no tienen checksum), de modo que 012 introduzca esos cambios en el orden correcto. Solo afecta a volúmenes limpios; los existentes no re-ejecutan init.
 - **Windows/WSL:** si pnpm falla con `EPERM` al enlazar `node_modules`, construye y ejecuta mediante el servicio `web` de Docker.
 - **Seed demo:** solo admite entornos de desarrollo/local; no lo ejecutes contra producción.
@@ -214,7 +245,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 
 La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que corresponda a tu cambio:
 
-- **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis.
+- **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis. El job también ejecuta `infra/scripts/test_migrate_target.sh` contra PostgreSQL 17 y la suite con base (`RUN_DATABASE_TESTS=1`).
 - **`frontend` (Frontend checks):** `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm run typecheck` y `pnpm run build` desde `frontend/`.
 - **`infrastructure` (Infrastructure checks):** `python3 infra/scripts/verify_version_sources.py --exclude-constitution`, `sh -n infra/postgres/migrate.sh`, versión de Compose ≥2.24.4, `docker compose config -q` para desarrollo y para el merge dev+prod con variables dummy, y las aserciones de `infra/scripts/assert_production_compose.py` sobre el JSON renderizado.
 - **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt`, `pnpm audit --prod --audit-level high` y el escaneo Trivy descrito en Comandos.
