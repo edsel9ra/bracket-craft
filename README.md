@@ -9,6 +9,7 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 - Procesamiento: Redis y worker asíncrono de outbox.
 - Tiempo real: Socket.IO.
 - Infraestructura: Docker Compose.
+- Versiones de referencia: Python 3.14, Node 24 y pnpm 12.12.1.
 
 ## Inicio local
 
