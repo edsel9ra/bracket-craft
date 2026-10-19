@@ -47,6 +47,7 @@ interface RosterSummary {
   first_name: string;
   last_name: string;
   dorsal_number: number;
+  age: number;
   photo_url: string | null;
   photo_consent: boolean;
   is_active: boolean;
@@ -950,7 +951,7 @@ loading.value = false;
                 <div v-for="roster in selectedRosters" :key="roster.roster_id" class="roster-card">
                  <img v-if="roster.photo_url && roster.photo_consent" :src="roster.photo_url" :alt="`${roster.first_name} ${roster.last_name}`" class="roster-photo" />
                  <div v-else class="roster-photo roster-photo-empty" aria-hidden="true">{{ roster.first_name.charAt(0) }}</div>
-                 <div class="roster-card-info"><strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong><small>{{ teamName(roster.team_id) }}</small></div>
+                 <div class="roster-card-info"><strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong><small>{{ teamName(roster.team_id) }}</small><small>{{ t('setup.age', { age: roster.age }) }}</small></div>
                    <div v-if="canManageTournaments" class="photo-actions">
                     <button class="photo-consent" type="button" :disabled="photoBusyRosterId === roster.roster_id" @click="toggleRosterPhotoConsent(roster)">
                       {{ roster.photo_consent ? t('setup.revokePhotoConsent') : t('setup.grantPhotoConsent') }}
