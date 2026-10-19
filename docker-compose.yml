@@ -25,6 +25,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       PGPASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password}
       PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-}
+      # Non-secret: empty applies every pending migration. The birth-date
+      # encryption rollout applies 017 and 018 in phases (see README).
+      MIGRATION_TARGET: ${MIGRATION_TARGET:-}
     depends_on:
       db:
         condition: service_healthy

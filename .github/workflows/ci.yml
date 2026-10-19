@@ -64,6 +64,13 @@ jobs:
             -v "$PWD/infra/postgres:/infra:ro" \
             -e DATABASE_URL="postgresql://postgres:postgres_test_password@127.0.0.1:5432/bracket_craft" \
             postgres:17-alpine sh /infra/migrate.sh
+      - name: Test MIGRATION_TARGET in migration runner
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/infra:/infra:ro" \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 \
+            -e PGUSER=postgres -e PGPASSWORD=postgres_test_password \
+            postgres:17-alpine sh /infra/scripts/test_migrate_target.sh
       - name: Run database tests with application role
         working-directory: backend
         env:
