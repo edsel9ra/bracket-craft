@@ -209,6 +209,23 @@ async def test_player_references_use_composite_foreign_keys(db_session):
 async def test_player_grants_are_column_scoped_and_hide_the_encrypted_document(
     db_session,
 ):
+    columns = (
+        await db_session.execute(
+            text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'players'
+                  AND column_name IN ('birth_date', 'birth_date_encrypted',
+                                      'age_at_reference', 'age_reference_year')
+            """)
+        )
+    ).scalars().all()
+    assert "birth_date" not in columns, (
+        "La fecha de nacimiento en claro debe haberse eliminado"
+    )
+    assert "birth_date_encrypted" in columns
+
     grants = (
         await db_session.execute(
             text("""
@@ -221,6 +238,18 @@ async def test_player_grants_are_column_scoped_and_hide_the_encrypted_document(
                         AS select_national_id_encrypted,
                     has_column_privilege('bracket_app', 'public.players', 'national_id_encrypted', 'INSERT')
                         AS insert_national_id_encrypted,
+                    has_column_privilege('bracket_app', 'public.players', 'birth_date_encrypted', 'SELECT')
+                        AS select_birth_date_encrypted,
+                    has_column_privilege('bracket_app', 'public.players', 'birth_date_encrypted', 'INSERT')
+                        AS insert_birth_date_encrypted,
+                    has_column_privilege('bracket_app', 'public.players', 'age_at_reference', 'SELECT')
+                        AS select_age_at_reference,
+                    has_column_privilege('bracket_app', 'public.players', 'age_at_reference', 'INSERT')
+                        AS insert_age_at_reference,
+                    has_column_privilege('bracket_app', 'public.players', 'age_reference_year', 'SELECT')
+                        AS select_age_reference_year,
+                    has_column_privilege('bracket_app', 'public.players', 'age_reference_year', 'INSERT')
+                        AS insert_age_reference_year,
                     has_table_privilege('bracket_app', 'public.players', 'UPDATE')
                         AS update_players,
                     has_table_privilege('bracket_app', 'public.players', 'DELETE')
@@ -233,6 +262,12 @@ async def test_player_grants_are_column_scoped_and_hide_the_encrypted_document(
     assert grants["insert_organization_id"] is True
     assert grants["select_national_id_encrypted"] is False
     assert grants["insert_national_id_encrypted"] is True
+    assert grants["select_birth_date_encrypted"] is False
+    assert grants["insert_birth_date_encrypted"] is True
+    assert grants["select_age_at_reference"] is True
+    assert grants["insert_age_at_reference"] is True
+    assert grants["select_age_reference_year"] is True
+    assert grants["insert_age_reference_year"] is True
     assert grants["update_players"] is False
     assert grants["delete_players"] is False
 

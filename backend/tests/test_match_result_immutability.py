@@ -31,6 +31,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import get_settings
 from app.core.database import set_rls_context
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
@@ -348,6 +349,7 @@ async def _insert_roster(
         tenant.organization_id,
         first_name=f"R03{dorsal_number}",
         last_name=f"Team{team_id.hex[:4]}",
+        reference_year=2026,
     )
     roster_id = (
         await session.execute(
@@ -1174,7 +1176,7 @@ async def test_seed_demo_still_closes_and_confirms_matches(
         admin_connection = await _connect(database_admin_url, database)
         try:
             await _apply_init(admin_connection)
-            await _apply_migrations(admin_connection, first=1, last=16)
+            await _apply_migrations(admin_connection, first=1, last=18)
         finally:
             await admin_connection.close()
 
@@ -1214,6 +1216,56 @@ async def test_seed_demo_still_closes_and_confirms_matches(
             assert all(
                 row["home_score"] is not None and row["away_score"] is not None
                 for row in confirmed
+            )
+
+            # The seed encrypts the birth date and materializes the age with the
+            # tournament start year; the plaintext column no longer exists.
+            settings = get_settings()
+            players = await seed_connection.fetch(
+                """
+                SELECT p.first_name,
+                       p.last_name,
+                       p.age_at_reference,
+                       p.age_reference_year,
+                       pgp_sym_decrypt(p.birth_date_encrypted, $3)::date::text
+                           AS birth_date,
+                       EXTRACT(YEAR FROM t.start_date)::int AS tournament_year
+                FROM public.players p
+                JOIN public.organizations o ON o.id = p.organization_id
+                JOIN public.tournaments t
+                  ON t.id = $2
+                 AND t.organization_id = p.organization_id
+                WHERE o.slug = $1
+                """,
+                seed_demo.DEMO_ORGANIZATION_SLUG,
+                tournament_id,
+                settings.player_data_key,
+            )
+            specs = {
+                (player.first_name, player.last_name): player.birth_date
+                for player in seed_demo.PLAYER_SPECS
+            }
+            assert len(players) == seed_demo.DEMO_PLAYER_COUNT * len(
+                seed_demo.TEAM_SPECS
+            )
+            for row in players:
+                expected_birth_date = specs[(row["first_name"], row["last_name"])]
+                assert row["birth_date"] == expected_birth_date.isoformat()
+                assert row["age_reference_year"] == row["tournament_year"]
+                assert row["age_at_reference"] == (
+                    row["tournament_year"] - expected_birth_date.year
+                )
+            assert (
+                await seed_connection.fetchval(
+                    """
+                    SELECT count(*)
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'players'
+                      AND column_name = 'birth_date'
+                    """
+                )
+                == 0
             )
 
             # The trigger also protects the results the seed just confirmed.

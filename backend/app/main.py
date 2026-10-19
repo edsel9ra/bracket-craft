@@ -1,15 +1,18 @@
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from uuid import UUID
 
 import socketio
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.csrf import CSRF_HEADER_NAME, new_csrf_token, validate_csrf_request
@@ -26,6 +29,8 @@ from app.modules.tournaments.router import router as tournaments_router
 
 PUBLIC_REALTIME_EVENTS = frozenset({"MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"})
 SOCKET_REVALIDATION_SECONDS = 30
+VALIDATION_ERROR_FIELDS = ("type", "loc", "msg")
+logger = logging.getLogger(__name__)
 settings = get_settings()
 allowed_origins = [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
 sio = socketio.AsyncServer(
@@ -303,6 +308,51 @@ async def lifespan(app: FastAPI):
 
 
 api = FastAPI(title="Bracket Craft API", version="0.1.0", lifespan=lifespan)
+
+
+async def _request_validation_exception_handler(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Reject invalid payloads without echoing the rejected input.
+
+    FastAPI's default 422 includes ``input`` and ``ctx``; both can carry the
+    date of birth or the national document. Only ``type``, ``loc`` and ``msg``
+    are kept so clients can still map the error to a field.
+    """
+
+    errors = [
+        {field: error[field] for field in VALIDATION_ERROR_FIELDS if field in error}
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": errors},
+    )
+
+
+def _dbapi_sqlstate(exc: DBAPIError) -> str:
+    code = getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
+    return str(code) if code else "desconocido"
+
+
+async def _dbapi_exception_handler(_request: Request, exc: DBAPIError) -> JSONResponse:
+    """Answer an unhandled database error without leaking the failing row.
+
+    Only the SQLSTATE is logged. Neither ``str(exc)`` (which contains the SQL
+    statement and parameters) nor the driver message (which may contain the
+    failing row) is written to logs or to the response.
+    """
+
+    logger.error("Error de base de datos no controlado (SQLSTATE %s)", _dbapi_sqlstate(exc))
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Error interno del servidor"},
+    )
+
+
+api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
+api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
 
 
 async def _buffer_request_body(request: Request, max_bytes: int) -> bool:

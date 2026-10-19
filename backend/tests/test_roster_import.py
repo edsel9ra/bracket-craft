@@ -26,6 +26,32 @@ def test_parse_roster_csv_supports_bom_quotes_and_photo_reference():
     assert rows[0].photo_filename == "photos/ana.JPG"
 
 
+def test_parse_roster_csv_requires_the_birth_date_column():
+    raw = (
+        "first_name,last_name,national_id,dorsal_number\n"
+        "Ana,Player,ID-1,7\n"
+    ).encode()
+
+    with pytest.raises(RosterImportError, match="birth_date"):
+        parse_roster_csv(raw, uuid4())
+
+
+def test_parse_roster_csv_rejects_the_whole_file_on_an_invalid_birth_date():
+    raw = (
+        "first_name,last_name,national_id,birth_date,dorsal_number\n"
+        "Ana,Player,ID-1,2000-01-02,7\n"
+        "Bruno,Player,ID-2,2999-01-01,8\n"
+    ).encode()
+
+    with pytest.raises(RosterImportError) as error:
+        parse_roster_csv(raw, uuid4())
+
+    message = str(error.value)
+    assert "Fila 3" in message
+    # The rejected value is never repeated in the error message (RF-007/RF-012).
+    assert "2999-01-01" not in message
+
+
 def test_parse_roster_csv_rejects_photo_path_traversal():
     raw = (
         "first_name,last_name,national_id,birth_date,dorsal_number,photo_filename\n"

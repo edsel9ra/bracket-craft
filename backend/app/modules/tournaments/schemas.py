@@ -103,6 +103,10 @@ class RosterPlayerResponse(BaseModel):
     is_active: bool
 
 
+class RosterPlayerListResponse(RosterPlayerResponse):
+    age: int
+
+
 class UpdatePhotoConsentRequest(BaseModel):
     photo_consent: bool
 

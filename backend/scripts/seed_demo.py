@@ -161,6 +161,30 @@ def build_player_specs() -> tuple[PlayerSpec, ...]:
 PLAYER_SPECS = build_player_specs()
 
 
+def _validate_birth_dates(players: tuple[PlayerSpec, ...], today: date) -> None:
+    """Reject impossible demo birth dates before inserting any row.
+
+    A demo player is created at seed time, so a future date and a date after the
+    player's creation collapse into the same comparison. The report identifies
+    the players by internal team code and dorsal number and never repeats the
+    rejected value.
+    """
+
+    impossible = [player for player in players if player.birth_date > today]
+    if not impossible:
+        return
+
+    identifiers = ", ".join(
+        f"{player.team_code}-{player.dorsal_number:02d}"
+        for player in impossible[:20]
+    )
+    raise ValueError(
+        f"Seed abortado: {len(impossible)} jugador(es) con fecha de nacimiento "
+        f"futura o posterior a su creación (equipos/dorsales: {identifiers}). "
+        "Corrija las fechas e intente de nuevo."
+    )
+
+
 def validate_demo_definition() -> None:
     team_codes = {team.code for team in TEAM_SPECS}
     match_codes = {match.code for match in MATCH_SPECS}
@@ -172,6 +196,7 @@ def validate_demo_definition() -> None:
         raise ValueError("La definición demo debe contener seis enlaces de avance")
     if len(PLAYER_SPECS) != len(TEAM_SPECS) * DEMO_PLAYER_COUNT:
         raise ValueError("La definición demo debe contener doce jugadores por equipo")
+    _validate_birth_dates(PLAYER_SPECS, datetime.now(timezone.utc).date())
     if any(player.team_code not in team_codes for player in PLAYER_SPECS):
         raise ValueError("La plantilla demo contiene un equipo inexistente")
     if any(
@@ -559,6 +584,10 @@ async def _ensure_rosters(
         start_date.day,
         tzinfo=timezone.utc,
     )
+    reference_year = start_date.year
+    # Fail before writing anything: a demo player is created now, so an
+    # impossible date is always a future date.
+    _validate_birth_dates(PLAYER_SPECS, datetime.now(timezone.utc).date())
     for player in PLAYER_SPECS:
         team_id = team_ids[player.team_code]
         document_hmac = _player_hmac(player.national_id, player_data_key)
@@ -582,11 +611,14 @@ async def _ensure_rosters(
                 text("""
                     INSERT INTO players
                         (organization_id, first_name, last_name, document_type,
-                         national_id_encrypted, national_id_hmac, issuing_country, birth_date)
+                         national_id_encrypted, national_id_hmac, issuing_country,
+                         birth_date_encrypted, age_at_reference, age_reference_year)
                     VALUES (
                         :organization_id, :first_name, :last_name, 'internal',
                         pgp_sym_encrypt(CAST(:national_id AS TEXT), :player_data_key),
-                        :national_id_hmac, 'COL', :birth_date
+                        :national_id_hmac, 'COL',
+                        pgp_sym_encrypt(CAST(:birth_date AS TEXT), :player_data_key),
+                        :age_at_reference, :age_reference_year
                     )
                     RETURNING id
                 """),
@@ -597,7 +629,9 @@ async def _ensure_rosters(
                     "national_id": player.national_id,
                     "player_data_key": player_data_key,
                     "national_id_hmac": document_hmac,
-                    "birth_date": player.birth_date,
+                    "birth_date": player.birth_date.isoformat(),
+                    "age_at_reference": reference_year - player.birth_date.year,
+                    "age_reference_year": reference_year,
                 },
             )
             player_id = result.scalar_one()

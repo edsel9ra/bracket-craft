@@ -148,22 +148,34 @@ async def insert_player(
     issuing_country: str = "ARG",
     national_id_hmac: str | None = None,
     birth_date: date | str = "2000-01-01",
+    reference_year: int | None = None,
 ) -> UUID:
-    """Insert a minimal tenant-owned player and return its id."""
+    """Insert a minimal tenant-owned player and return its id.
+
+    The birth date is write-only: it is stored encrypted with
+    ``PLAYER_DATA_KEY`` and never written in clear text. The materialized age
+    uses the explicit ``reference_year`` or, when omitted, the current year.
+    Tests that assert a concrete age pass it explicitly to stay deterministic.
+    """
 
     if isinstance(birth_date, str):
         birth_date = date.fromisoformat(birth_date)
+
+    reference_year = reference_year if reference_year is not None else date.today().year
+    age_at_reference = reference_year - birth_date.year
 
     result = await session.execute(
         text("""
             INSERT INTO players (
                 organization_id, first_name, last_name, document_type,
-                national_id_encrypted, national_id_hmac, issuing_country, birth_date
+                national_id_encrypted, national_id_hmac, issuing_country,
+                birth_date_encrypted, age_at_reference, age_reference_year
             )
             VALUES (
                 :organization_id, :first_name, :last_name, :document_type,
                 decode('00', 'hex'), :national_id_hmac, :issuing_country,
-                CAST(:birth_date AS DATE)
+                pgp_sym_encrypt(CAST(:birth_date AS TEXT), :player_data_key),
+                :age_at_reference, :reference_year
             )
             RETURNING id
         """),
@@ -174,7 +186,10 @@ async def insert_player(
             "document_type": document_type,
             "national_id_hmac": national_id_hmac or uuid4().hex * 2,
             "issuing_country": issuing_country,
-            "birth_date": birth_date,
+            "birth_date": birth_date.isoformat(),
+            "player_data_key": get_settings().player_data_key,
+            "age_at_reference": age_at_reference,
+            "reference_year": reference_year,
         },
     )
     return result.scalar_one()

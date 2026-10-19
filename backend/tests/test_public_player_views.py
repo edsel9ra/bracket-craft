@@ -16,6 +16,7 @@ feeds the wrapper stays inaccessible to the application role.
 from __future__ import annotations
 
 import re
+from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
@@ -36,7 +37,9 @@ SENSITIVE_COLUMNS = (
 )
 
 
-async def _create_tournament(session, tenant, *, label: str) -> tuple[UUID, UUID, UUID]:
+async def _create_tournament(
+    session, tenant, *, label: str, start_date: str = "2026-01-01"
+) -> tuple[UUID, UUID, UUID]:
     """Create a draft tournament with its first version and one round-robin stage."""
 
     tournament_id = (
@@ -45,12 +48,15 @@ async def _create_tournament(session, tenant, *, label: str) -> tuple[UUID, UUID
                 INSERT INTO tournaments
                     (organization_id, name, season, start_date, status, current_draft_config)
                 VALUES
-                    (:organization_id, :name, '2026', '2026-01-01', 'draft', '{}'::jsonb)
+                    (:organization_id, :name, :season, CAST(:start_date AS DATE),
+                     'draft', '{}'::jsonb)
                 RETURNING id
             """),
             {
                 "organization_id": str(tenant.organization_id),
                 "name": f"T004 {label} {uuid4().hex[:8]}",
+                "season": start_date[:4],
+                "start_date": date.fromisoformat(start_date),
             },
         )
     ).scalar_one()
@@ -385,13 +391,25 @@ async def test_public_tournament_players_projects_published_rosters_without_cont
     )
 
     visible_player = await insert_player(
-        db_session, owner.organization_id, first_name="Public", last_name="Visible"
+        db_session,
+        owner.organization_id,
+        first_name="Public",
+        last_name="Visible",
+        reference_year=2026,
     )
     consenting_player = await insert_player(
-        db_session, owner.organization_id, first_name="With", last_name="Consent"
+        db_session,
+        owner.organization_id,
+        first_name="With",
+        last_name="Consent",
+        reference_year=2026,
     )
     inactive_player = await insert_player(
-        db_session, owner.organization_id, first_name="Inactive", last_name="Roster"
+        db_session,
+        owner.organization_id,
+        first_name="Inactive",
+        last_name="Roster",
+        reference_year=2026,
     )
 
     await _insert_roster(
@@ -427,7 +445,11 @@ async def test_public_tournament_players_projects_published_rosters_without_cont
         db_session, other, other_tournament_id, other_version_id, other_stage_id, label="B"
     )
     other_player_id = await insert_player(
-        db_session, other.organization_id, first_name="Other", last_name="Organization"
+        db_session,
+        other.organization_id,
+        first_name="Other",
+        last_name="Organization",
+        reference_year=2026,
     )
     await _insert_roster(
         db_session,
@@ -498,13 +520,25 @@ async def test_public_match_lineups_returns_only_the_published_formation_without
     )
 
     home_player = await insert_player(
-        db_session, owner.organization_id, first_name="Home", last_name="Starter"
+        db_session,
+        owner.organization_id,
+        first_name="Home",
+        last_name="Starter",
+        reference_year=2026,
     )
     consenting_player = await insert_player(
-        db_session, owner.organization_id, first_name="Home", last_name="Consent"
+        db_session,
+        owner.organization_id,
+        first_name="Home",
+        last_name="Consent",
+        reference_year=2026,
     )
     away_player = await insert_player(
-        db_session, owner.organization_id, first_name="Away", last_name="Hidden"
+        db_session,
+        owner.organization_id,
+        first_name="Away",
+        last_name="Hidden",
+        reference_year=2026,
     )
 
     await _insert_roster(
@@ -756,6 +790,100 @@ async def test_public_player_definitions_join_players_by_organization(db_session
             assert re.search(r"\bp\.organization_id = \w+\.organization_id\b", condition), (
                 f"{view} une players sin filtrar por organización: {condition}"
             )
+
+
+@pytest.mark.asyncio
+async def test_public_age_follows_the_start_year_delta_and_not_the_day(
+    db_session, tenant_factory
+):
+    """RF-008: the public age is the materialized age plus the year delta."""
+
+    owner = await tenant_factory("Public Age Delta")
+    await set_tenant_context(db_session, owner)
+    tournament_id, version_id, stage_id = await _create_tournament(
+        db_session, owner, label="age-delta", start_date="2026-01-01"
+    )
+    team_id = await _register_team(
+        db_session, owner, tournament_id, version_id, stage_id, label="age"
+    )
+    player_id = await insert_player(
+        db_session,
+        owner.organization_id,
+        first_name="Delta",
+        last_name="Age",
+        birth_date="2000-01-01",
+        reference_year=2026,
+    )
+    await _insert_roster(
+        db_session, owner, tournament_id, team_id, player_id, dorsal_number=8
+    )
+    await _publish_tournament(db_session, tournament_id, version_id)
+    await clear_rls_context(db_session)
+
+    async def _public_age() -> int:
+        return (
+            await db_session.execute(
+                text(
+                    "SELECT public_age FROM v_public_tournament_players "
+                    "WHERE tournament_id = :tournament_id"
+                ),
+                {"tournament_id": str(tournament_id)},
+            )
+        ).scalar_one()
+
+    # age = age_at_reference + (tournament year - reference year).
+    assert await _public_age() == 26
+
+    await set_tenant_context(db_session, owner)
+    await db_session.execute(
+        text("UPDATE tournaments SET start_date = DATE '2029-06-01' WHERE id = :id"),
+        {"id": str(tournament_id)},
+    )
+    await clear_rls_context(db_session)
+    assert await _public_age() == 29
+
+    # A different day inside the same year does not change the age.
+    await set_tenant_context(db_session, owner)
+    await db_session.execute(
+        text("UPDATE tournaments SET start_date = DATE '2029-12-31' WHERE id = :id"),
+        {"id": str(tournament_id)},
+    )
+    await clear_rls_context(db_session)
+    assert await _public_age() == 29
+
+
+@pytest.mark.asyncio
+async def test_public_player_projection_does_not_decrypt_or_use_per_row_queries(
+    db_session,
+):
+    """RNF-003/RF-008: one join, no decryption and no per-player subquery."""
+
+    definition = (
+        await db_session.execute(
+            text(
+                "SELECT pg_get_viewdef(c.oid, true) "
+                "FROM pg_class c WHERE c.oid = CAST(:view AS regclass)"
+            ),
+            {"view": f"public.{TOURNAMENT_PLAYERS_VIEW}"},
+        )
+    ).scalar_one()
+    normalized = " ".join(definition.split()).lower()
+
+    assert "pgp_sym_decrypt" not in normalized
+    assert "birth_date" not in normalized
+    assert "national_id" not in normalized
+    # The projection is a single SELECT over joins: no scalar/exists subquery
+    # that could run once per player.
+    assert normalized.count("select") == 1
+    assert "(select" not in normalized
+    assert " exists " not in normalized
+
+    plan = (
+        await db_session.execute(
+            text(f"EXPLAIN (FORMAT JSON) SELECT * FROM {TOURNAMENT_PLAYERS_VIEW}")
+        )
+    ).scalar_one()
+    assert "SubPlan" not in str(plan)
 
 
 def _players_join_conditions(definition: str) -> list[str]:

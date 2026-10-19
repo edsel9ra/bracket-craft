@@ -37,8 +37,9 @@ from app.modules.tournaments.schemas import (
     TournamentMatchSummaryResponse,
     TournamentSummaryResponse,
     TournamentTeamCreateResponse,
-    RosterPlayerResponse,
     TournamentTeamSummaryResponse,
+    RosterPlayerListResponse,
+    RosterPlayerResponse,
     UpdatePhotoConsentRequest,
     VersionDetailResponse,
     VersionSummaryResponse,
@@ -1134,12 +1135,18 @@ async def _find_or_create_player_record(
     organization_id: UUID,
     payload: CreateRosterPlayerRequest,
     settings,
+    reference_year: int,
 ) -> UUID:
     """Reuse or create the player for one organization, tolerating races.
 
     The per-organization unique index is the source of truth: if a concurrent
     transaction created the same document, the insert is a no-op and the winning
     row is reused instead of creating a duplicate or returning partial data.
+
+    The birth date is stored write-only (encrypted with ``PLAYER_DATA_KEY``) and
+    only the derived age is materialized. A reused player keeps the date and the
+    age of its first registration: the application can neither decrypt nor
+    compare the stored date, so a later payload never updates them (RF-007).
     """
 
     player_id = await _find_player_by_document(db, organization_id, payload, settings)
@@ -1150,7 +1157,8 @@ async def _find_or_create_player_record(
         text(f"""
             INSERT INTO players
                 (organization_id, first_name, last_name, document_type, national_id_encrypted,
-                 national_id_hmac, issuing_country, birth_date)
+                 national_id_hmac, issuing_country, birth_date_encrypted,
+                 age_at_reference, age_reference_year)
             VALUES (
                 :organization_id,
                 :first_name,
@@ -1159,7 +1167,9 @@ async def _find_or_create_player_record(
                 pgp_sym_encrypt(CAST(:national_id AS TEXT), :player_data_key),
                 {_PLAYER_DOCUMENT_HMAC_SQL},
                 :issuing_country,
-                :birth_date
+                pgp_sym_encrypt(CAST(:birth_date AS TEXT), :player_data_key),
+                :age_at_reference,
+                :age_reference_year
             )
             ON CONFLICT (organization_id, document_type, issuing_country, national_id_hmac)
             DO NOTHING
@@ -1173,7 +1183,9 @@ async def _find_or_create_player_record(
             "national_id": payload.national_id,
             "player_data_key": settings.player_data_key,
             "issuing_country": payload.issuing_country,
-            "birth_date": payload.birth_date,
+            "birth_date": payload.birth_date.isoformat(),
+            "age_at_reference": reference_year - payload.birth_date.year,
+            "age_reference_year": reference_year,
         },
     )
     player_id = player_result.scalar_one_or_none()
@@ -1198,11 +1210,14 @@ async def _create_roster_player_record(
 ) -> tuple[UUID, UUID]:
     team_result = await db.execute(
         text("""
-            SELECT 1
-            FROM tournament_teams
-            WHERE tournament_id = :tournament_id
-              AND team_id = :team_id
-              AND organization_id = :organization_id
+            SELECT t.start_date
+            FROM tournament_teams tt
+            JOIN tournaments t
+              ON t.id = tt.tournament_id
+             AND t.organization_id = tt.organization_id
+            WHERE tt.tournament_id = :tournament_id
+              AND tt.team_id = :team_id
+              AND tt.organization_id = :organization_id
         """),
         {
             "tournament_id": str(tournament_id),
@@ -1210,7 +1225,8 @@ async def _create_roster_player_record(
             "organization_id": str(context.organization_id),
         },
     )
-    if team_result.scalar_one_or_none() is None:
+    tournament_start_date = team_result.scalar_one_or_none()
+    if tournament_start_date is None:
         raise HTTPException(status_code=404, detail="El equipo no está registrado en el torneo")
 
     player_id = await _find_or_create_player_record(
@@ -1218,6 +1234,7 @@ async def _create_roster_player_record(
         context.organization_id,
         payload,
         settings,
+        tournament_start_date.year,
     )
 
     roster_result = await db.execute(
@@ -1280,7 +1297,7 @@ async def _load_roster_player(db: AsyncSession, organization_id: UUID, roster_id
     return (await _resolve_roster_photo_urls([dict(row)]))[0]
 
 
-@router.get("/{tournament_id}/rosters", response_model=list[RosterPlayerResponse])
+@router.get("/{tournament_id}/rosters", response_model=list[RosterPlayerListResponse])
 async def list_tournament_rosters(
     tournament_id: UUID,
     team_id: UUID | None = None,
@@ -1288,18 +1305,23 @@ async def list_tournament_rosters(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=500, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
-) -> list[RosterPlayerResponse]:
+) -> list[RosterPlayerListResponse]:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
         result = await db.execute(
             text("""
                 SELECT r.id AS roster_id, r.player_id, r.team_id, p.first_name, p.last_name,
-                       r.dorsal_number, r.photo_object_key, r.photo_consent, r.is_active
+                       r.dorsal_number, r.photo_object_key, r.photo_consent, r.is_active,
+                       (p.age_at_reference
+                        + (EXTRACT(YEAR FROM t.start_date)::INT - p.age_reference_year))::INT AS age
                 FROM rosters r
                 JOIN players p
                   ON p.id = r.player_id
                  AND p.organization_id = r.organization_id
+                JOIN tournaments t
+                  ON t.id = r.tournament_id
+                 AND t.organization_id = r.organization_id
                 WHERE r.tournament_id = :tournament_id
                   AND r.organization_id = :organization_id
                   AND (CAST(:team_id AS UUID) IS NULL OR r.team_id = CAST(:team_id AS UUID))
