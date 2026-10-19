@@ -1096,6 +1096,99 @@ async def create_tournament_teams_bulk(
     return {"count": len(created), "teams": created}
 
 
+_PLAYER_DOCUMENT_HMAC_SQL = (
+    "encode(hmac(CAST(:national_id AS TEXT), CAST(:player_data_key AS TEXT), 'sha256'), 'hex')"
+)
+
+
+async def _find_player_by_document(
+    db: AsyncSession,
+    organization_id: UUID,
+    payload: CreateRosterPlayerRequest,
+    settings,
+) -> UUID | None:
+    """Look up a player by document inside one organization only (RF-001/RF-003)."""
+
+    result = await db.execute(
+        text(f"""
+            SELECT id
+            FROM players
+            WHERE organization_id = :organization_id
+              AND document_type = :document_type
+              AND issuing_country = :issuing_country
+              AND national_id_hmac = {_PLAYER_DOCUMENT_HMAC_SQL}
+        """),
+        {
+            "organization_id": str(organization_id),
+            "document_type": payload.document_type,
+            "issuing_country": payload.issuing_country,
+            "national_id": payload.national_id,
+            "player_data_key": settings.player_data_key,
+        },
+    )
+    return result.scalar_one_or_none()
+
+
+async def _find_or_create_player_record(
+    db: AsyncSession,
+    organization_id: UUID,
+    payload: CreateRosterPlayerRequest,
+    settings,
+) -> UUID:
+    """Reuse or create the player for one organization, tolerating races.
+
+    The per-organization unique index is the source of truth: if a concurrent
+    transaction created the same document, the insert is a no-op and the winning
+    row is reused instead of creating a duplicate or returning partial data.
+    """
+
+    player_id = await _find_player_by_document(db, organization_id, payload, settings)
+    if player_id is not None:
+        return player_id
+
+    player_result = await db.execute(
+        text(f"""
+            INSERT INTO players
+                (organization_id, first_name, last_name, document_type, national_id_encrypted,
+                 national_id_hmac, issuing_country, birth_date)
+            VALUES (
+                :organization_id,
+                :first_name,
+                :last_name,
+                :document_type,
+                pgp_sym_encrypt(CAST(:national_id AS TEXT), :player_data_key),
+                {_PLAYER_DOCUMENT_HMAC_SQL},
+                :issuing_country,
+                :birth_date
+            )
+            ON CONFLICT (organization_id, document_type, issuing_country, national_id_hmac)
+            DO NOTHING
+            RETURNING id
+        """),
+        {
+            "organization_id": str(organization_id),
+            "first_name": payload.first_name,
+            "last_name": payload.last_name,
+            "document_type": payload.document_type,
+            "national_id": payload.national_id,
+            "player_data_key": settings.player_data_key,
+            "issuing_country": payload.issuing_country,
+            "birth_date": payload.birth_date,
+        },
+    )
+    player_id = player_result.scalar_one_or_none()
+    if player_id is not None:
+        return player_id
+
+    player_id = await _find_player_by_document(db, organization_id, payload, settings)
+    if player_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El documento ya está registrado en la organización",
+        )
+    return player_id
+
+
 async def _create_roster_player_record(
     db: AsyncSession,
     context: AuthContext,
@@ -1120,53 +1213,12 @@ async def _create_roster_player_record(
     if team_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="El equipo no está registrado en el torneo")
 
-    existing_player_result = await db.execute(
-        text("""
-            SELECT id
-            FROM players
-            WHERE document_type = :document_type
-              AND issuing_country = :issuing_country
-              AND national_id_hmac = encode(
-                  hmac(CAST(:national_id AS TEXT), CAST(:player_data_key AS TEXT), 'sha256'),
-                  'hex'
-              )
-        """),
-        {
-            "document_type": payload.document_type,
-            "issuing_country": payload.issuing_country,
-            "national_id": payload.national_id,
-            "player_data_key": settings.player_data_key,
-        },
+    player_id = await _find_or_create_player_record(
+        db,
+        context.organization_id,
+        payload,
+        settings,
     )
-    player_id = existing_player_result.scalar_one_or_none()
-    if player_id is None:
-        player_result = await db.execute(
-            text("""
-                INSERT INTO players
-                    (first_name, last_name, document_type, national_id_encrypted, national_id_hmac,
-                     issuing_country, birth_date)
-                VALUES (
-                    :first_name,
-                    :last_name,
-                    :document_type,
-                    pgp_sym_encrypt(CAST(:national_id AS TEXT), :player_data_key),
-                    encode(hmac(CAST(:national_id AS TEXT), CAST(:player_data_key AS TEXT), 'sha256'), 'hex'),
-                    :issuing_country,
-                    :birth_date
-                )
-                RETURNING id
-            """),
-            {
-                "first_name": payload.first_name,
-                "last_name": payload.last_name,
-                "document_type": payload.document_type,
-                "national_id": payload.national_id,
-                "player_data_key": settings.player_data_key,
-                "issuing_country": payload.issuing_country,
-                "birth_date": payload.birth_date,
-            },
-        )
-        player_id = player_result.scalar_one()
 
     roster_result = await db.execute(
         text("""
@@ -1215,7 +1267,9 @@ async def _load_roster_player(db: AsyncSession, organization_id: UUID, roster_id
             SELECT r.id AS roster_id, r.player_id, r.team_id, p.first_name, p.last_name,
                    r.dorsal_number, r.photo_object_key, r.photo_consent, r.is_active
             FROM rosters r
-            JOIN players p ON p.id = r.player_id
+            JOIN players p
+              ON p.id = r.player_id
+             AND p.organization_id = r.organization_id
             WHERE r.id = :roster_id AND r.organization_id = :organization_id
         """),
         {"roster_id": str(roster_id), "organization_id": str(organization_id)},
@@ -1243,7 +1297,9 @@ async def list_tournament_rosters(
                 SELECT r.id AS roster_id, r.player_id, r.team_id, p.first_name, p.last_name,
                        r.dorsal_number, r.photo_object_key, r.photo_consent, r.is_active
                 FROM rosters r
-                JOIN players p ON p.id = r.player_id
+                JOIN players p
+                  ON p.id = r.player_id
+                 AND p.organization_id = r.organization_id
                 WHERE r.tournament_id = :tournament_id
                   AND r.organization_id = :organization_id
                   AND (CAST(:team_id AS UUID) IS NULL OR r.team_id = CAST(:team_id AS UUID))

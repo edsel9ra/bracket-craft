@@ -104,7 +104,7 @@ async def _load_match_lineup(
             FROM match_rosters mr
             JOIN rosters r
               ON r.id = mr.roster_id AND r.organization_id = mr.organization_id
-            JOIN players p ON p.id = mr.player_id
+            JOIN players p ON p.id = mr.player_id AND p.organization_id = mr.organization_id
             LEFT JOIN LATERAL (
                 SELECT ls.position_slot
                 FROM match_lineup_snapshots ls
@@ -147,7 +147,7 @@ async def _load_match_tactical_lineups(
              AND ls.segment_id = tl.segment_id
              AND ls.team_id = tl.team_id
              AND ls.organization_id = tl.organization_id
-            LEFT JOIN players p ON p.id = ls.player_id
+            LEFT JOIN players p ON p.id = ls.player_id AND p.organization_id = ls.organization_id
             WHERE tl.match_id = :match_id AND tl.organization_id = :organization_id
             ORDER BY ms.segment_number, tl.team_id, ls.is_starter DESC,
                      ls.position_slot NULLS LAST, p.last_name, p.first_name
@@ -249,7 +249,7 @@ async def get_match_operation(
                        mr.id AS match_roster_id, mr.role, mr.entered_minute, mr.left_minute,
                        mr.is_valid
                 FROM rosters r
-                JOIN players p ON p.id = r.player_id
+                JOIN players p ON p.id = r.player_id AND p.organization_id = r.organization_id
                 JOIN teams t ON t.id = r.team_id AND t.organization_id = r.organization_id
                 LEFT JOIN match_rosters mr
                   ON mr.roster_id = r.id
@@ -275,7 +275,7 @@ async def get_match_operation(
                        p.first_name, p.last_name, me.minute, me.added_minute,
                        me.segment_id, me.metadata, me.is_voided, me.created_at
                 FROM match_events me
-                JOIN players p ON p.id = me.player_id
+                JOIN players p ON p.id = me.player_id AND p.organization_id = me.organization_id
                 JOIN teams t ON t.id = me.team_id AND t.organization_id = me.organization_id
                 WHERE me.match_id = :match_id AND me.organization_id = :organization_id
                 ORDER BY me.minute, me.added_minute, me.created_at, me.id

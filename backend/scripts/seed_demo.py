@@ -566,27 +566,32 @@ async def _ensure_rosters(
             text("""
                 SELECT id
                 FROM players
-                WHERE document_type = 'internal'
+                WHERE organization_id = :organization_id
+                  AND document_type = 'internal'
                   AND issuing_country = 'COL'
                   AND national_id_hmac = :national_id_hmac
             """),
-            {"national_id_hmac": document_hmac},
+            {
+                "organization_id": str(organization_id),
+                "national_id_hmac": document_hmac,
+            },
         )
         player_id = result.scalar_one_or_none()
         if player_id is None:
             result = await db.execute(
                 text("""
                     INSERT INTO players
-                        (first_name, last_name, document_type, national_id_encrypted,
-                         national_id_hmac, issuing_country, birth_date)
+                        (organization_id, first_name, last_name, document_type,
+                         national_id_encrypted, national_id_hmac, issuing_country, birth_date)
                     VALUES (
-                        :first_name, :last_name, 'internal',
+                        :organization_id, :first_name, :last_name, 'internal',
                         pgp_sym_encrypt(CAST(:national_id AS TEXT), :player_data_key),
                         :national_id_hmac, 'COL', :birth_date
                     )
                     RETURNING id
                 """),
                 {
+                    "organization_id": str(organization_id),
                     "first_name": player.first_name,
                     "last_name": player.last_name,
                     "national_id": player.national_id,
@@ -1308,7 +1313,16 @@ async def _verify_seed(db: AsyncSession, state: SeedState) -> None:
                 (SELECT COUNT(*) FROM advancement_links al
                  JOIN matches sm ON sm.id = al.source_match_id
                  WHERE al.organization_id = :organization_id
-                   AND sm.tournament_id = :tournament_id) AS link_count
+                   AND sm.tournament_id = :tournament_id) AS link_count,
+                (SELECT COUNT(*)
+                 FROM players p
+                 WHERE p.organization_id = :organization_id
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM rosters r
+                       WHERE r.player_id = p.id
+                         AND r.organization_id = p.organization_id
+                   )) AS players_without_roster
         """),
         {
             "tournament_id": str(state.tournament_id),
@@ -1328,6 +1342,8 @@ async def _verify_seed(db: AsyncSession, state: SeedState) -> None:
             f"equipos={counts['team_count']}, plantillas={counts['roster_count']}, "
             f"partidos={counts['match_count']}, enlaces={counts['link_count']}"
         )
+    if counts["players_without_roster"]:
+        raise RuntimeError("El seed demo dejó jugadores sin plantilla en la organización")
 
     expected_semifinals = {
         "SF1": (state.teams["AUR"], state.teams["CEN"]),
