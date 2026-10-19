@@ -5,7 +5,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `specs/001-correctivos-p0-auditoria/` (spec, plan y tasks) implementada y validada en segunda ronda; `specs/` ya no está vacía.
 - R01: `players` tenant-owned con RLS, unicidad por organización, FKs compuestas y migración 015. R02: overlay de producción sin puertos, red interna + red externa del proxy (`edge`/`PROXY_NETWORK`), sin montajes de código y merge validado en CI. R03: trigger de inmutabilidad de resultados confirmados (migración 016). R04: versiones alineadas y enmienda constitucional.
 - Excepción §5.1 aprobada por el usuario: el job `security` queda en rojo por deuda preexistente de la cadena `nuxt > @nuxt/devtools > simple-git` (pnpm audit 14 vulns y Trivy 4 hallazgos; `pip-audit` limpio), idéntica con el `frontend/` de `HEAD` y ajena a R01-R04. Retiro: spec aparte de deuda de dependencias; revisable en la próxima auditoría.
-- Los commits de la entrega se materializan al cierre; hoy la implementación está en el árbol de trabajo.
+- Spec 001 commiteada en 7 commits separados: `2220efd` harness T001, `f0f185f` R01, `e9ed898` R03, `9f5842c` R02, `47fd682` R04 técnico, `7c9817c` enmienda constitucional 1.1.0 y `517f514` docs SDD; árbol limpio y sin push. El job `security` sigue en rojo por deuda preexistente de `simple-git` bajo la excepción §5.1 registrada en la spec.
 - Informe de la auditoría: `docs/auditoria-2026-10-19.md` (matriz R01-R32, plan P0-P2).
 
 ## Stack y versiones de referencia (2026-10-19)
