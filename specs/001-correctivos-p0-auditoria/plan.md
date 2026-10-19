@@ -1,10 +1,10 @@
 # Plan 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
-Estado: aprobado e implementado (validado en segunda ronda, 2026-10-19)
+Estado: aprobado e implementado; validación documental final en curso (2026-10-19)
 
 Spec: `specs/001-correctivos-p0-auditoria/spec.md` (aprobada 2026-10-19)
 
-Excepción aprobada (§5.1 de la spec): el job `security` queda exceptuado por deuda preexistente de `simple-git` en el frontend; el resto de los jobs y verificaciones se exige sin rebaja.
+Excepción aprobada (§5.1 de la spec): el job `security` queda exceptuado por deuda preexistente de dependencias de desarrollo del frontend (`simple-git` y otros transitivos de `nuxt`); el resto de los jobs y verificaciones se exige sin rebaja.
 
 ## 1. Resumen técnico
 
@@ -460,7 +460,7 @@ Pruebas de proyecciones públicas:
 
 ### 12.4 Versiones
 
-- Puerta de compatibilidad de Python 3.14, pnpm 12.12.1, imágenes y job `security` (con la excepción §5.1 de la spec para los hallazgos preexistentes de `simple-git`).
+- Puerta de compatibilidad de Python 3.14, pnpm 12.12.1, imágenes y job `security` (con la excepción §5.1 de la spec para los hallazgos preexistentes de dependencias de desarrollo del frontend: `simple-git` y otros transitivos de `nuxt`).
 - `validate_version_sources` contra todas las fuentes.
 - Diff de `pnpm-lock.yaml` acotado a `packageManagerDependencies`.
 - `pnpm install --frozen-lockfile` con el pin nuevo.

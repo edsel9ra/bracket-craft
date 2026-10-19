@@ -2,10 +2,10 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Spec 001 — Correctivos P0 de la auditoría (2026-10-19)
-- `specs/001-correctivos-p0-auditoria/` (spec, plan y tasks) implementada y validada en segunda ronda; `specs/` ya no está vacía.
+- `specs/001-correctivos-p0-auditoria/` (spec, plan y tasks) implementada y validada funcionalmente; validación documental final en curso. `specs/` ya no está vacía.
 - R01: `players` tenant-owned con RLS, unicidad por organización, FKs compuestas y migración 015. R02: overlay de producción sin puertos, red interna + red externa del proxy (`edge`/`PROXY_NETWORK`), sin montajes de código y merge validado en CI. R03: trigger de inmutabilidad de resultados confirmados (migración 016). R04: versiones alineadas y enmienda constitucional.
-- Excepción §5.1 aprobada por el usuario: el job `security` queda en rojo por deuda preexistente de la cadena `nuxt > @nuxt/devtools > simple-git` (pnpm audit 14 vulns y Trivy 4 hallazgos; `pip-audit` limpio), idéntica con el `frontend/` de `HEAD` y ajena a R01-R04. Retiro: spec aparte de deuda de dependencias; revisable en la próxima auditoría.
-- Spec 001 commiteada en 7 commits separados: `2220efd` harness T001, `f0f185f` R01, `e9ed898` R03, `9f5842c` R02, `47fd682` R04 técnico, `7c9817c` enmienda constitucional 1.1.0 y `517f514` docs SDD; árbol limpio y sin push. El job `security` sigue en rojo por deuda preexistente de `simple-git` bajo la excepción §5.1 registrada en la spec.
+- Excepción §5.1 aprobada por el usuario: el job `security` queda en rojo por deuda preexistente de dependencias de desarrollo del frontend (`simple-git` y otros transitivos de `nuxt`: `shell-quote`, `brace-expansion`, `braces`, `node-forge`, `serialize-javascript`); `pip-audit` limpio. La lista es idéntica entre `64aa384` y `HEAD` y ajena a R01-R04. Retiro: spec aparte; revisable en la próxima auditoría.
+- Spec 001 commiteada en 8 commits separados: `2220efd` harness T001, `f0f185f` R01, `e9ed898` R03, `9f5842c` R02, `47fd682` R04 técnico, `7c9817c` enmienda constitucional 1.1.0, `517f514` docs SDD y `f2f0b3e` actualización de MEMORY; árbol limpio y sin push. El job `security` sigue en rojo por la deuda preexistente de dependencias de desarrollo del frontend (`simple-git` y otros transitivos de `nuxt`) bajo la excepción §5.1.
 - Informe de la auditoría: `docs/auditoria-2026-10-19.md` (matriz R01-R32, plan P0-P2).
 
 ## Stack y versiones de referencia (2026-10-19)
