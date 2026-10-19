@@ -1,12 +1,16 @@
 services:
   db:
-    ports: []
+    ports: !reset []
+    networks:
+      - internal
     environment:
       APP_ENV: production
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       BRACKET_DB_PASSWORD: ${BRACKET_DB_PASSWORD:?BRACKET_DB_PASSWORD must be set}
 
   db-migrate:
+    networks:
+      - internal
     environment:
       APP_ENV: production
       PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:?PLATFORM_ADMIN_EMAIL must be set}
@@ -37,8 +41,10 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2}
-    ports: []
-    volumes: []
+    ports: !reset []
+    volumes: !reset []
+    networks:
+      - internal
 
   worker:
     environment:
@@ -46,10 +52,19 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:?PLAYER_DATA_KEY must be set}
-    volumes: []
+    volumes: !reset []
+    networks:
+      - internal
 
   redis:
-    ports: []
+    ports: !reset []
+    networks:
+      - internal
+
+  storage:
+    ports: !reset []
+    networks:
+      - internal
 
   web:
     environment:
@@ -58,5 +73,17 @@ services:
       NUXT_PUBLIC_SOCKET_BASE: ${NUXT_PUBLIC_SOCKET_BASE:?NUXT_PUBLIC_SOCKET_BASE must be set}
       NUXT_API_INTERNAL_BASE: ${NUXT_API_INTERNAL_BASE:?NUXT_API_INTERNAL_BASE must be set}
     command: node .output/server/index.mjs
-    ports: []
-    volumes: []
+    ports: !reset []
+    volumes: !reset []
+    networks:
+      - internal
+      - edge
+
+networks:
+  # Red interna del stack: todos los servicios, sin exposición al host.
+  internal:
+  # Red externa del proxy, ya existente y creada por el operador fuera de este
+  # compose. Solo `web` se une a ella. El nombre se configura con PROXY_NETWORK.
+  edge:
+    external: true
+    name: ${PROXY_NETWORK:-edge}

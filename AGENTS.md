@@ -100,6 +100,32 @@ pip-audit -r backend/requirements.txt
 cd frontend && pnpm audit --prod --audit-level high
 ```
 
+La validación de producción exige **Docker Compose 2.24.4 o superior**, porque el overlay usa `!reset`/`!override` y la comparación de versiones incluye el parche. Con variables dummy (nunca secretos reales) se valida el merge real de despliegue (desarrollo y luego producción):
+
+```sh
+docker compose version --short
+python3 infra/scripts/assert_production_compose.py --compose-version "$(docker compose version --short)"
+
+export POSTGRES_PASSWORD=dummy BRACKET_DB_PASSWORD=dummy PLATFORM_ADMIN_EMAIL=dummy@example.test \
+  JWT_SECRET=dummy-jwt-secret-with-at-least-32-characters \
+  PLAYER_DATA_KEY=dummy-player-key-with-at-least-32-characters \
+  INVITATION_TOKEN_KEY=dummy-invitation-key-with-at-least-32-characters \
+  DATABASE_URL=postgresql+asyncpg://dummy:dummy@db:5432/dummy \
+  CORS_ALLOWED_ORIGINS=http://localhost:3000 \
+  STORAGE_PROVIDER=s3 STORAGE_BUCKET=dummy STORAGE_PUBLIC_BASE_URL=http://localhost:9000/dummy \
+  FRONTEND_BASE_URL=http://localhost:3000 SMTP_HOST=localhost SMTP_FROM=noreply@example.test \
+  NUXT_PUBLIC_API_BASE=http://localhost:8000/api/v1 \
+  NUXT_PUBLIC_SOCKET_BASE=http://localhost:8000 \
+  NUXT_API_INTERNAL_BASE=http://api:8000/api/v1 \
+  PROXY_NETWORK=edge
+
+docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
+docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
+  | python3 infra/scripts/assert_production_compose.py -
+```
+
+El overlay no publica puertos, no monta código del host en `api`, `worker` ni `web` y deja todos los servicios en la red interna `internal`; solo `web` se une a la red externa del proxy.
+
 Además, CI ejecuta un escaneo de sistema de archivos con Trivy (`aquasecurity/trivy-action@v0.36.0`). Equivale localmente a:
 
 ```sh
@@ -111,7 +137,8 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 - **Servicios de Docker Compose:** PostgreSQL, `db-migrate` (job de una sola ejecución), API, worker, Redis, `storage` (SeaweedFS) y web.
 - **Inicialización de PostgreSQL:** `infra/postgres/init/` solo corre en el primer arranque del volumen.
 - **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256.
-- **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que elimina volúmenes de código, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
+- **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
+- **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
 - **Primer admin de plataforma:** tras registrar la cuenta, indica `PLATFORM_ADMIN_EMAIL` en `.env`.
 
@@ -137,6 +164,8 @@ infra/postgres/
   init/                      Configuración inicial de la base de datos
   migrations/                Migraciones SQL numeradas
   migrate.sh                 Ejecutor de migraciones con checksums
+infra/scripts/
+  assert_production_compose.py  Aserciones del merge dev+prod (CI)
 docker-compose.yml           Entorno de desarrollo
 docker-compose.production.yml  Perfil de producción
 .env.example                 Defaults solo de desarrollo
@@ -174,6 +203,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 - **Trivy en CI:** mantén `aquasecurity/trivy-action@v0.36.0`. La referencia `v0.28.0` falla por su dependencia faltante `setup-trivy@v0.2.1`. El escaneo falla (`exit-code: 1`) ante vulnerabilidades CRITICAL o HIGH con corrección disponible (`ignore-unfixed`), y omite `frontend/node_modules`, `frontend/.pnpm-store` y `.venv`.
 - **Versiones fijadas en CI:** Python 3.12, Node 24 y pnpm 12.11.2 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
 - **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
+- **Compose y secuencias:** `ports: []` y `volumes: []` **no** anulan las secuencias heredadas de desarrollo; el merge las concatena. El overlay de producción usa `!reset []`/`!override` (Compose ≥2.24.4) y la CI valida el JSON renderizado con `infra/scripts/assert_production_compose.py`. No vuelvas a `[]`.
 - **Migración 002:** un volumen limpio de PostgreSQL había fallado antes con `cannot drop columns from view`. Causa raíz: `infra/postgres/init/02_public_projections.sql` había sido actualizado para reflejar el estado post-012 (`v_public_stages` y `bracket_code` en `v_public_matches`), pero la migración 001 reescribe `v_public_matches` sin `bracket_code`, y `CREATE OR REPLACE VIEW` no puede soltar columnas. La corrección fue revertir `init/02` al estado pre-012 (los scripts de init no son migraciones y no tienen checksum), de modo que 012 introduzca esos cambios en el orden correcto. Solo afecta a volúmenes limpios; los existentes no re-ejecutan init.
 - **Windows/WSL:** si pnpm falla con `EPERM` al enlazar `node_modules`, construye y ejecuta mediante el servicio `web` de Docker.
 - **Seed demo:** solo admite entornos de desarrollo/local; no lo ejecutes contra producción.
