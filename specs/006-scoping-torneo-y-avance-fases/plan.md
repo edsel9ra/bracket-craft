@@ -1,6 +1,6 @@
 # Plan 006 — Retiro del scoping por torneo y avance manual entre fases
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de CI en main y revisión humana (T011).
+Estado: Implementada, validada por @reviewer y cerrada (2026-10-20). CI en main en verde (PR #1).
 
 Spec: `specs/006-scoping-torneo-y-avance-fases/spec.md` (aprobada 2026-10-20)
 

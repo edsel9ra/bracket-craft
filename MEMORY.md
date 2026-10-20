@@ -2,8 +2,8 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Spec 006 — Scoping de torneo y avance manual (2026-10-20)
-- **Implementada y validada por @reviewer (APROBADA, 2026-10-20); T011 pendiente de CI en `main` y revisión humana.**
-- Evidencia: backend **469 passed / 131 skipped**; opt-in **23** (migración 019 y concurrencia) + **27** (`test_match_result_immutability` e `test_invitations`) en bases desechables; frontend **77 passed**, typecheck y build OK (build no re-ejecutado por OOM local en la última pasada).
+- **Implementada, validada por @reviewer y cerrada (2026-10-20). CI en `main` en verde; PR #1 mergeado (merge commit `7284756`).** Queda solo desplegar las migraciones 019 y 020.
+- Evidencia: backend **469 passed / 132 skipped**; opt-in **42** (`player_catalog_isolation`, `schema`, `swiss_transaction`) y **23** (migración 019 y concurrencia) en bases desechables; frontend **77 passed**, typecheck OK (build no re-ejecutado por OOM local en la última pasada).
 - Autorización real: RBAC por organización + `match_officials` por partido; `tournament_user_roles` retirada; sin roles ni ámbito por torneo.
 - Avance manual: `GET/POST/DELETE /tournaments/{id}/stages/{stage_id}/teams`; solo borradores; POST atómico 1..64 sin duplicados (201/200); DELETE 204 idempotente con guardas 409 (versión, no registrado, partido, standings). El calendario no se regenera; `stage_rank`/sembrado automático no soportado; `phase_config` no se interpreta.
 - Bloqueo: fase → versión → partidos → segmentos → jugadores. El cierre pre-bloquea origen y destinos (incl. GF2); `standings` bloquea la fase antes del advisory; rendimiento no medido (RNF-003).
@@ -26,6 +26,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. Trivy `aquasec/trivy:0.70.0`; `trivy-action@v0.36.0`.
 
 ## Pendiente
-- T011 de 006: CI en `main`, opt-in en CI y revisión humana distinta del autor.
+- Spec 006: solo desplegar las migraciones **019** y **020** en el entorno real (código nuevo primero); no hay pendientes de código ni de CI.
 - Cerrar 005 en `main` (CI + revisión humana).
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.

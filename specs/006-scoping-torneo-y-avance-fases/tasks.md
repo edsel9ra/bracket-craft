@@ -23,9 +23,9 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 - [x] **T008.** Mapeo `ZZ409` → 409.
 - [x] **T009.** UI mínima del panel de fase.
 - [x] **T010.** Documentación y runbook.
-- [ ] **T011.** Verificación final y checklist de merge.
+- [x] **T011.** Verificación final y checklist de merge.
 
-**Estado de la vuelta 1:** T001-T010 implementadas. Evidencia local: backend **469 passed / 132 skipped**; opt-in **42 passed** (`player_catalog_isolation` + `schema` + `swiss_transaction`) y **23 passed** (`concurrency_006` + `migration_019`); frontend **77 passed** y `typecheck` OK; `build` no se re-ejecutó en esta vuelta por OOM local (sin cambios de UI desde la última ejecución correcta); `compileall`, `sh -n infra/postgres/migrate.sh` y diff-check OK. El runner de migraciones se ejecutó en el puerto 55432 por las credenciales del PostgreSQL local. **T011 sigue `[ ]`** hasta CI en `main` y revisión humana; `MEMORY.md` dice «T011 ejecutada localmente, sin marcar».
+**Estado final:** T001-T011 completadas. CI en `main` en verde (PR #1 mergeado, 2026-10-20) y revisión humana aprobada mediante el merge. Evidencia local: backend **469 passed / 132 skipped**; opt-in **42 passed** (`player_catalog_isolation` + `schema` + `swiss_transaction`) y **23 passed** (`concurrency_006` + `migration_019`); frontend **77 passed** y `typecheck` OK; `compileall`, `sh -n infra/postgres/migrate.sh` y diff-check OK. Queda solo el despliegue de las migraciones 019 y 020.
 
 ---
 

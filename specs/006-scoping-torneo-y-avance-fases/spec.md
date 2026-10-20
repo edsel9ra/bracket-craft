@@ -1,6 +1,6 @@
 # Spec 006 — Retiro del scoping por torneo y avance manual entre fases
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de CI en main y revisión humana (T011).
+Estado: Implementada, validada por @reviewer y cerrada (2026-10-20). CI en main en verde (PR #1).
 
 > **Bloque C del P1** de `docs/auditoria-2026-10-19.md`: R06 (scoping por torneo muerto) y R12 (avance entre fases sin motor). Las decisiones de producto están cerradas: **R06 se retira** y se documenta el modelo real; **R12 se resuelve con avance manual operativo** (API y UI mínima), sin sembrado automático. R09/R10, R11 y R18-R32 quedan fuera y no se documentan como resueltos.
 
