@@ -1,15 +1,26 @@
 import { io, type Socket } from 'socket.io-client';
 
+import { isReconnection, needsNewSocketSession, type RealtimeConnectionStatus } from '~/utils/realtimeConnection';
+import { createEventDeduplicator } from '~/utils/realtimeDedup';
+import {
+  createRealtimeDispatcher,
+  parseResyncPayload,
+  RESYNC_EVENT,
+  type ResyncPayload,
+} from '~/utils/realtimeDispatch';
+import { createInitializationWindow, createReconnectJoinController } from '~/utils/realtimeReload';
 import { normalizeOrganizationId, normalizeUuid } from '~/utils/validation';
 
 export type RealtimeEventName = 'MATCH_CLOSED' | 'MATCH_UPDATED' | 'STANDINGS_UPDATED';
-export type RealtimeStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+export type RealtimeStatus = RealtimeConnectionStatus;
 
 export interface RealtimeHandlers {
   onMatchClosed?: (payload: unknown) => void;
   onMatchUpdated?: (payload: unknown) => void;
   onStandingsUpdated?: (payload: unknown) => void;
   onEvent?: (event: string, payload: unknown) => void;
+  onReconnect?: () => void;
+  onResync?: (payload: ResyncPayload) => void;
   onError?: (cause: unknown) => void;
 }
 
@@ -31,6 +42,20 @@ export function useRealtime() {
   let requestedPublicTournamentId: string | null = null;
   let activeHandlers: RealtimeHandlers = {};
   let manuallyDisconnected = false;
+  // Una ventana por socket lógico; solo se vacía al abrir otro socket o
+  // desconectar, nunca en el auto-reconnect de Socket.IO.
+  const dedupe = createEventDeduplicator();
+  let dispatch = createRealtimeDispatcher({ dedupe, handlers: activeHandlers });
+  const scheduleGrace = (callback: () => void, delayMs: number) => setTimeout(callback, delayMs);
+  const cancelGrace = (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>);
+  const initialization = createInitializationWindow(scheduleGrace, cancelGrace);
+  const reconnectJoin = createReconnectJoinController(
+    () => activeHandlers.onReconnect?.(),
+    scheduleGrace,
+    cancelGrace,
+  );
+  let hasConnectedOnce = false;
+  let sawConnectionLoss = false;
 
   function handlersFrom(input?: HandlerInput): RealtimeHandlers {
     if (typeof input === 'function') return { onMatchClosed: input };
@@ -42,8 +67,17 @@ export function useRealtime() {
     error.value = nextError;
   }
 
+  function noteConnectionLoss() {
+    const firstLoss = !sawConnectionLoss;
+    sawConnectionLoss = true;
+    if (firstLoss && hasConnectedOnce) reconnectJoin.arm();
+  }
+
   function connect(input?: HandlerInput, options?: ConnectionOptions) {
-    if (input !== undefined) activeHandlers = handlersFrom(input);
+    if (input !== undefined) {
+      activeHandlers = handlersFrom(input);
+      dispatch = createRealtimeDispatcher({ dedupe, handlers: activeHandlers });
+    }
     if (options !== undefined) requestedPublicTournamentId = normalizeUuid(options.tournamentId);
     if (import.meta.server) return;
 
@@ -59,9 +93,14 @@ export function useRealtime() {
       : `organization:${validOrganizationId}`;
 
     if (
-      socket
-      && connectedScopeKey === scopeKey
-      && (scopeKey.startsWith('public:') || connectedSessionVersion === auth.sessionVersion)
+      !needsNewSocketSession({
+        hasSocket: socket !== null,
+        previousScopeKey: connectedScopeKey,
+        nextScopeKey: scopeKey,
+        publicScope: scopeKey.startsWith('public:'),
+        previousSessionVersion: connectedSessionVersion,
+        sessionVersion: auth.sessionVersion,
+      })
     ) {
       return;
     }
@@ -82,12 +121,29 @@ export function useRealtime() {
       timeout: 10_000,
     });
 
-    socket.on('connect', () => setStatus('connected'));
+    // La ventana de inicialización empieza con el intento de conexión: si el
+    // socket no conecta o el JOIN no llega, la gracia la cierra con la carga
+    // HTTP ya hecha.
+    initialization.start();
+
+    socket.on('connect', () => {
+      const reconnected = isReconnection({
+        hasConnectedOnce,
+        previousStatus: sawConnectionLoss ? 'reconnecting' : status.value,
+        nextStatus: 'connected',
+      });
+      setStatus('connected');
+      hasConnectedOnce = true;
+      sawConnectionLoss = false;
+      if (reconnected) reconnectJoin.scheduleFallback();
+    });
     socket.on('disconnect', (reason) => {
       if (manuallyDisconnected) return;
+      noteConnectionLoss();
       setStatus('reconnecting', reason || null);
     });
     socket.on('connect_error', (cause) => {
+      noteConnectionLoss();
       const message = cause instanceof Error ? cause.message : String(cause);
       setStatus('error', message);
       activeHandlers.onError?.(cause);
@@ -96,17 +152,33 @@ export function useRealtime() {
     socket.io.on('reconnect', () => setStatus('connected'));
     socket.io.on('reconnect_failed', () => setStatus('error', 'reconnect_failed'));
 
-    // The server may add new event names. Unknown events are intentionally ignored.
+    // Único punto de despacho: deduplica antes de invocar cualquier handler y
+    // separa RESYNC de los eventos de dominio. El JOIN cancelado por el
+    // respaldo de reconexión no vuelve a disparar la recarga del consumidor.
     socket.onAny((event: string, payload: unknown) => {
-      activeHandlers.onEvent?.(event, payload);
-      if (event === 'MATCH_CLOSED') activeHandlers.onMatchClosed?.(payload);
-      if (event === 'MATCH_UPDATED') activeHandlers.onMatchUpdated?.(payload);
-      if (event === 'STANDINGS_UPDATED') activeHandlers.onStandingsUpdated?.(payload);
+      const resync = event === RESYNC_EVENT ? parseResyncPayload(payload) : null;
+      if (resync?.reason === 'JOIN') {
+        const outcome = reconnectJoin.acceptJoin();
+        if (outcome === 'handled' && activeHandlers.onReconnect) {
+          // La recarga de respaldo ya se hizo: el JOIN tardío se absorbe.
+          initialization.acceptJoin();
+          return;
+        }
+        dispatch(event, payload);
+        initialization.acceptJoin();
+        return;
+      }
+      dispatch(event, payload);
     });
   }
 
   function disconnect(clearRequestedScope = true) {
     manuallyDisconnected = true;
+    dedupe.reset();
+    reconnectJoin.reset();
+    initialization.reset();
+    hasConnectedOnce = false;
+    sawConnectionLoss = false;
     socket?.disconnect();
     socket = null;
     connectedScopeKey = null;
@@ -124,5 +196,5 @@ export function useRealtime() {
     disconnect();
   });
 
-  return { connect, disconnect, status, error };
+  return { connect, disconnect, status, error, initialization };
 }

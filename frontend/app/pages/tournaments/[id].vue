@@ -2,6 +2,17 @@
 import { nextTick } from 'vue';
 import { useRealtime } from '~/composables/useRealtime';
 import {
+  appendedPageSlice,
+  createReloadCoordinator,
+  createRequestGeneration,
+  decideReload,
+  firstPageSlice,
+  PUBLIC_FIRST_PAGE_OFFSET,
+  resyncTrigger,
+  shouldPollPublicRealtime,
+  type ReloadTrigger,
+} from '~/utils/realtimeReload';
+import {
   getPublicStagePresentation,
   sortPublicStages,
   type PublicMatch,
@@ -34,8 +45,8 @@ const { data, status, error: dataError, refresh } = await useAsyncData<PublicTou
   async () => {
     const [tournament, standings, matches] = await Promise.all([
       request<PublicTournament>(`/tournaments/public/${tournamentId}`),
-      request<PublicStanding[]>(`/tournaments/public/${tournamentId}/standings?limit=${PAGE_SIZE}&offset=0`),
-      request<PublicMatch[]>(`/tournaments/public/${tournamentId}/matches?limit=${PAGE_SIZE}&offset=0`),
+      request<PublicStanding[]>(`/tournaments/public/${tournamentId}/standings?limit=${PAGE_SIZE}&offset=${PUBLIC_FIRST_PAGE_OFFSET}`),
+      request<PublicMatch[]>(`/tournaments/public/${tournamentId}/matches?limit=${PAGE_SIZE}&offset=${PUBLIC_FIRST_PAGE_OFFSET}`),
     ]);
     return { tournament, standings, matches };
   },
@@ -56,7 +67,7 @@ const matchesHasMore = ref(Boolean(data.value?.matches.length === PAGE_SIZE));
 const loadingMore = ref<'standings' | 'matches' | null>(null);
 const refreshing = ref(false);
 const listError = ref<string | null>(null);
-let refreshGeneration = 0;
+const requestGeneration = createRequestGeneration();
 let publicRefreshTimer: number | null = null;
 
 function stagePresentation(stage: PublicStage): PublicStagePresentation {
@@ -127,22 +138,53 @@ function payloadTargetsTournament(payload: unknown): boolean {
   return true;
 }
 
-async function refreshPublicData() {
-  if (refreshing.value || loadingMore.value) return;
-  const generation = ++refreshGeneration;
+const publicReload = createReloadCoordinator(async () => {
+  const generation = requestGeneration.next();
   refreshing.value = true;
   listError.value = null;
   try {
     await refresh();
-    if (generation === refreshGeneration && data.value) {
-      standingsHasMore.value = data.value.standings.length === PAGE_SIZE;
-      matchesHasMore.value = data.value.matches.length === PAGE_SIZE;
+    if (requestGeneration.isCurrent(generation) && data.value) {
+      // `refresh()` vuelve a la primera página (offset 0): se descartan las
+      // páginas adicionales y se reinician los indicadores de "hay más".
+      const standingsPage = firstPageSlice(data.value.standings, PAGE_SIZE);
+      const matchesPage = firstPageSlice(data.value.matches, PAGE_SIZE);
+      standingsHasMore.value = standingsPage.hasMore;
+      matchesHasMore.value = matchesPage.hasMore;
+      data.value = {
+        ...data.value,
+        standings: standingsPage.items,
+        matches: matchesPage.items,
+      };
     }
   } catch (cause) {
-    if (generation === refreshGeneration) listError.value = failureMessage(cause, t('public.noLoad'));
+    if (requestGeneration.isCurrent(generation)) listError.value = failureMessage(cause, t('public.noLoad'));
   } finally {
-    if (generation === refreshGeneration) refreshing.value = false;
+    if (requestGeneration.isCurrent(generation)) refreshing.value = false;
   }
+});
+
+function refreshPublicData() {
+  void publicReload.request();
+}
+
+function discardPageLoad() {
+  if (loadingMore.value === null) return;
+  // La respuesta de la página en curso ya no se aplicará.
+  requestGeneration.next();
+  loadingMore.value = null;
+}
+
+function reloadFromRealtime(trigger: ReloadTrigger) {
+  const decision = decideReload({
+    consumer: 'public',
+    trigger,
+    initialized: realtime.initialization.initialized,
+    initializedWithJoin: realtime.initialization.initializedWithJoin,
+  });
+  if (decision.action !== 'reload') return;
+  discardPageLoad();
+  void publicReload.request({ resetPagination: decision.resetPagination });
 }
 
 async function loadMore(kind: 'standings' | 'matches') {
@@ -150,25 +192,27 @@ async function loadMore(kind: 'standings' | 'matches') {
   const currentLength = data.value[kind].length;
   const hasMore = kind === 'standings' ? standingsHasMore.value : matchesHasMore.value;
   if (!hasMore) return;
-  const generation = ++refreshGeneration;
+  const generation = requestGeneration.next();
   loadingMore.value = kind;
   try {
     const path = kind === 'standings' ? 'standings' : 'matches';
     const page = await request<PublicStanding[] | PublicMatch[]>(
       `/tournaments/public/${tournamentId}/${path}?limit=${PAGE_SIZE}&offset=${currentLength}`,
     );
-    if (generation !== refreshGeneration || !data.value) return;
+    if (!requestGeneration.isCurrent(generation) || !data.value) return;
     if (kind === 'standings') {
-      data.value = { ...data.value, standings: [...data.value.standings, ...(page as PublicStanding[])] };
-      standingsHasMore.value = page.length === PAGE_SIZE;
+      const slice = appendedPageSlice(data.value.standings, page as PublicStanding[], PAGE_SIZE);
+      data.value = { ...data.value, standings: slice.items };
+      standingsHasMore.value = slice.hasMore;
     } else {
-      data.value = { ...data.value, matches: [...data.value.matches, ...(page as PublicMatch[])] };
-      matchesHasMore.value = page.length === PAGE_SIZE;
+      const slice = appendedPageSlice(data.value.matches, page as PublicMatch[], PAGE_SIZE);
+      data.value = { ...data.value, matches: slice.items };
+      matchesHasMore.value = slice.hasMore;
     }
   } catch (cause) {
-    if (generation === refreshGeneration) listError.value = failureMessage(cause, t('public.noLoad'));
+    if (requestGeneration.isCurrent(generation)) listError.value = failureMessage(cause, t('public.noLoad'));
   } finally {
-    if (generation === refreshGeneration) loadingMore.value = null;
+    if (loadingMore.value === kind) loadingMore.value = null;
   }
 }
 
@@ -181,13 +225,20 @@ const realtimeStatusLabel = computed(() => {
 
 function onRealtimeEvent(event: string, payload: unknown) {
   if (!['MATCH_CLOSED', 'MATCH_UPDATED', 'STANDINGS_UPDATED'].includes(event)) return;
-  if (payloadTargetsTournament(payload)) void refreshPublicData();
+  if (payloadTargetsTournament(payload)) reloadFromRealtime('event');
+}
+
+function connectRealtime() {
+  realtime.connect({
+    onEvent: onRealtimeEvent,
+    onResync: (payload) => reloadFromRealtime(resyncTrigger(payload.reason)),
+  }, { tournamentId });
 }
 
 onMounted(() => {
-  realtime.connect({ onEvent: onRealtimeEvent }, { tournamentId });
+  connectRealtime();
   publicRefreshTimer = window.setInterval(() => {
-    if (realtime.status.value !== 'connected') void refreshPublicData();
+    if (shouldPollPublicRealtime(realtime.status.value)) refreshPublicData();
   }, PUBLIC_REFRESH_INTERVAL_MS);
 });
 onBeforeUnmount(() => {
@@ -203,7 +254,7 @@ onBeforeUnmount(() => {
        <NuxtLink to="/" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
         <div class="detail-actions">
           <span v-if="realtimeStatusLabel" class="realtime-status" :class="`realtime-${realtime.status.value}`" role="status">{{ realtimeStatusLabel }}</span>
-  <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.connect({ onEvent: onRealtimeEvent }, { tournamentId })">{{ t('common.retry') }}</button>
+  <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="connectRealtime">{{ t('common.retry') }}</button>
           <NuxtLink to="/login" class="button-secondary">{{ t('common.login') }}</NuxtLink>
         </div>
     </header>

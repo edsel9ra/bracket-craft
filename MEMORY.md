@@ -17,12 +17,19 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Constitución **1.2.0** (§3.4 con el comando efectivo). Credencial de Context7 como `{env:CONTEXT7_API_KEY}`. Evidencia: `docs/evidencia-spec-003.md`.
 - Siete commits por bloque (filtro, enmienda, CI/guía, lockfile/verificador, cadena raíz, credencial, docs) y push a `main`.
 
+## Spec 004 — Outbox y tiempo real (2026-10-20)
+- **Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de CI en main y revisión humana (T008).** Stream con `MAXLEN` aproximado fijo de 10 000, `event_id` aditivo (`id` legado), relay que arranca al final y `RESYNC` (`JOIN`/`RELAY_START`/`STREAM_TRIMMED`/`REDIS_RESET`); deduplicación de 200 en el cliente.
+- Garantías: outbox→stream *at-least-once*; stream→cliente *best-effort* con huecos y duplicados; API HTTP como fuente de verdad. No hay exactly-once ni stream duradero.
+- Reinicio del relay ≠ pérdida de conexión con Redis con el proceso vivo: el primero arranca al final; la segunda reanuda desde la posición y puede duplicar.
+- Lección: no confiar en el orden de `connect`/`reconnect` de Socket.IO; la reconexión se deriva con flags propios. Pruebas locales: backend 293 passed/103 skipped; frontend 68 passed; typecheck y build verdes.
+
 ## Riesgo residual
 - `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm) y `node-forge` 1.4.0 (GHSA-86w9-cpqp-85rv), altos y **sin parche upstream**. Visibles en la auditoría; no bloquean.
 - Revisión en **cada actualización de dependencias** y en la próxima auditoría técnica; responsable: propietario del producto. Si aparece parche, se adopta en el mismo cambio.
 
 ## Pendiente
 - Confirmar la revocación de la segunda clave de Context7 (se reexpuso en el árbol y no se usó) y exportar `CONTEXT7_API_KEY`.
+- Cerrar la spec 004 (T008): jobs de CI en `main` y revisión humana distinta del autor.
 
 ## Stack y versiones de referencia (2026-10-19)
 - Python 3.14, Node 24, pnpm 12.12.1. Constitución 1.2.0 (historial desde 1.0.0).

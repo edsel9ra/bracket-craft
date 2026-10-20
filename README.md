@@ -163,6 +163,22 @@ export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.productio
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
 
+## Tiempo real y outbox
+
+El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un worker publica cada evento en el stream de Redis `bracket_craft.events` y el relay de la API lo reenvía por Socket.IO a la sala de la organización y, para los eventos públicos, a la del torneo. El stream es un **transporte vivo de mejor esfuerzo**, no un registro duradero ni la fuente de verdad.
+
+- **Tope fijo:** cada escritura usa `MAXLEN` aproximado de 10 000 entradas (`OUTBOX_STREAM_MAXLEN`). Es una constante del backend, sin variable de entorno; el recorte mantiene el orden de magnitud, no un número exacto. El criterio de dimensionamiento es P-1: un cierre de partido produce unos 3 eventos, así que 10 000 entradas cubren varios días de operación normal con unos pocos MB.
+- **Sobre del evento:** `event_id` (el `id` de la fila de outbox), `id` legado con el mismo valor durante la transición, `organization_id`, `event_type` y `payload`. El payload de dominio no cambia; `event_id` es aditivo.
+- **Arranque y reconexión:** un proceso nuevo del relay resuelve la posición en el último id y **no reemite el histórico**. Si se pierde la conexión con Redis con el proceso vivo, conserva la posición y **reanuda** desde ahí, por lo que puede repetir entradas retenidas.
+- **`RESYNC`:** evento de control `{event_id, reason}` con `reason` entre `JOIN`, `RELAY_START`, `STREAM_TRIMMED` y `REDIS_RESET`. No lleva datos de negocio, no se persiste y no se escribe en el stream. `JOIN` va solo al socket que entra en su sala; los huecos se emiten a las salas con clientes conectados; sin clientes no se emite nada.
+- **Cliente:** deduplica por `event_id` en una ventana FIFO de 200 entregas y separa `RESYNC` de los eventos de dominio. El Workspace y la operación de partido recargan al reconectar; la página pública mantiene su polling de 30 s mientras el socket no está conectado y, ante un `RESYNC` de hueco, recarga y reinicia la paginación.
+
+| Tramo | Garantía | Consecuencia |
+|---|---|---|
+| `outbox_events` → stream | at-least-once | El mismo evento puede escribirse más de una vez con el mismo `event_id`. |
+| stream → cliente | best-effort | Hay huecos (reinicio, recorte, caída de Redis, cliente desconectado) y duplicados posibles; se mitigan con `RESYNC`, deduplicación, polling y reconciliación. |
+| cliente → API HTTP | fuente de verdad | Cualquier estado visible se reconstruye con una recarga HTTP; el tiempo real es una optimización. |
+
 ## Verificación
 
 Con Node 24 y pnpm 12.12.1, la auditoría de dependencias del frontend se ejecuta desde la raíz del repositorio:

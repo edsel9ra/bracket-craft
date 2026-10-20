@@ -2,6 +2,7 @@
 import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constants/formations';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
+import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -188,7 +189,7 @@ const draftEvents = ref<DraftEvent[]>([]);
 const draftRestored = ref(false);
 const draftSavedAt = ref<string | null>(null);
 let hydratingDraft = false;
-let realtimeRefreshPending = false;
+let disposed = false;
 
 const segmentForm = reactive({ segment_number: 1, minute_start: 0 });
 const interruptionForm = reactive<{ reason: InterruptionReason; minute: number; notes: string }>({
@@ -598,6 +599,28 @@ async function refreshOperation() {
   applyOperation(await fetchOperation());
 }
 
+const operationReload = createReloadCoordinator(async () => {
+  if (disposed) return;
+  try {
+    await refreshOperation();
+  } catch (cause) {
+    if (!(await redirectOnSessionFailure(cause))) actionError.value = failureMessage(cause, t('match.noLoad'));
+  }
+});
+
+function requestOperationReload(trigger: ReloadTrigger, payload?: unknown) {
+  if (!payloadTargetsMatch(payload) || busyAction.value || isTerminal.value) return;
+  const decision = decideReload({
+    consumer: 'workspace',
+    trigger,
+    initialized: realtime.initialization.initialized,
+    initializedWithJoin: realtime.initialization.initializedWithJoin,
+  });
+  if (decision.action === 'reload') {
+    void operationReload.request({ resetPagination: decision.resetPagination });
+  }
+}
+
 async function retryOperation() {
   error.value = null;
   try {
@@ -611,18 +634,6 @@ function payloadTargetsMatch(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return true;
   const value = payload as { match_id?: unknown };
   return value.match_id === undefined || String(value.match_id) === matchId;
-}
-
-async function refreshFromRealtime(payload: unknown) {
-  if (!payloadTargetsMatch(payload) || realtimeRefreshPending || busyAction.value || isTerminal.value) return;
-  realtimeRefreshPending = true;
-  try {
-    await refreshOperation();
-  } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = failureMessage(cause, t('match.noLoad'));
-  } finally {
-    realtimeRefreshPending = false;
-  }
 }
 
 async function runAction(action: string, callback: () => Promise<void>) {
@@ -862,12 +873,15 @@ onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload);
   realtime.connect({
     onEvent: (event, payload) => {
-      if (['MATCH_CLOSED', 'MATCH_UPDATED'].includes(event)) void refreshFromRealtime(payload);
+      if (['MATCH_CLOSED', 'MATCH_UPDATED'].includes(event)) requestOperationReload('event', payload);
     },
+    onReconnect: () => requestOperationReload('reconnect'),
+    onResync: (payload) => requestOperationReload(resyncTrigger(payload.reason)),
   });
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   window.removeEventListener('beforeunload', handleBeforeUnload);
   realtime.disconnect();
 });

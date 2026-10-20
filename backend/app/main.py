@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from http.cookies import SimpleCookie
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import socketio
 from fastapi import FastAPI, HTTPException, Request, status
@@ -28,7 +29,9 @@ from app.modules.tournaments.router import router as tournaments_router
 
 
 PUBLIC_REALTIME_EVENTS = frozenset({"MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"})
+RESYNC = "RESYNC"
 SOCKET_REVALIDATION_SECONDS = 30
+RELAY_RETRY_SECONDS = 1
 VALIDATION_ERROR_FIELDS = ("type", "loc", "msg")
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -138,6 +141,7 @@ async def connect(sid, environ, auth):
         await sio.save_session(sid, session_metadata)
         await sio.enter_room(sid, f"organization:{organization_id}")
         connected_socket_sessions[sid] = session_metadata
+        await emit_join_resync(sid)
         return True
 
     tournament_value = auth.get("tournament_id")
@@ -161,6 +165,7 @@ async def connect(sid, environ, auth):
     await sio.save_session(sid, session_metadata)
     await sio.enter_room(sid, f"tournament:{tournament_id}")
     connected_socket_sessions[sid] = session_metadata
+    await emit_join_resync(sid)
     return True
 
 
@@ -169,70 +174,305 @@ async def disconnect(sid):
     connected_socket_sessions.pop(sid, None)
 
 
-async def _relay_outbox_entry(fields: dict[str, str]) -> None:
+@dataclass(frozen=True)
+class ParsedEvent:
+    event_id: str | None
+    organization_id: str
+    event_type: str
+    payload: dict
+
+
+@dataclass
+class RelayState:
+    position: str | None = None
+    run_id: str | None = None
+    started: bool = False
+
+
+def _stream_id_parts(value: str) -> tuple[int, int]:
+    milliseconds, _, sequence = value.partition("-")
+    return int(milliseconds), int(sequence or 0)
+
+
+def stream_id_gt(left: str, right: str) -> bool:
+    """Compara ids de stream por ``(ms, seq)``, no como cadenas."""
+
+    return _stream_id_parts(left) > _stream_id_parts(right)
+
+
+def _delivery_identifier(value) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def parse_envelope(fields) -> ParsedEvent | None:
+    """Valida el sobre del stream y resuelve el identificador de entrega.
+
+    Precedencia: ``event_id`` válido, luego ``id`` legado, luego ausente.
+    Un sobre malformado devuelve ``None`` y el relay lo omite.
+    """
+
+    if not isinstance(fields, dict):
+        return None
     try:
         event = json.loads(fields["event"])
-        if not isinstance(event, dict):
-            return
-        event_type = event.get("event_type")
-        organization_id = event.get("organization_id")
-        payload = event.get("payload")
-        if not isinstance(event_type, str) or not event_type:
-            return
-        if not isinstance(organization_id, str) or not organization_id:
-            return
-        if not isinstance(payload, dict):
-            return
     except (KeyError, TypeError, json.JSONDecodeError):
-        # A malformed stream entry must not block every later event forever.
-        return
+        return None
+    if not isinstance(event, dict):
+        return None
 
-    await sio.emit(
-        event_type,
-        payload,
-        room=f"organization:{organization_id}",
+    event_type = event.get("event_type")
+    organization_id = event.get("organization_id")
+    payload = event.get("payload")
+    if not isinstance(event_type, str) or not event_type:
+        return None
+    if not isinstance(organization_id, str) or not organization_id:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    event_id = _delivery_identifier(event.get("event_id"))
+    legacy_id = _delivery_identifier(event.get("id"))
+    if event_id is None:
+        event_id = legacy_id
+        if event_id is None:
+            # Compatibilidad: sin identificador el evento se reenvía igual.
+            logger.warning(
+                "Sobre del outbox sin event_id válido; se reenvía sin identificador"
+            )
+    elif legacy_id is not None and legacy_id != event_id:
+        # La anomalía no incluye el sobre ni el payload.
+        logger.warning("Sobre del outbox con event_id e id distintos; se usa event_id")
+
+    return ParsedEvent(
+        event_id=event_id,
+        organization_id=organization_id,
+        event_type=event_type,
+        payload=payload,
     )
-    tournament_id = payload.get("tournament_id") if isinstance(payload, dict) else None
-    if tournament_id and event_type in PUBLIC_REALTIME_EVENTS:
+
+
+def build_realtime_payload(payload: dict, event_id: str | None) -> dict:
+    """Copia el payload de dominio y fija el ``event_id`` del servidor."""
+
+    realtime_payload = {
+        key: value for key, value in payload.items() if key != "event_id"
+    }
+    if event_id is not None:
+        realtime_payload["event_id"] = event_id
+    return realtime_payload
+
+
+async def emit_domain_event(event: ParsedEvent) -> None:
+    payload = build_realtime_payload(event.payload, event.event_id)
+    await sio.emit(
+        event.event_type,
+        payload,
+        room=f"organization:{event.organization_id}",
+    )
+    tournament_id = event.payload.get("tournament_id")
+    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS:
         await sio.emit(
-            event_type,
+            event.event_type,
             payload,
             room=f"tournament:{tournament_id}",
         )
 
 
-async def _relay_outbox_messages(messages) -> str | None:
-    last_entry_id = None
+def new_resync_event_id() -> str:
+    return f"resync:{uuid4()}"
+
+
+def resync_rooms(sessions: dict[str, dict]) -> list[str]:
+    """Deriva y deduplica las salas con sockets conectados y alcance conocido."""
+
+    rooms: list[str] = []
+    seen: set[str] = set()
+    for metadata in sessions.values():
+        if not isinstance(metadata, dict):
+            continue
+        scope = metadata.get("scope")
+        if scope == "organization":
+            scope_id = metadata.get("organization_id")
+            room = f"organization:{scope_id}" if scope_id else None
+        elif scope == "public":
+            scope_id = metadata.get("tournament_id")
+            room = f"tournament:{scope_id}" if scope_id else None
+        else:
+            room = None
+        if room and room not in seen:
+            seen.add(room)
+            rooms.append(room)
+    return rooms
+
+
+async def emit_gap_resync(reason: str, sessions: dict[str, dict] | None = None) -> None:
+    """Emite ``RESYNC`` a cada sala conectada; sin salas no emite nada."""
+
+    current_sessions = connected_socket_sessions if sessions is None else sessions
+    rooms = resync_rooms(current_sessions)
+    if not rooms:
+        return
+    payload = {"event_id": new_resync_event_id(), "reason": reason}
+    for room in rooms:
+        try:
+            await sio.emit(RESYNC, payload, room=room)
+        except Exception:
+            logger.exception("No se pudo emitir RESYNC %s en %s", reason, room)
+
+
+async def emit_join_resync(sid: str) -> None:
+    """Emite ``RESYNC`` ``JOIN`` solo al socket que acaba de entrar en su sala."""
+
+    if sid not in connected_socket_sessions:
+        return
+    payload = {"event_id": new_resync_event_id(), "reason": "JOIN"}
+    try:
+        await sio.emit(RESYNC, payload, to=sid)
+    except Exception:
+        logger.exception("No se pudo emitir RESYNC JOIN al socket %s", sid)
+
+
+def parse_run_id(info) -> str | None:
+    if isinstance(info, dict):
+        run_id = info.get("run_id")
+        return run_id if isinstance(run_id, str) and run_id else None
+    if isinstance(info, str):
+        for line in info.splitlines():
+            key, separator, value = line.partition(":")
+            if separator and key.strip() == "run_id":
+                run_id = value.strip()
+                return run_id or None
+    return None
+
+
+async def read_run_id(redis) -> str | None:
+    try:
+        info = await redis.info("server")
+    except Exception:
+        logger.warning(
+            "INFO server no disponible; se usan solo las comprobaciones de posición"
+        )
+        return None
+    run_id = parse_run_id(info)
+    if run_id is None:
+        logger.warning(
+            "INFO server sin run_id; se usan solo las comprobaciones de posición"
+        )
+    return run_id
+
+
+async def resolve_first(redis) -> str | None:
+    entries = await redis.xrange(OUTBOX_STREAM, count=1)
+    if not entries:
+        return None
+    return entries[0][0]
+
+
+async def resolve_tail(redis) -> str | None:
+    entries = await redis.xrevrange(OUTBOX_STREAM, count=1)
+    if not entries:
+        return None
+    return entries[0][0]
+
+
+async def relay_cycle(
+    redis,
+    state: RelayState,
+    emit,
+    emit_resync=None,
+    current_run_id: str | None = None,
+) -> RelayState:
+    """Una iteración del relay: comprueba continuidad y lee entradas.
+
+    El arranque de un proceso nuevo fija la posición en el último id y no
+    reemite el histórico ni emite ``RESYNC`` por el mero arranque. En los
+    ciclos posteriores y tras reconectar detecta recorte, reinicio de datos de
+    Redis y una posición inalcanzable; en ese caso emite ``RESYNC`` y salta al
+    final sin reemitir el backlog retenido.
+    """
+
+    if not state.started:
+        state.run_id = current_run_id
+        state.position = await resolve_tail(redis)
+        state.started = True
+    else:
+        if current_run_id is None:
+            # ``INFO server`` no disponible: solo comprobaciones de posición.
+            pass
+        elif state.run_id is None:
+            state.run_id = current_run_id
+        elif current_run_id != state.run_id:
+            state.run_id = current_run_id
+            state.position = await resolve_tail(redis)
+            if emit_resync is not None:
+                await emit_resync("REDIS_RESET")
+            return state
+
+        first = await resolve_first(redis)
+        last = await resolve_tail(redis)
+        if state.position is not None:
+            reason = None
+            if first is None:
+                # Redis perdió los datos: había una posición y ya no hay stream.
+                reason = "REDIS_RESET"
+            elif stream_id_gt(first, state.position):
+                # El recorte eliminó entradas que el relay aún no había leído.
+                reason = "STREAM_TRIMMED"
+            elif last is None or stream_id_gt(state.position, last):
+                reason = "REDIS_RESET"
+            if reason is not None:
+                state.position = last
+                if emit_resync is not None:
+                    await emit_resync(reason)
+                return state
+
+    messages = await redis.xread(
+        {OUTBOX_STREAM: state.position or "0-0"},
+        count=100,
+        block=1000,
+    )
+    if not messages:
+        return state
+
     for _, entries in messages:
         for entry_id, fields in entries:
-            await _relay_outbox_entry(fields)
-            last_entry_id = entry_id
-    return last_entry_id
+            if state.position is not None and not stream_id_gt(entry_id, state.position):
+                continue
+            event = parse_envelope(fields)
+            if event is not None:
+                await emit(event)
+            # Avance por entrada: si ``emit`` falla, la relectura repite como
+            # máximo esta última entrada.
+            state.position = entry_id
+    return state
 
 
-async def _relay_outbox_events():
-    # Each API worker reads every entry so its own Socket.IO clients receive it.
-    # Starting at the beginning also recovers events written while Redis was
-    # unavailable before this process established its first connection.
-    last_stream_id = "0-0"
-    while True:
+async def relay_loop(redis_factory=Redis.from_url, stop: asyncio.Event | None = None) -> None:
+    # Cada réplica de la API lee el stream para sus propios clientes.
+    state = RelayState()
+    if connected_socket_sessions:
+        # Reinicio de la tarea con clientes ya conectados: cubre la ventana
+        # en la que el relay no estuvo leyendo.
+        await emit_gap_resync("RELAY_START", connected_socket_sessions)
+    while stop is None or not stop.is_set():
         redis = None
         try:
-            redis = Redis.from_url(settings.redis_url, decode_responses=True)
-            while True:
-                messages = await redis.xread(
-                    {OUTBOX_STREAM: last_stream_id},
-                    count=100,
-                    block=1000,
+            redis = redis_factory(settings.redis_url, decode_responses=True)
+            current_run_id = await read_run_id(redis)
+            while stop is None or not stop.is_set():
+                await relay_cycle(
+                    redis,
+                    state,
+                    emit_domain_event,
+                    emit_gap_resync,
+                    current_run_id,
                 )
-                if messages:
-                    entry_id = await _relay_outbox_messages(messages)
-                    if entry_id is not None:
-                        last_stream_id = entry_id
         except asyncio.CancelledError:
             raise
         except Exception:
-            await asyncio.sleep(1)
+            if stop is not None and stop.is_set():
+                break
+            await asyncio.sleep(RELAY_RETRY_SECONDS)
         finally:
             if redis is not None:
                 await redis.aclose()
@@ -290,7 +530,7 @@ async def lifespan(app: FastAPI):
     del app
     if settings.app_env.lower().strip() not in {"development", "dev", "local"}:
         await validate_application_role()
-    relay_task = asyncio.create_task(_relay_outbox_events())
+    relay_task = asyncio.create_task(relay_loop())
     revalidation_task = asyncio.create_task(_revalidate_socket_sessions())
     try:
         yield

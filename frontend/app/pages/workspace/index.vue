@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import {
+  createReloadCoordinator,
+  decideReload,
+  resyncTrigger,
+  type ReloadTrigger,
+} from '~/utils/realtimeReload';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -14,13 +20,33 @@ const showCreateForm = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
 const publishingTournamentId = ref<string | null>(null);
-let realtimeRefreshPending = false;
 const createForm = reactive({
   name: '',
   season: '',
   start_date: '',
 });
 let disposed = false;
+
+const workspaceReload = createReloadCoordinator(async () => {
+  if (disposed) return;
+  try {
+    await tournamentsStore.load();
+  } catch (cause) {
+    await redirectOnSessionFailure(cause);
+  }
+});
+
+function reloadRealtime(trigger: ReloadTrigger) {
+  const decision = decideReload({
+    consumer: 'workspace',
+    trigger,
+    initialized: realtime.initialization.initialized,
+    initializedWithJoin: realtime.initialization.initializedWithJoin,
+  });
+  if (decision.action === 'reload') {
+    void workspaceReload.request({ resetPagination: decision.resetPagination });
+  }
+}
 
 useHead({
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
@@ -53,18 +79,6 @@ async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
   return false;
 }
 
-async function refreshWorkspace() {
-  if (realtimeRefreshPending || disposed) return;
-  realtimeRefreshPending = true;
-  try {
-    await tournamentsStore.load();
-  } catch (cause) {
-    await redirectOnSessionFailure(cause);
-  } finally {
-    realtimeRefreshPending = false;
-  }
-}
-
 async function loadMoreTournaments() {
   try {
     await tournamentsStore.loadMore();
@@ -76,8 +90,10 @@ async function loadMoreTournaments() {
 function connectRealtime() {
   realtime.connect({
     onEvent: (event) => {
-      if (['MATCH_CLOSED', 'MATCH_UPDATED', 'STANDINGS_UPDATED'].includes(event)) void refreshWorkspace();
+      if (['MATCH_CLOSED', 'MATCH_UPDATED', 'STANDINGS_UPDATED'].includes(event)) reloadRealtime('event');
     },
+    onReconnect: () => reloadRealtime('reconnect'),
+    onResync: (payload) => reloadRealtime(resyncTrigger(payload.reason)),
   });
 }
 

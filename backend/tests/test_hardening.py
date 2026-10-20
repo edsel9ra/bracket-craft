@@ -11,7 +11,13 @@ from app.core import storage as storage_module
 from app.core.csrf import validate_csrf_request
 from app.core.rate_limit import enforce_rate_limit
 from app.core.storage import ObjectStorage, StorageError
-from app.main import _buffer_request_body, _relay_outbox_messages, sio
+from app.main import (
+    RelayState,
+    _buffer_request_body,
+    emit_domain_event,
+    relay_cycle,
+    sio,
+)
 
 
 ALLOWED_ORIGINS = {"http://localhost:3000"}
@@ -243,7 +249,21 @@ async def test_outbox_relay_skips_malformed_stream_entries(monkeypatch):
         )
     ]
 
-    assert await _relay_outbox_messages(messages) == "2-0"
+    class FakeRedis:
+        async def xrange(self, name, count=1):
+            return []
+
+        async def xrevrange(self, name, count=1):
+            return []
+
+        async def xread(self, streams, count=100, block=1000):
+            return messages
+
+    state = RelayState(started=True)
+
+    await relay_cycle(FakeRedis(), state, emit_domain_event)
+
+    assert state.position == "2-0"
     assert len(emitted) == 2
 
 

@@ -1,1 +1,2 @@
 OUTBOX_STREAM = "bracket_craft.events"
+OUTBOX_STREAM_MAXLEN = 10_000

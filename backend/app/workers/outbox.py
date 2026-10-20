@@ -1,16 +1,53 @@
 import asyncio
 import json
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.core.database import SessionFactory, validate_application_role
 from app.core.config import get_settings
-from app.core.outbox import OUTBOX_STREAM
+from app.core.outbox import OUTBOX_STREAM, OUTBOX_STREAM_MAXLEN
 
 
 logger = logging.getLogger(__name__)
+
+
+def build_stream_message(event: Mapping[str, Any]) -> str:
+    """Construye el sobre JSON que se publica en el stream del outbox.
+
+    ``event_id`` es aditivo y duplica ``id`` durante la transición; el payload
+    de dominio se conserva tal cual.
+    """
+
+    event_id = str(event["id"])
+    return json.dumps(
+        {
+            "event_id": event_id,
+            "id": event_id,
+            "organization_id": str(event["organization_id"]),
+            "event_type": event["event_type"],
+            "payload": event["payload"],
+        },
+        default=str,
+    )
+
+
+async def publish_stream_event(redis: Redis, event: Mapping[str, Any]) -> None:
+    """Publica un evento con ``MAXLEN`` aproximado fijo.
+
+    La excepción de ``xadd`` se propaga a ``process_once`` para que marque el
+    evento como fallido.
+    """
+
+    await redis.xadd(
+        OUTBOX_STREAM,
+        {"event": build_stream_message(event)},
+        maxlen=OUTBOX_STREAM_MAXLEN,
+        approximate=True,
+    )
 
 
 async def process_once() -> int:
@@ -26,14 +63,8 @@ async def process_once() -> int:
                 events = result.mappings().all()
 
             for event in events:
-                message = json.dumps({
-                    "id": str(event["id"]),
-                    "organization_id": str(event["organization_id"]),
-                    "event_type": event["event_type"],
-                    "payload": event["payload"],
-                }, default=str)
                 try:
-                    await redis.xadd(OUTBOX_STREAM, {"event": message})
+                    await publish_stream_event(redis, event)
                 except Exception as exc:
                     async with db.begin():
                         await db.execute(
