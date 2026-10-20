@@ -8,7 +8,7 @@ Spec: `specs/005-rendimiento-firmas-swiss-conexion/spec.md` (aprobada 2026-10-20
 
 El cambio se divide en tres bloques de backend, documentación y verificación final:
 
-- **R15 — fotos:** un cliente de firma cacheado por proceso y endpoint de firma, una firma por clave distinta y un solo despacho off-thread por respuesta; firma, subida y borrado ocurren **fuera** de la transacción. En importación las fotos se suben antes de la escritura y se compensan si falla; en la subida individual, lectura → `put_bytes` → escritura → borrado del anterior → firma. El fallo de firma degrada a `null` en público y mantiene 503 en Workspace.
+- **R15 — fotos:** un cliente de firma cacheado por proceso y endpoint de firma, una firma por clave distinta y un solo despacho off-thread por respuesta; firma, subida y borrado ocurren **fuera** de la transacción. En importación las fotos se suben antes de la escritura y se compensan solo si el fallo es anterior al commit; en la subida individual, lectura → `put_bytes` → escritura → commit confirmado → borrado del anterior → firma. El fallo de firma degrada a `null` en público y mantiene 503 en Workspace.
 - **R16 — Swiss:** tope de 64 equipos, un contador único de evaluaciones de pares (40 000 búsqueda + 10 000 reserva de fallback = 50 000), fallback greedy estricto, ejecución en un ejecutor dedicado de 2 hilos con timeout de 10 s y errores 409 distinguibles. El cálculo ocurre fuera de la transacción y la escritura se hace en una transacción posterior que revalida el permiso y el estado y vuelve a fijar RLS.
 - **R17 — conexión:** `statement_timeout` de 15 s, `idle_in_transaction_session_timeout` de 30 s, pool 10 + 10 con espera de 10 s como constantes; agotamiento del pool (`sqlalchemy.exc.TimeoutError`) → 503 con un aviso por petición; valores efectivos registrados al arrancar.
 
@@ -23,7 +23,7 @@ No hay migraciones, cambios de esquema, dependencias nuevas, configuración nuev
 - **Solapamiento con la spec 004:** en este checkout la spec 004 está **commiteada** (`3b6210f`), así que `backend/app/main.py`, `backend/tests/test_hardening.py`, `README.md`, `AGENTS.md` y `MEMORY.md` ya contienen sus cambios en el historial. Si al implementar 005 la 004 siguiera **sin commit**, el cambio de 005 en `main.py` se limita a dos hunks (el registro del manejador de agotamiento y la llamada al registro de configuración en `lifespan`), no se toca el relay, `RESYNC`, `parse_envelope` ni `emit_domain_event`, en `test_hardening.py` solo se toca la sección de storage y en los documentos se conservan las secciones de 004. En ese caso, se commitea 004 primero o se separan los hunks con `git add -p`.
 - **Pruebas:** la suite actual usa `ASGITransport(app=api)` sin lifespan y `dependency_overrides` con dobles de sesión (`backend/tests/test_api_access.py:11-146`); la suite con PostgreSQL es opt-in (`backend/tests/conftest.py:42-60`). Los dobles de S3 ya existen en `backend/tests/test_hardening.py:138-183`.
 - **Versiones de referencia:** Python 3.14, SQLAlchemy 2.1.4, asyncpg 0.32.0 y boto3 1.43.113. No se cambian.
-- **Alcance de N-2:** firma de fotos, **subida (`put_bytes`)** y **borrado (`delete_key`)** de objetos, y emparejamiento Swiss. Ninguna de esas operaciones ocurre dentro de una transacción. En la importación las fotos se suben **antes** de la escritura y se compensan con `delete_key` si la escritura falla; en la subida individual el orden es lectura → `put_bytes` fuera → escritura → borrado del objeto anterior → firma. Un fallo de firma posterior al commit no borra el objeto nuevo ni revierte filas.
+- **Alcance de N-2:** firma de fotos, **subida (`put_bytes`)** y **borrado (`delete_key`)** de objetos, y emparejamiento Swiss. Ninguna de esas operaciones ocurre dentro de una transacción. En la importación las fotos se suben **antes** de la escritura y se compensan solo si el fallo es inequívocamente anterior al commit; un commit fallido o ambiguo puede dejar objetos huérfanos (best-effort). En la subida individual el orden es lectura → `put_bytes` fuera → escritura → **commit confirmado** → borrado del objeto anterior → firma; si el commit falla o se cancela, se conservan ambos y el nuevo puede quedar huérfano; si el fallo es anterior al commit, se compensa el nuevo. Un fallo de firma posterior al commit no borra el objeto nuevo ni revierte filas.
 
 ## 3. Archivos y responsabilidades
 
@@ -101,9 +101,9 @@ async sign_photo_rows(rows, *, key_field, consent_field, policy, logger, storage
 - `policy="null"` en el endpoint público: la respuesta se sirve completa, con `photo_url: null` en las afectadas y 200.
 - `policy="error"` en Workspace: 503 con el mensaje actual, sin datos internos.
 - La función no abre transacciones ni consulta la base. Recibe filas ya leídas y **elimina el campo de la clave** (`pop`) antes de devolver, para que no se serialice por accidente; el valor firmado queda en el campo de presentación.
-- **Importación (N-2):** primero se suben las fotos con `put_bytes` fuera de la transacción; después se abre la transacción de escritura con las filas y sus claves. SI la escritura o una subida posterior falla, ENTONCES se compensan los objetos subidos con `delete_key` y se revierte la transacción. Un fallo de firma **posterior** al commit no borra el objeto nuevo ni revierte la fila: la respuesta es 503 y el cliente debe releer.
-- **Subida individual (N-2):** lectura de consentimiento y clave anterior en la transacción → cierre → `put_bytes` fuera → transacción de escritura con la nueva clave → commit → borrado del objeto anterior → firma. El borrado del anterior no depende del éxito de la firma.
-- **Retirada de consentimiento:** el borrado del objeto ocurre fuera de la transacción, después del commit; no se firma una foto sin consentimiento.
+- **Importación (N-2):** primero se suben las fotos con `put_bytes` fuera de la transacción; después se abre la transacción de escritura con las filas y sus claves. SI el fallo es inequívocamente anterior al commit (subida posterior, validación, permiso o escritura), ENTONCES se compensan los objetos subidos con `delete_key` y se revierte la transacción. SI el commit falla o es ambiguo, ENTONCES no se compensan y pueden quedar objetos huérfanos (best-effort, sin filas confirmadas). Un fallo de firma **posterior** al commit no borra el objeto nuevo ni revierte la fila: la respuesta es 503 y el cliente debe releer.
+- **Subida individual (N-2):** lectura de consentimiento y clave anterior en la transacción → cierre → `put_bytes` fuera → transacción de escritura con la nueva clave → **commit confirmado** → borrado del objeto anterior → firma. SI el commit falla o se cancela (ambiguo), ENTONCES se conservan el anterior y el nuevo; el nuevo puede quedar huérfano y no se compensa. SI el fallo es inequívocamente anterior al commit (validación, permiso, escritura) y el objeto nuevo ya se subió, ENTONCES se compensa el objeto nuevo. El borrado del anterior no depende del éxito de la firma; una cancelación durante ese borrado se propaga y no se silencia.
+- **Retirada de consentimiento:** el borrado del objeto ocurre fuera de la transacción, tras un commit confirmado; no se firma una foto sin consentimiento.
 - El registro es una sola entrada por respuesta, con el número de fallos y el motivo; nunca claves, nombres, documentos ni fechas.
 
 Orden obligatorio en cada endpoint con fotos (N-2):
@@ -128,9 +128,9 @@ return rows
 | `list_tournament_rosters` (`:1300-1340`) | firma por fila después de `db.begin()` | resuelve en lote con `policy="error"` |
 | `_load_roster_player` (`:1281-1297`) | consulta + firma | se divide en `_load_roster_player_row` (consulta, dentro de la transacción) y presentación con `sign_photo_rows` (fuera) |
 | `create_roster_player` (`:1343-1359`) | firma dentro de `db.begin()` | lee la fila dentro, firma después |
-| `create_roster_players_bulk` (`:1362-1438`) | N consultas + N firmas + subidas dentro de `db.begin()` | sube las fotos antes de la escritura; lee las filas dentro (una consulta por `id = ANY`); si la escritura o una subida posterior falla, compensa con `delete_key`; firma en lote después del commit |
-| `upload_roster_player_photo` (`:1441-1509`) | firma y `put_bytes` dentro de `db.begin()` | lectura → `put_bytes` fuera → escritura → borrado del anterior → firma; si la subida o la escritura falla, compensa el objeto nuevo; un fallo de firma no lo borra |
-| `update_roster_photo_consent` (`:1515-1555`) | firma dentro de `db.begin()` | lee dentro, firma fuera; el borrado del objeto sigue después del commit |
+| `create_roster_players_bulk` (`:1362-1438`) | N consultas + N firmas + subidas dentro de `db.begin()` | sube las fotos antes de la escritura; lee las filas dentro (una consulta por `id = ANY`); si el fallo es anterior al commit, compensa con `delete_key`; si el commit falla o es ambiguo, puede dejar huérfanos (best-effort); firma en lote después del commit |
+| `upload_roster_player_photo` (`:1441-1509`) | firma y `put_bytes` dentro de `db.begin()` | lectura → `put_bytes` fuera → escritura → commit confirmado → borrado del anterior → firma; commit fallido/ambiguo conserva ambos y puede dejar el nuevo huérfano; fallo anterior al commit compensa el nuevo; la cancelación del borrado del anterior se propaga |
+| `update_roster_photo_consent` (`:1515-1555`) | firma dentro de `db.begin()` | lee dentro, firma fuera; el borrado del objeto sigue tras un commit confirmado |
 
 `_resolve_photo_url` se retira una vez migrados todos los call sites. No se cambian campos, nombres ni el orden de las claves de respuesta.
 
@@ -324,8 +324,8 @@ Por proceso: hasta 20 conexiones (10 + 10). Con `API_WORKERS=2` y un worker: 2 �
 | Política: público → `null`; Workspace → 503; una sola entrada de registro; sin claves ni PII. | RF-003, RF-004 | T002 |
 | Orden, campos y valores de `photo_url` idénticos a una referencia; deduplicación visible. | RF-002 | T002 |
 | Frontera de transacción: doble de sesión registra `in_transaction() == False` al firmar, subir y borrar, en público y Workspace (o en la función de endpoint extraída). | RF-002 | T002, T003 |
-| Importación: `put_bytes` antes de la escritura; si la escritura falla, compensación con `delete_key`; un fallo de firma posterior al commit no borra el objeto ni revierte filas. | RF-002, RF-004 | T003 |
-| Subida individual: lectura → `put_bytes` fuera → escritura → borrado del anterior → firma; el borrado no depende de la firma. | RF-002 | T003 |
+| Importación: `put_bytes` antes de la escritura; si el fallo es anterior al commit, compensación con `delete_key`; si el commit falla o es ambiguo, puede dejar huérfanos; un fallo de firma posterior al commit no borra el objeto ni revierte filas. | RF-002, RF-004 | T003 |
+| Subida individual: lectura → `put_bytes` fuera → escritura → commit confirmado → borrado del anterior → firma; commit fallido/ambiguo conserva ambos y puede dejar el nuevo huérfano; fallo anterior al commit compensa el nuevo; la cancelación del borrado del anterior se propaga. | RF-002 | T003 |
 | Endpoint público con `get_db` sustituido y almacenamiento que lanza: 200 con `null`. | RF-004 | T002 |
 | Endpoint de Workspace con `get_db` y `get_auth_context` sustituidos: 503. | RF-004 | T003 |
 | Contador: incremento por par, sin reinicio entre ramas/descansos/fallback; fronteras 39 999/40 000/40 001 y 49 999/50 000/50 001. | RF-005 | T004 |
@@ -376,7 +376,7 @@ No aplican `pnpm test`/`typecheck`/`build` (sin frontend) ni `docker compose con
 |---|---|---|---|
 | T001 | Backend | Cliente de firma cacheado, `signed_urls` y lote; pruebas de storage. | — |
 | T002 | Backend | Política de fotos y camino público con frontera de transacción. | T001 |
-| T003 | Backend | Caminos del Workspace: lista, alta, importación (subida antes de la escritura y compensación), subida y consentimiento fuera de la transacción. | T001, T002 |
+| T003 | Backend | Caminos del Workspace: lista, alta, importación (subida antes de la escritura y compensación solo si el fallo es anterior al commit), subida y consentimiento fuera de la transacción. | T001, T002 |
 | T004 | Backend | Contador, búsqueda, fallback, runner con hilo y timeout; pruebas puras. | — |
 | T005 | Backend | Tope, split lectura/escritura, `_clear_stage_schedule` en la escritura y mapeo 409 en el router. | T004 |
 | T006 | Backend | Revalidación de permiso (403) y estado, `FOR UPDATE`, 409 de estado cambiado y H7 documentado. | T005 |
@@ -431,7 +431,8 @@ Cada fila es un commit. T001-T003 y T004-T008 son independientes entre sí; el o
 | El manejador de 503 captura un `TimeoutError` ajeno | Se registra `sqlalchemy.exc.TimeoutError` con alias; una prueba confirma que `DBAPIError` sigue 500. |
 | `main.py` arrastra cambios de 004 si esa spec sigue sin commit | En este checkout 004 está commiteada (`3b6210f`). Si no lo estuviera, se commitea primero o se separan los hunks con `git add -p`; el commit de 005 solo incluye el manejador y la llamada al registro. |
 | Los 15 s de `statement_timeout` afectan al seed o a la suite opt-in | Decisión B-13: se aceptan y documentan; un fallo se corrige en el seed o la prueba, no elevando la constante. |
-| Subidas o borrados con la transacción abierta | Se mueven fuera: importación antes de la escritura con compensación; subida lectura → `put_bytes` → escritura → borrado → firma. Pruebas de frontera en ambos caminos. |
+| Subidas o borrados con la transacción abierta | Se mueven fuera: importación antes de la escritura con compensación solo si el fallo es anterior al commit; subida lectura → `put_bytes` → escritura → commit confirmado → borrado → firma. Pruebas de frontera en ambos caminos. |
+| Commit fallido o ambiguo en una subida o importación | Se conservan el anterior y el nuevo; el nuevo puede quedar huérfano. No se compensa ni se borra el anterior: se prefiere un huérfano a una referencia rota. La cancelación durante el borrado del anterior se propaga. Prueba específica de los tres casos. |
 | El fallback cambia resultados en entradas límite | Regresión con 36 equipos, descanso impar y comparación de parejas; la salida dentro del presupuesto debe ser idéntica. |
 | Un agotamiento de pool genera una tormenta de avisos | Un aviso por petición fallida; las que esperan y obtienen conexión no registran nada. |
 
@@ -490,5 +491,5 @@ Cada fila es un commit. T001-T003 y T004-T008 son independientes entre sí; el o
 | `_clear_stage_schedule` en la escritura. | Borrar antes del cálculo. | Evita que un fallo de cálculo borre de forma confirmada. |
 | `TimeoutError` de SQLAlchemy con manejador propio. | Capturar `TimeoutError` integrado o `DBAPIError`. | El agotamiento no es `DBAPIError`; capturar el integrado ocultaría timeouts ajenos. |
 | Constantes de 64/50 000/10 s y de 15 s/30 s/10 + 10. | Variables de entorno. | Evita drift de configuración (R20); son límites de seguridad, no reglas deportivas. |
-| Subidas y borrados fuera de la transacción, con compensación si la escritura falla. | Mantener `put_bytes` dentro de la transacción. | N-2 ampliado: evita `idle in transaction` durante la E/S; la importación sube antes y compensa. |
+| Subidas y borrados fuera de la transacción, con compensación solo si el fallo es anterior al commit. | Mantener `put_bytes` dentro de la transacción. | N-2 ampliado: evita `idle in transaction` durante la E/S; un commit ambiguo conserva ambos y puede dejar un huérfano, que se prefiere a una referencia rota. |
 | H7 no se corrige en esta spec. | Añadir unicidad de `bracket_code` o un lock de fase. | Exige migración o coordinación nueva y queda fuera de R15; se acepta como riesgo residual documentado. |

@@ -664,11 +664,24 @@ class WorkspaceTransaction:
         return self
 
     async def __aexit__(self, exc_type, exc_info, traceback):
-        self._session.active = False
+        session = self._session
+        session.active = False
         if exc_type is None:
-            self._session.committed = True
+            session.committed = True
         else:
-            self._session.rolled_back = True
+            session.rolled_back = True
+        if (
+            exc_type is None
+            and session.cancel_commit_on_begin == session.begins
+        ):
+            # Simulate a cancellation delivered while committing: the fake
+            # marks the transaction committed and then raises.
+            raise asyncio.CancelledError()
+        if exc_type is None and session.fail_commit_on_begin == session.begins:
+            # Simulate a commit that fails and rolls back.
+            session.committed = False
+            session.rolled_back = True
+            raise RuntimeError("commit failed")
         return False
 
 
@@ -682,18 +695,26 @@ class WorkspaceSession:
         roster_lookup=None,
         set_photo_result=None,
         set_consent_result=None,
+        team_registered: bool = True,
+        cancel_commit_on_begin: int | None = None,
+        fail_commit_on_begin: int | None = None,
     ):
         self.roster_rows = roster_rows if roster_rows is not None else []
         self.roster_lookup = roster_lookup
         self.set_photo_result = set_photo_result
         self.set_consent_result = set_consent_result
+        self.team_registered = team_registered
+        self.cancel_commit_on_begin = cancel_commit_on_begin
+        self.fail_commit_on_begin = fail_commit_on_begin
         self.active = False
         self.committed = False
         self.rolled_back = False
+        self.begins = 0
         self.statements: list[str] = []
         self.query_transaction_states: list[bool] = []
 
     def begin(self):
+        self.begins += 1
         return WorkspaceTransaction(self)
 
     def in_transaction(self) -> bool:
@@ -711,6 +732,8 @@ class WorkspaceSession:
             return FakeScalar(self.set_consent_result)
         if "FROM tournaments" in sql:
             return FakeScalar(1)
+        if "FROM tournament_teams" in sql:
+            return FakeScalar(1 if self.team_registered else None)
         if "JOIN players p" in sql:
             roster_ids = (params or {}).get("roster_ids")
             if roster_ids and self.roster_rows:
@@ -1135,8 +1158,9 @@ async def test_bulk_import_compensates_a_failed_upload_before_the_transaction(
         )
 
     assert response.status_code == 503
-    assert storage.deleted == [storage.puts[0]]
-    assert storage.delete_transaction_states == [False]
+    # M1: the failing key was registered before put_bytes, so both are cleaned.
+    assert storage.deleted == storage.puts
+    assert storage.delete_transaction_states == [False, False]
     assert storage.put_transaction_states == [False, False]
     assert not any(
         sql.startswith(("INSERT INTO", "UPDATE ", "DELETE FROM"))
@@ -1624,3 +1648,273 @@ async def test_invalid_object_keys_degrade_like_a_signing_failure(monkeypatch, c
             storage=storage,
         )
     assert failure.value.status_code == 503
+
+
+class BlockingPutStorage(WorkspaceStorage):
+    """put_bytes that signals it started and then waits until cancelled."""
+
+    def __init__(self, *, session):
+        super().__init__(session=session)
+        self.put_started = asyncio.Event()
+
+    async def put_bytes(self, key, content, content_type):
+        self.puts.append(key)
+        self.put_transaction_states.append(self.session.in_transaction())
+        self.put_started.set()
+        await asyncio.Event().wait()
+        return key  # pragma: no cover
+
+
+async def test_real_task_cancellation_during_upload_compensates(
+    monkeypatch, allow_management
+):
+    session = _bulk_session()
+    storage = BlockingPutStorage(session=session)
+    install_workspace_storage(monkeypatch, storage)
+    install_import(monkeypatch, with_photos=True)
+
+    task = asyncio.create_task(
+        tournaments_router.create_roster_players_bulk(
+            TOURNAMENT_ID,
+            WORKSPACE_TEAM_ID,
+            UploadFile(filename="roster.csv", file=io.BytesIO(b"")),
+            UploadFile(filename="photos.zip", file=io.BytesIO(b"")),
+            context=workspace_context(),
+            db=session,
+        )
+    )
+    await asyncio.wait_for(storage.put_started.wait(), timeout=5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # M1: the key was registered before the upload, so the cancellation
+    # compensates the object that may have been written.
+    assert storage.puts
+    assert storage.deleted == [storage.puts[0]]
+    assert storage.delete_transaction_states == [False]
+
+
+async def test_bulk_import_does_not_delete_objects_when_cancelled_during_commit(
+    monkeypatch, allow_management
+):
+    session = _bulk_session()
+    session.cancel_commit_on_begin = 2
+    storage = WorkspaceStorage(session=session)
+    storage.on_put = _assign_put_keys(session)
+    install_workspace_storage(monkeypatch, storage)
+    install_roster_record(monkeypatch, session, roster_ids=(ROSTER_A, ROSTER_B))
+    install_import(monkeypatch, with_photos=True)
+
+    with pytest.raises(asyncio.CancelledError):
+        await tournaments_router.create_roster_players_bulk(
+            TOURNAMENT_ID,
+            WORKSPACE_TEAM_ID,
+            UploadFile(filename="roster.csv", file=io.BytesIO(b"")),
+            UploadFile(filename="photos.zip", file=io.BytesIO(b"")),
+            context=workspace_context(),
+            db=session,
+        )
+
+    assert storage.puts
+    # M2: success is marked before the commit, so a cancellation while
+    # committing never deletes objects that may already be referenced.
+    assert storage.deleted == []
+    assert session.committed is True
+
+
+async def test_upload_photo_keeps_both_objects_when_cancelled_during_commit(
+    monkeypatch, allow_management
+):
+    session = WorkspaceSession(
+        roster_lookup={
+            "id": ROSTER_ID,
+            "photo_consent": True,
+            "photo_object_key": OLD_KEY,
+        },
+        set_photo_result=OLD_KEY,
+        roster_rows=[roster_row(ROSTER_ID, photo_object_key=OLD_KEY)],
+        cancel_commit_on_begin=2,
+    )
+    storage = WorkspaceStorage(session=session)
+    storage.on_put = lambda key: session.roster_rows[0].update(photo_object_key=key)
+    install_workspace_storage(monkeypatch, storage)
+    monkeypatch.setattr(
+        tournaments_router,
+        "validate_photo_content",
+        lambda raw, filename: PHOTO_FILE,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await tournaments_router.upload_roster_player_photo(
+            TOURNAMENT_ID,
+            ROSTER_ID,
+            UploadFile(filename="photo.jpg", file=io.BytesIO(b"jpeg-bytes")),
+            context=workspace_context(),
+            db=session,
+        )
+
+    new_key = storage.puts[0]
+    # The commit is ambiguous: keep both objects. The previous one may still be
+    # referenced (commit failed) and the new one may already be (commit won).
+    assert new_key not in storage.deleted
+    assert storage.deleted == []
+
+
+async def test_bulk_import_compensates_when_permission_is_revoked_in_the_write(
+    monkeypatch,
+):
+    session = _bulk_session()
+    storage = WorkspaceStorage(session=session)
+    storage.on_put = _assign_put_keys(session)
+    install_workspace_storage(monkeypatch, storage)
+    install_import(monkeypatch, with_photos=True)
+    calls: list[str] = []
+
+    async def permission(db, context, code, tournament_id=None, **kwargs):
+        calls.append(code)
+        if len(calls) == 2:
+            raise PermissionError("La membresía ya no permite gestionar el torneo")
+
+    monkeypatch.setattr(tournaments_router, "require_permission", permission)
+
+    async with workspace_client(session) as client:
+        response = await _bulk_request(client, session)
+
+    # M5: permission is checked again in the write transaction, after uploads.
+    assert response.status_code == 403
+    assert calls == ["MANAGE_TOURNAMENTS", "MANAGE_TOURNAMENTS"]
+    assert storage.puts
+    assert storage.deleted == storage.puts
+    assert _no_db_writes(session)
+    assert session.rolled_back is True
+
+
+async def test_bulk_import_validates_the_team_before_uploading(
+    monkeypatch, allow_management
+):
+    session = _bulk_session()
+    session.team_registered = False
+    storage = WorkspaceStorage(session=session)
+    install_workspace_storage(monkeypatch, storage)
+    install_import(monkeypatch, with_photos=True)
+
+    async with workspace_client(session) as client:
+        response = await _bulk_request(client, session)
+
+    # M6: an unknown team answers 404 before any storage write.
+    assert response.status_code == 404
+    assert response.json() == {"detail": "El equipo no está registrado en el torneo"}
+    assert storage.puts == []
+    assert _no_db_writes(session)
+
+
+class CancellingOldDeleteStorage(WorkspaceStorage):
+    """Delete that is cancelled, to prove the cancellation is not swallowed."""
+
+    async def delete_key(self, key):
+        self.deleted.append(key)
+        self.delete_transaction_states.append(self.session.in_transaction())
+        raise asyncio.CancelledError()
+
+
+async def test_upload_photo_keeps_the_previous_object_when_the_commit_fails(
+    monkeypatch, allow_management
+):
+    session = WorkspaceSession(
+        roster_lookup={
+            "id": ROSTER_ID,
+            "photo_consent": True,
+            "photo_object_key": OLD_KEY,
+        },
+        set_photo_result=OLD_KEY,
+        roster_rows=[roster_row(ROSTER_ID, photo_object_key=OLD_KEY)],
+        fail_commit_on_begin=2,
+    )
+    storage = WorkspaceStorage(session=session)
+    storage.on_put = lambda key: session.roster_rows[0].update(photo_object_key=key)
+    install_workspace_storage(monkeypatch, storage)
+    monkeypatch.setattr(
+        tournaments_router,
+        "validate_photo_content",
+        lambda raw, filename: PHOTO_FILE,
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await tournaments_router.upload_roster_player_photo(
+            TOURNAMENT_ID,
+            ROSTER_ID,
+            UploadFile(filename="photo.jpg", file=io.BytesIO(b"jpeg-bytes")),
+            context=workspace_context(),
+            db=session,
+        )
+
+    # The row was rolled back, so it still references OLD_KEY: deleting it
+    # would break the reference. The new object is the accepted orphan.
+    assert storage.puts
+    assert storage.deleted == []
+    assert session.rolled_back is True
+    assert session.committed is False
+
+
+async def test_upload_photo_propagates_cancellation_while_deleting_the_previous_object(
+    monkeypatch, allow_management
+):
+    session = WorkspaceSession(
+        roster_lookup={
+            "id": ROSTER_ID,
+            "photo_consent": True,
+            "photo_object_key": OLD_KEY,
+        },
+        set_photo_result=OLD_KEY,
+        roster_rows=[roster_row(ROSTER_ID, photo_object_key=OLD_KEY)],
+    )
+    storage = CancellingOldDeleteStorage(session=session)
+    storage.on_put = lambda key: session.roster_rows[0].update(photo_object_key=key)
+    install_workspace_storage(monkeypatch, storage)
+    monkeypatch.setattr(
+        tournaments_router,
+        "validate_photo_content",
+        lambda raw, filename: PHOTO_FILE,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await tournaments_router.upload_roster_player_photo(
+            TOURNAMENT_ID,
+            ROSTER_ID,
+            UploadFile(filename="photo.jpg", file=io.BytesIO(b"jpeg-bytes")),
+            context=workspace_context(),
+            db=session,
+        )
+
+    # The cleanup was attempted and the cancellation was not swallowed.
+    assert storage.deleted == [OLD_KEY]
+
+
+async def test_bulk_import_keeps_orphans_when_the_commit_fails(
+    monkeypatch, allow_management
+):
+    session = _bulk_session()
+    session.fail_commit_on_begin = 2
+    storage = WorkspaceStorage(session=session)
+    storage.on_put = _assign_put_keys(session)
+    install_workspace_storage(monkeypatch, storage)
+    install_roster_record(monkeypatch, session, roster_ids=(ROSTER_A, ROSTER_B))
+    install_import(monkeypatch, with_photos=True)
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await tournaments_router.create_roster_players_bulk(
+            TOURNAMENT_ID,
+            WORKSPACE_TEAM_ID,
+            UploadFile(filename="roster.csv", file=io.BytesIO(b"")),
+            UploadFile(filename="photos.zip", file=io.BytesIO(b"")),
+            context=workspace_context(),
+            db=session,
+        )
+
+    # A failed commit leaves no rows but may leave the uploaded objects behind:
+    # best-effort trade-off accepted for the bulk import.
+    assert storage.puts
+    assert storage.deleted == []
+    assert session.rolled_back is True
+    assert session.committed is False

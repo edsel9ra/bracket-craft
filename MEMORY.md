@@ -4,7 +4,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Spec 005 — Rendimiento: firmas, Swiss y conexión (2026-10-20)
 - **Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de T010: CI en `main` y revisión humana.**
 - Evidencia local: **391 passed / 108 skipped**; `compileall` y `git diff --check` OK; sin cambios de config, Compose, migraciones ni frontend. La opt-in no se ejecutó con el rol de aplicación (credenciales del PostgreSQL local); con rol admin pasaron el pool real y una prueba de Swiss.
-- Fotos: firma, subida y borrado siempre fuera de transacción; subidas con compensación (incluida cancelación). Público `photo_url: null` (200), Workspace 503, un aviso por respuesta y cliente de firma cacheado (rotar credenciales exige reiniciar el proceso).
+- Fotos: firma, subida y borrado siempre fuera de transacción; compensación del objeto nuevo solo si el fallo es anterior al commit; un commit fallido/ambiguo conserva ambos (nuevo huérfano aceptado). Público `photo_url: null` (200), Workspace 503, un aviso por respuesta y cliente de firma cacheado (rotar credenciales exige reiniciar el proceso).
 - Swiss: 64 equipos (422), 50 000 evaluaciones (40 000 búsqueda + 10 000 reserva) y timeout 10 s en ejecutor dedicado de 2 hilos; un fallback fallido tras agotar la búsqueda es `budget_exhausted`. 409 por presupuesto, sorteo imposible, timeout o estado cambiado; `ValueError` de validación intacto. RLS re-fijado y estado revalidado con `FOR UPDATE` en la escritura.
 - Conexión: 15 s / 30 s, pool 10+10 con espera 10 s y 503 por agotamiento con un aviso; 2 × 20 + 20 = 60 conexiones con `API_WORKERS=2` y worker frente a 100 por defecto.
 
@@ -24,5 +24,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Pendiente
 - Cerrar la spec 005 (T010): CI en `main` y revisión humana distinta del autor; la suite local ya está en verde.
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas (timeouts 15 s/30 s y frontera con sesión real).
-- Hallazgos menores no bloqueantes de 005: ventana de compensación en cancelación durante `put_bytes`/commit; borrado del objeto anterior fuera del `finally`; tests de cancelación real con `task.cancel()`; revocación de permiso en la escritura de importación; validación opcional de `team_id` antes de subir.
+- Corrección final de 005: compensación registrada antes de `put_bytes`; el objeto anterior de una subida se borra solo tras commit confirmado (si el commit falla o es ambiguo se conservan ambos y el nuevo puede quedar huérfano; la importación también puede dejar huérfanos si falla el commit); cancelación real con `task.cancel()`, permiso revalidado en la escritura de importación y `team_id` validado antes de subir.
 - Confirmar la revocación de la segunda clave de Context7 y exportar `CONTEXT7_API_KEY`.

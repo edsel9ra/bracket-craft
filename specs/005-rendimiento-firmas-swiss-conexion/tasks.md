@@ -95,7 +95,7 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 
 ## T003 — R15: caminos del Workspace fuera de la transacción
 
-**Objetivo:** migrar lista, alta, importación, subida de foto y consentimiento al resolvedor por lote, con 503 ante fallo. Ninguna firma, subida (`put_bytes`) ni borrado (`delete_key`) ocurre con una transacción abierta: la importación sube las fotos antes de la escritura y las compensa si esta falla; la subida individual sigue lectura → `put_bytes` fuera → escritura → borrado del anterior → firma.
+**Objetivo:** migrar lista, alta, importación, subida de foto y consentimiento al resolvedor por lote, con 503 ante fallo. Ninguna firma, subida (`put_bytes`) ni borrado (`delete_key`) ocurre con una transacción abierta: la importación sube las fotos antes de la escritura y solo compensa si el fallo es inequívocamente anterior al commit; la subida individual sigue lectura → `put_bytes` fuera → escritura → commit confirmado → borrado del anterior → firma, conservando ambos objetos si el commit falla o es ambiguo.
 
 **RF:** RF-001, RF-002, RF-004, RF-010.
 
@@ -108,11 +108,14 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 - Lista de plantilla con `get_db` y `get_auth_context` sustituidos, `require_permission` sustituido por un no-op y almacenamiento que lanza: **503** con el mensaje actual.
 - Lista correcta: URLs en lote, orden y campos idénticos; una clave repetida se firma una vez.
 - Alta, lista y consentimiento: la fila se lee dentro de la transacción; la firma ocurre después, con el doble de sesión registrando `in_transaction() == False`.
-- Importación: `put_bytes` se ejecuta **antes** de la transacción de escritura y con `in_transaction() == False` (`put_transaction_states == [False, …]`); si la escritura o una subida posterior falla, se compensa con `delete_key` y `delete_transaction_states == [False, …]`.
-- Subida individual: lectura → `put_bytes` fuera → escritura → borrado del anterior → firma; `put_transaction_states` y `delete_transaction_states` contienen solo `False`.
+- Importación, fallo anterior al commit: `put_bytes` se ejecuta **antes** de la transacción de escritura y con `in_transaction() == False` (`put_transaction_states == [False, …]`); si una subida posterior, la validación, el permiso o la escritura fallan, se compensa con `delete_key` y `delete_transaction_states == [False, …]`.
+- Importación, commit fallido o ambiguo: no se compensa; los objetos pueden quedar huérfanos (best-effort, sin filas confirmadas) y la prueba fija ese comportamiento aceptado.
+- Subida individual, commit confirmado: lectura → `put_bytes` fuera → escritura → commit confirmado → borrado del anterior → firma; `put_transaction_states` y `delete_transaction_states` contienen solo `False`.
+- Subida individual, commit fallido o ambiguo: se conservan el objeto anterior y el nuevo; el nuevo puede quedar huérfano; no se compensa y no se borra el anterior (se prefiere un huérfano a una referencia rota).
+- Subida individual, fallo anterior al commit: si la validación, el permiso o la escritura fallan de forma inequívoca antes del commit y el objeto nuevo ya se subió, se compensa el objeto nuevo; la cancelación durante el borrado del anterior se propaga y no se silencia.
 - Importación con varias filas: una sola llamada al resolvedor y no N firmas.
 - Un fallo de firma en el alta no revierte la fila ya confirmada: la respuesta es 503 después del commit. La prueba fija ese comportamiento y el plan lo declara como consecuencia de N-2 (el cliente debe releer; un reintento ciego puede dar 409).
-- En la importación y en la subida, un fallo de firma posterior al commit **no** borra las claves subidas ni revierte filas; la compensación cubre fallos de una subida posterior o de la escritura, no un fallo de firma posterior al commit. El borrado del objeto anterior no depende del éxito de la firma.
+- En la importación y en la subida, un fallo de firma posterior al commit **no** borra las claves subidas ni revierte filas; la compensación cubre solo fallos inequívocamente anteriores al commit, no un fallo de firma posterior ni un commit fallido o ambiguo. El borrado del objeto anterior no depende del éxito de la firma.
 - El campo de la clave de objeto no se serializa en la respuesta (se elimina de la fila, como hoy).
 - Opt-in (`RUN_DATABASE_TESTS=1`): tras cerrar la lectura, con firmante falso, `session.in_transaction()` es falso y `pg_stat_activity` del PID está en `idle`, no `idle in transaction`.
 
@@ -346,6 +349,7 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 - [ ] Si la spec 004 siguiera sin commit, sus archivos (`backend/app/workers/outbox.py`, el relay de `backend/app/main.py`, `backend/tests/test_outbox_*.py`, el frontend de tiempo real y las secciones de docs) no forman parte del commit de 005; si ya está commiteada (`3b6210f`), el commit de 005 no la revierte.
 - [ ] `git diff -U0 backend/app/main.py backend/tests/test_hardening.py` no añade hunks de 005 fuera de los esperados (manejador, registro, llamada al log y pruebas de storage); si 004 siguiera sin commit, sus hunks permanecen intactos.
 - [ ] RF-001 a RF-004 verificados con `tests/test_storage_signing.py` y `tests/test_photo_resolution.py`.
+- [ ] Caso de commit fallido o ambiguo documentado y probado en subida e importación: se conservan ambos objetos, el nuevo puede quedar huérfano, no se compensa y no se borra el anterior; la cancelación durante el borrado del anterior se propaga.
 - [ ] RF-005 y RF-006 verificados con `tests/test_swiss_budget.py` y `tests/test_swiss_transaction.py`.
 - [ ] RF-008 y RF-009 verificados con `tests/test_database_config.py` y `tests/test_database_timeouts.py`.
 - [ ] RF-011 verificado con la revisión de `README.md`, `AGENTS.md` y `MEMORY.md`.

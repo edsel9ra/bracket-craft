@@ -1417,6 +1417,23 @@ async def create_roster_players_bulk(
             await set_rls_context(db, context.organization_id, context.user_id)
             await _ensure_tournament(db, context.organization_id, tournament_id)
             await _require_tournament_management(db, context, tournament_id)
+            team_result = await db.execute(
+                text("""
+                    SELECT 1
+                    FROM tournament_teams tt
+                    WHERE tt.organization_id = :organization_id
+                      AND tt.tournament_id = :tournament_id
+                      AND tt.team_id = :team_id
+                      AND tt.status = 'registered'
+                """),
+                {
+                    "organization_id": str(context.organization_id),
+                    "tournament_id": str(tournament_id),
+                    "team_id": str(team_id),
+                },
+            )
+            if team_result.scalar_one_or_none() is None:
+                raise HTTPException(status_code=404, detail="El equipo no está registrado en el torneo")
 
         # N-2: upload every photo before opening the write transaction. The
         # roster id is generated here so the object key is final before the row
@@ -1434,11 +1451,14 @@ async def create_roster_players_bulk(
                         f"{context.organization_id}/tournaments/{tournament_id}/rosters/"
                         f"{roster_id}/{uuid4()}{photo.extension}"
                     )
+                    # Register the key before the upload: if the request is
+                    # cancelled or fails after the object was written, the
+                    # compensation below also deletes it.
+                    uploaded_keys.append(photo_key)
                     try:
                         await storage.put_bytes(photo_key, photo.content, photo.content_type)
                     except StorageError as exc:
                         raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
-                    uploaded_keys.append(photo_key)
             prepared.append((roster_id, photo_key))
 
         async with db.begin():
@@ -1469,7 +1489,12 @@ async def create_roster_players_bulk(
             players = await _load_roster_player_rows(
                 db, context.organization_id, created_roster_ids
             )
-        completed = True
+            # Mark success before leaving the transaction (implicit commit): a
+            # failed commit and a cancellation while committing are ambiguous
+            # (the rows may or may not be visible), so no object is deleted.
+            # A failed commit can leave orphan objects (best-effort), which is
+            # preferable to a broken reference.
+            completed = True
     finally:
         if not completed:
             # Best-effort compensation in `finally` so a cancellation between
@@ -1539,6 +1564,8 @@ async def upload_roster_player_photo(
         f"{roster_id}/{uuid4()}{image.extension}"
     )
     completed = False
+    committed = False
+    old_key_to_delete: str | None = None
     try:
         try:
             await storage.put_bytes(key, image.content, image.content_type)
@@ -1555,20 +1582,27 @@ async def upload_roster_player_photo(
             if previous_key is not None:
                 old_key = previous_key
             row = await _load_roster_player_row(db, context.organization_id, roster_id)
-        completed = True
+            old_key_to_delete = old_key if old_key and old_key != key else None
+            # The write body finished. A failure from here on belongs to the
+            # implicit commit and is ambiguous: the row may or may not be
+            # visible, so nothing is deleted in that case.
+            completed = True
+        committed = True
     finally:
         if not completed:
-            # A failed upload, a revoked permission, a rolled-back write or a
-            # cancellation must not leave the new object behind.
+            # Failure before the end of the write body: the transaction rolled
+            # back, so the new object is safe to compensate.
             try:
                 await storage.delete_key(key)
             except BaseException:
                 pass
-    if old_key and old_key != key:
-        try:
-            await storage.delete_key(old_key)
-        except StorageError:
-            logger.warning("No se pudo eliminar la foto anterior del roster %s", roster_id, exc_info=True)
+        elif committed and old_key_to_delete:
+            # The previous object is unreferenced only after a confirmed
+            # commit. A cancellation during this cleanup is not swallowed.
+            try:
+                await storage.delete_key(old_key_to_delete)
+            except Exception:
+                logger.warning("No se pudo eliminar la foto anterior del roster %s", roster_id, exc_info=True)
     return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
 
 
