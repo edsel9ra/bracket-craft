@@ -5,7 +5,7 @@
             "type": "remote",
             "url": "https://mcp.context7.com/mcp",
             "headers": {
-                "Authorization": "ctx7sk-fc97ebfd-ef5c-4f02-9985-53ad0dddaaa1"
+                "Authorization": "{env:CONTEXT7_API_KEY}"
             },
             "enabled": true
         }
