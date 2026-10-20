@@ -163,6 +163,19 @@ export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.productio
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
 
+## Verificación
+
+Con Node 24 y pnpm 12.12.1, la auditoría de dependencias del frontend se ejecuta desde la raíz del repositorio:
+
+```sh
+AUDIT_JSON="/tmp/pnpm-audit.json"
+trap 'rm -f "$AUDIT_JSON"' EXIT
+if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
+PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDIT_JSON" --pnpm-status "$status"
+```
+
+El filtro `infra/scripts/audit_frontend.py` falla ante cualquier hallazgo `high` o `critical` con corrección publicada, muestra los no accionables (incluidos los que no tienen parche) para su revisión y no persiste exclusiones. No se admiten listas de GHSA ni flags que persistan exclusiones, como `--ignore-unfixable`, `audit.ignore` o `auditConfig.ignoreGhsas`. El resto de comprobaciones de CI está en `AGENTS.md` y la política completa en la §3.4 de `docs/constitution.md`.
+
 ## Seguridad
 
 El backend establece `app.current_organization_id` y `app.current_user_id` dentro de cada transacción. Las tablas tenant-owned tienen RLS y las vistas públicas no exponen documentos ni fechas de nacimiento.

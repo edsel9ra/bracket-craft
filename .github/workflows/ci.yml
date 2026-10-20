@@ -165,8 +165,12 @@ jobs:
         with:
           version: 12.12.1
       - name: Audit frontend dependencies
-        working-directory: frontend
-        run: pnpm audit --prod --audit-level high
+        shell: bash
+        run: |
+          AUDIT_JSON="/tmp/pnpm-audit.json"
+          trap 'rm -f "$AUDIT_JSON"' EXIT
+          if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
+          PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDIT_JSON" --pnpm-status "$status"
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs

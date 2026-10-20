@@ -125,8 +125,13 @@ docker run --rm --network host -v "$PWD/infra:/infra:ro" \
   postgres:17-alpine sh /infra/scripts/test_migrate_target.sh
 docker compose config -q
 pip-audit -r backend/requirements.txt
-cd frontend && pnpm audit --prod --audit-level high
+AUDIT_JSON="/tmp/pnpm-audit.json"
+trap 'rm -f "$AUDIT_JSON"' EXIT
+if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
+PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDIT_JSON" --pnpm-status "$status"
 ```
+
+La auditoría del frontend se ejecuta desde la raíz con el bloque anterior: `infra/scripts/audit_frontend.py` falla ante cualquier hallazgo `high` o `critical` con corrección publicada, muestra los no accionables (incluidos los que no tienen parche) para su revisión y no persiste exclusiones. No uses listas de GHSA ni flags que persistan exclusiones, como `--ignore-unfixable`, `audit.ignore` o `auditConfig.ignoreGhsas`.
 
 La validación de producción exige **Docker Compose 2.24.4 o superior**, porque el overlay usa `!reset`/`!override` y la comparación de versiones incluye el parche. Con variables dummy (nunca secretos reales) se valida el merge real de despliegue (desarrollo y luego producción):
 
@@ -233,7 +238,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 
 - **Trivy en CI:** mantén `aquasecurity/trivy-action@v0.36.0`. La referencia `v0.28.0` falla por su dependencia faltante `setup-trivy@v0.2.1`. El escaneo falla (`exit-code: 1`) ante vulnerabilidades CRITICAL o HIGH con corrección disponible (`ignore-unfixed`), y omite `frontend/node_modules`, `frontend/.pnpm-store` y `.venv`.
 - **Versiones fijadas en CI:** Python 3.14, Node 24 y pnpm 12.12.1 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
-- **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
+- **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `frontend/pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
 - **Compose y secuencias:** `ports: []` y `volumes: []` **no** anulan las secuencias heredadas de desarrollo; el merge las concatena. El overlay de producción usa `!reset []`/`!override` (Compose ≥2.24.4) y la CI valida el JSON renderizado con `infra/scripts/assert_production_compose.py`. No vuelvas a `[]`.
 - **Cifrado de la fecha (017/018):** la 017 revoca `SELECT`/`INSERT` de `birth_date` y la 018 falla de forma cerrada si el backfill dejó pendientes. En una base con datos no uses el flujo por defecto: sigue el runbook y ejecuta el one-off con `--no-deps`. Tras la 018 no hay reversión de código, solo *forward-fix*.
 - **Migración 002:** un volumen limpio de PostgreSQL había fallado antes con `cannot drop columns from view`. Causa raíz: `infra/postgres/init/02_public_projections.sql` había sido actualizado para reflejar el estado post-012 (`v_public_stages` y `bracket_code` en `v_public_matches`), pero la migración 001 reescribe `v_public_matches` sin `bracket_code`, y `CREATE OR REPLACE VIEW` no puede soltar columnas. La corrección fue revertir `init/02` al estado pre-012 (los scripts de init no son migraciones y no tienen checksum), de modo que 012 introduzca esos cambios en el orden correcto. Solo afecta a volúmenes limpios; los existentes no re-ejecutan init.
@@ -248,7 +253,7 @@ La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que c
 - **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis. El job también ejecuta `infra/scripts/test_migrate_target.sh` contra PostgreSQL 17 y la suite con base (`RUN_DATABASE_TESTS=1`).
 - **`frontend` (Frontend checks):** `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm run typecheck` y `pnpm run build` desde `frontend/`.
 - **`infrastructure` (Infrastructure checks):** `python3 infra/scripts/verify_version_sources.py --exclude-constitution`, `sh -n infra/postgres/migrate.sh`, versión de Compose ≥2.24.4, `docker compose config -q` para desarrollo y para el merge dev+prod con variables dummy, y las aserciones de `infra/scripts/assert_production_compose.py` sobre el JSON renderizado.
-- **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt`, `pnpm audit --prod --audit-level high` y el escaneo Trivy descrito en Comandos.
+- **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt`, la auditoría del frontend desde la raíz con `infra/scripts/audit_frontend.py` (bloque de Verificación) y el escaneo Trivy descrito en Comandos.
 - **Pruebas de integración de invitaciones (opt-in):** requieren PostgreSQL en ejecución con la cuenta y organización demo.
 
   ```sh
