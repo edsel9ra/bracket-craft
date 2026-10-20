@@ -588,9 +588,21 @@ async def _dbapi_exception_handler(_request: Request, exc: DBAPIError) -> JSONRe
     Only the SQLSTATE is logged. Neither ``str(exc)`` (which contains the SQL
     statement and parameters) nor the driver message (which may contain the
     failing row) is written to logs or to the response.
+
+    The published-structure trigger raises the stable, user-class SQLSTATE
+    ``ZZ409``. It is mapped to 409 by that code only; other database errors
+    keep the generic 500 response.
     """
 
-    logger.error("Error de base de datos no controlado (SQLSTATE %s)", _dbapi_sqlstate(exc))
+    sqlstate = _dbapi_sqlstate(exc)
+    if sqlstate == "ZZ409":
+        logger.warning("Conflicto de estructura publicada (SQLSTATE ZZ409)")
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": "La versión publicada es inmutable"},
+        )
+
+    logger.error("Error de base de datos no controlado (SQLSTATE %s)", sqlstate)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Error interno del servidor"},

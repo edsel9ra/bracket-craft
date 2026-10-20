@@ -194,6 +194,12 @@ class DrawSession:
             self.locked_queries.append((self.begins, sql))
         if "set_config" in sql:
             return EmptyResult()
+        if "SELECT id, tournament_version_id FROM stages" in sql:
+            return RowsResult(
+                [{"id": STAGE_ID, "tournament_version_id": VERSION_ID}]
+            )
+        if "SELECT status FROM tournament_versions" in sql and "FOR UPDATE" in sql:
+            return ScalarResult(self.stage["version_status"])
         if "FROM stages s" in sql:
             return RowsResult([self.stage])
         if "FROM stage_teams st" in sql:
@@ -546,7 +552,7 @@ async def test_revoked_management_permission_in_the_write_phase_is_a_403(
     install_runner(monkeypatch, session, result=pairings_for(8))
     calls: list[str] = []
 
-    async def permission(db, context, code, tournament_id=None, **kwargs):
+    async def permission(db, context, code, match_id=None, **kwargs):
         calls.append(code)
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")
@@ -704,9 +710,16 @@ async def test_write_transaction_sets_rls_locks_and_confirms_the_expected_rows(
     assert session.t2_statements[1].startswith(
         "SELECT set_config('app.current_user_id'"
     )
-    # Previous round and placeholders are locked before writing.
+    # Stage and version are locked first, then the previous round and the
+    # placeholders, before writing.
     locks = [(begin, sql) for begin, sql in session.locked_queries if begin == 2]
-    assert len(locks) == 2
+    assert len(locks) == 4
+    assert "FROM stages" in locks[0][1]
+    assert "FROM tournament_versions" in locks[1][1]
+    assert "matchday < :round_number" in locks[2][1]
+    assert "matchday = :round_number" in locks[3][1]
+    assert "ORDER BY id" in locks[3][1]
+    assert "ORDER BY bracket_code" not in locks[3][1]
     assert all("FOR UPDATE" in sql for _, sql in locks)
     first_write = next(
         index

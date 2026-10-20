@@ -5,19 +5,21 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, set_rls_context
 from app.core.config import get_settings
+from app.core.locking import lock_stage_and_version, lock_version
 from app.core.permissions import require_permission
 from app.core.storage import StorageError, get_object_storage
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.rules_engine.engine import remap_stage_overrides, validate_rules_config
 from app.modules.rules_engine.schemas import CreateTournamentRequest, UpdateRulesConfigRequest
 from app.modules.tournaments.schemas import (
+    AssignStageTeamsRequest,
     CreateDraftVersionRequest,
     CreateMatchRequest,
     CreateStageRequest,
@@ -34,6 +36,8 @@ from app.modules.tournaments.schemas import (
     PublicTournamentSummaryResponse,
     PublishVersionResponse,
     StageSummaryResponse,
+    StageTeamAssignmentResponse,
+    StageTeamsResponse,
     TournamentCreateResponse,
     TournamentMatchSummaryResponse,
     TournamentSummaryResponse,
@@ -80,9 +84,9 @@ async def _ensure_public_tournament(db: AsyncSession, tournament_id: UUID) -> No
         raise HTTPException(status_code=404, detail="Torneo público no encontrado")
 
 
-async def _require_tournament_management(db: AsyncSession, context: AuthContext, tournament_id: UUID) -> None:
+async def _require_tournament_management(db: AsyncSession, context: AuthContext) -> None:
     try:
-        await require_permission(db, context, "MANAGE_TOURNAMENTS", tournament_id=tournament_id)
+        await require_permission(db, context, "MANAGE_TOURNAMENTS")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -227,8 +231,10 @@ async def _create_draft_version_record(
     tournament_id: UUID,
     payload: CreateDraftVersionRequest | None,
 ) -> dict:
+    # Version-only exception (plus the tournament row): cloning never locks a
+    # stage before the version because the new stages do not exist yet.
     await _ensure_tournament(db, context.organization_id, tournament_id)
-    await _require_tournament_management(db, context, tournament_id)
+    await _require_tournament_management(db, context)
 
     tournament_result = await db.execute(
         text("""
@@ -443,40 +449,6 @@ async def _create_draft_version_record(
             },
         )
 
-    edge_result = await db.execute(
-        text("""
-            SELECT source_stage_id, target_stage_id, selector_type, selector_config
-            FROM stage_edges
-            WHERE tournament_version_id = :version_id
-              AND tournament_id = :tournament_id
-              AND organization_id = :organization_id
-        """),
-        {
-            "version_id": str(source_version_id),
-            "tournament_id": str(tournament_id),
-            "organization_id": str(context.organization_id),
-        },
-    )
-    for edge in edge_result.mappings().all():
-        await db.execute(
-            text("""
-                INSERT INTO stage_edges
-                    (organization_id, tournament_id, tournament_version_id,
-                     source_stage_id, target_stage_id, selector_type, selector_config)
-                VALUES (:organization_id, :tournament_id, :version_id, :source_stage_id,
-                        :target_stage_id, :selector_type, CAST(:selector_config AS jsonb))
-            """),
-            {
-                "organization_id": str(context.organization_id),
-                "tournament_id": str(tournament_id),
-                "version_id": str(new_version_id),
-                "source_stage_id": str(stage_map[str(edge["source_stage_id"])]),
-                "target_stage_id": str(stage_map[str(edge["target_stage_id"])]),
-                "selector_type": edge["selector_type"],
-                "selector_config": json.dumps(edge["selector_config"]),
-            },
-        )
-
     stage_team_result = await db.execute(
         text("""
             SELECT stage_id, group_id, team_id
@@ -647,7 +619,8 @@ async def _update_version_rules_record(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
+        # Version-only exception: there is no phase to lock (see core.locking).
         version_result = await db.execute(
             text("""
                 SELECT status
@@ -769,24 +742,18 @@ async def create_stage(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
-        version_result = await db.execute(
-            text("""
-                SELECT status
-                FROM tournament_versions
-                WHERE id = :version_id
-                  AND tournament_id = :tournament_id
-                  AND organization_id = :organization_id
-            """),
-            {
-                "version_id": str(payload.version_id),
-                "tournament_id": str(tournament_id),
-                "organization_id": str(context.organization_id),
-            },
-        )
-        version_status = version_result.scalar_one_or_none()
-        if version_status is None:
-            raise HTTPException(status_code=404, detail="Versión no encontrada en el torneo")
+        await _require_tournament_management(db, context)
+        # Version-only exception: lock the version and then insert the stage.
+        # There is no pre-existing phase to lock first.
+        try:
+            version_status = await lock_version(
+                db,
+                context.organization_id,
+                payload.version_id,
+                tournament_id=tournament_id,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Versión no encontrada en el torneo") from exc
         if version_status != "draft":
             raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
         try:
@@ -852,6 +819,438 @@ async def list_tournament_teams(
         return [dict(row) for row in result.mappings().all()]
 
 
+@router.get(
+    "/{tournament_id}/stages/{stage_id}/teams",
+    response_model=StageTeamsResponse,
+)
+async def list_stage_teams(
+    tournament_id: UUID,
+    stage_id: UUID,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Teams assigned to one stage/version plus the registered unassigned ones.
+
+    Read-only and organization-scoped: the stage is resolved inside the
+    tournament of the caller's organization and every query filters by the
+    stage's own version, so assignments from other versions never leak in.
+    """
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+
+        stage_result = await db.execute(
+            text("""
+                SELECT s.id, s.tournament_version_id
+                FROM stages s
+                WHERE s.id = :stage_id
+                  AND s.tournament_id = :tournament_id
+                  AND s.organization_id = :organization_id
+            """),
+            {
+                "stage_id": str(stage_id),
+                "tournament_id": str(tournament_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        stage = stage_result.mappings().one_or_none()
+        if stage is None:
+            raise HTTPException(
+                status_code=404, detail="Fase no encontrada en el torneo"
+            )
+        version_id = stage["tournament_version_id"]
+
+        scope = {
+            "organization_id": str(context.organization_id),
+            "tournament_id": str(tournament_id),
+            "version_id": str(version_id),
+            "stage_id": str(stage_id),
+        }
+        assigned_result = await db.execute(
+            text("""
+                SELECT DISTINCT tt.team_id, t.name, t.short_code
+                FROM stage_teams st
+                JOIN tournament_teams tt
+                  ON tt.team_id = st.team_id
+                 AND tt.tournament_id = st.tournament_id
+                 AND tt.organization_id = st.organization_id
+                JOIN teams t
+                  ON t.id = tt.team_id
+                 AND t.organization_id = tt.organization_id
+                WHERE st.organization_id = :organization_id
+                  AND st.tournament_id = :tournament_id
+                  AND st.tournament_version_id = :version_id
+                  AND st.stage_id = :stage_id
+                ORDER BY t.name, tt.team_id
+            """),
+            scope,
+        )
+        unassigned_result = await db.execute(
+            text("""
+                SELECT tt.team_id, t.name, t.short_code
+                FROM tournament_teams tt
+                JOIN teams t
+                  ON t.id = tt.team_id
+                 AND t.organization_id = tt.organization_id
+                WHERE tt.organization_id = :organization_id
+                  AND tt.tournament_id = :tournament_id
+                  AND tt.status = 'registered'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM stage_teams st
+                      WHERE st.organization_id = tt.organization_id
+                        AND st.tournament_id = tt.tournament_id
+                        AND st.tournament_version_id = :version_id
+                        AND st.stage_id = :stage_id
+                        AND st.team_id = tt.team_id
+                  )
+                ORDER BY t.name, tt.team_id
+            """),
+            scope,
+        )
+
+        return {
+            "stage_id": stage_id,
+            "version_id": version_id,
+            "assigned": [
+                dict(row) for row in assigned_result.mappings().all()
+            ],
+            "unassigned": [
+                dict(row) for row in unassigned_result.mappings().all()
+            ],
+        }
+
+
+def plan_stage_team_assignment(
+    existing_ids: set[UUID],
+    requested_ids: list[UUID],
+) -> tuple[list[UUID], list[UUID]]:
+    """Split a validated batch into new and already assigned teams.
+
+    Preserves the request order and never introduces duplicates; the schema
+    rejects duplicate ``team_ids`` before this function runs.
+    """
+
+    assigned = [team_id for team_id in requested_ids if team_id not in existing_ids]
+    already_assigned = [
+        team_id for team_id in requested_ids if team_id in existing_ids
+    ]
+    return assigned, already_assigned
+
+
+@router.post(
+    "/{tournament_id}/stages/{stage_id}/teams",
+    response_model=StageTeamAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def assign_stage_teams(
+    tournament_id: UUID,
+    stage_id: UUID,
+    payload: AssignStageTeamsRequest,
+    response: Response,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Assign registered tournament teams to one stage in a draft version.
+
+    The batch is atomic: either every new team is inserted or none is. The
+    stage lock serializes concurrent assignments and publications, and the
+    version state is re-read under that lock.
+    """
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+
+        stage_result = await db.execute(
+            text("""
+                SELECT s.id, s.tournament_version_id, tv.status AS version_status
+                FROM stages s
+                JOIN tournament_versions tv
+                  ON tv.id = s.tournament_version_id
+                 AND tv.tournament_id = s.tournament_id
+                 AND tv.organization_id = s.organization_id
+                WHERE s.id = :stage_id
+                  AND s.tournament_id = :tournament_id
+                  AND s.organization_id = :organization_id
+            """),
+            {
+                "stage_id": str(stage_id),
+                "tournament_id": str(tournament_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        stage = stage_result.mappings().one_or_none()
+        if stage is None:
+            raise HTTPException(
+                status_code=404, detail="Fase no encontrada en el torneo"
+            )
+        # The version check precedes the permission check and the idempotency.
+        if stage["version_status"] != "draft":
+            raise HTTPException(
+                status_code=409, detail="La versión publicada es inmutable"
+            )
+
+        await _require_tournament_management(db, context)
+
+        try:
+            version_id, locked_status = await lock_stage_and_version(
+                db, context.organization_id, tournament_id, stage_id
+            )
+        except LookupError as exc:
+            raise HTTPException(
+                status_code=404, detail="Fase no encontrada en el torneo"
+            ) from exc
+        if locked_status != "draft":
+            raise HTTPException(
+                status_code=409, detail="La versión publicada es inmutable"
+            )
+
+        team_ids = [str(team_id) for team_id in payload.team_ids]
+        registered_result = await db.execute(
+            text("""
+                SELECT tt.team_id
+                FROM tournament_teams tt
+                WHERE tt.organization_id = :organization_id
+                  AND tt.tournament_id = :tournament_id
+                  AND tt.team_id = ANY(CAST(:team_ids AS uuid[]))
+                  AND tt.status = 'registered'
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "team_ids": team_ids,
+            },
+        )
+        registered_ids = {
+            row["team_id"] for row in registered_result.mappings().all()
+        }
+        if len(registered_ids) != len(payload.team_ids):
+            raise HTTPException(
+                status_code=409,
+                detail="Uno o más equipos no están registrados en el torneo",
+            )
+
+        existing_result = await db.execute(
+            text("""
+                SELECT DISTINCT team_id
+                FROM stage_teams
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                  AND team_id = ANY(CAST(:team_ids AS uuid[]))
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(version_id),
+                "stage_id": str(stage_id),
+                "team_ids": team_ids,
+            },
+        )
+        existing_ids = {
+            row["team_id"] for row in existing_result.mappings().all()
+        }
+
+        assigned, already_assigned = plan_stage_team_assignment(
+            existing_ids, payload.team_ids
+        )
+
+        if not assigned:
+            response.status_code = status.HTTP_200_OK
+        else:
+            for team_id in assigned:
+                await db.execute(
+                    text("""
+                        INSERT INTO stage_teams
+                            (organization_id, tournament_id, tournament_version_id,
+                             stage_id, group_id, team_id)
+                        VALUES (:organization_id, :tournament_id, :version_id,
+                                :stage_id, :group_id, :team_id)
+                    """),
+                    {
+                        "organization_id": str(context.organization_id),
+                        "tournament_id": str(tournament_id),
+                        "version_id": str(version_id),
+                        "stage_id": str(stage_id),
+                        "group_id": None,
+                        "team_id": str(team_id),
+                    },
+                )
+            response.status_code = status.HTTP_201_CREATED
+
+        return {
+            "stage_id": stage_id,
+            "version_id": version_id,
+            "team_ids": payload.team_ids,
+            "assigned": assigned,
+            "already_assigned": already_assigned,
+        }
+
+
+@router.delete(
+    "/{tournament_id}/stages/{stage_id}/teams/{team_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_stage_team(
+    tournament_id: UUID,
+    stage_id: UUID,
+    team_id: UUID,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove a registered team from one stage in a draft version.
+
+    Precedence: tournament/stage 404 -> non-draft 409 (even when the team was
+    not assigned) -> permission 403 -> non-registered 409 -> matches 409 ->
+    standings 409 -> 204 idempotent. Every row of the team in that stage is
+    removed; matches, groups, slots and standings are never deleted.
+    """
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+
+        stage_result = await db.execute(
+            text("""
+                SELECT s.id, s.tournament_version_id, tv.status AS version_status
+                FROM stages s
+                JOIN tournament_versions tv
+                  ON tv.id = s.tournament_version_id
+                 AND tv.tournament_id = s.tournament_id
+                 AND tv.organization_id = s.organization_id
+                WHERE s.id = :stage_id
+                  AND s.tournament_id = :tournament_id
+                  AND s.organization_id = :organization_id
+            """),
+            {
+                "stage_id": str(stage_id),
+                "tournament_id": str(tournament_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        stage = stage_result.mappings().one_or_none()
+        if stage is None:
+            raise HTTPException(
+                status_code=404, detail="Fase no encontrada en el torneo"
+            )
+        # Immutability precedes permission and idempotency: a published or
+        # archived version answers 409 even if the team was not assigned.
+        if stage["version_status"] != "draft":
+            raise HTTPException(
+                status_code=409, detail="La versión publicada es inmutable"
+            )
+
+        await _require_tournament_management(db, context)
+
+        try:
+            version_id, locked_status = await lock_stage_and_version(
+                db, context.organization_id, tournament_id, stage_id
+            )
+        except LookupError as exc:
+            raise HTTPException(
+                status_code=404, detail="Fase no encontrada en el torneo"
+            ) from exc
+        if locked_status != "draft":
+            raise HTTPException(
+                status_code=409, detail="La versión publicada es inmutable"
+            )
+
+        registered_result = await db.execute(
+            text("""
+                SELECT 1
+                FROM tournament_teams
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND team_id = :team_id
+                  AND status = 'registered'
+                LIMIT 1
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "team_id": str(team_id),
+            },
+        )
+        if registered_result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=409,
+                detail="El equipo no está registrado en el torneo",
+            )
+
+        match_result = await db.execute(
+            text("""
+                SELECT 1
+                FROM matches
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                  AND (
+                      home_team_id = :team_id
+                      OR away_team_id = :team_id
+                  )
+                LIMIT 1
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(version_id),
+                "stage_id": str(stage_id),
+                "team_id": str(team_id),
+            },
+        )
+        if match_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="El equipo tiene partidos en la fase y no se puede retirar",
+            )
+
+        standings_result = await db.execute(
+            text("""
+                SELECT 1
+                FROM standings
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND stage_id = :stage_id
+                  AND team_id = :team_id
+                LIMIT 1
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "stage_id": str(stage_id),
+                "team_id": str(team_id),
+            },
+        )
+        if standings_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="El equipo tiene clasificación en la fase y no se puede retirar",
+            )
+
+        # No group filter: every row of the team in this stage/version goes.
+        await db.execute(
+            text("""
+                DELETE FROM stage_teams
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                  AND team_id = :team_id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(version_id),
+                "stage_id": str(stage_id),
+                "team_id": str(team_id),
+            },
+        )
+
+
 @router.post("/{tournament_id}/teams", response_model=TournamentTeamCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_tournament_team(
     tournament_id: UUID,
@@ -862,7 +1261,7 @@ async def create_tournament_team(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
 
         stage = None
         if payload.stage_id is not None:
@@ -888,6 +1287,15 @@ async def create_tournament_team(
             if stage is None:
                 raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo")
             if stage["version_status"] != "draft":
+                raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
+            # phase -> version before reading teams or writing stage_teams.
+            try:
+                _, locked_status = await lock_stage_and_version(
+                    db, context.organization_id, tournament_id, payload.stage_id
+                )
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo") from exc
+            if locked_status != "draft":
                 raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
         elif payload.group_id is not None:
             raise HTTPException(status_code=422, detail="group_id requiere stage_id")
@@ -989,7 +1397,7 @@ async def create_tournament_teams_bulk(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
 
         existing_codes_result = await db.execute(
             text("""
@@ -1031,6 +1439,15 @@ async def create_tournament_teams_bulk(
             if stage is None:
                 raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo")
             if stage["version_status"] != "draft":
+                raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
+            # phase -> version before reading groups or writing stage_teams.
+            try:
+                _, locked_status = await lock_stage_and_version(
+                    db, context.organization_id, tournament_id, payload.stage_id
+                )
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo") from exc
+            if locked_status != "draft":
                 raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
             if payload.group_id is not None:
                 group_result = await db.execute(
@@ -1367,7 +1784,7 @@ async def create_roster_player(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         try:
             roster_id, _ = await _create_roster_player_record(db, context, tournament_id, payload, settings)
         except IntegrityError as exc:
@@ -1416,7 +1833,7 @@ async def create_roster_players_bulk(
         async with db.begin():
             await set_rls_context(db, context.organization_id, context.user_id)
             await _ensure_tournament(db, context.organization_id, tournament_id)
-            await _require_tournament_management(db, context, tournament_id)
+            await _require_tournament_management(db, context)
             team_result = await db.execute(
                 text("""
                     SELECT 1
@@ -1464,7 +1881,7 @@ async def create_roster_players_bulk(
         async with db.begin():
             await set_rls_context(db, context.organization_id, context.user_id)
             await _ensure_tournament(db, context.organization_id, tournament_id)
-            await _require_tournament_management(db, context, tournament_id)
+            await _require_tournament_management(db, context)
             for row, (roster_id, photo_key) in zip(rows, prepared):
                 try:
                     await _create_roster_player_record(
@@ -1534,7 +1951,7 @@ async def upload_roster_player_photo(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         roster_result = await db.execute(
             text("""
                 SELECT r.id, r.photo_consent, r.photo_object_key
@@ -1573,7 +1990,7 @@ async def upload_roster_player_photo(
             raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
         async with db.begin():
             await set_rls_context(db, context.organization_id, context.user_id)
-            await _require_tournament_management(db, context, tournament_id)
+            await _require_tournament_management(db, context)
             replacement_result = await db.execute(
                 text("SELECT set_roster_photo_object(:roster_id, :photo_object_key)"),
                 {"roster_id": str(roster_id), "photo_object_key": key},
@@ -1619,7 +2036,7 @@ async def update_roster_photo_consent(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         roster_result = await db.execute(
             text("""
                 SELECT id
@@ -1671,6 +2088,7 @@ async def _clear_stage_schedule(
               AND tournament_id = :tournament_id
               AND tournament_version_id = :version_id
               AND stage_id = :stage_id
+            ORDER BY id
             FOR UPDATE
         """),
         scope,
@@ -1919,7 +2337,7 @@ async def generate_single_elimination_matches(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         stage = await _load_draft_stage_context(
             db,
             context.organization_id,
@@ -1932,6 +2350,17 @@ async def generate_single_elimination_matches(
                 status_code=422,
                 detail="La generación automática solo está disponible para fases de eliminación directa",
             )
+        # phase -> version before reading stage_teams or locking matches.
+        try:
+            locked_version_id, locked_status = await lock_stage_and_version(
+                db, context.organization_id, tournament_id, payload.stage_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada") from exc
+        if locked_version_id != payload.version_id:
+            raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada")
+        if locked_status != "draft":
+            raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
 
         team_result = await db.execute(
             text("""
@@ -2387,7 +2816,7 @@ async def _load_swiss_draw_data(
                   AND matchday = :round_number
                   AND status = 'cancelled'
                   AND bracket_code LIKE 'SW%'
-                ORDER BY bracket_code
+                ORDER BY id
             """),
             {
                 "organization_id": str(context.organization_id),
@@ -2561,7 +2990,7 @@ async def _revalidate_swiss_draw_state(
               AND stage_id = :stage_id
               AND matchday = :round_number
               AND bracket_code LIKE 'SW%'
-            ORDER BY bracket_code
+            ORDER BY id
             FOR UPDATE
         """),
         scope_with_round,
@@ -2882,7 +3311,7 @@ async def draw_stage_schedule(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         stage = await _load_draft_stage_context(
             db,
             context.organization_id,
@@ -2891,6 +3320,21 @@ async def draw_stage_schedule(
             payload.stage_id,
             allow_published=payload.swiss_round > 1,
         )
+        # phase -> version before reading stage_teams and locking matches. Swiss
+        # keeps its read transaction lock-free and re-locks in the write
+        # transaction, after the calculation.
+        stage_type = stage["stage_type"]
+        if stage_type != "swiss":
+            try:
+                locked_version_id, locked_status = await lock_stage_and_version(
+                    db, context.organization_id, tournament_id, payload.stage_id
+                )
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada") from exc
+            if locked_version_id != payload.version_id:
+                raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada")
+            if locked_status != "draft":
+                raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
         team_rows = await _load_registered_stage_teams(
             db,
             context.organization_id,
@@ -2901,7 +3345,6 @@ async def draw_stage_schedule(
         team_ids = [row["team_id"] for row in team_rows]
         if len(team_ids) < 2:
             raise HTTPException(status_code=422, detail="Asigna al menos dos equipos registrados a la fase antes del sorteo")
-        stage_type = stage["stage_type"]
         if stage["version_status"] != "draft" and stage_type != "swiss":
             raise HTTPException(status_code=409, detail="Solo se pueden generar rondas Swiss en una versión publicada")
         if stage_type != "custom_group" and any(row["group_id"] is not None for row in team_rows):
@@ -2972,7 +3415,17 @@ async def draw_stage_schedule(
 
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
+        try:
+            _, locked_status = await lock_stage_and_version(
+                db, context.organization_id, tournament_id, payload.stage_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada") from exc
+        if locked_status != "draft" and not (
+            locked_status == "published" and payload.swiss_round > 1
+        ):
+            raise HTTPException(status_code=409, detail="Solo se pueden generar rondas Swiss en una versión publicada")
         await _revalidate_swiss_draw_state(
             db, context, tournament_id, payload, swiss_draw
         )
@@ -3053,7 +3506,7 @@ async def create_match(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
-        await _require_tournament_management(db, context, tournament_id)
+        await _require_tournament_management(db, context)
         await _load_draft_stage_context(
             db,
             context.organization_id,
@@ -3061,6 +3514,15 @@ async def create_match(
             payload.version_id,
             payload.stage_id,
         )
+        # phase -> version before reading stage_teams and inserting the match.
+        try:
+            _, locked_status = await lock_stage_and_version(
+                db, context.organization_id, tournament_id, payload.stage_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada") from exc
+        if locked_status != "draft":
+            raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
         if payload.home_team_id is not None and payload.home_team_id == payload.away_team_id:
             raise HTTPException(status_code=422, detail="Un partido no puede enfrentar al mismo equipo")
         if payload.group_id is not None:
@@ -3193,6 +3655,7 @@ async def publish_version(
 ) -> PublishVersionResponse:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
+        # Version-only exception: publication never takes a stage lock.
         result = await db.execute(
             text("""
             SELECT tv.id, tv.tournament_id, tv.status, tv.rules_config,
@@ -3214,7 +3677,6 @@ async def publish_version(
                 db,
                 context,
                 "MANAGE_TOURNAMENTS",
-                tournament_id=version["tournament_id"],
             )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc

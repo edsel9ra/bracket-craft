@@ -928,10 +928,6 @@ CREATE TRIGGER trg_protect_stages
 BEFORE INSERT OR UPDATE OR DELETE ON stages
 FOR EACH ROW EXECUTE FUNCTION prevent_published_structure_mutation();
 
-CREATE TRIGGER trg_protect_stage_edges
-BEFORE INSERT OR UPDATE OR DELETE ON stage_edges
-FOR EACH ROW EXECUTE FUNCTION prevent_published_structure_mutation();
-
 CREATE TRIGGER trg_protect_groups
 BEFORE INSERT OR UPDATE OR DELETE ON groups
 FOR EACH ROW EXECUTE FUNCTION prevent_published_structure_mutation();
@@ -1198,8 +1194,8 @@ DO $$
 DECLARE
     table_name TEXT;
     tenant_tables TEXT[] := ARRAY[
-        'organization_users', 'roles', 'organization_user_roles', 'tournament_user_roles',
-        'venues', 'tournaments', 'tournament_versions', 'stages', 'stage_edges',
+        'organization_users', 'roles', 'organization_user_roles',
+        'venues', 'tournaments', 'tournament_versions', 'stages',
         'groups', 'phase_slots', 'teams', 'tournament_teams', 'rosters', 'stage_teams',
         'matches', 'match_officials', 'match_segments', 'match_rosters',
         'match_lineup_snapshots', 'match_segment_team_state', 'match_events',
@@ -1224,8 +1220,8 @@ END
 $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    organization_users, roles, organization_user_roles, tournament_user_roles,
-    venues, tournaments, tournament_versions, stages, stage_edges, groups, phase_slots,
+    organization_users, roles, organization_user_roles,
+    venues, tournaments, tournament_versions, stages, groups, phase_slots,
     teams, tournament_teams, stage_teams, matches, match_officials,
     match_segments, match_rosters, match_lineup_snapshots, match_segment_team_state,
     match_events, player_suspensions, player_suspension_serves, standings,

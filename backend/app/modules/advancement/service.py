@@ -3,10 +3,73 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.locking import lock_matches
+
 
 class AdvancementService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def target_ids(self, context, match_id: UUID, match) -> tuple[UUID, ...]:
+        """Return the destination matches of this closing, including GF2.
+
+        The set is read before any event or segment is written so the caller can
+        pre-lock it in ascending id order (the closing source is locked too by
+        ``lock_targets``). GF2 is included whenever the source is GF1, even if
+        the reset will not be activated for this outcome.
+        """
+
+        links_result = await self.db.execute(
+            text("""
+                SELECT target_match_id
+                FROM advancement_links
+                WHERE organization_id = :organization_id
+                  AND source_match_id = :source_match_id
+                ORDER BY target_match_id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "source_match_id": str(match_id),
+            },
+        )
+        targets = [row["target_match_id"] for row in links_result.mappings().all()]
+
+        if match.get("bracket_code") == "GF1":
+            reset_result = await self.db.execute(
+                text("""
+                    SELECT id
+                    FROM matches
+                    WHERE organization_id = :organization_id
+                      AND tournament_id = :tournament_id
+                      AND tournament_version_id = :version_id
+                      AND stage_id = :stage_id
+                      AND bracket_code = 'GF2'
+                    ORDER BY id
+                """),
+                {
+                    "organization_id": str(context.organization_id),
+                    "tournament_id": str(match["tournament_id"]),
+                    "version_id": str(match["tournament_version_id"]),
+                    "stage_id": str(match["stage_id"]),
+                },
+            )
+            targets.extend(row["id"] for row in reset_result.mappings().all())
+
+        return tuple(targets)
+
+    async def lock_targets(self, context, match_id: UUID, match) -> tuple[UUID, ...]:
+        """Lock the source and every destination in ascending id order.
+
+        Idempotent: a transaction that already locked the set can call it again
+        (PostgreSQL re-locks the same rows in the same transaction).
+        """
+
+        targets = await self.target_ids(context, match_id, match)
+        return await lock_matches(
+            self.db,
+            context.organization_id,
+            (match_id, *targets),
+        )
 
     async def advance_from_match(self, context, match_id: UUID, match, outcome) -> None:
         links_result = await self.db.execute(
@@ -63,7 +126,6 @@ class AdvancementService:
                   AND stage_id = :stage_id
                   AND bracket_code = 'GF2'
                   AND status = 'cancelled'
-                FOR UPDATE
             """),
             {
                 "organization_id": str(context.organization_id),

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, set_rls_context
+from app.core.locking import lock_matches
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.matches.schemas import (
@@ -83,7 +84,6 @@ async def _load_operation_match(
                 db,
                 context,
                 "CLOSE_MATCH_REPORT",
-                tournament_id=match["tournament_id"],
                 match_id=match_id,
             )
         except PermissionError as exc:
@@ -779,25 +779,13 @@ async def assign_match_official(
 ) -> MatchOfficialResponse:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
-        match_result = await db.execute(
-            text("""
-                SELECT tournament_id
-                FROM matches
-                WHERE id = :match_id AND organization_id = :organization_id
-            """),
-            {"match_id": str(match_id), "organization_id": str(context.organization_id)},
-        )
-        tournament_id = match_result.scalar_one_or_none()
-        if tournament_id is None:
-            raise HTTPException(status_code=404, detail="Partido no encontrado")
+        try:
+            await lock_matches(db, context.organization_id, (match_id,))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Partido no encontrado") from exc
 
         try:
-            await require_permission(
-                db,
-                context,
-                "MANAGE_TOURNAMENTS",
-                tournament_id=tournament_id,
-            )
+            await require_permission(db, context, "MANAGE_TOURNAMENTS")
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -887,24 +875,12 @@ async def remove_match_official(
 ) -> None:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
-        match_result = await db.execute(
-            text("""
-                SELECT tournament_id
-                FROM matches
-                WHERE id = :match_id AND organization_id = :organization_id
-            """),
-            {"match_id": str(match_id), "organization_id": str(context.organization_id)},
-        )
-        tournament_id = match_result.scalar_one_or_none()
-        if tournament_id is None:
-            raise HTTPException(status_code=404, detail="Partido no encontrado")
         try:
-            await require_permission(
-                db,
-                context,
-                "MANAGE_TOURNAMENTS",
-                tournament_id=tournament_id,
-            )
+            await lock_matches(db, context.organization_id, (match_id,))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="Partido no encontrado") from exc
+        try:
+            await require_permission(db, context, "MANAGE_TOURNAMENTS")
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 

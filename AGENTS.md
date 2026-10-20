@@ -41,6 +41,9 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - Las proyecciones públicas **nunca** exponen documentos de identidad ni fechas de nacimiento. `photo_url` solo se devuelve si el roster tiene consentimiento de imagen.
 - La formación táctica solo es pública después de publicarse explícitamente desde el Workspace.
 - Las versiones de torneo son inmutables una vez publicadas.
+- La autorización es **RBAC por organización** (roles/permisos de la membresía) más **`match_officials` por partido**. No hay roles por torneo; `tournament_user_roles` fue retirada por la migración 019.
+- El avance entre fases es **manual** y solo en versiones en borrador: `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams`. El sembrado automático por `stage_rank` no está soportado y el calendario no se regenera al asignar o quitar equipos.
+- La migración **019** es destructiva y no tiene rollback: se despliega el código nuevo primero y la 019 después; cualquier corrección posterior es una migración nueva (*forward-fix*).
 - No edites migraciones ya aplicadas; agrega una nueva.
 
 ## Arquitectura Clave
@@ -49,7 +52,10 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Torneos:** torneos con versiones inmutables, fases componibles (Round Robin, grupos, playoffs), equipos y partidos. Puntuación, desempates, disciplina y transferencias se configuran con JSON.
 - **Actas de partido:** el cierre registra goles, tarjetas y suspensiones, y emite eventos al outbox.
 - **Outbox + worker + Redis:** los eventos se procesan de forma asíncrona y alimentan el tiempo real con Socket.IO. El stream es transporte de mejor esfuerzo con un tope fijo de 10 000 entradas aproximado; no es duradero ni la fuente de verdad.
-- **Autenticación:** email/password; Google OAuth preparado mediante `auth_identities`. Membresías y RBAC por organización.
+- **Autenticación y autorización:** email/password; Google OAuth preparado mediante `auth_identities`. RBAC por organización: los permisos se resuelven por la membresía y sus roles; no hay ámbito por torneo ni roles por torneo. La única delegación menor es por partido con `match_officials`.
+- **Avance manual entre fases:** `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams` en versiones en borrador. `POST` es atómico (1..64 equipos, sin duplicados); 201 si hay altas, 200 si todos ya estaban, 204 en la retirada idempotente; 403/404/409/422 según el contrato. No regenera el calendario ni resuelve `phase_slots` entre fases.
+- **Estructura publicada:** los triggers impiden modificar la estructura de una versión publicada o archivada. El trigger de estructura lanza el SQLSTATE **`ZZ409`**; la API lo mapea a **409** por código, sin comparar el texto.
+- **Bloqueo y rendimiento:** fase → versión → partido(s) → segmentos → jugadores. El cierre serializa por fase; es una garantía de corrección, no se midió throughput ni latencia (RNF-003).
 - **API pública:** `/api/v1/tournaments/public`, `/api/v1/tournaments/public/{id}/standings` y `/api/v1/tournaments/public/{id}/matches`.
 - **Fotos:** se firman en lote, con un cliente cacheado por proceso y endpoint de firma, siempre después de cerrar la transacción. El público degrada a `photo_url: null`, el Workspace responde 503 y se registra una sola entrada por respuesta.
 - **Swiss acotado:** tope de 64 equipos, presupuesto de 50 000 evaluaciones de pares (40 000 búsqueda + 10 000 reserva) y timeout de 10 s en un ejecutor dedicado de 2 hilos. 422 por tope; 409 por presupuesto, sorteo imposible, timeout o estado cambiado; los `ValueError` de validación no cambian.
@@ -109,6 +115,86 @@ $COMPOSE up -d api worker
 - El backfill debe salir 0; es idempotente y reanudable y solo procesa filas pendientes.
 - `--no-deps` evita que el one-off dispare `db-migrate` con el target por defecto y aplique la 018 antes de tiempo.
 - Reversión: antes de 017, restaurar el backup y la imagen anterior; entre 017 y 018, corregir y reintentar el backfill (la app antigua no puede escribir la fecha); después de 018, solo *forward-fix* con una migración nueva.
+
+### Migración 019 (runbook)
+
+La **019** es destructiva y **no tiene rollback**: elimina `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` a `direct_team`/`match_result` y recrea `prevent_published_structure_mutation()` con SQLSTATE **`ZZ409`**. Conserva `phase_slots` y las columnas de slots de `matches`. Después de aplicada solo cabe *forward-fix* con otra migración; `schema_migrations`/checksum impiden reaplicarla. Orden: **código nuevo primero (esquema 018), después la 019**; la imagen antigua lee `stage_edges` en el clonado.
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre019.dump"
+pg_restore -l "$HOME/backup-pre019.dump" > /dev/null && echo "backup verificable"
+$COMPOSE stop api worker
+```
+
+Pre-chequeo (solo conteos; `to_regclass` permite que una tabla ausente cuente como 0). Ejecuta las ramas de cada tabla solo si existe. Las referencias a estructuras **retiradas** son solo para comprobar que están vacías o ausentes:
+
+```sql
+DO $$
+DECLARE
+    v_rows BIGINT;
+BEGIN
+    IF to_regclass('public.tournament_user_roles') IS NOT NULL THEN
+        EXECUTE 'SELECT count(*) FROM public.tournament_user_roles' INTO v_rows;
+        RAISE NOTICE 'tournament_user_roles=%', v_rows;
+    ELSE
+        RAISE NOTICE 'tournament_user_roles=0 (ausente)';
+    END IF;
+
+    IF to_regclass('public.stage_edges') IS NOT NULL THEN
+        EXECUTE 'SELECT count(*) FROM public.stage_edges' INTO v_rows;
+        RAISE NOTICE 'stage_edges=%', v_rows;
+    ELSE
+        RAISE NOTICE 'stage_edges=0 (ausente)';
+    END IF;
+
+    IF to_regclass('public.phase_slots') IS NOT NULL THEN
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type = 'stage_rank';
+        RAISE NOTICE 'phase_slots.source_type=stage_rank:%', v_rows;
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type = 'manual';
+        RAISE NOTICE 'phase_slots.source_type=manual:%', v_rows;
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type NOT IN ('direct_team', 'match_result');
+        RAISE NOTICE 'phase_slots.source_type_retirados_o_desconocidos=%', v_rows;
+    ELSE
+        RAISE NOTICE 'phase_slots=0 (ausente)';
+    END IF;
+END
+$$;
+```
+
+Todo debe ser 0. Después revisa el catálogo: relaciones, funciones, vistas, políticas, triggers y **FKs entrantes**; antes solo debe aparecer la propia tabla (y su política/trigger) y después nada:
+
+```sql
+SELECT 'relation' AS kind, c.relname AS object FROM pg_class c
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL SELECT 'function', p.oid::regprocedure::text FROM pg_proc p
+WHERE p.prosrc ~ '(tournament_user_roles|stage_edges)'
+UNION ALL SELECT 'view', v.viewname FROM pg_views v
+WHERE v.definition ~ '(tournament_user_roles|stage_edges)'
+UNION ALL SELECT 'policy', pol.polname FROM pg_policy pol
+JOIN pg_class c ON c.oid = pol.polrelid
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL SELECT 'trigger', t.tgname FROM pg_trigger t
+JOIN pg_class c ON c.oid = t.tgrelid
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL SELECT 'incoming_fk', con.conname FROM pg_constraint con
+WHERE con.contype = 'f' AND con.confrelid IN (
+  SELECT c.oid FROM pg_class c
+  WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+);
+```
+
+Aplica y haz smoke:
+
+```sh
+MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate
+$COMPOSE up -d api worker
+```
+
+Comprueba `/docs`, una lectura pública y una operación del Workspace (incluida la asignación manual en un borrador). Si falla un pre-chequeo, corrige los datos y reintenta; si falla una FK entrante, crea la migración que la resuelva. Después de la 019 no hay `down`; restaura el backup solo si aceptas perder cambios posteriores. El conflicto de estructura publicada devuelve **409** por `ZZ409`; no se compara el texto.
 
 ### Verificación (mismos checks que CI)
 
@@ -174,6 +260,7 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 - **Inicialización de PostgreSQL:** `infra/postgres/init/` solo corre en el primer arranque del volumen.
 - **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256. `MIGRATION_TARGET` (vacía o `NNN`; no existe una bandera `--target`) limita la aplicación a esa versión, valida los checksums de todos los archivos y no desaplica nada.
 - **Cifrado de la fecha de nacimiento:** las migraciones 017 y 018 se aplican en dos fases con `MIGRATION_TARGET` y el backfill one-off `python -m scripts.encrypt_birth_dates` (`DATABASE_ADMIN_URL` + `PLAYER_DATA_KEY`, `--no-deps`). La 018 falla de forma cerrada si quedan pendientes.
+- **Migración 019:** retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` y recrea el trigger con `ZZ409`; es destructiva y sin rollback. Se aplica después del código nuevo con `MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate`, tras backup verificado y pre-chequeo de catálogo.
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
@@ -246,6 +333,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 - **Compose y secuencias:** `ports: []` y `volumes: []` **no** anulan las secuencias heredadas de desarrollo; el merge las concatena. El overlay de producción usa `!reset []`/`!override` (Compose ≥2.24.4) y la CI valida el JSON renderizado con `infra/scripts/assert_production_compose.py`. No vuelvas a `[]`.
 - **Stream del outbox:** no es duradero ni se debe reemitir al arrancar (el relay empieza en el último id). El tope fijo de 10 000 entradas aproximado se dimensiona con P-1 (unos 3 eventos por cierre; varios días con unos pocos MB). Garantías por tramo: outbox→stream *at-least-once*, stream→cliente *best-effort* con huecos y duplicados; la API HTTP es la fuente de verdad. `event_id` es aditivo y `id` se conserva como legado durante la transición; el cliente deduplica 200 entregas. `RESYNC` es una notificación de control (`event_id`/`reason`), no un evento persistido.
 - **Cifrado de la fecha (017/018):** la 017 revoca `SELECT`/`INSERT` de `birth_date` y la 018 falla de forma cerrada si el backfill dejó pendientes. En una base con datos no uses el flujo por defecto: sigue el runbook y ejecuta el one-off con `--no-deps`. Tras la 018 no hay reversión de código, solo *forward-fix*.
+- **Migración 019 (roles por torneo y `stage_edges`):** es destructiva y no tiene `down`. Retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` a `direct_team`/`match_result` y recrea el trigger de estructura con **`ZZ409`**. Despliega el código nuevo antes de aplicarla; después solo *forward-fix* con una migración nueva. `init/01` conserva las dos tablas (con RLS y sin políticas/grants) solo hasta que la 019 las elimina.
 - **Fotos y transacciones:** no firmes fotos, no subas ni borres objetos y no calcules emparejamientos dentro de una transacción; el contexto RLS es local a cada transacción y se vuelve a fijar en la escritura. En alta/importación, un fallo de firma posterior al commit deja la fila creada y responde 503: el cliente debe releer. Las subidas van antes de la escritura y se compensan si falla antes del commit. El objeto anterior de una subida se borra solo tras un commit confirmado; un commit fallido o cancelado (ambiguo) conserva ambos y puede dejar el nuevo huérfano. La importación puede dejar objetos huérfanos si el commit falla (best-effort): se prefiere un huérfano a una referencia rota.
 - **Cliente de firma cacheado:** conserva las credenciales resueltas al construirse; rotarlas exige reiniciar el proceso. La caché es por proceso y endpoint de firma efectivo, no por endpoint de subida.
 - **Límites Swiss:** 64 equipos, 50 000 evaluaciones y 10 s son límites de seguridad, no reglas deportivas (puntuación, desempates, disciplina y transferencias siguen en el JSON). El hilo de cálculo no se cancela: el timeout descarta el resultado y el hilo termina por su presupuesto.
@@ -267,6 +355,13 @@ La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que c
 
   ```sh
   docker compose exec -e RUN_DATABASE_TESTS=1 api pytest -q tests/test_invitations.py
+  ```
+
+- **Migración 019 y concurrencia (opt-in):** requieren PostgreSQL y `DATABASE_ADMIN_URL`; crean bases desechables o usan la configurada. Si no se ejecutan, se declaran como no ejecutadas.
+
+  ```sh
+  cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
+    pytest -q tests/test_migration_019.py tests/test_concurrency_006.py
   ```
 
 - Ejecuta todas las verificaciones relevantes antes de dar una tarea por terminada y reporta cuáles no pudiste correr.
