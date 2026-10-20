@@ -7,8 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
+from app.core.locking import lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
+from app.modules.advancement.service import AdvancementService
 from app.modules.matches.schemas import CloseMatchReportDTO
 from app.modules.rules_engine.engine import compute_match_outcome, evaluate_suspensions
 
@@ -24,13 +26,23 @@ class CloseMatchReportService:
     async def execute(self, context: AuthContext, match_id: UUID, dto: CloseMatchReportDTO) -> dict[str, Any]:
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
+            identity = await self._load_match_identity(context, match_id)
+            await lock_stage_and_version(
+                self.db,
+                context.organization_id,
+                identity["tournament_id"],
+                identity["stage_id"],
+            )
+            # Pre-lock the source and every destination (including GF2 for a
+            # GF1) in ascending id order before any segment or player write.
+            advancement = AdvancementService(self.db)
+            await advancement.lock_targets(context, match_id, identity)
             match = await self._lock_match(context, match_id)
             try:
                 if dto.resolution_type == "administrative":
                     await require_administrative_resolution(
                         self.db,
                         context,
-                        match["tournament_id"],
                         match_id,
                     )
                 else:
@@ -38,7 +50,6 @@ class CloseMatchReportService:
                         self.db,
                         context,
                         "CLOSE_MATCH_REPORT",
-                        match["tournament_id"],
                         match_id,
                     )
             except PermissionError as exc:
@@ -209,6 +220,22 @@ class CloseMatchReportService:
             "away_score": outcome.away_score,
             "winner_team_id": str(outcome.winner_team_id) if outcome.winner_team_id else None,
         }
+
+    async def _load_match_identity(self, context: AuthContext, match_id: UUID) -> dict:
+        """Read the match scope without locking, so the lock order can start at the stage."""
+
+        result = await self.db.execute(
+            text("""
+                SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code
+                FROM matches
+                WHERE id = :match_id AND organization_id = :organization_id
+            """),
+            {"match_id": str(match_id), "organization_id": str(context.organization_id)},
+        )
+        row = result.mappings().one_or_none()
+        if row is None:
+            raise LookupError("Partido no encontrado")
+        return dict(row)
 
     async def _lock_match(self, context: AuthContext, match_id: UUID):
         result = await self.db.execute(
@@ -594,8 +621,6 @@ class CloseMatchReportService:
         await StandingsService(self.db).recalculate(context, match["tournament_id"], match["stage_id"])
 
     async def _advance_bracket(self, context, match_id, match, outcome):
-        from app.modules.advancement.service import AdvancementService
-
         advancement = AdvancementService(self.db)
         await advancement.advance_from_match(context, match_id, match, outcome)
         await advancement.activate_double_elimination_reset(context, match, outcome)

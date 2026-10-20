@@ -1,28 +1,31 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
-## Spec 005 — Rendimiento: firmas, Swiss y conexión (2026-10-20)
-- **Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de T010: CI en `main` y revisión humana.**
-- Evidencia local: **391 passed / 108 skipped**; `compileall` y `git diff --check` OK; sin cambios de config, Compose, migraciones ni frontend. La opt-in no se ejecutó con el rol de aplicación (credenciales del PostgreSQL local); con rol admin pasaron el pool real y una prueba de Swiss.
-- Fotos: firma, subida y borrado siempre fuera de transacción; compensación del objeto nuevo solo si el fallo es anterior al commit; un commit fallido/ambiguo conserva ambos (nuevo huérfano aceptado). Público `photo_url: null` (200), Workspace 503, un aviso por respuesta y cliente de firma cacheado (rotar credenciales exige reiniciar el proceso).
-- Swiss: 64 equipos (422), 50 000 evaluaciones (40 000 búsqueda + 10 000 reserva) y timeout 10 s en ejecutor dedicado de 2 hilos; un fallback fallido tras agotar la búsqueda es `budget_exhausted`. 409 por presupuesto, sorteo imposible, timeout o estado cambiado; `ValueError` de validación intacto. RLS re-fijado y estado revalidado con `FOR UPDATE` en la escritura.
-- Conexión: 15 s / 30 s, pool 10+10 con espera 10 s y 503 por agotamiento con un aviso; 2 × 20 + 20 = 60 conexiones con `API_WORKERS=2` y worker frente a 100 por defecto.
+## Spec 006 — Scoping de torneo y avance manual (2026-10-20)
+- **Implementada y validada por @reviewer (APROBADA, 2026-10-20); T011 pendiente de CI en `main` y revisión humana.**
+- Evidencia: backend **469 passed / 131 skipped**; opt-in **23** (migración 019 y concurrencia) + **27** (`test_match_result_immutability` e `test_invitations`) en bases desechables; frontend **77 passed**, typecheck y build OK (build no re-ejecutado por OOM local en la última pasada).
+- Autorización real: RBAC por organización + `match_officials` por partido; `tournament_user_roles` retirada; sin roles ni ámbito por torneo.
+- Avance manual: `GET/POST/DELETE /tournaments/{id}/stages/{stage_id}/teams`; solo borradores; POST atómico 1..64 sin duplicados (201/200); DELETE 204 idempotente con guardas 409 (versión, no registrado, partido, standings). El calendario no se regenera; `stage_rank`/sembrado automático no soportado; `phase_config` no se interpreta.
+- Bloqueo: fase → versión → partidos → segmentos → jugadores. El cierre pre-bloquea origen y destinos (incl. GF2); `standings` bloquea la fase antes del advisory; rendimiento no medido (RNF-003).
+- 019 destructiva sin rollback: retira `tournament_user_roles` y `stage_edges`, estrecha el CHECK a `direct_team`/`match_result` y conserva `phase_slots`; trigger con SQLSTATE `ZZ409` → API 409 por código, no por texto.
+- Despliegue: código nuevo primero (esquema 018), luego `MIGRATION_TARGET=019` y `020`; la 020 es un *forward-fix* no destructivo que concede `INSERT (id)` en `rosters` para el `id` pre-generado de la importación N-2 (`init/01` lo incluye). Backup verificado con `pg_restore -l`, pre-chequeo con `to_regclass` y catálogo con `incoming_fk`; después solo *forward-fix*.
+- Observaciones no bloqueantes: RNF-003 no medida y aclaración de RF-008 en la spec (los tests de la 019 nombran estructuras retiradas); no hay pendientes de código.
 
 ## Riesgo residual
-- Dos sorteos Swiss simultáneos en frío (ronda 1 sin filas) podrían insertar calendarios duplicados: `FOR UPDATE` no bloquea filas inexistentes y `bracket_code` no es único. Aceptado por el usuario en la spec 005.
-- `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm) y `node-forge` 1.4.0 (GHSA-86w9-cpqp-85rv), altos y sin parche upstream; revisar en cada actualización.
+- Dos sorteos Swiss simultáneos en frío (ronda 1 sin filas) podrían duplicar calendarios; aceptado en la spec 005.
+- `braces` 3.0.3 y `node-forge` 1.4.0: altos y sin parche upstream; revisar en cada actualización.
 
 ## Specs anteriores
-- 001 (correctivos P0: `players` con RLS, overlay de producción, inmutabilidad de resultados), 002 (cifrado de fecha 017/018, backfill y `MIGRATION_TARGET`) y 003 (deuda de dependencias; CI 39361295825): cerradas.
-- 004 (outbox y tiempo real): implementada y aprobada; stream de mejor esfuerzo (`MAXLEN` 10 000), `event_id` aditivo, `RESYNC` y deduplicación 200 en el cliente; API HTTP como fuente de verdad.
+- 001 (correctivos P0), 002 (cifrado 017/018, backfill y `MIGRATION_TARGET`) y 003 (deuda de dependencias): cerradas.
+- 004 (outbox y tiempo real): aprobada; stream de mejor esfuerzo, `event_id` aditivo, `RESYNC` y deduplicación 200.
+- 005 (firmas, Swiss y conexión): implementada y validada por review; pendiente CI en `main` y revisión humana.
 
 ## Entorno local
-- Sin Python ni pnpm en el host: tests con la imagen `bc-api-t007` sobre copia en `/tmp` (sin `__pycache__` en el repo); `compileall` sobre copia.
-- Docker 29.8.2 / Compose 5.5.1. El PostgreSQL local tiene credenciales desalineadas con `.env` desde el volumen: la suite opt-in (`RUN_DATABASE_TESTS=1`) no se ejecuta; hay que declararlo, no cambiar la base.
+- Sin Python ni pnpm en el host: backend con la imagen `bc-api-t007` sobre copia en `/tmp`; frontend con `node:24-alpine` y pnpm 12.12.1 en `/tmp`.
+- PostgreSQL local con credenciales desalineadas: la opt-in se ejecuta en bases desechables; no cambiar la base compartida.
 - Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. Trivy `aquasec/trivy:0.70.0`; `trivy-action@v0.36.0`.
 
 ## Pendiente
-- Cerrar la spec 005 (T010): CI en `main` y revisión humana distinta del autor; la suite local ya está en verde.
-- Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas (timeouts 15 s/30 s y frontera con sesión real).
-- Corrección final de 005: compensación registrada antes de `put_bytes`; el objeto anterior de una subida se borra solo tras commit confirmado (si el commit falla o es ambiguo se conservan ambos y el nuevo puede quedar huérfano; la importación también puede dejar huérfanos si falla el commit); cancelación real con `task.cancel()`, permiso revalidado en la escritura de importación y `team_id` validado antes de subir.
-- Confirmar la revocación de la segunda clave de Context7 y exportar `CONTEXT7_API_KEY`.
+- T011 de 006: CI en `main`, opt-in en CI y revisión humana distinta del autor.
+- Cerrar 005 en `main` (CI + revisión humana).
+- Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.

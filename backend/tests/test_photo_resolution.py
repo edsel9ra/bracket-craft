@@ -1544,7 +1544,7 @@ async def test_upload_photo_revalidates_permission_before_writing(monkeypatch):
     )
     calls: list[str] = []
 
-    async def permission(db, context, code, tournament_id=None, **kwargs):
+    async def permission(db, context, code, match_id=None, **kwargs):
         calls.append(code)
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")
@@ -1771,7 +1771,7 @@ async def test_bulk_import_compensates_when_permission_is_revoked_in_the_write(
     install_import(monkeypatch, with_photos=True)
     calls: list[str] = []
 
-    async def permission(db, context, code, tournament_id=None, **kwargs):
+    async def permission(db, context, code, match_id=None, **kwargs):
         calls.append(code)
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")

@@ -238,3 +238,96 @@ async def test_router_translated_integrity_error_keeps_409(client):
 
     assert response.status_code == 409
     assert response.json() == {"detail": "No se pudo crear la fase"}
+
+
+# ---------------------------------------------------------------------------
+# ZZ409: published-structure trigger mapped to 409 by SQLSTATE (RF-020/RF-021)
+# ---------------------------------------------------------------------------
+
+ZZ409_DETAIL = "La versión publicada es inmutable"
+ZZ409_RAW_MESSAGE = (
+    "INSERT INTO stage_teams (team_id) VALUES ('2000-01-01', '1029384756')"
+)
+ZZ409_PARAMETERS = {
+    "team_id": "2000-01-01",
+    "national_id": "1029384756",
+    "full_name": "Ana Perez",
+}
+ZZ409_DRIVER_MESSAGE = (
+    "No se pueden insertar estructuras en una versión publicada. "
+    "Failing row contains 2000-01-01, 1029384756, Ana Perez"
+)
+
+
+class _PublishedStructureCause(Exception):
+    sqlstate = "ZZ409"
+
+
+def _zz409_error() -> DBAPIError:
+    return DBAPIError(
+        ZZ409_RAW_MESSAGE,
+        ZZ409_PARAMETERS,
+        _PublishedStructureCause(ZZ409_DRIVER_MESSAGE),
+    )
+
+
+async def test_zz409_sqlstate_returns_sanitized_409(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        response = await _dbapi_exception_handler(_request(), _zz409_error())
+
+    assert response.status_code == 409
+    body = json.loads(response.body)
+    assert body == {"detail": ZZ409_DETAIL}
+
+    # Neither the response nor the log carries SQL, parameters, PII or the
+    # driver message: the decision is made by SQLSTATE, not by the text.
+    exposed = f"{response.body.decode()} {caplog.text}".lower()
+    for fragment in (
+        *LOG_LEAK_FRAGMENTS,
+        "stage_teams",
+        "insert into",
+        "failing row",
+        "ana perez",
+        "no se pueden insertar estructuras",
+    ):
+        assert fragment.lower() not in exposed
+    assert "zz409" in caplog.text.lower()
+
+
+async def test_zz409_through_the_http_stack_returns_409(client, caplog):
+    def raise_zz409() -> None:
+        raise _zz409_error()
+
+    route = APIRoute("/__test__/zz409", raise_zz409, methods=["GET"])
+    api.router.routes.append(route)
+    try:
+        with caplog.at_level(logging.WARNING, logger="app.main"):
+            response = await client.get("/__test__/zz409")
+    finally:
+        api.router.routes.remove(route)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": ZZ409_DETAIL}
+    exposed = f"{response.text} {caplog.text}".lower()
+    for fragment in LOG_LEAK_FRAGMENTS:
+        assert fragment.lower() not in exposed
+
+
+class _OtherDatabaseCause(Exception):
+    sqlstate = "42501"
+
+
+async def test_only_zz409_is_translated_to_409(caplog):
+    other = DBAPIError(
+        "DELETE FROM tournament_user_roles WHERE id = '2000-01-01'",
+        {"id": "2000-01-01"},
+        _OtherDatabaseCause("permission denied for table tournament_user_roles"),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        response = await _dbapi_exception_handler(_request(), other)
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": "Error interno del servidor"}
+    assert "42501" in caplog.text
+    assert "permission denied for table" not in caplog.text.lower()

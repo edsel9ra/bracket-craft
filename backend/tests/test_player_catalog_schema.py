@@ -531,3 +531,25 @@ async def _count_rows(session, table: str) -> int:
 
 async def _count_players(session) -> int:
     return (await session.execute(text("SELECT count(*) FROM players"))).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_bracket_app_can_insert_a_pre_generated_roster_id_by_column(db_session):
+    """Migration 020: column-level INSERT(id) without table-wide INSERT."""
+
+    privileges = (
+        await db_session.execute(
+            text("""
+                SELECT
+                    has_column_privilege(
+                        'bracket_app', 'public.rosters', 'id', 'INSERT'
+                    ) AS id_insert,
+                    has_table_privilege(
+                        'bracket_app', 'public.rosters', 'INSERT'
+                    ) AS table_insert
+            """)
+        )
+    ).mappings().one()
+
+    assert privileges["id_insert"] is True
+    assert privileges["table_insert"] is False

@@ -219,6 +219,38 @@ class TournamentTeamCreateResponse(BaseModel):
     tournament_id: UUID
 
 
+class StageTeamSummaryResponse(BaseModel):
+    team_id: UUID
+    name: str
+    short_code: str
+
+
+class StageTeamsResponse(BaseModel):
+    stage_id: UUID
+    version_id: UUID
+    assigned: list[StageTeamSummaryResponse]
+    unassigned: list[StageTeamSummaryResponse]
+
+
+class AssignStageTeamsRequest(BaseModel):
+    team_ids: list[UUID] = Field(min_length=1, max_length=64)
+
+    @field_validator("team_ids")
+    @classmethod
+    def reject_duplicates(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("team_ids no puede contener equipos duplicados")
+        return value
+
+
+class StageTeamAssignmentResponse(BaseModel):
+    stage_id: UUID
+    version_id: UUID
+    team_ids: list[UUID]
+    assigned: list[UUID]
+    already_assigned: list[UUID]
+
+
 class BulkTournamentTeamResponse(BaseModel):
     count: int
     teams: list[TournamentTeamCreateResponse]

@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.locking import lock_stage_and_version
 from app.modules.rules_engine.engine import deterministic_tie_value, validate_rules_config
 from app.modules.standings.head_to_head import MatchRecord, calculate_head_to_head_stats
 
@@ -13,6 +14,18 @@ class StandingsService:
         self.db = db
 
     async def recalculate(self, context, tournament_id: UUID, stage_id: UUID) -> None:
+        # The stage is locked before the advisory lock so the two orderings
+        # (stage -> advisory and advisory -> stage) never cross.
+        try:
+            await lock_stage_and_version(
+                self.db,
+                context.organization_id,
+                tournament_id,
+                stage_id,
+            )
+        except LookupError as exc:
+            raise ValueError("La fase no existe en el torneo indicado") from exc
+
         await self.db.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:lock_key AS TEXT), 0))"),
             {"lock_key": f"standings:{context.organization_id}:{tournament_id}:{stage_id}"},

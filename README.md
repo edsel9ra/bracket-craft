@@ -151,6 +151,108 @@ export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.productio
 - **Después de 018:** no hay vuelta atrás de código; solo *forward-fix* con una migración nueva. No edites la 018 ni restaures la fecha en claro a mano. Los snapshots anteriores a la 017 pueden contenerla: su tratamiento y la rotación de `PLAYER_DATA_KEY` son deuda separada.
 - **Fallo de la 018:** es transaccional; corrige los pendientes, reintenta el backfill y vuelve a ejecutar la 018. Si el backfill reporta una fecha imposible, corrige los datos reportados (solo ids internos) y reanuda.
 
+## Migración 019: retiro de roles por torneo y selectores entre fases (runbook)
+
+La migración **019** es **destructiva y no tiene rollback**. Elimina `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` a `direct_team`/`match_result` y recrea `prevent_published_structure_mutation()` con el SQLSTATE **`ZZ409`**. Conserva `phase_slots` (con `source_reference`) y las columnas de slots de `matches` como procedencia. `schema_migrations` y el checksum impiden aplicarla dos veces; `IF EXISTS` es solo una salvaguarda. Después de aplicada, cualquier corrección es una **migración nueva** (*forward-fix*).
+
+**Orden de despliegue:** primero el código nuevo, que funciona con el esquema 018; después la 019. No apliques la 019 con la imagen anterior: el clonado antiguo todavía lee `stage_edges`.
+
+**Antes de aplicar**, con `api` y `worker` detenidos y una copia verificada:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre019.dump"
+pg_restore -l "$HOME/backup-pre019.dump" > /dev/null && echo "backup verificable"
+```
+
+Pre-chequeo de solo conteos (sin identificadores ni datos personales). Las guardas `to_regclass` permiten que una relación ausente cuente como 0. Las consultas siguientes referencian estructuras **retiradas** únicamente para comprobar que están vacías o ausentes antes de la 019:
+
+```sql
+DO $$
+DECLARE
+    v_rows BIGINT;
+BEGIN
+    IF to_regclass('public.tournament_user_roles') IS NOT NULL THEN
+        EXECUTE 'SELECT count(*) FROM public.tournament_user_roles' INTO v_rows;
+        RAISE NOTICE 'tournament_user_roles=%', v_rows;
+    ELSE
+        RAISE NOTICE 'tournament_user_roles=0 (ausente)';
+    END IF;
+
+    IF to_regclass('public.stage_edges') IS NOT NULL THEN
+        EXECUTE 'SELECT count(*) FROM public.stage_edges' INTO v_rows;
+        RAISE NOTICE 'stage_edges=%', v_rows;
+    ELSE
+        RAISE NOTICE 'stage_edges=0 (ausente)';
+    END IF;
+
+    IF to_regclass('public.phase_slots') IS NOT NULL THEN
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type = 'stage_rank';
+        RAISE NOTICE 'phase_slots.source_type=stage_rank:%', v_rows;
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type = 'manual';
+        RAISE NOTICE 'phase_slots.source_type=manual:%', v_rows;
+        SELECT count(*) INTO v_rows FROM public.phase_slots
+        WHERE source_type NOT IN ('direct_team', 'match_result');
+        RAISE NOTICE 'phase_slots.source_type_retirados_o_desconocidos=%', v_rows;
+    ELSE
+        RAISE NOTICE 'phase_slots=0 (ausente)';
+    END IF;
+END
+$$;
+```
+
+Todos los conteos deben ser **0**. Si alguno es mayor, la 019 falla cerrada: el operador decide antes de aplicarla; no se borran filas en silencio ni se reescribe `source_type`. Comprueba también el catálogo (relaciones, funciones, vistas, políticas, triggers y **FKs entrantes**); antes solo debe aparecer la propia tabla y, si existiera, su política o trigger; después, nada:
+
+```sql
+SELECT 'relation' AS kind, n.nspname || '.' || c.relname AS object
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL
+SELECT 'function', p.oid::regprocedure::text FROM pg_proc p
+WHERE p.prosrc ~ '(tournament_user_roles|stage_edges)'
+UNION ALL
+SELECT 'view', v.schemaname || '.' || v.viewname FROM pg_views v
+WHERE v.definition ~ '(tournament_user_roles|stage_edges)'
+UNION ALL
+SELECT 'policy', pol.polname FROM pg_policy pol
+JOIN pg_class c ON c.oid = pol.polrelid
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL
+SELECT 'trigger', t.tgname FROM pg_trigger t
+JOIN pg_class c ON c.oid = t.tgrelid
+WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+UNION ALL
+SELECT 'incoming_fk', con.conname FROM pg_constraint con
+WHERE con.contype = 'f'
+  AND con.confrelid IN (
+      SELECT c.oid FROM pg_class c
+      WHERE c.relname IN ('tournament_user_roles', 'stage_edges')
+  );
+```
+
+**Aplicación y smoke:**
+
+```sh
+MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate
+$COMPOSE up -d api worker
+```
+
+El runner aplica la 019 en una transacción. Si falla por un pre-chequeo, corrige los datos y reintenta; si falla por una FK entrante, crea la migración que la resuelva. No hay estado a medias. Después comprueba `GET /docs`, una lectura pública de torneo y una operación del Workspace (incluida la asignación manual de equipos en un borrador). La 019 no crea funciones `SECURITY DEFINER` ni vistas nuevas.
+
+**Si algo falla después:** no hay `down`. Corrige con una migración nueva. Restaurar `$HOME/backup-pre019.dump` solo si se acepta perder los cambios posteriores. Los scripts de `init/` no son migraciones y no se re-ejecutan en volúmenes existentes.
+
+## Migración 020: forward-fix del privilegio `id` de rosters
+
+La **020** no es destructiva y se aplica **después de la 019**. Añade solo el privilegio de columna `INSERT (id)` sobre `public.rosters` a `bracket_app`; no concede `INSERT` a nivel de tabla y no cambia datos ni funciones. Es necesaria porque la importación masiva sube las fotos antes de la transacción (N-2) y por eso la aplicación pre-genera el `id` del roster para construir la clave del objeto y compensar subidas.
+
+```sh
+MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
+```
+
+`init/01` incluye el mismo `GRANT INSERT (id, ...)` para que una instalación limpia termine con el mismo estado que una base migrada. `MIGRATION_TARGET=019` sigue limitando el runbook destructivo de la 019; la 020 se aplica después en una segunda ejecución o con el runner sin target.
+
 ## Alcance inicial
 
 - Registro y login por email/password.
@@ -162,6 +264,19 @@ export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.productio
 - Cierre de actas con goles, tarjetas, suspensiones y outbox.
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
+- Avance manual de equipos entre fases en versiones en borrador.
+- Autorización por organización y por partido (`match_officials`); sin roles por torneo.
+
+## Autorización y avance manual entre fases
+
+- **Modelo real:** RBAC por **organización**. Los permisos (`MANAGE_TOURNAMENTS`, `MANAGE_MEMBERS`, `CLOSE_MATCH_REPORT`, etc.) se resuelven con la membresía y sus roles de organización; no existe un ámbito por torneo. La única delegación menor es por **partido**: `match_officials` permite que el árbitro asignado cierre ese partido. La tabla `tournament_user_roles` fue **retirada** por la migración 019 y no hay endpoint ni UI para asignar roles por torneo.
+- **Lectura:** `GET /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams` responde **200** con `{stage_id, version_id, assigned, unassigned}`. `assigned` son los equipos de `stage_teams` de esa fase y versión (deduplicados por `team_id` si hay varias filas en grupos); `unassigned` son los equipos del torneo con estado `registered` que no están asignados a esa fase. No mezcla asignaciones de otras versiones. Un torneo o fase inexistente o de otra organización responde **404**. Es una lectura de organización y no exige `MANAGE_TOURNAMENTS`.
+- **Asignación:** `POST /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams` con `{"team_ids": ["<uuid>", ...]}`. Admite **1 a 64** equipos y rechaza duplicados con **422** sin deduplicar. Responde **201** con `assigned` (nuevos) y `already_assigned` (preexistentes) si hay al menos una alta, **200** con `assigned=[]` si todos ya estaban, **409** si la versión no es borrador o si algún equipo no está `registered` (sin escribir ninguno), **403** sin `MANAGE_TOURNAMENTS`, **404** si el torneo o la fase no existen. El lote es **atómico todo-o-nada**.
+- **Retirada:** `DELETE /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams/{team_id}` responde **204** de forma idempotente. Precedencia: **404** torneo/fase → **409** versión publicada/archivada (aunque el equipo no estuviera asignado) → **403** sin permiso → **409** equipo no `registered` → **409** si hay un partido de la fase que lo referencie → **409** si tiene fila de `standings` en la fase (aunque no haya partidos). Si tiene varias filas `stage_teams` en la fase, se eliminan todas. No borra partidos, grupos, `phase_slots` ni `standings`.
+- **Solo borradores:** las versiones publicadas o archivadas siguen siendo inmutables; cualquier asignación o retirada sobre ellas responde **409**. La asignación y la retirada bloquean **fase → versión**; el protocolo completo de las rutas que operan partidos añade **partido(s) → segmentos → jugadores**.
+- **Sin regeneración automática:** asignar o quitar equipos **no** altera el calendario, los grupos, los slots ni los partidos existentes. El operador debe regenerar o sortear explícitamente el calendario para incluir los cambios.
+- **Procedencia, no motor:** `phase_slots` se conserva como procedencia de la llave (`direct_team`/`match_result`) y se clona, pero no se resuelve entre fases. El sembrado automático por `stage_rank` **no está soportado** y ese valor fue retirado del `CHECK`. `tournament_versions.phase_config` se almacena pero no se interpreta.
+- **Estructura publicada:** el trigger de inmutabilidad lanza el SQLSTATE estable **`ZZ409`**; la API lo traduce a **409** comparando el código, nunca el texto del mensaje.
 
 ## Tiempo real y outbox
 
@@ -195,6 +310,7 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 - **Agregado de conexiones:** con `API_WORKERS=2` y un worker del outbox son 2 × 20 + 20 = **60** conexiones teóricas frente a las **100** por defecto de PostgreSQL. Subir `API_WORKERS` o bajar `max_connections` exige revisar ese agregado.
 - **Conexión administrativa:** `scripts.encrypt_birth_dates` abre su propia conexión con `DATABASE_ADMIN_URL` y no hereda los timeouts ni el pool del engine de la aplicación.
 - **Riesgo residual aceptado:** en la ronda 1, una fase sin partidos no ofrece filas que bloquear, así que dos sorteos simultáneos en frío podrían insertar calendarios duplicados (no hay unicidad de `bracket_code`). Se corrige fuera de este bloque si se prioriza.
+- **Cierre serializado por fase:** el cierre toma el lock de fase (y después versión y partidos), por lo que dos cierres de la misma fase se serializan. Es una decisión de corrección, no una promesa de rendimiento; **no se midió** throughput ni latencia (RNF-003).
 
 ## Verificación
 
@@ -212,6 +328,8 @@ El filtro `infra/scripts/audit_frontend.py` falla ante cualquier hallazgo `high`
 ## Seguridad
 
 El backend establece `app.current_organization_id` y `app.current_user_id` dentro de cada transacción. Las tablas tenant-owned tienen RLS y las vistas públicas no exponen documentos ni fechas de nacimiento.
+
+La autorización efectiva es **RBAC por organización** (roles y permisos de la membresía) más el ámbito menor de **`match_officials`** por partido. No hay roles por torneo: `tournament_user_roles` fue retirada por la 019. La inmutabilidad de versiones publicadas se refuerza con triggers; el conflicto de estructura usa `ZZ409` y la API responde **409** sin comparar el texto.
 
 La fecha de nacimiento se almacena cifrada con `PLAYER_DATA_KEY` y el rol de aplicación no puede leer el texto cifrado (patrón *write-only*, igual que el documento). Desde la migración 017 tampoco puede leer ni insertar la fecha en claro; solo escribe el campo cifrado y la edad derivada. La API y el Workspace exponen la edad (`age` solo en `GET /tournaments/{id}/rosters`), nunca la fecha completa. La exposición declarada —la edad y el año de referencia permiten inferir el año de nacimiento— es el mismo dato derivado que la proyección pública ya mostraba. La rotación de `PLAYER_DATA_KEY` y el tratamiento de copias anteriores a la 017 son deuda separada.
 

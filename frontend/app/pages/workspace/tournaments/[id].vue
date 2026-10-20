@@ -10,6 +10,15 @@ import {
   validateRulesConfig,
   type RulesConfig,
 } from '~/utils/rulesConfig';
+import {
+  assignmentOutcome,
+  availableStageTeams,
+  normalizeAssignmentResponse,
+  normalizeStageTeamsResponse,
+  pruneStageTeamSelection,
+  type StageTeamSummary,
+  type StageTeamsResponse,
+} from '~/utils/stageTeams';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -141,6 +150,11 @@ const rosterImportWarnings = ref<string[]>([]);
 const rosterBusy = ref(false);
 const photoBusyRosterId = ref<string | null>(null);
 const knownStageTeamAssignments = ref<Record<string, string[]>>({});
+const stageTeamRows = ref<StageTeamsResponse | null>(null);
+const stageTeamSelection = ref<string[]>([]);
+const stageTeamBusy = ref(false);
+const stageTeamError = ref<string | null>(null);
+const stageTeamNotice = ref<string | null>(null);
 const rulesConfig = ref<RulesConfig | null>(null);
 const rulesError = ref<string | null>(null);
 const CONFIG_PAGE_SIZE = 200;
@@ -159,7 +173,19 @@ const selectedVersionMatches = computed(() => matches.value.filter((match) => ma
 const draftVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === draftVersion.value?.id));
 const draftVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === draftVersion.value?.id));
 const selectedStage = computed(() => selectedVersionStages.value.find((stage) => stage.id === selectedStageId.value));
-const selectedStageTeams = computed(() => teams.value.filter((team) => team.stage_ids.includes(selectedStageId.value)));
+const currentStageTeams = computed(() => (
+  stageTeamRows.value && stageTeamRows.value.stage_id === selectedStageId.value
+    ? stageTeamRows.value
+    : null
+));
+const selectedStageTeams = computed<StageTeamSummary[]>(() => {
+  if (currentStageTeams.value) return currentStageTeams.value.assigned;
+  return teams.value
+    .filter((team) => team.stage_ids.includes(selectedStageId.value))
+    .map((team) => ({ team_id: team.team_id, name: team.name, short_code: team.short_code }));
+});
+const stageTeamAssigned = computed(() => currentStageTeams.value?.assigned ?? []);
+const stageTeamAvailable = computed(() => availableStageTeams(currentStageTeams.value));
 const selectedStageMatches = computed(() => selectedVersionMatches.value.filter((match) => match.stage_id === selectedStageId.value));
 const visibleStageMatches = computed(() => selectedStageMatches.value.filter((match) => match.status !== 'cancelled'));
 const selectedRosters = computed(() => rosters.value.filter((roster) => roster.team_id === rosterTeamId.value));
@@ -167,6 +193,11 @@ const availableAwayTeams = computed(() => selectedStageTeams.value.filter((team)
 const tournamentName = computed(() => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null);
 const tournamentLabel = computed(() => tournamentName.value || t('shell.tournament'));
 const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
+const stageTeamsEditable = computed(() => Boolean(
+  canManageTournaments.value
+  && selectedStage.value
+  && activeVersion.value?.status === 'draft'
+));
 const canGenerateSchedule = computed(() => Boolean(
   canManageTournaments.value
   && selectedStage.value
@@ -234,6 +265,14 @@ watch(selectedVersionId, (versionId) => {
     selectedStageId.value = nextStages[0]?.id || '';
   }
   syncRulesForVersion(versionId);
+});
+
+watch(selectedStageId, () => {
+  stageTeamRows.value = null;
+  stageTeamSelection.value = [];
+  stageTeamError.value = null;
+  stageTeamNotice.value = null;
+  if (!loading.value) void loadStageTeams();
 });
 
 watch(() => matchForm.home_team_id, (homeTeamId) => {
@@ -348,6 +387,84 @@ function applyConfiguration(configuration: ConfigurationData) {
 
 async function loadConfiguration() {
   applyConfiguration(await fetchConfiguration());
+  await loadStageTeams();
+}
+
+async function loadStageTeams() {
+  const stage = selectedStage.value;
+  stageTeamError.value = null;
+  if (!stage) {
+    stageTeamRows.value = null;
+    stageTeamSelection.value = [];
+    return;
+  }
+  stageTeamBusy.value = true;
+  try {
+    const data = await request<unknown>(`/tournaments/${tournamentId}/stages/${stage.id}/teams`);
+    const normalized = normalizeStageTeamsResponse(data);
+    stageTeamRows.value = normalized;
+    if (normalized) {
+      for (const team of normalized.assigned) {
+        rememberStageTeam(normalized.version_id, stage.id, team.team_id);
+      }
+    }
+    stageTeamSelection.value = pruneStageTeamSelection(
+      stageTeamSelection.value,
+      availableStageTeams(normalized),
+    );
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    stageTeamRows.value = null;
+    stageTeamSelection.value = [];
+    stageTeamError.value = failureMessage(cause, t('setup.stageTeamsLoadError'));
+  } finally {
+    stageTeamBusy.value = false;
+  }
+}
+
+async function assignStageTeams() {
+  if (!selectedStageId.value || !stageTeamSelection.value.length || !stageTeamsEditable.value) return;
+  stageTeamBusy.value = true;
+  stageTeamError.value = null;
+  stageTeamNotice.value = null;
+  try {
+    const data = await request<unknown>(`/tournaments/${tournamentId}/stages/${selectedStageId.value}/teams`, {
+      method: 'POST',
+      body: { team_ids: [...stageTeamSelection.value] },
+    });
+    const normalized = normalizeAssignmentResponse(data);
+    const outcome = assignmentOutcome(normalized);
+    stageTeamSelection.value = [];
+    stageTeamNotice.value = outcome === 'assigned'
+      ? t('setup.stageTeamsAssigned', { count: normalized?.assigned.length || 0 })
+      : t('setup.stageTeamsAlreadyAssigned');
+    await loadConfiguration();
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    stageTeamError.value = failureMessage(cause, t('setup.stageTeamsAssignError'));
+  } finally {
+    stageTeamBusy.value = false;
+  }
+}
+
+async function removeStageTeam(teamId: string) {
+  if (!selectedStageId.value || !stageTeamsEditable.value) return;
+  stageTeamBusy.value = true;
+  stageTeamError.value = null;
+  stageTeamNotice.value = null;
+  try {
+    await request(`/tournaments/${tournamentId}/stages/${selectedStageId.value}/teams/${teamId}`, {
+      method: 'DELETE',
+    });
+    stageTeamSelection.value = stageTeamSelection.value.filter((selected) => selected !== teamId);
+    stageTeamNotice.value = t('setup.stageTeamsRemoved');
+    await loadConfiguration();
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    stageTeamError.value = failureMessage(cause, t('setup.stageTeamsRemoveError'));
+  } finally {
+    stageTeamBusy.value = false;
+  }
 }
 
 async function retryConfiguration() {
@@ -809,6 +926,7 @@ if (initialConfigurationError.value) {
   }
 } else if (initialConfiguration.value) {
   applyConfiguration(initialConfiguration.value);
+  await loadStageTeams();
 }
 loading.value = false;
 </script>
@@ -897,6 +1015,64 @@ loading.value = false;
                 <li v-for="stage in selectedVersionStages" :key="stage.id" :class="{ active: stage.id === selectedStageId }"><button type="button" :aria-pressed="stage.id === selectedStageId" @click="selectedStageId = stage.id">{{ stage.stage_order }}. {{ stage.name }} <small>{{ stageTypeLabel(stage.stage_type) }}</small></button></li>
              </TransitionGroup>
           </form>
+
+          <section id="fase-equipos" class="panel stage-teams-panel" :aria-busy="stageTeamBusy">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">{{ t('setup.stageTeamsEyebrow') }}</p>
+                <h2>{{ t('setup.stageTeamsTitle') }}</h2>
+              </div>
+              <span class="muted-note">{{ selectedStage?.name || t('setup.selectStage') }}</span>
+            </div>
+            <p class="field-hint">{{ t('setup.stageTeamsHint') }}</p>
+            <p class="muted-note">{{ t('setup.stageTeamsCalendarNotice') }}</p>
+            <p v-if="selectedStage && !stageTeamsEditable" class="muted-note">{{ t('setup.stageTeamsReadOnly') }}</p>
+            <template v-if="selectedStage">
+              <div class="stage-team-group">
+                <p class="eyebrow">{{ t('setup.assignedTeams') }}</p>
+                <ul v-if="stageTeamAssigned.length" class="stage-team-list">
+                  <li v-for="team in stageTeamAssigned" :key="`assigned-${team.team_id}`">
+                    <span>{{ team.name }} <small>{{ team.short_code }}</small></span>
+                    <button
+                      class="button-secondary stage-team-remove"
+                      type="button"
+                      :disabled="!canManageTournaments || !stageTeamsEditable || stageTeamBusy"
+                      @click="removeStageTeam(team.team_id)"
+                    >
+                      {{ t('setup.removeTeam') }}
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="muted-note">{{ t('setup.noAssignedTeams') }}</p>
+              </div>
+              <div class="stage-team-group">
+                <p class="eyebrow">{{ t('setup.availableTeams') }}</p>
+                <div v-if="stageTeamAvailable.length" class="stage-team-options">
+                  <label v-for="team in stageTeamAvailable" :key="`available-${team.team_id}`" class="checkbox-label">
+                    <input
+                      v-model="stageTeamSelection"
+                      type="checkbox"
+                      :value="team.team_id"
+                      :disabled="!stageTeamsEditable || stageTeamBusy"
+                    />
+                    <span>{{ team.name }} <small>{{ team.short_code }}</small></span>
+                  </label>
+                </div>
+                <p v-else class="muted-note">{{ t('setup.noAvailableTeams') }}</p>
+              </div>
+              <p v-if="stageTeamError" class="form-error" role="alert">{{ stageTeamError }}</p>
+              <p v-if="stageTeamNotice" class="muted-note" role="status">{{ stageTeamNotice }}</p>
+              <button
+                class="button-primary"
+                type="button"
+                :disabled="!canManageTournaments || !stageTeamsEditable || stageTeamBusy || !stageTeamSelection.length"
+                @click="assignStageTeams"
+              >
+                {{ stageTeamBusy ? t('common.saving') : t('setup.assignTeams') }}
+              </button>
+            </template>
+            <p v-else class="muted-note">{{ t('setup.selectStage') }}</p>
+          </section>
 
             <form id="equipos" class="panel" :aria-busy="saving" @submit.prevent="createTeam">
              <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
@@ -1105,6 +1281,13 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .resource-list li.active { color: var(--accent); }
 .resource-list li.active button { background: rgba(212, 243, 106, 0.08); }
 .resource-list small { color: var(--muted); font-size: 0.7rem; }
+.stage-teams-panel { gap: 14px; }
+.stage-team-group { display: grid; gap: 8px; }
+.stage-team-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.stage-team-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.stage-team-list small { color: var(--muted); font-size: 0.72rem; }
+.stage-team-remove { padding: 5px 9px; font-size: 0.72rem; }
+.stage-team-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
 .loading-state { display: flex; align-items: center; gap: 12px; }
 .loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }

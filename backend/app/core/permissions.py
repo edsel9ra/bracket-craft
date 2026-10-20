@@ -8,10 +8,17 @@ async def require_permission(
     db: AsyncSession,
     context,
     permission: str,
-    tournament_id: UUID | None = None,
     match_id: UUID | None = None,
     role_codes: tuple[str, ...] | None = None,
 ) -> None:
+    """Require an organization role permission.
+
+    Authorization resolves by organization membership
+    (``organization_user_roles``). The optional smaller scope is the match:
+    ``match_id`` allows the roles that operate matches or a member assigned as
+    an official of that match through ``match_officials``. There is no
+    tournament scope.
+    """
     query = text("""
         SELECT 1
         FROM roles r
@@ -44,7 +51,6 @@ async def require_permission(
             "organization_id": str(context.organization_id),
             "organization_user_id": str(context.organization_user_id),
             "permission": f'["{permission}"]',
-            "tournament_id": str(tournament_id) if tournament_id else None,
             "match_id": str(match_id) if match_id else None,
             "role_codes": list(role_codes) if role_codes else None,
         },
@@ -56,7 +62,6 @@ async def require_permission(
 async def require_administrative_resolution(
     db: AsyncSession,
     context,
-    tournament_id: UUID,
     match_id: UUID,
 ) -> None:
     """Require an owner/administrator role for non-sporting resolutions."""
@@ -65,7 +70,6 @@ async def require_administrative_resolution(
         db,
         context,
         "RESOLVE_MATCH_ADMINISTRATIVELY",
-        tournament_id=tournament_id,
         match_id=match_id,
         role_codes=("owner", "administrator"),
     )
