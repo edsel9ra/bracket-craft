@@ -3,7 +3,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Spec 001 — Correctivos P0 (2026-10-19)
 - Implementada y aprobada. R01 (`players` con RLS, migración 015), R02 (overlay de producción), R03 (inmutabilidad de resultados, 016), R04 (versiones alineadas + enmienda 1.1.0). Informe: `docs/auditoria-2026-10-19.md`.
-- La excepción §5.1 sigue vigente hasta que la spec 003 cierre con el job `security` verde en CI.
+- La excepción §5.1 quedó **retirada** por la spec 003 el 2026-10-19 (run 39361295825, cuatro jobs verdes); se conserva como registro histórico.
 
 ## Spec 002 — Cifrado de la fecha de nacimiento (2026-10-19)
 - Implementada y cerrada. Migraciones 017/018, backfill `encrypt_birth_dates`, `MIGRATION_TARGET`, edad materializada y `age` en rosters, i18n es/en con paridad.
@@ -11,15 +11,18 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - No ejecutado: smoke del runbook ni la secuencia completa en un despliegue real.
 
 ## Spec 003 — Deuda de dependencias (2026-10-19)
-- Implementación local completa (T1-T7 y T4b). **T8 (retiro de §5.1) y T9 (verificación de los cuatro jobs) esperan el PR**: el job `security` no se ha ejecutado con el comando nuevo.
-- La deuda es cadena de producción de Nuxt (no `devDependencies`). Política de no accionables con filtro propio `infra/scripts/audit_frontend.py`: falla ante ≥ high con corrección, muestra los no accionables y no persiste listas. `braces` y `node-forge` siguen sin parche.
+- **Implementada y cerrada** (T1-T9 + T4b). CI en `main` en verde: run **39361295825**, jobs `infrastructure`, `frontend`, `backend` y `security`.
+- La deuda era la cadena de producción de Nuxt (no `devDependencies`). Política: filtro propio `infra/scripts/audit_frontend.py` que falla ante ≥ high con corrección, muestra los no accionables y no persiste listas.
 - D-6: `pmOnFail: ignore` en `frontend/pnpm-workspace.yaml` deja el lockfile en **un solo documento** porque Trivy 0.70.0 solo lee el primero; `verify_version_sources.py` acepta ambos formatos. Retirados `package.json` y `pnpm-lock.yaml` de la raíz.
-- Constitución **1.2.0** (§3.4 con el comando efectivo). Credencial de Context7 como `{env:CONTEXT7_API_KEY}`.
-- Evidencia local: `docs/evidencia-spec-003.md`. pip-audit 0; filtro 0 accionables (2 visibles); Trivy 0 con cobertura real (620 paquetes y 2 HIGH sin parche ignorados por política).
+- Constitución **1.2.0** (§3.4 con el comando efectivo). Credencial de Context7 como `{env:CONTEXT7_API_KEY}`. Evidencia: `docs/evidencia-spec-003.md`.
+- Siete commits por bloque (filtro, enmienda, CI/guía, lockfile/verificador, cadena raíz, credencial, docs) y push a `main`.
+
+## Riesgo residual
+- `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm) y `node-forge` 1.4.0 (GHSA-86w9-cpqp-85rv), altos y **sin parche upstream**. Visibles en la auditoría; no bloquean.
+- Revisión en **cada actualización de dependencias** y en la próxima auditoría técnica; responsable: propietario del producto. Si aparece parche, se adopta en el mismo cambio.
 
 ## Pendiente
-- Push/PR de la spec 003 y, con `security` verde, retiro de §5.1 (T8) y verificación final (T9).
-- Confirmar la revocación de la segunda clave de Context7 (se reexpuso en el árbol, no se usó) y exportar `CONTEXT7_API_KEY`.
+- Confirmar la revocación de la segunda clave de Context7 (se reexpuso en el árbol y no se usó) y exportar `CONTEXT7_API_KEY`.
 
 ## Stack y versiones de referencia (2026-10-19)
 - Python 3.14, Node 24, pnpm 12.12.1. Constitución 1.2.0 (historial desde 1.0.0).
@@ -29,10 +32,11 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Entorno local
 - Docker 29.8.2 / Compose 5.5.1. Puertos compartidos con mis-project: no tener ambos stacks.
-- Sin pnpm en el host: `node:24-alpine` + `npm i -g --prefix`. Pytest: imagen `bc-api-t007`. Trivy: `aquasec/trivy:0.70.0`. El contenedor `web` escribe `.nuxt` como root.
+- Sin pnpm en el host: `node:24-alpine` + `npm i -g --prefix`. Pytest: imagen `bc-api-t007` (no puede escribir `__pycache__` en el repo; `compileall` sobre copia). Trivy: `aquasec/trivy:0.70.0`. `web` escribe `.nuxt` como root.
 
 ## Decisiones y gotchas
 - TS 7.0.2 revertido (vue-tsc no lo soporta). Nuxt 4 endurece `noUncheckedIndexedAccess`: se corrige en código.
 - `init/02_public_projections.sql` en estado pre-012 (los init no son migraciones).
 - `trivy-action@v0.36.0` fija Trivy 0.70.0; solo audita npm si el lockfile tiene un único documento.
 - La constitución está en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`.
+- `pnpm update --lockfile-only` reescribe rangos en `package.json`: revertirlo y reconciliar con `pnpm install --lockfile-only`.

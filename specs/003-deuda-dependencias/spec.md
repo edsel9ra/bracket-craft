@@ -1,8 +1,8 @@
 # Spec 003 — Retiro de la deuda de dependencias del frontend
 
-Estado: aprobada (2026-10-19)
+Estado: implementada (2026-10-19)
 
-> Aprobada por el usuario tras la revisión QA (tres rondas). Desviación D-6 registrada durante la implementación (2026-10-19) con aprobación del usuario.
+> Aprobada por el usuario tras la revisión QA (tres rondas). Desviación D-6 registrada durante la implementación (2026-10-19) con aprobación del usuario. Cerrada con el run `39361295825` de CI, con los cuatro jobs en verde.
 
 ## Contexto y objetivo
 
