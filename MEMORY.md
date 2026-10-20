@@ -1,37 +1,38 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
-## Spec 001 — Correctivos P0 de la auditoría (2026-10-19)
-- `specs/001-correctivos-p0-auditoria/` (spec, plan y tasks) implementada y validada funcionalmente; correcciones documentales aplicadas y aprobadas.
-- R01: `players` tenant-owned con RLS, unicidad por organización, FKs compuestas y migración 015. R02: overlay de producción sin puertos, red interna + `edge`/`PROXY_NETWORK`, sin montajes de código y merge validado en CI. R03: trigger de inmutabilidad de resultados confirmados (016). R04: versiones alineadas y enmienda constitucional 1.1.0.
-- Excepción §5.1 **vigente**: el job `security` sigue en rojo por deuda preexistente de dependencias de desarrollo del frontend (`simple-git` y transitivos de `nuxt`: `shell-quote`, `brace-expansion`, `braces`, `node-forge`, `serialize-javascript`); `pip-audit` limpio. Lista idéntica entre `64aa384` y `HEAD`, ajena a R01-R04. Retiro: spec aparte; revisable en la próxima auditoría.
-- Commits por bloque (harness T001, R01, R03, R02, R04 técnico, enmienda 1.1.0, docs SDD, MEMORY); sin push. Informe: `docs/auditoria-2026-10-19.md`.
+## Spec 001 — Correctivos P0 (2026-10-19)
+- Implementada y aprobada. R01 (`players` con RLS, migración 015), R02 (overlay de producción), R03 (inmutabilidad de resultados, 016), R04 (versiones alineadas + enmienda 1.1.0). Informe: `docs/auditoria-2026-10-19.md`.
+- La excepción §5.1 sigue vigente hasta que la spec 003 cierre con el job `security` verde en CI.
 
 ## Spec 002 — Cifrado de la fecha de nacimiento (2026-10-19)
-- `specs/002-cifrado-fecha-nacimiento/`: **implementada y aprobada por el usuario (2026-10-19), cerrada**. T001-T010 hechas.
-- Migraciones **017** (esquema intermedio: `birth_date_encrypted`, edad materializada, revoca `SELECT`/`INSERT` de `birth_date`, recrea la vista) y **018** (fallo cerrado, `NOT NULL`, `DROP birth_date`, grants finales; detecta vistas, índices y funciones dependientes). 001-016 intactas.
-- Backfill: `python -m scripts.encrypt_birth_dates` con `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY`; verifica clave y HMAC contra un documento cifrado, lotes de 500, idempotente/reanudable, sin PII en logs y **sin rama de confirmación**: con filas y sin documento cifrado aborta.
-- `MIGRATION_TARGET` (vacía o `NNN`) en `migrate.sh` y `db-migrate`; valida checksums de todos los archivos y solo omite la aplicación posterior. Runbook: backup → stop api/worker → 017 → imagen nueva → backfill one-off `--no-deps` → 018 → arranque/smoke.
-- Edad a nivel de jugador (`age_at_reference`/`age_reference_year`); `age` ajustada por año del torneo **solo** en `GET /tournaments/{id}/rosters`; alta/importación no cambian; un jugador reutilizado conserva fecha y edad (la edad ajustada sí sigue el delta de cada torneo); el seed falla cerrado ante fecha imposible; UI i18n es/en con paridad completa.
-- Correcciones de la validación: seed con fallo cerrado, las cuatro pruebas de RF-011 (29 de febrero, seed imposible, delta de `public_age`, paridad i18n), índice dependiente en 018, vista sin descifrado ni subconsultas, edad ajustada del reutilizado y rama no aprobada del backfill retirada.
-- Verificado en base limpia: **242 passed + 2 skipped** (skips de invitaciones opt-in); con seed demo **244 passed**; frontend **19 tests**, `typecheck` y `build` OK; `compileall`, `sh -n`, `test_migrate_target.sh`, compose dev/merge de producción. No ejecutado: smoke del runbook ni la secuencia 017→backfill→018 en un despliegue real.
+- Implementada y cerrada. Migraciones 017/018, backfill `encrypt_birth_dates`, `MIGRATION_TARGET`, edad materializada y `age` en rosters, i18n es/en con paridad.
+- Runbook: backup → stop api/worker → 017 → imagen nueva → backfill `--no-deps` → 018 → arranque/smoke. Tras 018 solo *forward-fix*.
+- No ejecutado: smoke del runbook ni la secuencia completa en un despliegue real.
+
+## Spec 003 — Deuda de dependencias (2026-10-19)
+- Implementación local completa (T1-T7 y T4b). **T8 (retiro de §5.1) y T9 (verificación de los cuatro jobs) esperan el PR**: el job `security` no se ha ejecutado con el comando nuevo.
+- La deuda es cadena de producción de Nuxt (no `devDependencies`). Política de no accionables con filtro propio `infra/scripts/audit_frontend.py`: falla ante ≥ high con corrección, muestra los no accionables y no persiste listas. `braces` y `node-forge` siguen sin parche.
+- D-6: `pmOnFail: ignore` en `frontend/pnpm-workspace.yaml` deja el lockfile en **un solo documento** porque Trivy 0.70.0 solo lee el primero; `verify_version_sources.py` acepta ambos formatos. Retirados `package.json` y `pnpm-lock.yaml` de la raíz.
+- Constitución **1.2.0** (§3.4 con el comando efectivo). Credencial de Context7 como `{env:CONTEXT7_API_KEY}`.
+- Evidencia local: `docs/evidencia-spec-003.md`. pip-audit 0; filtro 0 accionables (2 visibles); Trivy 0 con cobertura real (620 paquetes y 2 HIGH sin parche ignorados por política).
 
 ## Pendiente
-- **Deuda de dependencias de desarrollo del frontend:** mantiene en rojo el job `security` (§5.1 de la constitución, excepción vigente de la spec 001). Siguiente bloque de trabajo: resolverla con una spec propia.
+- Push/PR de la spec 003 y, con `security` verde, retiro de §5.1 (T8) y verificación final (T9).
+- Confirmar la revocación de la segunda clave de Context7 (se reexpuso en el árbol, no se usó) y exportar `CONTEXT7_API_KEY`.
 
 ## Stack y versiones de referencia (2026-10-19)
-- **Python 3.14, Node 24 y pnpm 12.12.1**. Constitución **1.1.0** (fila 1.0.1 conservada).
-- Backend: fastapi 0.143.1, uvicorn 0.54.0, sqlalchemy 2.1.4, asyncpg 0.32.0, PyJWT 2.15.1, redis 8.1.0, python-socketio 5.17.0, boto3 1.43.113, pytest 9.1.1. Frontend: Nuxt 4.6.1 (layout v4, código en `frontend/app/`), vue 3.5.44, TS ^5.9.3, vue-tsc 3.3.13, pinia 4.1.0, socket.io-client 4.8.4.
-- Compose: postgres 17-alpine, redis 8-alpine, SeaweedFS 4.48 (`storage`; S3 9000, UI 9001). Producción: sin puertos, `internal` para todo y solo `web` en `edge` externa.
-- Validación de producción: **Docker Compose ≥2.24.4** con `!reset []`/`!override` (las secuencias se concatenan; `ports: []` no anula). CI valida dev, el merge con dummies y el JSON renderizado.
+- Python 3.14, Node 24, pnpm 12.12.1. Constitución 1.2.0 (historial desde 1.0.0).
+- Backend: fastapi 0.143.1, sqlalchemy 2.1.4, asyncpg 0.32.0, PyJWT 2.15.1, redis 8.1.0, python-socketio 5.17.0, boto3 1.43.113, pytest 9.1.1.
+- Frontend: Nuxt 4.6.2, vue 3.5.44, TS 5.9.3, vue-tsc 3.3.13, pinia 4.1.0, socket.io-client 4.8.4. Lockfile único con `pmOnFail: ignore`.
+- Compose: postgres 17-alpine, redis 8-alpine, SeaweedFS 4.48. Producción sin puertos, `internal` + `edge`, Compose ≥2.24.4.
 
 ## Entorno local
-- Docker 29.8.2 y Compose 5.5.1 disponibles. Puertos compartidos con mis-project: no tener ambos stacks a la vez (5432/6379/8000/3000).
-- Suite de BD en CI con PostgreSQL 17 de servicio; rol administrador para migrar (`DATABASE_ADMIN_URL`) y `bracket_app` para testear (`DATABASE_URL`, sin superusuario ni `BYPASSRLS`).
-- `pnpm test` requiere Node oficial; corepack del sistema roto (`npm i -g --prefix /tmp/pnpm-home pnpm@X`). Sin pip/ensurepip: usar las imágenes `bc-api-t007` y `node:24-alpine` montando el repo; el venv de `/tmp/opencode` se vacía entre sesiones. Contenedor `web` escribe `.nuxt` como root: limpiar con `docker run -v ... alpine:3 rm -rf`. SeaweedFS: healthcheck con `127.0.0.1` + `start_period`.
+- Docker 29.8.2 / Compose 5.5.1. Puertos compartidos con mis-project: no tener ambos stacks.
+- Sin pnpm en el host: `node:24-alpine` + `npm i -g --prefix`. Pytest: imagen `bc-api-t007`. Trivy: `aquasec/trivy:0.70.0`. El contenedor `web` escribe `.nuxt` como root.
 
 ## Decisiones y gotchas
-- TS 7.0.2 revertido (vue-tsc 3.3.13 aún no lo soporta). Nuxt 4 endurece `noUncheckedIndexedAccess`: se corrigen los errores en código, no se desactiva la flag.
-- SeaweedFS elegido sobre Garage/AIStor (Docker Hub, repo activo, probe de 8 checks).
-- `init/02_public_projections.sql` revertida a estado pre-012: los init no son migraciones y crear el estado post-012 rompía volúmenes limpios (`cannot drop columns from view`).
-- Trivy con `aquasecurity/trivy-action@v0.36.0` sigue al día; no tocar.
+- TS 7.0.2 revertido (vue-tsc no lo soporta). Nuxt 4 endurece `noUncheckedIndexedAccess`: se corrige en código.
+- `init/02_public_projections.sql` en estado pre-012 (los init no son migraciones).
+- `trivy-action@v0.36.0` fija Trivy 0.70.0; solo audita npm si el lockfile tiene un único documento.
+- La constitución está en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`.
