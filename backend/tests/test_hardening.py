@@ -162,7 +162,11 @@ async def test_storage_signs_private_keys_using_the_browser_endpoint(monkeypatch
             captured.update(operation=operation, params=Params, expires=ExpiresIn)
             return "https://signed.example/photo"
 
-    monkeypatch.setattr(storage, "_client", lambda endpoint=None: (captured.update(endpoint=endpoint) or FakeClient()))
+    monkeypatch.setattr(
+        storage,
+        "_build_client",
+        lambda endpoint=None: (captured.update(endpoint=endpoint) or FakeClient()),
+    )
 
     result = await storage.signed_url("private/organizations/org/rosters/roster/photo.jpg")
 

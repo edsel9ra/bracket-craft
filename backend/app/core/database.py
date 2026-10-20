@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
@@ -8,8 +9,56 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import get_settings
 
 
+# Session and pool limits are backend constants (P-4): no environment variable,
+# no Compose change. They apply per process: API worker, outbox worker and seed.
+DB_STATEMENT_TIMEOUT_MS = 15_000
+DB_IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000
+DB_POOL_SIZE = 10
+DB_MAX_OVERFLOW = 10
+DB_POOL_TIMEOUT_SECONDS = 10
+
+logger = logging.getLogger(__name__)
+
+
+def engine_options() -> dict:
+    """Return the explicit pool and server-session options for the engine."""
+
+    return {
+        "pool_size": DB_POOL_SIZE,
+        "max_overflow": DB_MAX_OVERFLOW,
+        "pool_timeout": DB_POOL_TIMEOUT_SECONDS,
+        "connect_args": {
+            "server_settings": {
+                "statement_timeout": str(DB_STATEMENT_TIMEOUT_MS),
+                "idle_in_transaction_session_timeout": str(
+                    DB_IDLE_IN_TRANSACTION_TIMEOUT_MS
+                ),
+            }
+        },
+    }
+
+
+def log_database_configuration() -> None:
+    """Log the effective values once at startup; never the URL or credentials."""
+
+    logger.info(
+        "Configuración de base de datos efectiva: statement_timeout=%dms "
+        "idle_in_transaction_session_timeout=%dms pool_size=%d "
+        "max_overflow=%d pool_timeout=%ds",
+        DB_STATEMENT_TIMEOUT_MS,
+        DB_IDLE_IN_TRANSACTION_TIMEOUT_MS,
+        DB_POOL_SIZE,
+        DB_MAX_OVERFLOW,
+        DB_POOL_TIMEOUT_SECONDS,
+    )
+
+
 settings = get_settings()
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+engine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    **engine_options(),
+)
 SessionFactory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

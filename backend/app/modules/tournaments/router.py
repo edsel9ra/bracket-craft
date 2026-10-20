@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -44,12 +45,17 @@ from app.modules.tournaments.schemas import (
     VersionDetailResponse,
     VersionSummaryResponse,
 )
+from app.modules.tournaments.photos import sign_photo_rows
 from app.modules.tournaments.scheduling import (
+    MAX_SWISS_TEAMS,
+    SwissPairing,
+    SwissPairingFailure,
+    SwissPairingTimeout,
     build_double_elimination_bracket,
     build_round_robin_schedule,
     build_single_elimination_bracket,
-    build_swiss_pairings,
     distribute_groups,
+    run_swiss_pairing,
 )
 from app.modules.tournaments.roster_import import (
     RosterImportError,
@@ -61,6 +67,8 @@ from app.modules.tournaments.roster_import import (
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 logger = logging.getLogger(__name__)
+
+SWISS_STATE_CHANGED_DETAIL = "el estado de la fase cambió durante el sorteo; vuelve a intentarlo"
 
 
 async def _ensure_public_tournament(db: AsyncSession, tournament_id: UUID) -> None:
@@ -1207,6 +1215,7 @@ async def _create_roster_player_record(
     tournament_id: UUID,
     payload: CreateRosterPlayerRequest,
     settings,
+    roster_id: UUID | None = None,
 ) -> tuple[UUID, UUID]:
     team_result = await db.execute(
         text("""
@@ -1237,18 +1246,20 @@ async def _create_roster_player_record(
         tournament_start_date.year,
     )
 
+    roster_id = roster_id or uuid4()
     roster_result = await db.execute(
         text("""
             INSERT INTO rosters
-                (organization_id, tournament_id, team_id, player_id, dorsal_number, photo_consent,
+                (id, organization_id, tournament_id, team_id, player_id, dorsal_number, photo_consent,
                  valid_from, eligible_from)
             VALUES (
-                :organization_id, :tournament_id, :team_id, :player_id, :dorsal_number, :photo_consent,
+                :id, :organization_id, :tournament_id, :team_id, :player_id, :dorsal_number, :photo_consent,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             )
             RETURNING id
         """),
         {
+            "id": str(roster_id),
             "organization_id": str(context.organization_id),
             "tournament_id": str(tournament_id),
             "team_id": str(payload.team_id),
@@ -1260,25 +1271,13 @@ async def _create_roster_player_record(
     return roster_result.scalar_one(), player_id
 
 
-async def _resolve_photo_url(photo_object_key: str | None, photo_consent: bool) -> str | None:
-    if not photo_consent or not photo_object_key:
-        return None
-    try:
-        return await get_object_storage().signed_url(photo_object_key)
-    except StorageError as exc:
-        raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
+async def _load_roster_player_rows(
+    db: AsyncSession, organization_id: UUID, roster_ids: list[UUID]
+) -> list[dict]:
+    """Load the given roster rows in one query, preserving the requested order."""
 
-
-async def _resolve_roster_photo_urls(rows: list[dict]) -> list[dict]:
-    for row in rows:
-        row["photo_url"] = await _resolve_photo_url(
-            row.pop("photo_object_key", None),
-            bool(row["photo_consent"]),
-        )
-    return rows
-
-
-async def _load_roster_player(db: AsyncSession, organization_id: UUID, roster_id: UUID) -> dict:
+    if not roster_ids:
+        return []
     result = await db.execute(
         text("""
             SELECT r.id AS roster_id, r.player_id, r.team_id, p.first_name, p.last_name,
@@ -1287,14 +1286,29 @@ async def _load_roster_player(db: AsyncSession, organization_id: UUID, roster_id
             JOIN players p
               ON p.id = r.player_id
              AND p.organization_id = r.organization_id
-            WHERE r.id = :roster_id AND r.organization_id = :organization_id
+            WHERE r.organization_id = :organization_id
+              AND r.id = ANY(CAST(:roster_ids AS UUID[]))
         """),
-        {"roster_id": str(roster_id), "organization_id": str(organization_id)},
+        {
+            "organization_id": str(organization_id),
+            "roster_ids": [str(roster_id) for roster_id in roster_ids],
+        },
     )
-    row = result.mappings().one_or_none()
-    if row is None:
+    rows_by_id = {str(row["roster_id"]): dict(row) for row in result.mappings().all()}
+    return [
+        rows_by_id[str(roster_id)]
+        for roster_id in roster_ids
+        if str(roster_id) in rows_by_id
+    ]
+
+
+async def _load_roster_player_row(
+    db: AsyncSession, organization_id: UUID, roster_id: UUID
+) -> dict:
+    rows = await _load_roster_player_rows(db, organization_id, [roster_id])
+    if not rows:
         raise HTTPException(status_code=404, detail="La plantilla no fue encontrada")
-    return (await _resolve_roster_photo_urls([dict(row)]))[0]
+    return rows[0]
 
 
 @router.get("/{tournament_id}/rosters", response_model=list[RosterPlayerListResponse])
@@ -1337,7 +1351,9 @@ async def list_tournament_rosters(
             },
         )
         players = [dict(row) for row in result.mappings().all()]
-    return await _resolve_roster_photo_urls(players)
+    return await sign_photo_rows(
+        players, key_field="photo_object_key", policy="error"
+    )
 
 
 @router.post("/{tournament_id}/rosters", response_model=RosterPlayerResponse, status_code=status.HTTP_201_CREATED)
@@ -1356,7 +1372,8 @@ async def create_roster_player(
             roster_id, _ = await _create_roster_player_record(db, context, tournament_id, payload, settings)
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="El documento, dorsal o jugador ya está registrado en el torneo") from exc
-        return await _load_roster_player(db, context.organization_id, roster_id)
+        row = await _load_roster_player_row(db, context.organization_id, roster_id)
+    return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
 
 
 @router.post("/{tournament_id}/rosters/bulk", response_model=BulkRosterPlayerResponse, status_code=status.HTTP_201_CREATED)
@@ -1391,50 +1408,84 @@ async def create_roster_players_bulk(
     created_roster_ids: list[UUID] = []
     players: list[dict] = []
     storage = get_object_storage()
+    prepared: list[tuple[UUID, str | None]] = []
+    completed = False
     try:
+        # Authorize before touching storage: a request that cannot manage this
+        # tournament must not upload any object (read transaction, then close).
         async with db.begin():
             await set_rls_context(db, context.organization_id, context.user_id)
             await _ensure_tournament(db, context.organization_id, tournament_id)
             await _require_tournament_management(db, context, tournament_id)
-            for row in rows:
+
+        # N-2: upload every photo before opening the write transaction. The
+        # roster id is generated here so the object key is final before the row
+        # exists; a failed upload leaves no row and compensates earlier uploads.
+        for row in rows:
+            roster_id = uuid4()
+            photo_key: str | None = None
+            if row.photo_filename:
+                photo = photos.get(row.photo_filename.casefold())
+                if photo is None:
+                    warnings.append(f"Fila {row.line_number}: no se encontró {row.photo_filename} en el ZIP")
+                else:
+                    photo_key = (
+                        "private/organizations/"
+                        f"{context.organization_id}/tournaments/{tournament_id}/rosters/"
+                        f"{roster_id}/{uuid4()}{photo.extension}"
+                    )
+                    try:
+                        await storage.put_bytes(photo_key, photo.content, photo.content_type)
+                    except StorageError as exc:
+                        raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
+                    uploaded_keys.append(photo_key)
+            prepared.append((roster_id, photo_key))
+
+        async with db.begin():
+            await set_rls_context(db, context.organization_id, context.user_id)
+            await _ensure_tournament(db, context.organization_id, tournament_id)
+            await _require_tournament_management(db, context, tournament_id)
+            for row, (roster_id, photo_key) in zip(rows, prepared):
                 try:
-                    roster_id, player_id = await _create_roster_player_record(
-                        db, context, tournament_id, row.payload, settings
+                    await _create_roster_player_record(
+                        db,
+                        context,
+                        tournament_id,
+                        row.payload,
+                        settings,
+                        roster_id=roster_id,
                     )
                 except IntegrityError as exc:
                     raise HTTPException(
                         status_code=409,
                         detail=f"Fila {row.line_number}: el documento, dorsal o jugador ya está registrado en el torneo",
                     ) from exc
-                if row.photo_filename:
-                    photo = photos.get(row.photo_filename.casefold())
-                    if photo is None:
-                        warnings.append(f"Fila {row.line_number}: no se encontró {row.photo_filename} en el ZIP")
-                    else:
-                        key = (
-                            "private/organizations/"
-                            f"{context.organization_id}/tournaments/{tournament_id}/rosters/"
-                            f"{roster_id}/{uuid4()}{photo.extension}"
-                        )
-                        try:
-                            await storage.put_bytes(key, photo.content, photo.content_type)
-                        except StorageError as exc:
-                            raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
-                        uploaded_keys.append(key)
-                        await db.execute(
-                            text("SELECT set_roster_photo_object(:roster_id, :photo_object_key)"),
-                            {"roster_id": str(roster_id), "photo_object_key": key},
-                        )
+                if photo_key is not None:
+                    await db.execute(
+                        text("SELECT set_roster_photo_object(:roster_id, :photo_object_key)"),
+                        {"roster_id": str(roster_id), "photo_object_key": photo_key},
+                    )
                 created_roster_ids.append(roster_id)
-            players = [await _load_roster_player(db, context.organization_id, roster_id) for roster_id in created_roster_ids]
-    except Exception:
-        for key in uploaded_keys:
-            try:
-                await storage.delete_key(key)
-            except Exception:
-                pass
-        raise
+            players = await _load_roster_player_rows(
+                db, context.organization_id, created_roster_ids
+            )
+        completed = True
+    finally:
+        if not completed:
+            # Best-effort compensation in `finally` so a cancellation between
+            # the uploads and the write also removes the objects. The original
+            # exception (including CancelledError) is always re-raised.
+            for key in uploaded_keys:
+                try:
+                    await storage.delete_key(key)
+                except BaseException:
+                    pass
 
+    # N-2: the rows are committed; signing happens outside the transaction so a
+    # storage failure answers 503 without deleting uploaded keys or rolling back.
+    players = await sign_photo_rows(
+        players, key_field="photo_object_key", policy="error"
+    )
     return {"count": len(players), "players": players, "warnings": warnings}
 
 
@@ -1454,61 +1505,71 @@ async def upload_roster_player_photo(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     storage = get_object_storage()
-    key: str | None = None
     old_key: str | None = None
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+        await _require_tournament_management(db, context, tournament_id)
+        roster_result = await db.execute(
+            text("""
+                SELECT r.id, r.photo_consent, r.photo_object_key
+                FROM rosters r
+                WHERE r.id = :roster_id
+                  AND r.tournament_id = :tournament_id
+                  AND r.organization_id = :organization_id
+            """),
+            {
+                "roster_id": str(roster_id),
+                "tournament_id": str(tournament_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        roster = roster_result.mappings().one_or_none()
+        if roster is None:
+            raise HTTPException(status_code=404, detail="La plantilla no fue encontrada")
+        if not roster["photo_consent"]:
+            raise HTTPException(status_code=409, detail="No existe consentimiento para cargar la foto")
+        old_key = roster["photo_object_key"]
+
+    # N-2: the read transaction is closed; the upload and the compensation run
+    # with no transaction open. A failed upload leaves the row untouched.
+    key = (
+        "private/organizations/"
+        f"{context.organization_id}/tournaments/{tournament_id}/rosters/"
+        f"{roster_id}/{uuid4()}{image.extension}"
+    )
+    completed = False
     try:
+        try:
+            await storage.put_bytes(key, image.content, image.content_type)
+        except StorageError as exc:
+            raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
         async with db.begin():
             await set_rls_context(db, context.organization_id, context.user_id)
-            await _ensure_tournament(db, context.organization_id, tournament_id)
             await _require_tournament_management(db, context, tournament_id)
-            roster_result = await db.execute(
-                text("""
-                    SELECT r.id, r.photo_consent, r.photo_object_key
-                    FROM rosters r
-                    WHERE r.id = :roster_id
-                      AND r.tournament_id = :tournament_id
-                      AND r.organization_id = :organization_id
-                """),
-                {
-                    "roster_id": str(roster_id),
-                    "tournament_id": str(tournament_id),
-                    "organization_id": str(context.organization_id),
-                },
-            )
-            roster = roster_result.mappings().one_or_none()
-            if roster is None:
-                raise HTTPException(status_code=404, detail="La plantilla no fue encontrada")
-            if not roster["photo_consent"]:
-                raise HTTPException(status_code=409, detail="No existe consentimiento para cargar la foto")
-            old_key = roster["photo_object_key"]
-            key = (
-                "private/organizations/"
-                f"{context.organization_id}/tournaments/{tournament_id}/rosters/"
-                f"{roster_id}/{uuid4()}{image.extension}"
-            )
-            try:
-                await storage.put_bytes(key, image.content, image.content_type)
-            except StorageError as exc:
-                raise HTTPException(status_code=503, detail="El almacenamiento de fotos no está disponible") from exc
             replacement_result = await db.execute(
                 text("SELECT set_roster_photo_object(:roster_id, :photo_object_key)"),
                 {"roster_id": str(roster_id), "photo_object_key": key},
             )
-            old_key = replacement_result.scalar_one_or_none()
-            result = await _load_roster_player(db, context.organization_id, roster_id)
-    except Exception:
-        if key:
+            previous_key = replacement_result.scalar_one_or_none()
+            if previous_key is not None:
+                old_key = previous_key
+            row = await _load_roster_player_row(db, context.organization_id, roster_id)
+        completed = True
+    finally:
+        if not completed:
+            # A failed upload, a revoked permission, a rolled-back write or a
+            # cancellation must not leave the new object behind.
             try:
                 await storage.delete_key(key)
-            except Exception:
+            except BaseException:
                 pass
-        raise
     if old_key and old_key != key:
         try:
             await storage.delete_key(old_key)
         except StorageError:
             logger.warning("No se pudo eliminar la foto anterior del roster %s", roster_id, exc_info=True)
-    return result
+    return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
 
 
 @router.patch("/{tournament_id}/rosters/{roster_id}/photo-consent", response_model=RosterPlayerResponse)
@@ -1545,14 +1606,14 @@ async def update_roster_photo_consent(
             text("SELECT set_roster_photo_consent(:roster_id, :photo_consent)"),
             {"roster_id": str(roster_id), "photo_consent": payload.photo_consent},
         )).scalar_one_or_none()
-        result = await _load_roster_player(db, context.organization_id, roster_id)
+        row = await _load_roster_player_row(db, context.organization_id, roster_id)
 
     if not payload.photo_consent and old_key:
         try:
             await storage.delete_key(old_key)
         except StorageError:
             logger.warning("No se pudo eliminar la foto sin consentimiento del roster %s", roster_id, exc_info=True)
-    return result
+    return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
 
 
 async def _clear_stage_schedule(
@@ -2195,14 +2256,35 @@ async def _persist_bracket_schedule(
     return len(bracket.matches) + (1 if bracket.reset_code else 0)
 
 
-async def _draw_swiss_schedule(
+@dataclass(frozen=True)
+class SwissDrawData:
+    """Inputs of the Swiss draw, loaded entirely inside the read transaction."""
+
+    seed: int
+    match_count_per_round: int
+    placeholder_ids: tuple[UUID, ...]
+    standings: tuple[dict, ...]
+    prior_pairs: frozenset[frozenset[UUID]]
+    home_counts: dict[UUID, int]
+    away_counts: dict[UUID, int]
+    replace_existing: bool
+    existing_match_ids: tuple[UUID, ...] = ()
+    previous_match_ids: tuple[UUID, ...] = ()
+
+
+async def _load_swiss_draw_data(
     db: AsyncSession,
     context: AuthContext,
     tournament_id: UUID,
     payload: GenerateSingleEliminationRequest,
     team_ids: list[UUID],
     seed: int,
-) -> GenerateSingleEliminationResponse:
+    *,
+    replace_existing: bool,
+    existing_match_ids: tuple[UUID, ...],
+) -> SwissDrawData:
+    """Read every input of a Swiss round; this function never writes."""
+
     if payload.swiss_round > payload.swiss_rounds:
         raise HTTPException(status_code=422, detail="La ronda Swiss no puede superar la cantidad de rondas configurada")
     if payload.swiss_home_target is not None and payload.swiss_away_target is not None:
@@ -2210,35 +2292,11 @@ async def _draw_swiss_schedule(
             raise HTTPException(status_code=422, detail="Los objetivos de local y visitante deben sumar las rondas Swiss")
 
     match_count_per_round = len(team_ids) // 2
+    placeholder_ids: tuple[UUID, ...] = ()
+    previous_match_ids: tuple[UUID, ...] = ()
     if payload.swiss_round == 1:
-        placeholder_ids: list[UUID] = []
-        for round_number in range(1, payload.swiss_rounds + 1):
-            for match_number in range(1, match_count_per_round + 1):
-                match_id = uuid4()
-                if round_number == 1:
-                    placeholder_ids.append(match_id)
-                await db.execute(
-                    text("""
-                        INSERT INTO matches
-                            (id, organization_id, tournament_id, tournament_version_id, stage_id,
-                             bracket_code, matchday, match_date, status)
-                        VALUES (:id, :organization_id, :tournament_id, :version_id, :stage_id,
-                                :bracket_code, :matchday, :match_date, 'cancelled')
-                    """),
-                    {
-                        "id": str(match_id),
-                        "organization_id": str(context.organization_id),
-                        "tournament_id": str(tournament_id),
-                        "version_id": str(payload.version_id),
-                        "stage_id": str(payload.stage_id),
-                        "bracket_code": f"SW{round_number}-{match_number}",
-                        "matchday": round_number,
-                        "match_date": payload.start_date + timedelta(
-                            days=(round_number - 1) * payload.round_interval_days,
-                            hours=(match_number - 1) * payload.match_interval_hours,
-                        ),
-                    },
-                )
+        # Placeholders are only materialised by the write transaction.
+        placeholder_ids = tuple(uuid4() for _ in range(match_count_per_round))
     else:
         configured_rounds_result = await db.execute(
             text("""
@@ -2262,7 +2320,7 @@ async def _draw_swiss_schedule(
             raise HTTPException(status_code=409, detail="La cantidad de rondas Swiss no puede cambiar después de iniciar la fase")
         previous_result = await db.execute(
             text("""
-                SELECT status
+                SELECT id, status
                 FROM matches
                 WHERE organization_id = :organization_id
                   AND tournament_id = :tournament_id
@@ -2270,6 +2328,7 @@ async def _draw_swiss_schedule(
                   AND stage_id = :stage_id
                   AND bracket_code LIKE 'SW%'
                   AND matchday < :round_number
+                ORDER BY id
             """),
             {
                 "organization_id": str(context.organization_id),
@@ -2282,6 +2341,7 @@ async def _draw_swiss_schedule(
         previous_rows = previous_result.mappings().all()
         if not previous_rows or any(row["status"] not in {"finished", "administrative_resolution"} for row in previous_rows):
             raise HTTPException(status_code=409, detail="Completa las rondas Swiss anteriores antes de generar la siguiente")
+        previous_match_ids = tuple(row["id"] for row in previous_rows)
         placeholder_result = await db.execute(
             text("""
                 SELECT id
@@ -2303,57 +2363,65 @@ async def _draw_swiss_schedule(
                 "round_number": payload.swiss_round,
             },
         )
-        placeholder_ids = [row["id"] for row in placeholder_result.mappings().all()]
+        placeholder_ids = tuple(row["id"] for row in placeholder_result.mappings().all())
         if len(placeholder_ids) != match_count_per_round:
             raise HTTPException(status_code=409, detail="No existen suficientes espacios para la ronda Swiss solicitada")
 
-    history_result = await db.execute(
-        text("""
-            SELECT home_team_id, away_team_id
-            FROM matches
-            WHERE organization_id = :organization_id
-              AND tournament_id = :tournament_id
-              AND tournament_version_id = :version_id
-              AND stage_id = :stage_id
-              AND home_team_id IS NOT NULL
-              AND away_team_id IS NOT NULL
-              AND status <> 'cancelled'
-        """),
-        {
-            "organization_id": str(context.organization_id),
-            "tournament_id": str(tournament_id),
-            "version_id": str(payload.version_id),
-            "stage_id": str(payload.stage_id),
-        },
-    )
-    prior_pairs = {
-        frozenset((row["home_team_id"], row["away_team_id"]))
-        for row in history_result.mappings().all()
-    }
-    counts_result = await db.execute(
-        text("""
-            SELECT home_team_id, away_team_id
-            FROM matches
-            WHERE organization_id = :organization_id
-              AND tournament_id = :tournament_id
-              AND tournament_version_id = :version_id
-              AND stage_id = :stage_id
-              AND home_team_id IS NOT NULL
-              AND away_team_id IS NOT NULL
-              AND status <> 'cancelled'
-        """),
-        {
-            "organization_id": str(context.organization_id),
-            "tournament_id": str(tournament_id),
-            "version_id": str(payload.version_id),
-            "stage_id": str(payload.stage_id),
-        },
-    )
-    home_counts: dict[UUID, int] = {}
-    away_counts: dict[UUID, int] = {}
-    for row in counts_result.mappings().all():
-        home_counts[row["home_team_id"]] = home_counts.get(row["home_team_id"], 0) + 1
-        away_counts[row["away_team_id"]] = away_counts.get(row["away_team_id"], 0) + 1
+    if replace_existing:
+        # The write transaction clears the stage before inserting the new
+        # schedule, so the calculation must see the same (empty) history it saw
+        # before T005, when the clear happened before the reads.
+        prior_pairs: frozenset[frozenset[UUID]] = frozenset()
+        home_counts: dict[UUID, int] = {}
+        away_counts: dict[UUID, int] = {}
+    else:
+        history_result = await db.execute(
+            text("""
+                SELECT home_team_id, away_team_id
+                FROM matches
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                  AND home_team_id IS NOT NULL
+                  AND away_team_id IS NOT NULL
+                  AND status <> 'cancelled'
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(payload.version_id),
+                "stage_id": str(payload.stage_id),
+            },
+        )
+        prior_pairs = frozenset(
+            frozenset((row["home_team_id"], row["away_team_id"]))
+            for row in history_result.mappings().all()
+        )
+        counts_result = await db.execute(
+            text("""
+                SELECT home_team_id, away_team_id
+                FROM matches
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                  AND home_team_id IS NOT NULL
+                  AND away_team_id IS NOT NULL
+                  AND status <> 'cancelled'
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(payload.version_id),
+                "stage_id": str(payload.stage_id),
+            },
+        )
+        home_counts = {}
+        away_counts = {}
+        for row in counts_result.mappings().all():
+            home_counts[row["home_team_id"]] = home_counts.get(row["home_team_id"], 0) + 1
+            away_counts[row["away_team_id"]] = away_counts.get(row["away_team_id"], 0) + 1
 
     standings_result = await db.execute(
         text("""
@@ -2371,21 +2439,176 @@ async def _draw_swiss_schedule(
             "stage_id": str(payload.stage_id),
         },
     )
-    pairings = build_swiss_pairings(
-        team_ids,
-        standings=[dict(row) for row in standings_result.mappings().all()],
-        prior_pairs=prior_pairs,
+    return SwissDrawData(
         seed=seed,
-        round_number=payload.swiss_round,
+        match_count_per_round=match_count_per_round,
+        placeholder_ids=placeholder_ids,
+        standings=tuple(dict(row) for row in standings_result.mappings().all()),
+        prior_pairs=prior_pairs,
         home_counts=home_counts,
         away_counts=away_counts,
-        home_target=payload.swiss_home_target,
-        away_target=payload.swiss_away_target,
+        replace_existing=replace_existing,
+        existing_match_ids=existing_match_ids,
+        previous_match_ids=previous_match_ids,
     )
-    active_pairings = [pairing for pairing in pairings if pairing.home_team_id and pairing.away_team_id]
-    if len(active_pairings) != len(placeholder_ids):
-        raise HTTPException(status_code=409, detail="El sorteo Swiss no coincide con los espacios disponibles")
-    for match_id, pairing in zip(placeholder_ids, active_pairings):
+
+
+async def _revalidate_swiss_draw_state(
+    db: AsyncSession,
+    context: AuthContext,
+    tournament_id: UUID,
+    payload: GenerateSingleEliminationRequest,
+    swiss_draw: SwissDrawData,
+) -> None:
+    """Lock and re-check the stage state inside the write transaction (T006).
+
+    Runs after ``set_rls_context`` and before any write: if the stage changed
+    between the read and the calculation, nothing is written and the operator
+    gets a 409 that can be retried.
+    """
+
+    scope = {
+        "organization_id": str(context.organization_id),
+        "tournament_id": str(tournament_id),
+        "version_id": str(payload.version_id),
+        "stage_id": str(payload.stage_id),
+    }
+    if payload.swiss_round == 1:
+        existing_result = await db.execute(
+            text("""
+                SELECT id
+                FROM matches
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+                ORDER BY id
+                FOR UPDATE
+            """),
+            scope,
+        )
+        current_ids = tuple(row["id"] for row in existing_result.mappings().all())
+        if current_ids != swiss_draw.existing_match_ids:
+            raise HTTPException(status_code=409, detail=SWISS_STATE_CHANGED_DETAIL)
+        return
+
+    scope_with_round = {**scope, "round_number": payload.swiss_round}
+    previous_result = await db.execute(
+        text("""
+            SELECT id, status
+            FROM matches
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND tournament_version_id = :version_id
+              AND stage_id = :stage_id
+              AND bracket_code LIKE 'SW%'
+              AND matchday < :round_number
+            ORDER BY id
+            FOR UPDATE
+        """),
+        scope_with_round,
+    )
+    previous_rows = previous_result.mappings().all()
+    previous_ids = tuple(row["id"] for row in previous_rows)
+    previous_finished = all(
+        row["status"] in {"finished", "administrative_resolution"}
+        for row in previous_rows
+    )
+    if previous_ids != swiss_draw.previous_match_ids or not previous_finished:
+        raise HTTPException(status_code=409, detail=SWISS_STATE_CHANGED_DETAIL)
+
+    placeholder_result = await db.execute(
+        text("""
+            SELECT id, status
+            FROM matches
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND tournament_version_id = :version_id
+              AND stage_id = :stage_id
+              AND matchday = :round_number
+              AND bracket_code LIKE 'SW%'
+            ORDER BY bracket_code
+            FOR UPDATE
+        """),
+        scope_with_round,
+    )
+    placeholder_rows = placeholder_result.mappings().all()
+    placeholder_ids = tuple(row["id"] for row in placeholder_rows)
+    placeholders_cancelled = all(row["status"] == "cancelled" for row in placeholder_rows)
+    if placeholder_ids != swiss_draw.placeholder_ids or not placeholders_cancelled:
+        raise HTTPException(status_code=409, detail=SWISS_STATE_CHANGED_DETAIL)
+
+
+async def _calculate_swiss_pairings(
+    swiss_draw: SwissDrawData,
+    team_ids: list[UUID],
+    payload: GenerateSingleEliminationRequest,
+) -> tuple[SwissPairing, ...]:
+    """Run the pure calculation off-thread and map its failures to 409."""
+
+    try:
+        return await run_swiss_pairing(
+            team_ids,
+            standings=list(swiss_draw.standings),
+            prior_pairs=set(swiss_draw.prior_pairs),
+            seed=swiss_draw.seed,
+            round_number=payload.swiss_round,
+            home_counts=swiss_draw.home_counts,
+            away_counts=swiss_draw.away_counts,
+            home_target=payload.swiss_home_target,
+            away_target=payload.swiss_away_target,
+        )
+    except SwissPairingTimeout as exc:
+        logger.error("Sorteo Swiss: tiempo máximo de cálculo excedido")
+        raise HTTPException(status_code=409, detail="tiempo máximo de cálculo del sorteo excedido") from exc
+    except SwissPairingFailure as exc:
+        if exc.reason == "budget_exhausted":
+            logger.warning("Sorteo Swiss: presupuesto de emparejamiento agotado (%s evaluaciones)", exc.evaluations)
+            raise HTTPException(status_code=409, detail="presupuesto de emparejamiento agotado") from exc
+        logger.warning("Sorteo Swiss: no existe un sorteo válido sin repetir rivales (%s evaluaciones)", exc.evaluations)
+        raise HTTPException(status_code=409, detail="no existe un sorteo válido sin repetir rivales") from exc
+
+
+async def _write_swiss_schedule(
+    db: AsyncSession,
+    context: AuthContext,
+    tournament_id: UUID,
+    payload: GenerateSingleEliminationRequest,
+    swiss_draw: SwissDrawData,
+    active_pairings: list[SwissPairing],
+) -> None:
+    """Materialise the round placeholders and its pairings in one transaction."""
+
+    if payload.swiss_round == 1:
+        for round_number in range(1, payload.swiss_rounds + 1):
+            for match_number in range(1, swiss_draw.match_count_per_round + 1):
+                if round_number == 1:
+                    match_id = swiss_draw.placeholder_ids[match_number - 1]
+                else:
+                    match_id = uuid4()
+                await db.execute(
+                    text("""
+                        INSERT INTO matches
+                            (id, organization_id, tournament_id, tournament_version_id, stage_id,
+                             bracket_code, matchday, match_date, status)
+                        VALUES (:id, :organization_id, :tournament_id, :version_id, :stage_id,
+                                :bracket_code, :matchday, :match_date, 'cancelled')
+                    """),
+                    {
+                        "id": str(match_id),
+                        "organization_id": str(context.organization_id),
+                        "tournament_id": str(tournament_id),
+                        "version_id": str(payload.version_id),
+                        "stage_id": str(payload.stage_id),
+                        "bracket_code": f"SW{round_number}-{match_number}",
+                        "matchday": round_number,
+                        "match_date": payload.start_date + timedelta(
+                            days=(round_number - 1) * payload.round_interval_days,
+                            hours=(match_number - 1) * payload.match_interval_hours,
+                        ),
+                    },
+                )
+    for match_id, pairing in zip(swiss_draw.placeholder_ids, active_pairings):
         await db.execute(
             text("""
                 UPDATE matches
@@ -2402,15 +2625,211 @@ async def _draw_swiss_schedule(
                 "organization_id": str(context.organization_id),
             },
         )
+
+
+async def _draw_non_swiss_schedule(
+    db: AsyncSession,
+    context: AuthContext,
+    tournament_id: UUID,
+    payload: GenerateSingleEliminationRequest,
+    stage_type: str,
+    team_rows: list[dict],
+    team_ids: list[UUID],
+) -> GenerateSingleEliminationResponse:
+    """Existing draw flow for round robin, groups and elimination brackets."""
+
+    existing_result = await db.execute(
+        text("""
+            SELECT 1 FROM matches
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND tournament_version_id = :version_id
+              AND stage_id = :stage_id
+            LIMIT 1
+        """),
+        {
+            "organization_id": str(context.organization_id),
+            "tournament_id": str(tournament_id),
+            "version_id": str(payload.version_id),
+            "stage_id": str(payload.stage_id),
+        },
+    )
+    if existing_result.scalar_one_or_none() is not None and not payload.replace_existing:
+        raise HTTPException(status_code=409, detail="La fase ya tiene partidos; confirma el reemplazo para volver a sortear")
+    if payload.replace_existing:
+        await _clear_stage_schedule(
+            db,
+            context.organization_id,
+            tournament_id,
+            payload.version_id,
+            payload.stage_id,
+        )
+
+    seed = payload.seed if payload.seed is not None else secrets.randbits(63)
+    group_count = 0
+    schedules: list[tuple[UUID | None, object]] = []
+    if stage_type == "round_robin":
+        if any(row["group_id"] is not None for row in team_rows):
+            raise HTTPException(status_code=409, detail="Una liga única no puede tener grupos asignados")
+        try:
+            schedules.append((None, build_round_robin_schedule(
+                team_ids,
+                seed=seed,
+                start_date=payload.start_date,
+                round_interval_days=payload.round_interval_days,
+                match_interval_hours=payload.match_interval_hours,
+                legs=payload.legs,
+            )))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif stage_type == "custom_group":
+        if payload.group_count is None:
+            raise HTTPException(status_code=422, detail="Indica la cantidad de grupos para la fase")
+        if not payload.use_group_heads and payload.head_team_ids:
+            raise HTTPException(status_code=422, detail="Activa cabezas de grupo antes de seleccionarlas")
+        try:
+            draw = distribute_groups(
+                team_ids,
+                group_count=payload.group_count,
+                seed=seed,
+                head_team_ids=payload.head_team_ids if payload.use_group_heads else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await db.execute(
+            text("""
+                UPDATE stage_teams SET group_id = NULL
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(payload.version_id),
+                "stage_id": str(payload.stage_id),
+            },
+        )
+        await db.execute(
+            text("""
+                DELETE FROM groups
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+                  AND stage_id = :stage_id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(payload.version_id),
+                "stage_id": str(payload.stage_id),
+            },
+        )
+        group_count = len(draw.groups)
+        for group_number, group_team_ids in enumerate(draw.groups, start=1):
+            group_id = uuid4()
+            await db.execute(
+                text("""
+                    INSERT INTO groups
+                        (id, organization_id, tournament_id, tournament_version_id, stage_id, name)
+                    VALUES (:id, :organization_id, :tournament_id, :version_id, :stage_id, :name)
+                """),
+                {
+                    "id": str(group_id),
+                    "organization_id": str(context.organization_id),
+                    "tournament_id": str(tournament_id),
+                    "version_id": str(payload.version_id),
+                    "stage_id": str(payload.stage_id),
+                    "name": f"Grupo {chr(64 + group_number)}" if group_number <= 26 else f"Grupo {group_number}",
+                },
+            )
+            for team_id in group_team_ids:
+                await db.execute(
+                    text("""
+                        UPDATE stage_teams SET group_id = :group_id
+                        WHERE organization_id = :organization_id
+                          AND tournament_id = :tournament_id
+                          AND tournament_version_id = :version_id
+                          AND stage_id = :stage_id
+                          AND team_id = :team_id
+                    """),
+                    {
+                        "group_id": str(group_id),
+                        "organization_id": str(context.organization_id),
+                        "tournament_id": str(tournament_id),
+                        "version_id": str(payload.version_id),
+                        "stage_id": str(payload.stage_id),
+                        "team_id": str(team_id),
+                    },
+                )
+            try:
+                schedules.append((group_id, build_round_robin_schedule(
+                    list(group_team_ids),
+                    seed=seed + group_number,
+                    start_date=payload.start_date,
+                    round_interval_days=payload.round_interval_days,
+                    match_interval_hours=payload.match_interval_hours,
+                    legs=payload.legs,
+                    code_prefix=f"G{group_number}",
+                )))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif stage_type in {"single_elimination", "double_elimination"}:
+        if any(row["group_id"] is not None for row in team_rows):
+            raise HTTPException(status_code=409, detail="Una llave eliminatoria no puede usar equipos asignados a grupos")
+        builder = build_single_elimination_bracket if stage_type == "single_elimination" else build_double_elimination_bracket
+        try:
+            bracket = builder(
+                team_ids,
+                seed=seed,
+                start_date=payload.start_date,
+                round_interval_days=payload.round_interval_days,
+                match_interval_hours=payload.match_interval_hours,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        match_count = await _persist_bracket_schedule(
+            db,
+            context,
+            tournament_id,
+            payload.version_id,
+            payload.stage_id,
+            bracket,
+        )
+        return GenerateSingleEliminationResponse(
+            version_id=payload.version_id,
+            stage_id=payload.stage_id,
+            stage_type=stage_type,
+            seed=seed,
+            bracket_size=bracket.bracket_size,
+            round_count=bracket.round_count,
+            match_count=match_count,
+            bye_count=bracket.bracket_size - len(team_ids),
+        )
+    else:
+        raise HTTPException(status_code=422, detail=f"El formato de fase {stage_type} no admite sorteo automático")
+
+    try:
+        match_count = await _persist_direct_schedule(
+            db,
+            context,
+            tournament_id,
+            payload.version_id,
+            payload.stage_id,
+            schedules,
+        )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="No se pudo guardar el calendario sorteado") from exc
     return GenerateSingleEliminationResponse(
         version_id=payload.version_id,
         stage_id=payload.stage_id,
-        stage_type="swiss",
+        stage_type=stage_type,
         seed=seed,
-        round_count=payload.swiss_rounds,
-        match_count=len(active_pairings),
-        bye_count=sum(1 for pairing in pairings if pairing.bye_team_id),
-        round_number=payload.swiss_round,
+        round_count=max((schedule.round_count for _, schedule in schedules), default=0),
+        match_count=match_count,
+        bye_count=sum(schedule.bye_count for _, schedule in schedules),
+        group_count=group_count,
     )
 
 
@@ -2425,6 +2844,7 @@ async def draw_stage_schedule(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateSingleEliminationResponse:
+    swiss_draw: SwissDrawData | None = None
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
@@ -2452,48 +2872,27 @@ async def draw_stage_schedule(
             raise HTTPException(status_code=409, detail="Solo se pueden generar rondas Swiss en una versión publicada")
         if stage_type != "custom_group" and any(row["group_id"] is not None for row in team_rows):
             raise HTTPException(status_code=409, detail="Esta fase no puede usar equipos asignados a grupos")
-        if stage_type == "swiss":
-            existing_result = await db.execute(
-                text("""
-                    SELECT 1 FROM matches
-                    WHERE organization_id = :organization_id
-                      AND tournament_id = :tournament_id
-                      AND tournament_version_id = :version_id
-                      AND stage_id = :stage_id
-                    LIMIT 1
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "tournament_id": str(tournament_id),
-                    "version_id": str(payload.version_id),
-                    "stage_id": str(payload.stage_id),
-                },
+        if stage_type != "swiss":
+            return await _draw_non_swiss_schedule(
+                db, context, tournament_id, payload, stage_type, team_rows, team_ids
             )
-            has_existing_matches = existing_result.scalar_one_or_none() is not None
-            if payload.swiss_round > 1:
-                if payload.replace_existing:
-                    raise HTTPException(status_code=409, detail="No se puede reemplazar una ronda Swiss ya iniciada")
-            elif has_existing_matches and not payload.replace_existing:
-                raise HTTPException(status_code=409, detail="La fase ya tiene un sorteo; confirma el reemplazo para reiniciarlo")
-            if payload.replace_existing:
-                await _clear_stage_schedule(
-                    db,
-                    context.organization_id,
-                    tournament_id,
-                    payload.version_id,
-                    payload.stage_id,
-                )
-            seed = payload.seed if payload.seed is not None else secrets.randbits(63)
-            return await _draw_swiss_schedule(db, context, tournament_id, payload, team_ids, seed)
 
+        # The cap uses the stage team set loaded above and runs before any write
+        # and before any work is sent to the dedicated executor.
+        if len(team_ids) > MAX_SWISS_TEAMS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"La fase Swiss admite como máximo {MAX_SWISS_TEAMS} equipos",
+            )
         existing_result = await db.execute(
             text("""
-                SELECT 1 FROM matches
+                SELECT id
+                FROM matches
                 WHERE organization_id = :organization_id
                   AND tournament_id = :tournament_id
                   AND tournament_version_id = :version_id
                   AND stage_id = :stage_id
-                LIMIT 1
+                ORDER BY id
             """),
             {
                 "organization_id": str(context.organization_id),
@@ -2502,9 +2901,48 @@ async def draw_stage_schedule(
                 "stage_id": str(payload.stage_id),
             },
         )
-        if existing_result.scalar_one_or_none() is not None and not payload.replace_existing:
-            raise HTTPException(status_code=409, detail="La fase ya tiene partidos; confirma el reemplazo para volver a sortear")
-        if payload.replace_existing:
+        existing_match_ids = tuple(
+            row["id"] for row in existing_result.mappings().all()
+        )
+        has_existing_matches = bool(existing_match_ids)
+        if payload.swiss_round > 1:
+            if payload.replace_existing:
+                raise HTTPException(status_code=409, detail="No se puede reemplazar una ronda Swiss ya iniciada")
+        elif has_existing_matches and not payload.replace_existing:
+            raise HTTPException(status_code=409, detail="La fase ya tiene un sorteo; confirma el reemplazo para reiniciarlo")
+        seed = payload.seed if payload.seed is not None else secrets.randbits(63)
+        swiss_draw = await _load_swiss_draw_data(
+            db,
+            context,
+            tournament_id,
+            payload,
+            team_ids,
+            seed,
+            replace_existing=payload.replace_existing,
+            existing_match_ids=existing_match_ids,
+        )
+
+    # N-2: the read transaction is closed. The pure calculation runs in the
+    # dedicated executor, so no connection stays idle in transaction while it
+    # works and a failure never leaves partial writes behind.
+    if swiss_draw is None:
+        raise HTTPException(status_code=422, detail="El formato de fase indicado no admite sorteo automático")
+    pairings = await _calculate_swiss_pairings(swiss_draw, team_ids, payload)
+    active_pairings = [
+        pairing
+        for pairing in pairings
+        if pairing.home_team_id and pairing.away_team_id
+    ]
+    if len(active_pairings) != len(swiss_draw.placeholder_ids):
+        raise HTTPException(status_code=409, detail="El sorteo Swiss no coincide con los espacios disponibles")
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _require_tournament_management(db, context, tournament_id)
+        await _revalidate_swiss_draw_state(
+            db, context, tournament_id, payload, swiss_draw
+        )
+        if swiss_draw.replace_existing:
             await _clear_stage_schedule(
                 db,
                 context.organization_id,
@@ -2512,173 +2950,20 @@ async def draw_stage_schedule(
                 payload.version_id,
                 payload.stage_id,
             )
-
-        seed = payload.seed if payload.seed is not None else secrets.randbits(63)
-        group_count = 0
-        schedules: list[tuple[UUID | None, object]] = []
-        if stage_type == "round_robin":
-            if any(row["group_id"] is not None for row in team_rows):
-                raise HTTPException(status_code=409, detail="Una liga única no puede tener grupos asignados")
-            try:
-                schedules.append((None, build_round_robin_schedule(
-                    team_ids,
-                    seed=seed,
-                    start_date=payload.start_date,
-                    round_interval_days=payload.round_interval_days,
-                    match_interval_hours=payload.match_interval_hours,
-                    legs=payload.legs,
-                )))
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-        elif stage_type == "custom_group":
-            if payload.group_count is None:
-                raise HTTPException(status_code=422, detail="Indica la cantidad de grupos para la fase")
-            if not payload.use_group_heads and payload.head_team_ids:
-                raise HTTPException(status_code=422, detail="Activa cabezas de grupo antes de seleccionarlas")
-            try:
-                draw = distribute_groups(
-                    team_ids,
-                    group_count=payload.group_count,
-                    seed=seed,
-                    head_team_ids=payload.head_team_ids if payload.use_group_heads else None,
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-            await db.execute(
-                text("""
-                    UPDATE stage_teams SET group_id = NULL
-                    WHERE organization_id = :organization_id
-                      AND tournament_id = :tournament_id
-                      AND tournament_version_id = :version_id
-                      AND stage_id = :stage_id
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "tournament_id": str(tournament_id),
-                    "version_id": str(payload.version_id),
-                    "stage_id": str(payload.stage_id),
-                },
-            )
-            await db.execute(
-                text("""
-                    DELETE FROM groups
-                    WHERE organization_id = :organization_id
-                      AND tournament_id = :tournament_id
-                      AND tournament_version_id = :version_id
-                      AND stage_id = :stage_id
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "tournament_id": str(tournament_id),
-                    "version_id": str(payload.version_id),
-                    "stage_id": str(payload.stage_id),
-                },
-            )
-            group_count = len(draw.groups)
-            for group_number, group_team_ids in enumerate(draw.groups, start=1):
-                group_id = uuid4()
-                await db.execute(
-                    text("""
-                        INSERT INTO groups
-                            (id, organization_id, tournament_id, tournament_version_id, stage_id, name)
-                        VALUES (:id, :organization_id, :tournament_id, :version_id, :stage_id, :name)
-                    """),
-                    {
-                        "id": str(group_id),
-                        "organization_id": str(context.organization_id),
-                        "tournament_id": str(tournament_id),
-                        "version_id": str(payload.version_id),
-                        "stage_id": str(payload.stage_id),
-                        "name": f"Grupo {chr(64 + group_number)}" if group_number <= 26 else f"Grupo {group_number}",
-                    },
-                )
-                for team_id in group_team_ids:
-                    await db.execute(
-                        text("""
-                            UPDATE stage_teams SET group_id = :group_id
-                            WHERE organization_id = :organization_id
-                              AND tournament_id = :tournament_id
-                              AND tournament_version_id = :version_id
-                              AND stage_id = :stage_id
-                              AND team_id = :team_id
-                        """),
-                        {
-                            "group_id": str(group_id),
-                            "organization_id": str(context.organization_id),
-                            "tournament_id": str(tournament_id),
-                            "version_id": str(payload.version_id),
-                            "stage_id": str(payload.stage_id),
-                            "team_id": str(team_id),
-                        },
-                    )
-                try:
-                    schedules.append((group_id, build_round_robin_schedule(
-                        list(group_team_ids),
-                        seed=seed + group_number,
-                        start_date=payload.start_date,
-                        round_interval_days=payload.round_interval_days,
-                        match_interval_hours=payload.match_interval_hours,
-                        legs=payload.legs,
-                        code_prefix=f"G{group_number}",
-                    )))
-                except ValueError as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
-        elif stage_type in {"single_elimination", "double_elimination"}:
-            if any(row["group_id"] is not None for row in team_rows):
-                raise HTTPException(status_code=409, detail="Una llave eliminatoria no puede usar equipos asignados a grupos")
-            builder = build_single_elimination_bracket if stage_type == "single_elimination" else build_double_elimination_bracket
-            try:
-                bracket = builder(
-                    team_ids,
-                    seed=seed,
-                    start_date=payload.start_date,
-                    round_interval_days=payload.round_interval_days,
-                    match_interval_hours=payload.match_interval_hours,
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-            match_count = await _persist_bracket_schedule(
-                db,
-                context,
-                tournament_id,
-                payload.version_id,
-                payload.stage_id,
-                bracket,
-            )
-            return GenerateSingleEliminationResponse(
-                version_id=payload.version_id,
-                stage_id=payload.stage_id,
-                stage_type=stage_type,
-                seed=seed,
-                bracket_size=bracket.bracket_size,
-                round_count=bracket.round_count,
-                match_count=match_count,
-                bye_count=bracket.bracket_size - len(team_ids),
-            )
-        else:
-            raise HTTPException(status_code=422, detail=f"El formato de fase {stage_type} no admite sorteo automático")
-
-        try:
-            match_count = await _persist_direct_schedule(
-                db,
-                context,
-                tournament_id,
-                payload.version_id,
-                payload.stage_id,
-                schedules,
-            )
-        except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="No se pudo guardar el calendario sorteado") from exc
-        return GenerateSingleEliminationResponse(
-            version_id=payload.version_id,
-            stage_id=payload.stage_id,
-            stage_type=stage_type,
-            seed=seed,
-            round_count=max((schedule.round_count for _, schedule in schedules), default=0),
-            match_count=match_count,
-            bye_count=sum(schedule.bye_count for _, schedule in schedules),
-            group_count=group_count,
+        await _write_swiss_schedule(
+            db, context, tournament_id, payload, swiss_draw, active_pairings
         )
+
+    return GenerateSingleEliminationResponse(
+        version_id=payload.version_id,
+        stage_id=payload.stage_id,
+        stage_type="swiss",
+        seed=swiss_draw.seed,
+        round_count=payload.swiss_rounds,
+        match_count=len(active_pairings),
+        bye_count=sum(1 for pairing in pairings if pairing.bye_team_id),
+        round_number=payload.swiss_round,
+    )
 
 
 @router.get("/{tournament_id}/matches")
@@ -3074,51 +3359,58 @@ async def public_matches(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[PublicMatchResponse]:
-    await _ensure_public_tournament(db, tournament_id)
-    result = await db.execute(
-        text("""
-            SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
-                   bracket_code, matchday, match_date, home_team_id, home_team_name, home_team_short_code,
-                   away_team_id, away_team_name, away_team_short_code, home_score_regular,
-                   away_score_regular, home_score, away_score, home_penalties, away_penalties,
-                   winner_team_id, status, resolution_type
-            FROM v_public_matches
-            WHERE tournament_id = :tournament_id
-              AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
-              AND (CAST(:group_id AS UUID) IS NULL OR group_id = CAST(:group_id AS UUID))
-              ORDER BY stage_order, stage_id, matchday NULLS LAST, bracket_code NULLS LAST,
-                       match_date NULLS LAST, id
-             LIMIT :limit OFFSET :offset
-        """),
-        {
-            "tournament_id": str(tournament_id),
-            "stage_id": str(stage_id) if stage_id else None,
-            "group_id": str(group_id) if group_id else None,
-            "limit": limit,
-            "offset": offset,
-        },
-    )
-    matches = [dict(row) for row in result.mappings().all()]
+    # N-2: every query lives inside this read transaction; the photos are
+    # signed after it closes, never while the connection is idle in transaction.
+    async with db.begin():
+        await _ensure_public_tournament(db, tournament_id)
+        result = await db.execute(
+            text("""
+                SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
+                       bracket_code, matchday, match_date, home_team_id, home_team_name, home_team_short_code,
+                       away_team_id, away_team_name, away_team_short_code, home_score_regular,
+                       away_score_regular, home_score, away_score, home_penalties, away_penalties,
+                       winner_team_id, status, resolution_type
+                FROM v_public_matches
+                WHERE tournament_id = :tournament_id
+                  AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
+                  AND (CAST(:group_id AS UUID) IS NULL OR group_id = CAST(:group_id AS UUID))
+                  ORDER BY stage_order, stage_id, matchday NULLS LAST, bracket_code NULLS LAST,
+                           match_date NULLS LAST, id
+                 LIMIT :limit OFFSET :offset
+            """),
+            {
+                "tournament_id": str(tournament_id),
+                "stage_id": str(stage_id) if stage_id else None,
+                "group_id": str(group_id) if group_id else None,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        matches = [dict(row) for row in result.mappings().all()]
+        lineup_rows: list[dict] = []
+        if matches:
+            match_ids = [str(match["id"]) for match in matches]
+            lineup_result = await db.execute(
+                text("""
+                    SELECT match_id, team_id, team_name, side, formation_code, player_id,
+                           first_name, last_name, dorsal_number, role, position_slot, photo_url
+                    FROM v_public_match_lineups
+                    WHERE tournament_id = :tournament_id
+                      AND match_id = ANY(CAST(:match_ids AS UUID[]))
+                    ORDER BY match_id, side,
+                             CASE WHEN role = 'starter' THEN 0 ELSE 1 END,
+                             dorsal_number NULLS LAST, last_name, first_name
+                """),
+                {"tournament_id": str(tournament_id), "match_ids": match_ids},
+            )
+            lineup_rows = [dict(row) for row in lineup_result.mappings().all()]
+
     if not matches:
         return []
 
-    match_ids = [str(match["id"]) for match in matches]
-    lineup_result = await db.execute(
-        text("""
-            SELECT match_id, team_id, team_name, side, formation_code, player_id,
-                   first_name, last_name, dorsal_number, role, position_slot, photo_url
-            FROM v_public_match_lineups
-            WHERE tournament_id = :tournament_id
-              AND match_id = ANY(CAST(:match_ids AS UUID[]))
-            ORDER BY match_id, side,
-                     CASE WHEN role = 'starter' THEN 0 ELSE 1 END,
-                     dorsal_number NULLS LAST, last_name, first_name
-        """),
-        {"tournament_id": str(tournament_id), "match_ids": match_ids},
-    )
-
     lineups_by_match: dict[str, dict[str, dict[str, object]]] = {}
-    for row in lineup_result.mappings().all():
+    players: list[dict] = []
+    for row in lineup_rows:
         match_key = str(row["match_id"])
         side = str(row["side"])
         match_lineups = lineups_by_match.setdefault(match_key, {})
@@ -3139,8 +3431,11 @@ async def public_matches(
             "dorsal_number": row["dorsal_number"],
             "role": row["role"],
             "position_slot": row["position_slot"],
-            "photo_url": await _resolve_photo_url(row["photo_url"], bool(row["photo_url"])),
+            # The public view already nulls this without consent; the batch
+            # resolver replaces the object key with a signed URL (or null).
+            "photo_url": row["photo_url"],
         }
+        players.append(player)
         bucket = "starters" if row["role"] == "starter" else "substitutes"
         team_lineup[bucket].append(player)  # type: ignore[union-attr]
 
@@ -3152,4 +3447,10 @@ async def public_matches(
                 "away": match_lineups.get("away"),
             }
 
+    await sign_photo_rows(
+        players,
+        key_field="photo_url",
+        consent_field=None,
+        policy="null",
+    )
     return matches

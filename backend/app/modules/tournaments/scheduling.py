@@ -1,10 +1,53 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from random import Random
+from threading import Lock
 from uuid import UUID
 
 
 MAX_SINGLE_ELIMINATION_TEAMS = 512
+MAX_SWISS_TEAMS = 64
+SWISS_SEARCH_LIMIT = 40_000
+SWISS_PAIRING_LIMIT = 50_000
+SWISS_FALLBACK_RESERVE = SWISS_PAIRING_LIMIT - SWISS_SEARCH_LIMIT
+SWISS_PAIRING_TIMEOUT_SECONDS = 10.0
+SWISS_PAIRING_MAX_WORKERS = 2
+
+
+@dataclass
+class PairingBudget:
+    """Single deterministic counter shared by search, byes and fallback."""
+
+    search_limit: int = SWISS_SEARCH_LIMIT
+    total_limit: int = SWISS_PAIRING_LIMIT
+    evaluations: int = 0
+
+    def take(self, limit: int) -> bool:
+        """Count one evaluated pair; the evaluation that reaches the limit runs."""
+        if self.evaluations >= limit:
+            return False
+        self.evaluations += 1
+        return True
+
+
+class SwissPairingFailure(RuntimeError):
+    """Business result of the calculation, not a parameter validation error."""
+
+    def __init__(self, reason: str, evaluations: int = 0):
+        self.reason = reason
+        self.evaluations = evaluations
+        super().__init__(f"No se pudo generar el sorteo Swiss ({reason})")
+
+
+class SwissPairingTimeout(RuntimeError):
+    """The dedicated calculation thread did not answer within the timeout."""
+
+
+class _SearchLimitReached(Exception):
+    """Internal signal: the backtracking search used its whole share."""
 
 
 @dataclass(frozen=True)
@@ -209,6 +252,7 @@ def build_swiss_pairings(
     home_target: int | None = None,
     away_target: int | None = None,
     bye_counts: dict[UUID, int] | None = None,
+    budget: PairingBudget | None = None,
 ) -> tuple[SwissPairing, ...]:
     _validate_team_ids(team_ids)
     if seed < 0:
@@ -219,6 +263,7 @@ def build_swiss_pairings(
     home_counts = home_counts or {}
     away_counts = away_counts or {}
     bye_counts = bye_counts or {}
+    budget = budget or PairingBudget()
     rng = Random(seed)
     standing_by_id = {row["team_id"]: row for row in standings if row.get("team_id") in team_ids}
     random_order = {team_id: rng.random() for team_id in team_ids}
@@ -276,18 +321,71 @@ def build_swiss_pairings(
         first = remaining[0]
         candidates = sorted(remaining[1:], key=lambda team_id: candidate_key(first, team_id))
         for second in candidates:
+            if not budget.take(budget.search_limit):
+                raise _SearchLimitReached
             if frozenset((first, second)) in prior_pairs:
                 continue
             rest = tuple(team_id for team_id in remaining[1:] if team_id != second)
             for home, away in orientation_options(first, second, current_home_counts, current_away_counts):
                 current_home_counts[home] = current_home_counts.get(home, 0) + 1
                 current_away_counts[away] = current_away_counts.get(away, 0) + 1
-                result = pair_remaining(rest, current_home_counts, current_away_counts)
-                current_home_counts[home] -= 1
-                current_away_counts[away] -= 1
+                try:
+                    result = pair_remaining(rest, current_home_counts, current_away_counts)
+                finally:
+                    current_home_counts[home] -= 1
+                    current_away_counts[away] -= 1
                 if result is not None:
                     return [(home, away), *result]
         return None
+
+    def greedy(
+        candidate_order: tuple[UUID, ...],
+        current_home_counts: dict[UUID, int],
+        current_away_counts: dict[UUID, int],
+    ) -> list[tuple[UUID, UUID]] | None:
+        """Bounded fallback: same priority order, same rules, no backtracking."""
+
+        remaining = list(candidate_order)
+        pairs: list[tuple[UUID, UUID]] = []
+        while remaining:
+            if len(remaining) == 1:
+                return None
+            first = remaining[0]
+            chosen: tuple[UUID, tuple[UUID, UUID]] | None = None
+            for second in sorted(
+                remaining[1:], key=lambda team_id: candidate_key(first, team_id)
+            ):
+                if not budget.take(budget.total_limit):
+                    return None
+                if frozenset((first, second)) in prior_pairs:
+                    continue
+                options = orientation_options(
+                    first, second, current_home_counts, current_away_counts
+                )
+                if not options:
+                    continue
+                chosen = (second, options[0])
+                break
+            if chosen is None:
+                return None
+            second, (home, away) = chosen
+            current_home_counts[home] = current_home_counts.get(home, 0) + 1
+            current_away_counts[away] = current_away_counts.get(away, 0) + 1
+            pairs.append((home, away))
+            remaining = [
+                team_id
+                for team_id in remaining
+                if team_id != first and team_id != second
+            ]
+        return pairs
+
+    def assemble(
+        pairs: list[tuple[UUID, UUID]], bye_team: UUID | None
+    ) -> tuple[SwissPairing, ...]:
+        result = [SwissPairing(home, away) for home, away in pairs]
+        if bye_team is not None:
+            result.append(SwissPairing(None, None, bye_team))
+        return tuple(result)
 
     bye_candidates = ordered
     if len(bye_candidates) % 2:
@@ -301,17 +399,120 @@ def build_swiss_pairings(
                 random_order[team_id],
             ),
         )
-        for bye_team in bye_candidates:
-            remaining = tuple(team_id for team_id in ordered if team_id != bye_team)
-            pairs = pair_remaining(remaining, dict(home_counts), dict(away_counts))
-            if pairs is not None:
-                return (*[SwissPairing(home, away) for home, away in pairs], SwissPairing(None, None, bye_team))
-    else:
-        pairs = pair_remaining(tuple(ordered), dict(home_counts), dict(away_counts))
-        if pairs is not None:
-            return tuple(SwissPairing(home, away) for home, away in pairs)
 
-    raise ValueError("No existe un sorteo Swiss válido sin repetir rivales")
+    # Backtracking search. A complete search without a solution is conclusive;
+    # only hitting the search limit hands the same counter to the fallback.
+    pairs: list[tuple[UUID, UUID]] | None = None
+    bye_team: UUID | None = None
+    search_limit_reached = False
+    if len(ordered) % 2:
+        for bye_candidate in bye_candidates:
+            remaining = tuple(team_id for team_id in ordered if team_id != bye_candidate)
+            try:
+                pairs = pair_remaining(remaining, dict(home_counts), dict(away_counts))
+            except _SearchLimitReached:
+                search_limit_reached = True
+                break
+            if pairs is not None:
+                bye_team = bye_candidate
+                break
+    else:
+        try:
+            pairs = pair_remaining(tuple(ordered), dict(home_counts), dict(away_counts))
+        except _SearchLimitReached:
+            search_limit_reached = True
+
+    if not search_limit_reached:
+        if pairs is None:
+            raise SwissPairingFailure("no_valid_pairing", budget.evaluations)
+        return assemble(pairs, bye_team)
+
+    fallback_pairs: list[tuple[UUID, UUID]] | None = None
+    fallback_bye: UUID | None = None
+    if len(ordered) % 2:
+        for bye_candidate in bye_candidates:
+            remaining = tuple(team_id for team_id in ordered if team_id != bye_candidate)
+            fallback_pairs = greedy(remaining, dict(home_counts), dict(away_counts))
+            if fallback_pairs is not None:
+                fallback_bye = bye_candidate
+                break
+            if budget.evaluations >= budget.total_limit:
+                break
+    else:
+        fallback_pairs = greedy(tuple(ordered), dict(home_counts), dict(away_counts))
+
+    if fallback_pairs is None:
+        # The fallback only runs after the search used its whole share, so a
+        # fallback failure always follows a reached limit: per RF-006 this is
+        # budget exhaustion, never "no valid pairing".
+        raise SwissPairingFailure("budget_exhausted", budget.evaluations)
+    return assemble(fallback_pairs, fallback_bye)
+
+
+_swiss_executor: ThreadPoolExecutor | None = None
+_swiss_executor_lock = Lock()
+
+
+def _get_swiss_executor() -> ThreadPoolExecutor:
+    """Lazily create the dedicated, bounded executor used by the Swiss runner."""
+
+    global _swiss_executor
+    if _swiss_executor is None:
+        with _swiss_executor_lock:
+            if _swiss_executor is None:
+                _swiss_executor = ThreadPoolExecutor(
+                    max_workers=SWISS_PAIRING_MAX_WORKERS,
+                    thread_name_prefix="swiss-pairing",
+                )
+    return _swiss_executor
+
+
+async def run_swiss_pairing(
+    team_ids: list[UUID] | tuple[UUID, ...],
+    *,
+    standings: list[dict],
+    prior_pairs: set[frozenset[UUID]] | frozenset[frozenset[UUID]],
+    seed: int,
+    round_number: int,
+    home_counts: dict[UUID, int] | None = None,
+    away_counts: dict[UUID, int] | None = None,
+    home_target: int | None = None,
+    away_target: int | None = None,
+    bye_counts: dict[UUID, int] | None = None,
+    budget: PairingBudget | None = None,
+    timeout: float = SWISS_PAIRING_TIMEOUT_SECONDS,
+) -> tuple[SwissPairing, ...]:
+    """Run the pure calculation off the event loop, with a safety timeout.
+
+    The worker receives copies of the loaded data (no session, connection or
+    event-loop object). A Python thread cannot be cancelled: on timeout the
+    result is discarded and the thread stops by exhausting its budget. The
+    caller must not reuse or inspect ``budget`` after a timeout because the
+    live thread keeps consuming it.
+    """
+
+    calculation = partial(
+        build_swiss_pairings,
+        tuple(team_ids),
+        standings=list(standings),
+        prior_pairs=frozenset(prior_pairs),
+        seed=seed,
+        round_number=round_number,
+        home_counts=dict(home_counts or {}),
+        away_counts=dict(away_counts or {}),
+        home_target=home_target,
+        away_target=away_target,
+        bye_counts=dict(bye_counts or {}),
+        budget=budget,
+    )
+    loop = asyncio.get_running_loop()
+    future = loop.run_in_executor(_get_swiss_executor(), calculation)
+    try:
+        return await asyncio.wait_for(future, timeout)
+    except (asyncio.TimeoutError, TimeoutError):
+        raise SwissPairingTimeout(
+            "Tiempo máximo de cálculo del sorteo excedido"
+        ) from None
 
 
 def _next_power_of_two(value: int) -> int:

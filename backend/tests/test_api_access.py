@@ -31,7 +31,21 @@ class EmptyResult:
         return None
 
 
+class EmptyTransaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
 class EmptyDatabase:
+    def begin(self):
+        return EmptyTransaction()
+
+    def in_transaction(self):
+        return False
+
     async def execute(self, *args, **kwargs):
         return EmptyResult()
 

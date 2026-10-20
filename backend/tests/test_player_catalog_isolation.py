@@ -25,10 +25,11 @@ from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.tournaments import router as tournaments_router
+from app.modules.tournaments.photos import sign_photo_rows
 from app.modules.tournaments.roster_import import RosterImportError, parse_roster_csv
 from app.modules.tournaments.router import (
     _create_roster_player_record,
-    _load_roster_player,
+    _load_roster_player_row,
 )
 from app.modules.tournaments.schemas import CreateRosterPlayerRequest, RosterPlayerResponse
 from db_helpers import TenantContext, create_tenant_owner, insert_player, set_tenant_context
@@ -257,7 +258,7 @@ async def test_same_document_in_two_organizations_stays_isolated(db_session, ten
     assert (await db_session.execute(text("SELECT id FROM players"))).scalars().all() == [
         second_player_id
     ]
-    second_roster = await _load_roster_player(db_session, second.organization_id, second_roster_id)
+    second_roster = await _load_roster_player_row(db_session, second.organization_id, second_roster_id)
     assert second_roster["player_id"] == second_player_id
     assert second_roster["first_name"] == "Bruno"
     assert second_roster["last_name"] == "Beta"
@@ -268,7 +269,7 @@ async def test_same_document_in_two_organizations_stays_isolated(db_session, ten
     assert (await db_session.execute(text("SELECT id FROM players"))).scalars().all() == [
         first_player_id
     ]
-    first_roster = await _load_roster_player(db_session, first.organization_id, first_roster_id)
+    first_roster = await _load_roster_player_row(db_session, first.organization_id, first_roster_id)
     assert first_roster["player_id"] == first_player_id
     assert first_roster["first_name"] == "Alice"
     assert first_roster["last_name"] == "Alpha"
@@ -739,7 +740,12 @@ async def test_create_player_encrypts_the_birth_date_and_materializes_the_age(
                 )
 
         # The registration response keeps its shape: no date, no ciphertext, no age.
-        roster = await _load_roster_player(session, tenant.organization_id, roster_id)
+        roster = await _load_roster_player_row(session, tenant.organization_id, roster_id)
+        roster = (
+            await sign_photo_rows(
+                [roster], key_field="photo_object_key", policy="error"
+            )
+        )[0]
         assert set(roster) == {
             "roster_id",
             "player_id",

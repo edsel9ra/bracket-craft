@@ -179,6 +179,23 @@ El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un 
 | stream → cliente | best-effort | Hay huecos (reinicio, recorte, caída de Redis, cliente desconectado) y duplicados posibles; se mitigan con `RESYNC`, deduplicación, polling y reconciliación. |
 | cliente → API HTTP | fuente de verdad | Cualquier estado visible se reconstruye con una recarga HTTP; el tiempo real es una optimización. |
 
+## Rendimiento, fotos y conexión
+
+Los límites de esta sección son constantes del backend: no hay variables de entorno, migraciones ni dependencias nuevas.
+
+- **Sorteo Swiss:** una fase admite como máximo **64 equipos**; el conjunto contado es el de equipos registrados y asignados a la fase. Superarlo responde **422** («La fase Swiss admite como máximo 64 equipos») antes de escribir y antes de calcular. En rondas posteriores a la primera no se borran marcadores ni partidos de rondas anteriores.
+- **Presupuesto determinista:** **50 000** evaluaciones de pares por solicitud (40 000 para la búsqueda con retroceso y una reserva de 10 000 para el fallback). El fallback nunca relaja «no repetir rivales» ni las metas de local/visitante.
+- **Ejecución:** el emparejamiento corre en un **ejecutor dedicado de 2 hilos** (no el ejecutor por defecto) con un **timeout de seguridad de 10 s**. Un hilo de Python no se puede cancelar: al vencer, el resultado se descarta, la petición responde **409** y el hilo termina por agotar su presupuesto.
+- **Errores del sorteo:** **409** para presupuesto de emparejamiento agotado, sorteo imposible sin repetir rivales, tiempo máximo de cálculo excedido y estado de la fase cambiado entre la lectura y la escritura. Los `ValueError` de validación conservan su comportamiento actual (no se convierten en 409).
+- **Frontera de transacción:** la lectura (con RLS) se cierra antes de calcular y de firmar. La escritura abre una transacción nueva, vuelve a fijar el contexto RLS, revalida el permiso de gestión y el estado con bloqueo (`FOR UPDATE`) y solo entonces escribe; ningún fallo deja un calendario parcial.
+- **Fotos:** se firman en lote, una vez por clave distinta y con un solo despacho off-thread, después de cerrar la transacción. Las subidas y borrados de objetos también ocurren con la transacción cerrada, con compensación si falla la escritura. Un cliente de firma cacheado por proceso y endpoint de firma evita reconstruirlo por jugador; la URL conserva el TTL de `STORAGE_PRESIGN_SECONDS` (300 s por defecto). **Rotar las credenciales de almacenamiento exige reiniciar el proceso**.
+- **Fallo de firma:** en los endpoints públicos la respuesta sigue siendo **200** con `photo_url: null` en las fotos afectadas; en el Workspace responde **503** («El almacenamiento de fotos no está disponible»). Se registra una sola entrada por respuesta, sin claves ni datos personales.
+- **Alta e importación:** si la firma falla después del commit, la fila ya está creada y la respuesta es **503**; el cliente debe releer antes de reintentar.
+- **Conexión:** `statement_timeout` de **15 s**, `idle_in_transaction_session_timeout` de **30 s** y pool de **10 + 10** con espera de **10 s** por proceso. El agotamiento del pool responde **503** («Servicio temporalmente no disponible») con un único aviso, y la API registra los valores efectivos al arrancar.
+- **Agregado de conexiones:** con `API_WORKERS=2` y un worker del outbox son 2 × 20 + 20 = **60** conexiones teóricas frente a las **100** por defecto de PostgreSQL. Subir `API_WORKERS` o bajar `max_connections` exige revisar ese agregado.
+- **Conexión administrativa:** `scripts.encrypt_birth_dates` abre su propia conexión con `DATABASE_ADMIN_URL` y no hereda los timeouts ni el pool del engine de la aplicación.
+- **Riesgo residual aceptado:** en la ronda 1, una fase sin partidos no ofrece filas que bloquear, así que dos sorteos simultáneos en frío podrían insertar calendarios duplicados (no hay unicidad de `bracket_code`). Se corrige fuera de este bloque si se prioriza.
+
 ## Verificación
 
 Con Node 24 y pnpm 12.12.1, la auditoría de dependencias del frontend se ejecuta desde la raíz del repositorio:

@@ -13,11 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 
 from app.core.config import get_settings
 from app.core.csrf import CSRF_HEADER_NAME, new_csrf_token, validate_csrf_request
-from app.core.database import SessionFactory, set_rls_context, validate_application_role
+from app.core.database import (
+    SessionFactory,
+    log_database_configuration,
+    set_rls_context,
+    validate_application_role,
+)
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
 from app.modules.identity.router import router as identity_router
@@ -528,6 +533,7 @@ async def _revalidate_socket_sessions():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     del app
+    log_database_configuration()
     if settings.app_env.lower().strip() not in {"development", "dev", "local"}:
         await validate_application_role()
     relay_task = asyncio.create_task(relay_loop())
@@ -591,8 +597,26 @@ async def _dbapi_exception_handler(_request: Request, exc: DBAPIError) -> JSONRe
     )
 
 
+async def _pool_timeout_exception_handler(
+    _request: Request, exc: PoolTimeoutError
+) -> JSONResponse:
+    """Answer pool exhaustion as a transient capacity error.
+
+    One stable warning is emitted per failed request; the exception message can
+    contain the pool size or the SQL, so it is never logged or returned.
+    """
+
+    del exc
+    logger.warning("Pool de conexiones agotado")
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Servicio temporalmente no disponible"},
+    )
+
+
 api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
+api.add_exception_handler(PoolTimeoutError, _pool_timeout_exception_handler)
 
 
 async def _buffer_request_body(request: Request, max_bytes: int) -> bool:
