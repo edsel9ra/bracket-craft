@@ -71,6 +71,18 @@ VALID_PACKAGE_JSON = """\
 }
 """
 
+VALID_TWO_DOCUMENT_WORKSPACE = """\
+allowBuilds:
+  esbuild: true
+"""
+
+VALID_PNPM_WORKSPACE = """\
+# pnpm no escribe el documento de autogestión; CI fija la versión.
+pmOnFail: ignore
+allowBuilds:
+  esbuild: true
+"""
+
 VALID_LOCKFILE = """\
 ---
 lockfileVersion: '9.0'
@@ -111,6 +123,28 @@ importers:
 packages: {}
 """
 
+VALID_SINGLE_DOCUMENT_LOCKFILE = """\
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      nuxt:
+        specifier: ^4.6.1
+        version: 4.6.2
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+packages: {}
+"""
+
 VALID_AGENTS = (
     "Python 3.14, Node 24 y pnpm 12.12.1. "
     "Docker Compose 2.24.4 o superior y PROXY_NETWORK."
@@ -131,6 +165,7 @@ def _sources(**overrides: str) -> dict[str, str]:
         "frontend_dockerfile": VALID_FRONTEND_DOCKERFILE,
         "package_json": VALID_PACKAGE_JSON,
         "pnpm_lockfile": VALID_LOCKFILE,
+        "pnpm_workspace": VALID_TWO_DOCUMENT_WORKSPACE,
         "agents": VALID_AGENTS,
         "readme": VALID_README,
         "constitution": VALID_CONSTITUTION,
@@ -228,3 +263,152 @@ def test_excluir_constitucion_omite_su_validacion() -> None:
     sources = _sources(constitution="Python 3.12, Node 22 y pnpm 12.11.2.")
     sources.pop("constitution")
     assert versions.validate_compatibility_gate(sources) == []
+
+
+def test_lockfile_de_un_documento_valido_pasa() -> None:
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert errors == []
+
+
+def test_lockfile_de_un_documento_sin_pm_on_fail_falla() -> None:
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE,
+            pnpm_workspace=VALID_TWO_DOCUMENT_WORKSPACE,
+        )
+    )
+    assert any(
+        "pmOnFail" in error and "ignore" in error for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_sin_workspace_falla_con_mensaje() -> None:
+    sources = _sources(pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE)
+    sources.pop("pnpm_workspace")
+    errors = versions.validate_compatibility_gate(sources)
+    assert any(
+        "pnpm-workspace.yaml" in error and "no está disponible" in error
+        for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_sin_package_manager_falla() -> None:
+    package_json = VALID_PACKAGE_JSON.replace(
+        '  "packageManager": "pnpm@12.12.1",\n', ""
+    )
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            package_json=package_json,
+            pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any("packageManager" in error for error in errors), errors
+
+
+def test_lockfile_de_un_documento_con_pin_distinto_falla() -> None:
+    package_json = VALID_PACKAGE_JSON.replace("pnpm@12.12.1", "pnpm@12.11.2")
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            package_json=package_json,
+            pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "package.json" in error and "12.11.2" in error for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_con_pin_con_rango_falla() -> None:
+    package_json = VALID_PACKAGE_JSON.replace("pnpm@12.12.1", "pnpm@^12.12.1")
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            package_json=package_json,
+            pnpm_lockfile=VALID_SINGLE_DOCUMENT_LOCKFILE,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "package.json" in error and "pnpm@^12.12.1" in error for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_sin_dependencia_resuelta_falla() -> None:
+    lockfile = VALID_SINGLE_DOCUMENT_LOCKFILE.replace(
+        """    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+""",
+        "",
+    )
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=lockfile,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "typescript" in error and "falta la dependencia" in error
+        for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_sin_version_resuelta_falla() -> None:
+    lockfile = VALID_SINGLE_DOCUMENT_LOCKFILE.replace(
+        "version: 4.6.2", ""
+    )
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=lockfile,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "nuxt" in error and "versión" in error for error in errors
+    ), errors
+
+
+def test_lockfile_de_un_documento_con_package_manager_dependencies_falla() -> None:
+    lockfile = VALID_SINGLE_DOCUMENT_LOCKFILE.replace(
+        "importers:\n\n  .:",
+        """importers:
+
+  .:
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.12.1
+        version: 12.12.1""",
+    )
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=lockfile,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "packageManagerDependencies" in error and "un solo documento" in error
+        for error in errors
+    ), errors
+
+
+def test_lockfile_de_dos_documentos_con_pm_on_fail_se_rechaza() -> None:
+    # Decisión de T4b: con `pmOnFail: ignore` declarado, RF-008 exige un
+    # lockfile de un solo documento. Un lockfile de dos documentos en ese
+    # estado contradice la declaración y Trivy dejaría de auditar el frontend,
+    # así que se rechaza en lugar de aceptarse por la rama de dos documentos.
+    errors = versions.validate_compatibility_gate(
+        _sources(
+            pnpm_lockfile=VALID_LOCKFILE,
+            pnpm_workspace=VALID_PNPM_WORKSPACE,
+        )
+    )
+    assert any(
+        "pmOnFail" in error and "un solo documento" in error for error in errors
+    ), errors

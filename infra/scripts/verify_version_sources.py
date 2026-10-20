@@ -43,6 +43,7 @@ SOURCE_PATHS = {
     "frontend_dockerfile": Path("frontend/Dockerfile"),
     "package_json": Path("frontend/package.json"),
     "pnpm_lockfile": Path("frontend/pnpm-lock.yaml"),
+    "pnpm_workspace": Path("frontend/pnpm-workspace.yaml"),
     "agents": Path("AGENTS.md"),
     "readme": Path("README.md"),
     "constitution": Path("docs/constitution.md"),
@@ -233,7 +234,11 @@ def _validate_package_json(text: str) -> list[str]:
             f"{PNPM_REFERENCE}"
         ]
     version = package_manager.split("@", 1)[1]
-    if not _matches_pnpm(version):
+    try:
+        valid = _matches_pnpm(version)
+    except ValueError:
+        valid = False
+    if not valid:
         return [
             f"frontend/package.json: packageManager declara pnpm@{version}; "
             f"se esperaba pnpm@{PNPM_REFERENCE}"
@@ -241,13 +246,42 @@ def _validate_package_json(text: str) -> list[str]:
     return []
 
 
+_YAML_DOCUMENT_SEPARATOR = re.compile(r"^---[ \t\r]*$", re.MULTILINE)
+
+
+def _yaml_documents(text: str) -> list[str]:
+    """Divide el lockfile en documentos YAML no vacíos.
+
+    No asume que el archivo empiece por ``---``: solo cuentan las líneas que
+    son exactamente el separador de documento.
+    """
+
+    return [
+        document
+        for document in _YAML_DOCUMENT_SEPARATOR.split(text)
+        if document.strip()
+    ]
+
+
 def _first_yaml_document(text: str) -> str:
-    return text.split("\n---\n", 1)[0]
+    documents = _yaml_documents(text)
+    return documents[0] if documents else ""
 
 
 def _second_yaml_document(text: str) -> str:
-    parts = text.split("\n---\n", 1)
-    return parts[1] if len(parts) > 1 else ""
+    documents = _yaml_documents(text)
+    return documents[1] if len(documents) > 1 else ""
+
+
+_PM_ON_FAIL_PATTERN = re.compile(
+    r"^[ \t]*pmOnFail[ \t]*:[ \t]*ignore[ \t\r]*(?:#.*)?$", re.MULTILINE
+)
+
+
+def _declares_pm_on_fail(pnpm_workspace: str | None) -> bool:
+    if not pnpm_workspace:
+        return False
+    return _PM_ON_FAIL_PATTERN.search(pnpm_workspace) is not None
 
 
 def _parse_importer_dependencies(text: str) -> dict[str, str]:
@@ -288,6 +322,62 @@ def _parse_importer_dependencies(text: str) -> dict[str, str]:
     return dependencies
 
 
+def _parse_root_importer(text: str) -> dict[str, dict[str, str]]:
+    """Extrae ``specifier`` y ``version`` del importer raíz (``.``) del lockfile."""
+
+    entries: dict[str, dict[str, str]] = {}
+    in_importers = False
+    in_root_importer = False
+    section: str | None = None
+    current: str | None = None
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        if not stripped or stripped.startswith("#"):
+            continue
+        if indent == 0:
+            in_importers = stripped == "importers:"
+            in_root_importer = False
+            section = None
+            current = None
+            continue
+        if not in_importers:
+            continue
+        if indent == 2:
+            name = stripped[:-1] if stripped.endswith(":") else stripped
+            in_root_importer = name.strip("'\"") == "."
+            section = None
+            current = None
+            continue
+        if not in_root_importer:
+            continue
+        if indent == 4 and stripped in {"dependencies:", "devDependencies:"}:
+            section = stripped[:-1]
+            current = None
+            continue
+        if indent <= 4:
+            section = None
+            current = None
+            continue
+        if section is None:
+            continue
+        if indent == 6 and stripped.endswith(":"):
+            current = stripped[:-1].strip("'\"")
+            entries.setdefault(current, {})
+            continue
+        if indent == 8 and current:
+            if stripped.startswith("specifier:"):
+                entries[current]["specifier"] = (
+                    stripped.split(":", 1)[1].strip().strip("'\"")
+                )
+            elif stripped.startswith("version:"):
+                entries[current]["version"] = (
+                    stripped.split(":", 1)[1].strip().strip("'\"")
+                )
+    return entries
+
+
 def _project_dependencies(package_json: str) -> dict[str, str]:
     try:
         package = json.loads(package_json)
@@ -301,13 +391,43 @@ def _project_dependencies(package_json: str) -> dict[str, str]:
     return result
 
 
-def validate_lockfile(pnpm_lockfile: str, package_json: str) -> list[str]:
+def validate_lockfile(
+    pnpm_lockfile: str,
+    package_json: str,
+    pnpm_workspace: str | None = None,
+) -> list[str]:
     """Valida el pin del gestor y la coherencia de dependencias del lockfile.
 
-    Falla si el pin del gestor no es ``pnpm@12.12.1`` o si el bloque de
-    dependencias del proyecto (más allá del pin) no coincide con
-    ``package.json``.
+    Acepta el formato de dos documentos (pin en el primero y dependencias en
+    el segundo) y el de un solo documento habilitado por ``pmOnFail: ignore``,
+    donde el pin se valida desde ``package.json`` y las dependencias desde el
+    importer raíz del lockfile.
     """
+
+    documents = _yaml_documents(pnpm_lockfile)
+    if not documents:
+        return ["frontend/pnpm-lock.yaml: no contiene ningún documento YAML"]
+
+    if len(documents) > 1:
+        if _declares_pm_on_fail(pnpm_workspace):
+            return [
+                "frontend/pnpm-lock.yaml: pmOnFail: ignore está declarado en "
+                "frontend/pnpm-workspace.yaml, así que el lockfile debe tener "
+                "un solo documento (sin separador ---); si no, pnpm volvería a "
+                "escribir el documento de autogestión y Trivy no auditaría el "
+                "frontend"
+            ]
+        return _validate_two_document_lockfile(pnpm_lockfile, package_json)
+
+    return _validate_single_document_lockfile(
+        pnpm_lockfile, package_json, pnpm_workspace
+    )
+
+
+def _validate_two_document_lockfile(
+    pnpm_lockfile: str, package_json: str
+) -> list[str]:
+    """Comportamiento histórico: pin en el primer documento y deps en el segundo."""
 
     errors: list[str] = []
     manager_match = re.search(
@@ -377,6 +497,78 @@ def validate_lockfile(pnpm_lockfile: str, package_json: str) -> list[str]:
     return errors
 
 
+def _validate_single_document_lockfile(
+    pnpm_lockfile: str,
+    package_json: str,
+    pnpm_workspace: str | None,
+) -> list[str]:
+    """Formato de un solo documento: pin en package.json y deps en el importer."""
+
+    errors: list[str] = []
+    if "packageManagerDependencies:" in pnpm_lockfile:
+        errors.append(
+            "frontend/pnpm-lock.yaml: un lockfile de un solo documento no debe "
+            "contener packageManagerDependencies"
+        )
+    if not pnpm_workspace:
+        errors.append(
+            "frontend/pnpm-lock.yaml: no está disponible "
+            "frontend/pnpm-workspace.yaml para comprobar pmOnFail: ignore; no "
+            "se asume que el formato de un solo documento esté declarado"
+        )
+    elif not _declares_pm_on_fail(pnpm_workspace):
+        errors.append(
+            "frontend/pnpm-workspace.yaml: falta pmOnFail: ignore; sin él pnpm "
+            "volvería a escribir el documento de autogestión y Trivy no "
+            "auditaría el frontend"
+        )
+
+    try:
+        package = json.loads(package_json)
+    except json.JSONDecodeError:
+        package = {}
+    pin = package.get("packageManager")
+    expected_pin = f"pnpm@{PNPM_REFERENCE}"
+    if pin is None:
+        errors.append(
+            "frontend/package.json: no declara packageManager; en el formato "
+            f"de un solo documento se espera {expected_pin}"
+        )
+    elif str(pin) != expected_pin:
+        errors.append(
+            f"frontend/package.json: packageManager declara {pin}; se esperaba "
+            f"{expected_pin} (sin rango) para el formato de un solo documento"
+        )
+
+    locked = _parse_root_importer(pnpm_lockfile)
+    declared = _project_dependencies(package_json)
+    for name in sorted(set(declared) | set(locked)):
+        if name not in locked:
+            errors.append(
+                f"frontend/pnpm-lock.yaml: falta la dependencia {name} "
+                "declarada en package.json"
+            )
+            continue
+        if name not in declared:
+            errors.append(
+                f"frontend/pnpm-lock.yaml: resuelve {name}, que no está "
+                "declarada en package.json"
+            )
+            continue
+        entry = locked[name]
+        if entry.get("specifier") != declared[name]:
+            errors.append(
+                f"frontend/pnpm-lock.yaml: {name} usa el specifier "
+                f"{entry.get('specifier')}; package.json declara "
+                f"{declared[name]}"
+            )
+        if not entry.get("version"):
+            errors.append(
+                f"frontend/pnpm-lock.yaml: {name} no resuelve una versión"
+            )
+    return errors
+
+
 def validate_version_sources(sources: Mapping[str, str]) -> list[str]:
     """Devuelve las discrepancias de versiones entre fuentes."""
 
@@ -415,7 +607,13 @@ def validate_compatibility_gate(sources: Mapping[str, str]) -> list[str]:
     lockfile = sources.get("pnpm_lockfile") or ""
     package_json = sources.get("package_json") or ""
     if lockfile:
-        errors.extend(validate_lockfile(lockfile, package_json))
+        errors.extend(
+            validate_lockfile(
+                lockfile,
+                package_json,
+                sources.get("pnpm_workspace"),
+            )
+        )
     return errors
 
 

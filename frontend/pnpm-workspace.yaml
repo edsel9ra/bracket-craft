@@ -1,3 +1,7 @@
+# pnpm 12 escribe un env lockfile delante del del proyecto cuando gestiona su
+# propia versión; Trivy solo lee el primero y no audita el frontend. CI fija
+# la versión con pnpm/action-setup, así que aquí no hace falta la autogestión.
+pmOnFail: ignore
 allowBuilds:
   esbuild: true
   vue-demi: true
