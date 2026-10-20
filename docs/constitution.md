@@ -1,7 +1,7 @@
 # Constitución de Bracket Craft
 
 **Ruta:** `docs/constitution.md`
-**Versión:** 1.1.0
+**Versión:** 1.2.0
 **Última actualización:** 2026-10-19
 **Ámbito:** Este documento define los principios y reglas que gobiernan el desarrollo de Bracket Craft. Tiene precedencia sobre cualquier otra guía del repositorio. `README.md` describe el producto, `AGENTS.md` describe cómo trabajar en el repositorio y `ci.yml` automatiza la verificación; ninguno puede contradecir esta constitución.
 
@@ -56,7 +56,20 @@ Estos principios no se relajan por urgencia, conveniencia ni preferencia. Solo p
 - Mantén los defaults de desarrollo únicamente en `.env.example`.
 - Fuera de desarrollo se cambian `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, las credenciales de base de datos y de almacenamiento, y se habilita `AUTH_COOKIE_SECURE`.
 - Los datos personales de jugadores se almacenan protegidos con `PLAYER_DATA_KEY` y nunca se incluyen en logs ni en proyecciones públicas.
-- Las dependencias deben pasar `pip-audit`, `pnpm audit --prod --audit-level high` y el escaneo Trivy de CI.
+- Las dependencias deben pasar `pip-audit`, la auditoría del frontend con el filtro determinista descrito abajo y el escaneo Trivy de CI.
+- La auditoría del frontend se ejecuta **desde la raíz del repositorio** con el comando efectivo de abajo, idéntico en esta constitución, `AGENTS.md`, el README y CI. Usa `pnpm --dir frontend audit --prod --json --audit-level low`, captura el estado de pnpm en lugar de una tubería, lo pasa al filtro como `--pnpm-status` y guarda el JSON en un archivo temporal fuera del repositorio que se elimina al salir con `trap`.
+- El filtro `infra/scripts/audit_frontend.py` es determinista, no usa red ni reloj, no escribe archivos ni mantiene estado, y su código de salida decide el resultado del paso. **Hace fallar el job ante cualquier hallazgo accionable**: severidad `high` o `critical` con corrección publicada en `patched_versions`.
+- Los hallazgos sin corrección publicada no bloquean; se muestran y se revisan en cada actualización de dependencias y en la próxima auditoría técnica, con el propietario del producto como responsable.
+- Queda prohibido suprimir hallazgos con listas de CVEs, GHSA, paquetes o rutas, así como cualquier flag del gestor que persista exclusiones (por ejemplo, `--ignore-unfixable` o `audit.ignore`).
+
+Comando efectivo:
+
+```sh
+AUDIT_JSON="/tmp/pnpm-audit.json"
+trap 'rm -f "$AUDIT_JSON"' EXIT
+if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
+PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDIT_JSON" --pnpm-status "$status"
+```
 
 ### 3.5 Infraestructura y CI
 
@@ -151,3 +164,4 @@ Los incumplimientos detectados después de fusionar se corrigen con prioridad. S
 | 1.0.0 | 2026-10-14 | Creación inicial de la constitución, derivada de `README.md`, `AGENTS.md` y `ci.yml`. | Establece principios, reglas, criterios y definición de cumplimiento. |
 | 1.0.1 | 2026-10-14 | Ruta de `useApi.ts` actualizada por la migración a Nuxt 4 (el código de app vive en `frontend/app/`). | Sin cambio de significado; solo actualiza referencias a su ubicación real. |
 | 1.1.0 | 2026-10-19 | **Reglas afectadas:** §3.5 (Infraestructura y CI). Regulariza el cambio que ya estaba presente en el repositorio, donde §3.5 declaraba Python 3.14, Node 24 y la versión 12.12.2 de pnpm sin haber subido la versión de la constitución, y lo corrige a pnpm 12.12.1 (la 12.12.2 no existe en el registro npm; las publicadas cercanas son 12.12.0, 12.12.1, 12.13.0 y 12.14.0). **Motivo:** cerrar la deriva documental de versiones de referencia (R04 de la auditoría técnica del 2026-10-19) y dejar cabecera, §3.5 e historial coherentes. **Incremento menor** porque cambia el contenido de una regla de implementación, no una simple aclaración; no corresponde un parche. | No altera principios ni criterios. Fija una única combinación de versiones de referencia —Python 3.14, Node 24 y pnpm 12.12.1— que debe mantenerse alineada en `ci.yml`, los Dockerfiles, el `packageManager` del frontend, `AGENTS.md`, el README y esta §3.5 en el mismo cambio. La alineación técnica de esas fuentes se tramita en un commit separado de esta enmienda. Sin impacto funcional en el código existente. |
+| 1.2.0 | 2026-10-19 | **Reglas afectadas:** §3.4 (Seguridad y configuración). Sustituye la exigencia literal de `pnpm audit --prod --audit-level high` por el comando efectivo —desde la raíz, `pnpm --dir frontend`, estado de pnpm capturado y pasado con `--pnpm-status`, filtro determinista `infra/scripts/audit_frontend.py` y archivo temporal limpiado con `trap`— y hace explícita la política sobre hallazgos sin corrección. **Motivo:** retirar la deuda de dependencias del frontend y hacer explícita la política de no accionables, sustituyendo el comando literal por el efectivo (spec 003, RF-009). **Incremento menor** porque cambia el contenido de una regla de implementación, no una aclaración; no corresponde un parche. | CI (paso `security`) y documentación (`AGENTS.md`, README); sin impacto funcional ni de esquema. El filtro conserva el fallo ante hallazgos accionables (≥ high con corrección publicada) y no persiste exclusiones. |
