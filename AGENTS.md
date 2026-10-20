@@ -196,6 +196,15 @@ $COMPOSE up -d api worker
 
 Comprueba `/docs`, una lectura pública y una operación del Workspace (incluida la asignación manual en un borrador). Si falla un pre-chequeo, corrige los datos y reintenta; si falla una FK entrante, crea la migración que la resuelva. Después de la 019 no hay `down`; restaura el backup solo si aceptas perder cambios posteriores. El conflicto de estructura publicada devuelve **409** por `ZZ409`; no se compara el texto.
 
+### Migración 020 (forward-fix de privilegios)
+
+La **020** no es destructiva y va **después de la 019**. Concede solo `INSERT (id)` sobre `public.rosters` a `bracket_app` (privilegio de columna, no de tabla): la importación masiva pre-genera el `id` del roster para subir la foto antes de la transacción y construir la clave del objeto. `init/01` incluye el mismo grant para un volumen limpio. No cambia datos, funciones ni políticas.
+
+```sh
+MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
+```
+
+
 ### Verificación (mismos checks que CI)
 
 ```sh
@@ -261,6 +270,7 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 - **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256. `MIGRATION_TARGET` (vacía o `NNN`; no existe una bandera `--target`) limita la aplicación a esa versión, valida los checksums de todos los archivos y no desaplica nada.
 - **Cifrado de la fecha de nacimiento:** las migraciones 017 y 018 se aplican en dos fases con `MIGRATION_TARGET` y el backfill one-off `python -m scripts.encrypt_birth_dates` (`DATABASE_ADMIN_URL` + `PLAYER_DATA_KEY`, `--no-deps`). La 018 falla de forma cerrada si quedan pendientes.
 - **Migración 019:** retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` y recrea el trigger con `ZZ409`; es destructiva y sin rollback. Se aplica después del código nuevo con `MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate`, tras backup verificado y pre-chequeo de catálogo.
+- **Migración 020:** *forward-fix* no destructivo que concede `INSERT (id)` sobre `rosters` a `bracket_app` para el `id` pre-generado de la importación N-2; `init/01` incluye el mismo grant y se aplica después de la 019 (`MIGRATION_TARGET=020`).
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.

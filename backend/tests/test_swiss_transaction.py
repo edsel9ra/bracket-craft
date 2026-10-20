@@ -933,7 +933,7 @@ async def test_opt_in_rls_isolation_and_write_phase_reapplies_the_context(
     tenant_a = await create_tenant_owner(db_session)
     tournament_a, version_a, stage_a = await _seed_swiss_stage(db_session, tenant_a)
     tenant_b = await create_tenant_owner(db_session)
-    _, version_b, stage_b = await _seed_swiss_stage(db_session, tenant_b)
+    tournament_b, version_b, stage_b = await _seed_swiss_stage(db_session, tenant_b)
 
     await set_tenant_context(db_session, tenant_b)
     b_match_id = uuid4()

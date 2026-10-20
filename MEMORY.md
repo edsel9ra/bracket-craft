@@ -8,7 +8,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Avance manual: `GET/POST/DELETE /tournaments/{id}/stages/{stage_id}/teams`; solo borradores; POST atómico 1..64 sin duplicados (201/200); DELETE 204 idempotente con guardas 409 (versión, no registrado, partido, standings). El calendario no se regenera; `stage_rank`/sembrado automático no soportado; `phase_config` no se interpreta.
 - Bloqueo: fase → versión → partidos → segmentos → jugadores. El cierre pre-bloquea origen y destinos (incl. GF2); `standings` bloquea la fase antes del advisory; rendimiento no medido (RNF-003).
 - 019 destructiva sin rollback: retira `tournament_user_roles` y `stage_edges`, estrecha el CHECK a `direct_team`/`match_result` y conserva `phase_slots`; trigger con SQLSTATE `ZZ409` → API 409 por código, no por texto.
-- Despliegue: código nuevo primero (esquema 018), luego `MIGRATION_TARGET=019`; backup verificado con `pg_restore -l`, pre-chequeo con `to_regclass` y catálogo con `incoming_fk`; después solo *forward-fix*.
+- Despliegue: código nuevo primero (esquema 018), luego `MIGRATION_TARGET=019` y `020`; la 020 es un *forward-fix* no destructivo que concede `INSERT (id)` en `rosters` para el `id` pre-generado de la importación N-2 (`init/01` lo incluye). Backup verificado con `pg_restore -l`, pre-chequeo con `to_regclass` y catálogo con `incoming_fk`; después solo *forward-fix*.
 - Observaciones no bloqueantes: RNF-003 no medida y aclaración de RF-008 en la spec (los tests de la 019 nombran estructuras retiradas); no hay pendientes de código.
 
 ## Riesgo residual

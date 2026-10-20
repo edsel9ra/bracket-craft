@@ -243,6 +243,16 @@ El runner aplica la 019 en una transacción. Si falla por un pre-chequeo, corrig
 
 **Si algo falla después:** no hay `down`. Corrige con una migración nueva. Restaurar `$HOME/backup-pre019.dump` solo si se acepta perder los cambios posteriores. Los scripts de `init/` no son migraciones y no se re-ejecutan en volúmenes existentes.
 
+## Migración 020: forward-fix del privilegio `id` de rosters
+
+La **020** no es destructiva y se aplica **después de la 019**. Añade solo el privilegio de columna `INSERT (id)` sobre `public.rosters` a `bracket_app`; no concede `INSERT` a nivel de tabla y no cambia datos ni funciones. Es necesaria porque la importación masiva sube las fotos antes de la transacción (N-2) y por eso la aplicación pre-genera el `id` del roster para construir la clave del objeto y compensar subidas.
+
+```sh
+MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
+```
+
+`init/01` incluye el mismo `GRANT INSERT (id, ...)` para que una instalación limpia termine con el mismo estado que una base migrada. `MIGRATION_TARGET=019` sigue limitando el runbook destructivo de la 019; la 020 se aplica después en una segunda ejecución o con el runner sin target.
+
 ## Alcance inicial
 
 - Registro y login por email/password.

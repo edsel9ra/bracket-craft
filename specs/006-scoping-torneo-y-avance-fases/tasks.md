@@ -13,7 +13,7 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 
 ## Progreso
 
-- [x] **T001.** Migración 019, init, pre-chequeos y pruebas de esquema.
+- [x] **T001.** Migraciones 019 y 020, init, pre-chequeos y pruebas de esquema.
 - [x] **T002.** R06: retiro de `tournament_user_roles` y firma de permisos.
 - [x] **T003.** R12: retiro de `stage_edges`, CHECK y clonado/generación/seed.
 - [x] **T004.** Protocolo de bloqueo en rutas existentes.
@@ -25,22 +25,23 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 - [x] **T010.** Documentación y runbook.
 - [ ] **T011.** Verificación final y checklist de merge.
 
-**Estado de la vuelta 1:** T001-T010 implementadas. Evidencia local: backend **469 passed / 131 skipped**; opt-in **23 passed** (11 migración + 12 permisos/RLS/concurrencia); frontend **77 passed**, `typecheck` y `build` OK; el runner de migraciones se ejecutó en el puerto 55432 por las credenciales del PostgreSQL local. **T011 sigue `[ ]`** hasta CI en `main` y revisión humana; `MEMORY.md` dice «T011 ejecutada localmente, sin marcar».
+**Estado de la vuelta 1:** T001-T010 implementadas. Evidencia local: backend **469 passed / 132 skipped**; opt-in **42 passed** (`player_catalog_isolation` + `schema` + `swiss_transaction`) y **23 passed** (`concurrency_006` + `migration_019`); frontend **77 passed** y `typecheck` OK; `build` no se re-ejecutó en esta vuelta por OOM local (sin cambios de UI desde la última ejecución correcta); `compileall`, `sh -n infra/postgres/migrate.sh` y diff-check OK. El runner de migraciones se ejecutó en el puerto 55432 por las credenciales del PostgreSQL local. **T011 sigue `[ ]`** hasta CI en `main` y revisión humana; `MEMORY.md` dice «T011 ejecutada localmente, sin marcar».
 
 ---
 
-## T001 — Migración 019, init y pre-chequeos
+## T001 — Migraciones 019 y 020, init y pre-chequeos
 
-**Objetivo:** añadir la migración destructiva 019 con los tres pre-chequeos antes del primer `DROP`, el CHECK estrechado y la función con `ZZ409`; ajustar `init/01` para que un volumen limpio siga pasando por la 011; demostrar el resultado con pruebas opt-in.
+**Objetivo:** añadir la migración destructiva 019 con los tres pre-chequeos antes del primer `DROP`, el CHECK estrechado y la función con `ZZ409`; añadir la 020 no destructiva con el grant de columna `INSERT (id)` sobre `rosters`; ajustar `init/01` para un volumen limpio; demostrar el resultado con pruebas opt-in.
 
 **RF:** RF-003, RF-004, RF-005, RF-010, RF-011 (parte de esquema).
 
-**Archivos:** `infra/postgres/migrations/019_remove_tournament_roles_and_stage_edges.sql` (nuevo), `infra/postgres/init/01_schema.sql`, `infra/postgres/init/03_hardening.sql` (solo si hace falta conservar `FORCE`), `backend/tests/migration_helpers.py` (nuevo, si se reutiliza), `backend/tests/test_migration_019.py` (nuevo).
+**Archivos:** `infra/postgres/migrations/019_remove_tournament_roles_and_stage_edges.sql` (nuevo), `infra/postgres/migrations/020_grant_roster_id_insert.sql` (nuevo), `infra/postgres/init/01_schema.sql`, `infra/postgres/init/03_hardening.sql` (solo si hace falta conservar `FORCE`), `backend/tests/migration_helpers.py` (nuevo, si se reutiliza), `backend/tests/test_migration_019.py` (nuevo), `backend/tests/test_player_catalog_schema.py`.
 
-**Pruebas primero:** escribir `test_migration_019.py` con: cadena limpia `init + 001..018 + 019`; volumen migrado a 018 y luego 019; RLS `ENABLE`/`FORCE` y ausencia de políticas/grants en `init` para ambas tablas; aborto con filas en `tournament_user_roles`; aborto con filas en `stage_edges`; aborto con `source_type='stage_rank'` y `'manual'`; aborto si no hay exactamente una constraint CHECK coincidente; CHECK final; `pg_get_functiondef` con `ZZ409`; `phase_slots` y columnas de slots presentes. Confirmarlas en rojo.
+**Pruebas primero:** escribir `test_migration_019.py` con: cadena limpia `init + 001..018 + 019`; volumen migrado a 018 y luego 019; RLS `ENABLE`/`FORCE` y ausencia de políticas/grants en `init` para ambas tablas; aborto con filas en `tournament_user_roles`; aborto con filas en `stage_edges`; aborto con `source_type='stage_rank'` y `'manual'`; aborto si no hay exactamente una constraint CHECK coincidente; CHECK final; `pg_get_functiondef` con `ZZ409`; `phase_slots` y columnas de slots presentes. Añadir la prueba de la 020: `has_column_privilege(...,'id','INSERT')` true y `has_table_privilege(...,'INSERT')` false. Confirmarlas en rojo.
 
 **Hecho cuando:**
 - `cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" pytest -q tests/test_migration_019.py`
+- `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_player_catalog_schema.py -k pre_generated`
 - `cd backend && pytest -q`
 - `cd backend && python -m compileall -q app`
 - `sh -n infra/postgres/migrate.sh`
@@ -48,7 +49,7 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
   `docker run --rm --network host -v "$PWD/infra:/infra:ro" -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres_test_password postgres:17-alpine sh /infra/scripts/test_migrate_target.sh`
 - `git -c core.whitespace=cr-at-eol diff --check`
 - Nota: si no hay PostgreSQL disponible, se declara la prueba opt-in como **no ejecutada** y se completa en T011; el job `backend` normal debe quedar verde.
-- Nota: la 019 se prueba en una base desechable; no se aplica a la base de desarrollo compartida hasta T011 y con la imagen nueva ya desplegada.
+- Nota: la 019 y la 020 se prueban en una base desechable; no se aplican a la base de desarrollo compartida hasta T011 y con la imagen nueva ya desplegada.
 
 ---
 
@@ -60,7 +61,7 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 
 **Archivos:** `backend/app/core/permissions.py`, `backend/app/modules/tournaments/router.py` (helper y llamadas), `backend/app/modules/matches/router.py`, `backend/app/modules/matches/service.py`, `backend/app/modules/advancement/service.py` (si usa la firma), `backend/tests/test_permissions_signature.py` (nuevo), `backend/tests/test_photo_resolution.py`, `backend/tests/test_swiss_transaction.py`, `backend/tests/test_invitations.py` (revisar).
 
-**Pruebas primero:** prueba de `inspect.signature` sin `tournament_id`; prueba de que el SQL/decisión no cambia el comportamiento de organización; actualizar los dobles `permission(db, context, code, tournament_id=None, **kwargs)` a la nueva firma; prueba de que `require_administrative_resolution` no recibe torneo. Confirmar en rojo.
+**Pruebas primero:** prueba de `inspect.signature` sin `tournament_id`; prueba de que el SQL/decisión no cambia el comportamiento de organización; actualizar los dobles `permission(db, context, code, tournament_id=None, **kwargs)` a la nueva firma; prueba de que `require_administrative_resolution` no recibe torneo. Fix B: `tournament_b` capturado en `test_swiss_transaction.py`; la prueba opt-in de RLS pasa. Confirmar en rojo.
 
 **Hecho cuando:**
 - `cd backend && pytest -q tests/test_permissions_signature.py tests/test_photo_resolution.py tests/test_swiss_transaction.py tests/test_invitations.py`
@@ -203,7 +204,7 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 
 ## T010 — Documentación y runbook
 
-**Objetivo:** documentar el modelo de autorización y el avance manual, retirar promesas de `stage_rank`/selectores, y publicar el runbook 019 con copia, `pg_restore -l`, pre-chequeo con `to_regclass` + SQL dinámico, catálogo, transacción, smoke y forward-fix.
+**Objetivo:** documentar el modelo de autorización y el avance manual, retirar promesas de `stage_rank`/selectores, y publicar los runbooks 019 y 020: copia, `pg_restore -l`, pre-chequeo con `to_regclass` + SQL dinámico, catálogo, transacción, smoke, `MIGRATION_TARGET=020` y forward-fix.
 
 **RF:** RF-001, RF-002, RF-022.
 
@@ -213,7 +214,7 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 
 **Hecho cuando:**
 - `grep -rn "stage_rank\|tournament_user_roles\|avance automático" README.md AGENTS.md` muestra solo las notas de «no soportado»/«retirado»
-- `grep -n "pg_restore -l\|to_regclass\|incoming_fk\|ZZ409" README.md AGENTS.md`
+- `grep -n "pg_restore -l\|to_regclass\|incoming_fk\|ZZ409\|MIGRATION_TARGET=020\|INSERT (id)" README.md AGENTS.md`
 - `git -c core.whitespace=cr-at-eol diff --check`
 
 ---
@@ -234,7 +235,9 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 - `cd backend && pytest -q`
 - `cd backend && python -m compileall -q app`
 - `cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" pytest -q tests/test_migration_019.py tests/test_concurrency_006.py`
+- `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_player_catalog_schema.py -k pre_generated`
 - `sh -n infra/postgres/migrate.sh`
+- `MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate` (después de la 019 y con el código nuevo)
 - Runner de migraciones:
   `docker run --rm --network host -v "$PWD/infra:/infra:ro" -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres_test_password postgres:17-alpine sh /infra/scripts/test_migrate_target.sh`
 - `cd frontend && pnpm install --frozen-lockfile && pnpm test && pnpm run typecheck && pnpm run build`
@@ -252,8 +255,9 @@ Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 →
 - `git -c core.whitespace=cr-at-eol diff --check`
 - Checklist de merge:
   - [ ] 005 no aparece en el diff de 006; si aparece, se separó con `git add -p`.
-  - [ ] La 019 se aplicó/validó después del código nuevo; no se desplegó con la imagen anterior.
+  - [ ] La 019 se aplicó/validó después del código nuevo; la 020 se aplicó después de la 019; no se desplegó con la imagen anterior.
+  - [ ] `INSERT (id)` de columna en `rosters` verificado sin `INSERT` de tabla y con `init/01` alineado.
   - [ ] Backup verificado con `pg_restore -l` y pre-chequeo documentado.
   - [ ] Pruebas opt-in ejecutadas o declaradas **no ejecutadas** con el motivo.
-  - [ ] `MEMORY.md` actualizado con la migración 019, `ZZ409`, el orden de bloqueo y el riesgo de no rollback.
+  - [ ] `MEMORY.md` actualizado con las migraciones 019/020, `ZZ409`, el orden de bloqueo y el riesgo de no rollback.
   - [ ] Revisión humana distinta del autor.

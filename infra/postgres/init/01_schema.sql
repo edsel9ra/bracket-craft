@@ -1230,7 +1230,7 @@ TO bracket_app;
 
 GRANT SELECT ON rosters TO bracket_app;
 GRANT INSERT (
-    organization_id, tournament_id, team_id, player_id, dorsal_number, photo_consent,
+    id, organization_id, tournament_id, team_id, player_id, dorsal_number, photo_consent,
     valid_from, valid_to, eligible_from
 ) ON rosters TO bracket_app;
 GRANT UPDATE (dorsal_number, is_active, valid_from, valid_to, eligible_from)

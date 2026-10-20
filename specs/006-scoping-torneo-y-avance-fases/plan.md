@@ -6,11 +6,12 @@ Spec: `specs/006-scoping-torneo-y-avance-fases/spec.md` (aprobada 2026-10-20)
 
 ## 1. Resumen técnico
 
-El cambio tiene tres bloques y una migración:
+El cambio tiene tres bloques y dos migraciones:
 
 1. **R06 — retiro del scoping por torneo.** Se elimina `tournament_user_roles` y el parámetro `tournament_id` de `require_permission`/`require_administrative_resolution`. El modelo queda: RBAC por organización + `match_officials` por partido. La tabla se conserva en `init/01` hasta la 019 (con `ENABLE`/`FORCE` y sin políticas/grants) porque la migración 011 la altera sin guardas.
 2. **R12 — avance manual.** Se elimina `stage_edges`, se estrecha el CHECK de `phase_slots.source_type` a `direct_team`/`match_result` y se conserva `phase_slots` como procedencia. Se añaden `GET`, `POST` y `DELETE` de equipos por fase, solo en borradores, con UI mínima.
 3. **Migración 019.** Destructiva, transaccional y sin rollback: pre-chequeos antes del primer `DROP`, `DROP ... IF EXISTS` como salvaguarda, CHECK localizado por catálogo y función de inmutabilidad recreada con SQLSTATE **`ZZ409`**.
+4. **Migración 020.** *Forward-fix* no destructivo, posterior a la 019: concede solo `INSERT (id)` de columna sobre `public.rosters` a `bracket_app` para el `id` pre-generado de la importación N-2. `init/01` incluye el mismo grant. No cambia datos, funciones ni políticas.
 
 Se añade un protocolo único de bloqueo **fase → versión → partido(s) → segmentos → jugadores** en las rutas que ya escriben estructura o resultados, incluido el cierre de acta, que pre-bloquea origen y destinos (incluida `GF2`) antes de escribir segmentos/jugadores.
 
@@ -47,7 +48,8 @@ No hay dependencias nuevas, variables de entorno, cambios de Compose ni cambios 
 | Archivo | Responsabilidad | RF |
 |---|---|---|
 | `infra/postgres/migrations/019_remove_tournament_roles_and_stage_edges.sql` (nuevo) | Pre-chequeos, DROP de ambas tablas, CHECK estrechado, función con `ZZ409`. | RF-003, RF-004, RF-005, RF-011 |
-| `infra/postgres/init/01_schema.sql` | Mantener `CREATE TABLE`/RLS de ambas tablas; quitar políticas, grants y `trg_protect_stage_edges`; conservar el resto. | RF-005, RF-008, RF-010 |
+| `infra/postgres/migrations/020_grant_roster_id_insert.sql` (nuevo) | *Forward-fix* no destructivo: `GRANT INSERT (id)` de columna sobre `rosters`; sin `INSERT` de tabla. | RF-003, RF-010 |
+| `infra/postgres/init/01_schema.sql` | Mantener `CREATE TABLE`/RLS de ambas tablas; quitar políticas, grants y `trg_protect_stage_edges`; incluir el `GRANT INSERT (id)` de `rosters` de la 020. | RF-005, RF-008, RF-010 |
 | `infra/postgres/init/03_hardening.sql` | Sin cambios funcionales: conserva los `FORCE` que la 019 hará innecesarios. | RF-010 |
 | `backend/app/core/permissions.py` | Quitar `tournament_id` de la firma y del SQL; ajustar `require_administrative_resolution`. | RF-007, RF-008 |
 | `backend/app/modules/tournaments/router.py` | Quitar el bloque de clonado de `stage_edges`; retirar el parámetro del helper de permisos; nuevos GET/POST/DELETE; integrar locks en stages/teams/matches. | RF-007, RF-008, RF-011, RF-013 a RF-021 |
@@ -59,6 +61,7 @@ No hay dependencias nuevas, variables de entorno, cambios de Compose ni cambios 
 | `backend/app/modules/standings/service.py` | Bloqueo de fase antes del advisory lock. | RF-021 |
 | `backend/app/main.py` | Mapear `sqlstate == "ZZ409"` a 409 saneado, sin texto. | RF-020, RF-021 |
 | `backend/tests/test_migration_019.py` (nuevo) | Migración limpia/migrada, abortos, CHECK y `ZZ409`. | RF-003, RF-004, RF-011 |
+| `backend/tests/test_player_catalog_schema.py` | Prueba de la 020: `INSERT (id)` de columna sin `INSERT` de tabla. | RF-003, RF-010 |
 | `backend/tests/test_permissions_signature.py` (nuevo) | Firma sin `tournament_id` y llamadores actualizados. | RF-007, RF-008 |
 | `backend/tests/test_stage_teams.py` (nuevo) | GET/POST/DELETE: códigos, arrays, atomicidad, locks y múltiples filas. | RF-013 a RF-021 |
 | `backend/tests/test_lock_order.py` (nuevo) | Orden fase → versión → partidos/segmentos; todos los partidos con `ORDER BY id`; destinos del cierre y `GF2`; oficiales; advisory de standings. | RF-021 |
@@ -69,9 +72,9 @@ No hay dependencias nuevas, variables de entorno, cambios de Compose ni cambios 
 | `frontend/app/utils/stageTeams.ts` (nuevo) | Funciones puras de deduplicación/normalización de la respuesta. | RF-019 |
 | `frontend/app/composables/useI18n.ts` | Claves es/en del panel y sus errores. | RF-019 |
 | `frontend/tests/stage-teams.test.ts` (nuevo) | Pruebas de las funciones puras. | RF-019 |
-| `README.md`, `AGENTS.md`, `MEMORY.md` | Modelo de autorización, avance manual, runbook 019 y cierre. | RF-001, RF-002, RF-022 |
+| `README.md`, `AGENTS.md`, `MEMORY.md` | Modelo de autorización, avance manual, runbooks 019/020 y cierre. | RF-001, RF-002, RF-022 |
 
-## 5. Base de datos: migración 019
+## 5. Base de datos: migraciones 019 y 020
 
 **Nombre:** `019_remove_tournament_roles_and_stage_edges.sql`.
 
@@ -115,6 +118,8 @@ COMMIT (opcional)
 - **Rollback:** no hay `down`. La 019 es destructiva; después solo *forward-fix* con otra migración.
 
 **Verificación de esquema en tests:** aplicar `init/01..03` + migraciones 001-018 en una base desechable, sembrar filas mínimas para probar abortos, aplicar 019 y comprobar: tablas ausentes, CHECK con solo `direct_team`/`match_result`, `pg_get_functiondef` con `ZZ409`, y que `phase_slots`/columnas de slots siguen existiendo.
+
+**Migración 020:** `020_grant_roster_id_insert.sql` se aplica **después** de la 019 y no es destructiva. Su único efecto es `GRANT INSERT (id) ON public.rosters TO bracket_app` (columna, no tabla); `init/01` incluye el mismo grant. La importación N-2 pre-genera el `id` del roster para subir la foto antes de la transacción; el `INSERT INTO rosters (id, ...)` fallaba porque el rol solo tenía grants por columna. La prueba de esquema es `test_player_catalog_schema.py::test_bracket_app_can_insert_a_pre_generated_roster_id_by_column` y el runner se ejecuta con `MIGRATION_TARGET=020`. No cambia datos, funciones ni políticas; una corrección futura sería otra migración.
 
 ## 6. Backend
 
@@ -220,14 +225,15 @@ lock_version(db, organization_id, version_id)
   - Orden de bloqueo con doble de sesión: fase antes que versión; versión antes que partidos; fase antes del advisory; todos los partidos con `ORDER BY id`; destinos de cierre y `GF2` por `id`; oficiales con `lock_matches`.
   - `ZZ409` con texto distinto → 409; otros SQLSTATE → 500 saneado.
   - Clonado sin `stage_edges`; funciones puras de UI y botones renderizados deshabilitados.
-- **Integración opt-in (`RUN_DATABASE_TESTS=1`, `DATABASE_ADMIN_URL`):** **23 pruebas** (11 migración + 12 permisos/RLS/concurrencia):
+- **Integración opt-in (`RUN_DATABASE_TESTS=1`, `DATABASE_ADMIN_URL`):** **42 passed** (`player_catalog_isolation` + `schema` + `swiss_transaction`) y **23 passed** (`concurrency_006` + `migration_019`). El bloque de 42 incluye la prueba de la 020 (`INSERT (id)` de columna, sin `INSERT` de tabla); el de 23 cubre:
   - Migración 019: limpia, migrada, aborto por filas en cada tabla, aborto por `source_type`, CHECK final y `ZZ409` en `pg_get_functiondef`.
   - Cross-tenant en asignación y GET; dos POST; **dos DELETE**; guarda de `standings` sin partidos.
   - 409 directo en publicada con el equipo **asignado y no asignado**.
   - `ZZ409` por API y real al insertar en versión publicada.
   - `GET` tras clonar sin mezclar versiones; permisos **owner/administrator/operator/referee**.
   - POST/DELETE vs publicación y DELETE vs creación de partido; clonado y proyección pública sin cambios.
-- **Evidencia local de la vuelta 1:** backend **469 passed / 131 skipped**; opt-in **23 passed** (11 + 12); frontend **77 passed**, `typecheck` y `build` OK; el runner se ejecutó en el puerto 55432 por credenciales del PostgreSQL local.
+- **Evidencia local de la vuelta 1:** backend **469 passed / 132 skipped**; opt-in **42 passed** (`player_catalog_isolation` + `schema` + `swiss_transaction`) y **23 passed** (`concurrency_006` + `migration_019`); frontend **77 passed** y `typecheck` OK; `build` no se re-ejecutó en esta vuelta por OOM local (sin cambios de UI desde la última ejecución correcta); `compileall`, `sh -n infra/postgres/migrate.sh` y diff-check OK. El runner se ejecutó en el puerto 55432 por credenciales del PostgreSQL local.
+- **Fix B:** `tournament_b` quedó capturado correctamente en `test_swiss_transaction.py`; la prueba opt-in de RLS ya pasa.
 - **Frontend:** `pnpm test` para utilidades, `typecheck` y `build`. Sin suite de componentes; prueba manual del flujo.
 - **No se cubre:** E2E de navegador, **throughput/latencia medidos**, datos de producción, limpieza de `standings` (fuera de alcance), sembrado automático.
 
@@ -240,7 +246,8 @@ lock_version(db, organization_id, version_id)
 - **Volumen limpio vs migrado.** init conserva CREATE/RLS por 011; 019 elimina. Test de ambas rutas.
 - **`stage_edges` en clonado.** Se elimina el bloque; si una versión antigua tuviera aristas, 019 aborta por filas y el operador decide.
 - **`standings` huérfanas.** El DELETE responde 409 y no borra clasificación; no hay endpoint de limpieza en esta spec. Se documenta.
-- **Migración destructiva.** Sin rollback; backup con `pg_restore -l`, pre-chequeo y forward-fix. **Orden de despliegue:** desplegar primero el código nuevo (funciona con el esquema 018), luego aplicar 019; después de 019 no volver a la imagen anterior porque el clonado antiguo lee `stage_edges`.
+- **Migración destructiva.** Sin rollback; backup con `pg_restore -l`, pre-chequeo y forward-fix. **Orden de despliegue:** desplegar primero el código nuevo (funciona con el esquema 018), luego aplicar 019 y, después, la 020 (`MIGRATION_TARGET=020`); después de 019 no volver a la imagen anterior porque el clonado antiguo lee `stage_edges`.
+- **Privilegio de roster (020).** El `INSERT (id)` explícito de la importación N-2 fallaba por el grant por columnas. La 020 concede solo la columna `id`; no se amplía `INSERT` de tabla. Es aditiva y no requiere rollback.
 - **UI desactualizada.** El GET es la fuente única; tras 201/200/204 se recarga configuración y equipos; errores inline.
 - **Swiss en versión publicada.** La generación de rondas >1 conserva su excepción; el protocolo de bloqueo no le exige `draft`.
 - **Rendimiento no medido.** El cierre serializa por fase como garantía de corrección; no se midió throughput ni latencia. La no degradación queda como objetivo no verificado (RNF-003).
@@ -248,8 +255,9 @@ lock_version(db, organization_id, version_id)
 ## 10. Reversión
 
 - **Antes de 019:** revertir el commit de código y desplegar la imagen anterior; el esquema 018 sigue intacto.
-- **Después de 019:** no hay `down`. Restaurar el backup solo si se acepta perder los cambios posteriores; el camino previsto es *forward-fix* con una migración nueva.
+- **Después de 019:** no hay `down`. Restaurar el backup solo si se acepta perder los cambios posteriores; el camino previsto es *forward-fix* con una migración nueva. La 020 es un *forward-fix* aditivo: no borra datos y una corrección posterior sería otra migración.
 - **Fallo de 019:** al ser transaccional, no deja estado a medias; corregir el pre-chequeo y reintentar. Si falla por una FK entrante, crear la migración que la resuelva.
+- **Fallo de 020:** al ser un `GRANT` único, corregir con otra migración; no hay datos que restaurar.
 - **Backup:** `pg_dump -Fc`, `pg_restore -l` para verificar, y smoke de API/Workspace/público después.
 
 ## 11. Verificación constitucional
@@ -259,7 +267,7 @@ lock_version(db, organization_id, version_id)
 | §2.1 Aislamiento por RLS | Sí | Las tablas conservadas mantienen `ENABLE`/`FORCE`; las retiradas quedan sin políticas/grants hasta 019. Cada endpoint fija `set_rls_context` y filtra por organización (RF-005). |
 | §2.2 Rol sin `BYPASSRLS` | Sí | No se cambia el rol ni se añaden funciones `SECURITY DEFINER`. |
 | §2.3 Lo publicado es inmutable | Sí | POST/DELETE solo en borrador; 409 antes de idempotencia; `ZZ409` mapeado; no se tocan triggers (RF-020, RF-021). |
-| §2.4 Migraciones append-only | Sí | 019 nueva, sin editar aplicadas; `IF EXISTS` salvaguarda; sin `down` (RF-003). |
+| §2.4 Migraciones append-only | Sí | 019 nueva y 020 *forward-fix*, sin editar aplicadas; `IF EXISTS` salvaguarda; sin `down` (RF-003). |
 | §2.5 Proyección pública mínima | Sí | No se añaden campos; calendario/público sin cambios (RF-011). |
 | §2.6 Sin secretos por defecto | No aplica | Sin variables ni secretos nuevos. |
 | §2.7 Administración global separada | No aplica | No se toca `/admin` ni `platform_audit_logs`. |
