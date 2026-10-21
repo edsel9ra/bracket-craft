@@ -885,6 +885,11 @@ async function saveRules() {
     rulesError.value = t('rules.error.noConfig');
     return;
   }
+  // `v-model.number` leaves '' when the operator clears the field; normalize
+  // it before validating so an empty registration matchday means `null`.
+  if ((rulesConfig.value.roster_lock_matchday as unknown) === '') {
+    rulesConfig.value.roster_lock_matchday = null;
+  }
   const validationErrors = validateRulesConfig(rulesConfig.value);
   if (validationErrors.length) {
     const firstError = validationErrors[0];

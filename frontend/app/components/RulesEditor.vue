@@ -4,6 +4,7 @@ import {
   RANKING_CRITERIA,
   RULES_VALIDATION_MESSAGE_KEYS,
   cloneRulesConfig,
+  effectiveStageRules,
   isRankingCriterion,
   normalizeRulesConfig,
   parseRulesConfigJson,
@@ -192,6 +193,36 @@ function setOverrideScore(stageId: string, field: 'winner' | 'loser', event: Eve
   commitConfig(config.value);
 }
 
+function readMinute(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? Math.floor(parsed) : null;
+}
+
+function stageExtraMinutes(): number {
+  return effectiveStageRules(config.value, null).extra_time_minutes;
+}
+
+function setStageExtraMinutes(event: Event) {
+  const next = readMinute((event.target as HTMLInputElement).value);
+  if (next === null) delete config.value.stage_defaults.extra_time_minutes;
+  else config.value.stage_defaults.extra_time_minutes = next;
+  commitConfig(config.value);
+}
+
+function overrideMinutes(stageId: string, field: 'regular_time_minutes' | 'extra_time_minutes'): number {
+  return effectiveStageRules(config.value, stageId)[field];
+}
+
+function setOverrideMinutes(stageId: string, field: 'regular_time_minutes' | 'extra_time_minutes', event: Event) {
+  const override = ensureOverride(stageId);
+  const next = readMinute((event.target as HTMLInputElement).value);
+  if (next === null) delete override[field];
+  else override[field] = next;
+  commitConfig(config.value);
+}
+
 function removeOverride(stageId: string) {
   delete config.value.stage_overrides[stageId];
   commitConfig(config.value);
@@ -292,16 +323,18 @@ function removeOverride(stageId: string) {
           </section>
 
           <section class="editor-section">
-            <div class="section-heading"><div><p class="eyebrow">05</p><h3>{{ t('rules.transfersSection') }}</h3></div><p>{{ t('rules.transfersDescription') }}</p></div>
-            <label class="checkbox-field"><input v-model="config.transfers.allow_mid_season_transfers" type="checkbox" /> {{ t('rules.allowMidSeasonTransfers') }}</label>
-            <label class="checkbox-field"><input v-model="config.transfers.same_matchday_participation_allowed" type="checkbox" /> {{ t('rules.sameMatchdayParticipation') }}</label>
-            <label>{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.transfers.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
+            <div class="section-heading"><div><p class="eyebrow">05</p><h3>{{ t('rules.registrationSection') }}</h3></div><p>{{ t('rules.registrationDescription') }}</p></div>
+            <label>{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
           </section>
 
           <section class="editor-section">
             <div class="section-heading"><div><p class="eyebrow">06</p><h3>{{ t('rules.resolutionSection') }}</h3></div><p>{{ t('rules.resolutionDescription') }}</p></div>
             <label class="checkbox-field"><input v-model="config.stage_defaults.extra_time_enabled" type="checkbox" /> {{ t('rules.extraTime') }}</label>
             <label class="checkbox-field"><input v-model="config.stage_defaults.penalties_enabled" type="checkbox" /> {{ t('rules.penalties') }}</label>
+            <div class="field-grid">
+              <label>{{ t('rules.regularTimeMinutes') }}<input v-model.number="config.stage_defaults.regular_time_minutes" type="number" min="1" max="179" /></label>
+              <label>{{ t('rules.extraTimeMinutes') }}<input :value="stageExtraMinutes()" type="number" min="2" max="180" @change="setStageExtraMinutes($event)" /></label>
+            </div>
             <div class="field-grid">
               <label>{{ t('rules.walkoverWinnerScore') }}<input v-model.number="config.stage_defaults.walkover_score.winner" type="number" min="0" /></label>
               <label>{{ t('rules.walkoverLoserScore') }}<input v-model.number="config.stage_defaults.walkover_score.loser" type="number" min="0" /></label>
@@ -320,6 +353,8 @@ function removeOverride(stageId: string) {
               <div v-if="overrideFor(stage.id)" class="field-grid override-fields">
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideBoolean(stage.id, 'extra_time_enabled', $event)" /> {{ t('rules.extraTime') }}</label>
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'penalties_enabled')" @change="setOverrideBoolean(stage.id, 'penalties_enabled', $event)" /> {{ t('rules.penalties') }}</label>
+                <label>{{ t('rules.regularTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'regular_time_minutes')" type="number" min="1" max="179" @change="setOverrideMinutes(stage.id, 'regular_time_minutes', $event)" /></label>
+                <label>{{ t('rules.extraTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'extra_time_minutes')" type="number" min="2" max="180" @change="setOverrideMinutes(stage.id, 'extra_time_minutes', $event)" /></label>
                 <label>{{ t('rules.walkoverWinnerScore') }}<input :value="overrideScore(stage.id, 'winner')" type="number" min="0" @change="setOverrideScore(stage.id, 'winner', $event)" /></label>
                 <label>{{ t('rules.walkoverLoserScore') }}<input :value="overrideScore(stage.id, 'loser')" type="number" min="0" @change="setOverrideScore(stage.id, 'loser', $event)" /></label>
                 <button class="remove-override" type="button" @click="removeOverride(stage.id)">{{ t('rules.removeStageOverride') }}</button>

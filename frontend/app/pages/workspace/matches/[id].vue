@@ -3,6 +3,23 @@ import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constan
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
+import {
+  DEFAULT_MATCH_LIMITS,
+  SUBSTITUTION_EVENT_TYPE,
+  normalizeMatchLimits,
+  normalizeSubstitutionsState,
+  previewCounters,
+  readDraftEvent,
+  substitutionAvailability,
+  substitutionFieldsFor,
+  substitutionOptions,
+  teamSubstitutionState,
+  validateSubstitutionPair,
+  type DraftEvent as DraftEventRecord,
+  type MatchLimits,
+  type SubstitutionOption,
+  type SubstitutionUnavailableReason,
+} from '~/utils/substitutions';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -155,19 +172,11 @@ interface MatchOperation {
   lineup: LineupEntry[];
   tactical_lineups: TacticalLineupRow[];
   events: MatchEvent[];
+  substitutions?: unknown;
+  limits?: MatchLimits | null;
 }
 
-interface DraftEvent {
-  client_event_id: string;
-  event_type: EventType;
-  team_id: string;
-  beneficiary_team_id: string | null;
-  player_id: string;
-  minute: number;
-  added_minute: number;
-  segment_id: string;
-  metadata?: Record<string, unknown>;
-}
+type DraftEvent = DraftEventRecord<EventType>;
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -215,6 +224,8 @@ const eventForm = reactive<{
   team_id: string;
   beneficiary_team_id: string;
   player_id: string;
+  player_out_id: string;
+  player_in_id: string;
   minute: number;
   added_minute: number;
   red_card_type: RedCardType;
@@ -223,10 +234,13 @@ const eventForm = reactive<{
   team_id: '',
   beneficiary_team_id: '',
   player_id: '',
+  player_out_id: '',
+  player_in_id: '',
   minute: 1,
   added_minute: 0,
   red_card_type: 'direct_red',
 });
+const substitutionError = ref<string | null>(null);
 const closeForm = reactive<{
   resolution_type: ResolutionType;
   home_score_regular: number;
@@ -265,6 +279,18 @@ const eventTypes: Array<{ value: EventType; labelKey: string }> = [
   { value: 'substitution', labelKey: 'event.substitution' },
   { value: 'foul', labelKey: 'event.foul' },
 ];
+const eventTypeValues = eventTypes.map((item) => item.value);
+const substitutionReasonKeys: Record<SubstitutionUnavailableReason, string> = {
+  no_state: 'match.substitutionUnavailable',
+  no_lineup: 'match.substitutionNoLineup',
+  disabled: 'match.substitutionDisabled',
+  exhausted: 'match.substitutionExhausted',
+  not_on_field: 'match.substitutionOutUnavailable',
+  not_on_bench: 'match.substitutionInUnavailable',
+  reentry_blocked: 'match.substitutionReentryBlocked',
+  same_player: 'match.substitutionSamePlayer',
+  pair_required: 'match.substitutionPairRequired',
+};
 
 useHead({
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
@@ -305,6 +331,28 @@ const eventPlayers = computed(() => {
     && lineupPlayerIds.has(entry.player_id)
   )) || [];
 });
+const eventRosterPlayers = computed(() => operation.value?.rosters.filter((entry) => (
+  entry.team_id === eventForm.team_id && entry.is_active
+)) || []);
+const substitutionState = computed(() => normalizeSubstitutionsState(operation.value?.substitutions));
+const matchLimits = computed(() => normalizeMatchLimits(operation.value?.limits) ?? DEFAULT_MATCH_LIMITS);
+const eventSubstitutionTeam = computed(() => teamSubstitutionState(substitutionState.value, eventForm.team_id));
+const eventSubstitutionAvailability = computed(() => substitutionAvailability(eventSubstitutionTeam.value));
+const eventSubstitutionCounters = computed(() => previewCounters(eventSubstitutionTeam.value, draftEvents.value));
+const eventSubstitutionOptions = computed(() => substitutionOptions(eventSubstitutionTeam.value, draftEvents.value));
+const eventOutgoingOptions = computed(() => rosterOptions(eventSubstitutionOptions.value.outgoing));
+const eventIncomingOptions = computed(() => rosterOptions(eventSubstitutionOptions.value.incoming));
+
+function rosterOptions(options: SubstitutionOption[]): Array<{ player: RosterEntry; option: SubstitutionOption }> {
+  const byPlayer = new Map(options.map((option) => [option.player_id, option]));
+  return eventRosterPlayers.value
+    .filter((player) => byPlayer.has(player.player_id))
+    .map((player) => ({ player, option: byPlayer.get(player.player_id) as SubstitutionOption }));
+}
+
+function substitutionMessage(reason: SubstitutionUnavailableReason | null): string {
+  return t(substitutionReasonKeys[reason || 'no_state']);
+}
 const teamRosters = computed(() => [
   { key: 'home', team_id: match.value?.home_team_id || '', name: match.value?.home_team_name || t('setup.home'), players: homeRoster.value },
   { key: 'away', team_id: match.value?.away_team_id || '', name: match.value?.away_team_name || t('setup.away'), players: awayRoster.value },
@@ -361,25 +409,6 @@ function removePersistedDraft() {
   }
 }
 
-function isDraftEvent(value: unknown): value is DraftEvent {
-  if (!value || typeof value !== 'object') return false;
-  const event = value as Partial<DraftEvent>;
-  return Boolean(
-    typeof event.client_event_id === 'string'
-    && event.client_event_id.length <= 100
-    && eventTypes.some((item) => item.value === event.event_type)
-    && typeof event.team_id === 'string'
-    && typeof event.player_id === 'string'
-    && typeof event.segment_id === 'string'
-    && Number.isInteger(event.minute)
-    && Number(event.minute) >= 0
-    && Number(event.minute) <= 180
-    && Number.isInteger(event.added_minute)
-    && Number(event.added_minute) >= 0
-    && Number(event.added_minute) <= 30,
-  );
-}
-
 function loadPersistedDraft() {
   if (!import.meta.client || !operation.value) return;
   try {
@@ -393,7 +422,11 @@ function loadPersistedDraft() {
     }
 
     hydratingDraft = true;
-    draftEvents.value = Array.isArray(saved.events) ? saved.events.filter(isDraftEvent) : [];
+    draftEvents.value = Array.isArray(saved.events)
+      ? saved.events
+        .map((event) => readDraftEvent(event, eventTypeValues, matchLimits.value))
+        .filter((event): event is DraftEvent => event !== null)
+      : [];
     if (saved.result && typeof saved.result === 'object') {
       const result = saved.result;
       if (['regular', 'extra_time', 'penalties', 'walkover', 'administrative'].includes(String(result.resolution_type))) {
@@ -445,6 +478,9 @@ function discardDraft() {
   if (!import.meta.client || !window.confirm(t('match.discardDraft'))) return;
   draftEvents.value = [];
   Object.assign(closeForm, defaultCloseForm);
+  eventForm.player_out_id = '';
+  eventForm.player_in_id = '';
+  substitutionError.value = null;
   draftRestored.value = false;
   persistDraft();
 }
@@ -737,8 +773,56 @@ watch(selectedSegmentId, () => {
   if (operation.value) syncTacticalEditor();
 });
 
+function pushDraftEvent(playerId: string, playerOutId: string, playerInId: string) {
+  draftEvents.value.push({
+    client_event_id: globalThis.crypto?.randomUUID?.() || `event-${Date.now()}-${draftEvents.value.length}`,
+    event_type: eventForm.event_type,
+    team_id: eventForm.team_id,
+    beneficiary_team_id: eventForm.event_type === 'own_goal' ? eventForm.beneficiary_team_id : null,
+    player_id: playerId,
+    minute: eventForm.minute,
+    added_minute: eventForm.added_minute,
+    segment_id: selectedSegmentId.value,
+    ...substitutionFieldsFor(eventForm.event_type, playerOutId, playerInId),
+    metadata: eventForm.event_type === 'red_card'
+      ? { red_card_type: eventForm.red_card_type }
+      : undefined,
+  });
+}
+
 function addEvent() {
-  if (!selectedSegmentId.value || !selectedSegmentIsActive.value || !eventForm.team_id || !eventForm.player_id) {
+  substitutionError.value = null;
+  if (!selectedSegmentId.value || !selectedSegmentIsActive.value || !eventForm.team_id) {
+    actionError.value = t('match.needSegmentEvent');
+    return;
+  }
+  const limits = matchLimits.value;
+  if (!Number.isInteger(eventForm.minute) || eventForm.minute < 0 || eventForm.minute > limits.max_minute) {
+    actionError.value = t('match.minuteOutOfRange', { max: limits.max_minute });
+    return;
+  }
+  if (!Number.isInteger(eventForm.added_minute) || eventForm.added_minute < 0 || eventForm.added_minute > limits.added_minute_max) {
+    actionError.value = t('match.addedMinuteOutOfRange', { max: limits.added_minute_max });
+    return;
+  }
+  if (eventForm.event_type === SUBSTITUTION_EVENT_TYPE) {
+    const pair = validateSubstitutionPair(
+      eventSubstitutionTeam.value,
+      draftEvents.value,
+      eventForm.player_out_id,
+      eventForm.player_in_id,
+    );
+    if (!pair.ok) {
+      substitutionError.value = substitutionMessage(pair.reason);
+      return;
+    }
+    pushDraftEvent(pair.player_out_id, pair.player_out_id, pair.player_in_id);
+    eventForm.player_out_id = '';
+    eventForm.player_in_id = '';
+    actionError.value = null;
+    return;
+  }
+  if (!eventForm.player_id) {
     actionError.value = t('match.needSegmentEvent');
     return;
   }
@@ -746,19 +830,7 @@ function addEvent() {
     actionError.value = t('match.ownGoalBeneficiary');
     return;
   }
-  draftEvents.value.push({
-    client_event_id: globalThis.crypto?.randomUUID?.() || `event-${Date.now()}-${draftEvents.value.length}`,
-    event_type: eventForm.event_type,
-    team_id: eventForm.team_id,
-    beneficiary_team_id: eventForm.event_type === 'own_goal' ? eventForm.beneficiary_team_id : null,
-    player_id: eventForm.player_id,
-    minute: eventForm.minute,
-    added_minute: eventForm.added_minute,
-    segment_id: selectedSegmentId.value,
-    metadata: eventForm.event_type === 'red_card'
-      ? { red_card_type: eventForm.red_card_type }
-      : undefined,
-  });
+  pushDraftEvent(eventForm.player_id, '', '');
   eventForm.player_id = '';
   eventForm.beneficiary_team_id = '';
   eventForm.red_card_type = 'direct_red';
@@ -816,6 +888,18 @@ function playerName(roster: RosterEntry): string {
   return `${roster.first_name} ${roster.last_name}`;
 }
 
+function rosterPlayerName(playerId: string | null): string {
+  const roster = operation.value?.rosters.find((entry) => entry.player_id === playerId);
+  return roster ? playerName(roster) : '';
+}
+
+function draftEventSummary(event: DraftEvent): string {
+  if (event.event_type === SUBSTITUTION_EVENT_TYPE && event.player_out_id && event.player_in_id) {
+    return `${rosterPlayerName(event.player_out_id)} → ${rosterPlayerName(event.player_in_id)}`;
+  }
+  return rosterPlayerName(event.player_id);
+}
+
 function teamName(teamId: string | null): string {
   if (teamId === match.value?.home_team_id) return match.value?.home_team_name || t('setup.home');
   if (teamId === match.value?.away_team_id) return match.value?.away_team_name || t('setup.away');
@@ -840,6 +924,32 @@ function formatDate(value: string | null): string {
 watch(() => eventForm.team_id, () => {
   if (!eventPlayers.value.some((player) => player.player_id === eventForm.player_id)) eventForm.player_id = '';
   if (eventForm.beneficiary_team_id === eventForm.team_id) eventForm.beneficiary_team_id = '';
+  eventForm.player_out_id = '';
+  eventForm.player_in_id = '';
+  substitutionError.value = null;
+});
+
+watch(() => eventForm.event_type, (eventType) => {
+  substitutionError.value = null;
+  if (eventType === SUBSTITUTION_EVENT_TYPE) {
+    eventForm.player_id = '';
+  } else {
+    eventForm.player_out_id = '';
+    eventForm.player_in_id = '';
+  }
+});
+
+watch([() => eventForm.player_out_id, () => eventForm.player_in_id], () => {
+  substitutionError.value = null;
+});
+
+watch([eventOutgoingOptions, eventIncomingOptions], () => {
+  if (!eventOutgoingOptions.value.some((row) => row.player.player_id === eventForm.player_out_id && !row.option.disabled)) {
+    eventForm.player_out_id = '';
+  }
+  if (!eventIncomingOptions.value.some((row) => row.player.player_id === eventForm.player_in_id && !row.option.disabled)) {
+    eventForm.player_in_id = '';
+  }
 });
 
 watch(() => closeForm.resolution_type, (resolutionType) => {
@@ -1047,15 +1157,26 @@ onBeforeUnmount(() => {
              <div v-if="canOperateMatch" class="event-form">
               <label>{{ t('match.eventType') }}<select v-model="eventForm.event_type"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select></label>
               <label>{{ t('setup.teams') }}<select v-model="eventForm.team_id"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
-               <label>{{ t('match.player') }}<select v-model="eventForm.player_id"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select></label>
+               <template v-if="eventForm.event_type === 'substitution'">
+                  <label>{{ t('match.playerOut') }}<select v-model="eventForm.player_out_id" :disabled="eventSubstitutionAvailability.disabled"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventOutgoingOptions" :key="`out-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select></label>
+                  <label>{{ t('match.playerIn') }}<select v-model="eventForm.player_in_id" :disabled="eventSubstitutionAvailability.disabled"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventIncomingOptions" :key="`in-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select></label>
+                </template>
+                <label v-else>{{ t('match.player') }}<select v-model="eventForm.player_id"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select></label>
                <label v-if="eventForm.event_type === 'red_card'">{{ t('match.redCardType') }}<select v-model="eventForm.red_card_type"><option value="direct_red">{{ t('match.directRed') }}</option><option value="double_yellow_red">{{ t('match.doubleYellowRed') }}</option></select></label>
-               <label>{{ t('match.minute') }}<input v-model.number="eventForm.minute" type="number" min="0" max="180" required /></label>
-              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" max="30" /></label>
+               <label>{{ t('match.minute') }}<input v-model.number="eventForm.minute" type="number" min="0" :max="matchLimits.max_minute" required /></label>
+              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="matchLimits.added_minute_max" /></label>
               <label v-if="eventForm.event_type === 'own_goal'">{{ t('match.beneficiary') }}<select v-model="eventForm.beneficiary_team_id" required><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
-               <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive" @click="addEvent">{{ t('match.addEvent') }}</button>
+               <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive || (eventForm.event_type === 'substitution' && (eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register))" @click="addEvent">{{ t('match.addEvent') }}</button>
+                <div v-if="eventForm.event_type === 'substitution'" class="substitution-preview" role="status">
+                  <strong>{{ t('match.substitutionPreview') }}</strong>
+                  <span>{{ t('match.substitutionsRemaining', { used: eventSubstitutionCounters.substitutions_used, max: eventSubstitutionTeam?.max_per_team ?? 0 }) }}</span>
+                  <span>{{ t('match.windowsRemaining', { used: eventSubstitutionCounters.windows_used, max: eventSubstitutionTeam?.max_windows ?? 0 }) }}</span>
+                  <span v-if="eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register" class="substitution-blocked">{{ substitutionMessage(eventSubstitutionAvailability.reason || 'exhausted') }}</span>
+                </div>
+                <p v-if="substitutionError" class="form-error substitution-error" role="alert">{{ substitutionError }}</p>
             </div>
               <ul v-if="draftEvents.length" class="event-list">
-                <li v-for="event in draftEvents" :key="event.client_event_id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ teamName(event.team_id) }} · {{ operation.rosters.find((player) => player.player_id === event.player_id)?.first_name }} {{ operation.rosters.find((player) => player.player_id === event.player_id)?.last_name }}</span><button v-if="canOperateMatch" type="button" class="text-button" @click="removeEvent(event.client_event_id)">{{ t('match.remove') }}</button></li>
+                <li v-for="event in draftEvents" :key="event.client_event_id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ teamName(event.team_id) }} · {{ draftEventSummary(event) }}</span><button v-if="canOperateMatch" type="button" class="text-button" @click="removeEvent(event.client_event_id)">{{ t('match.remove') }}</button></li>
              </ul>
               <button v-if="canOperateMatch && hasUnsavedDraft" class="text-button draft-discard" type="button" @click="discardDraft">{{ t('match.discardDraft') }}</button>
              <ul v-if="!draftEvents.length && operation.events.length" class="event-list persisted-events">
@@ -1147,6 +1268,10 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .full-width { grid-column: 1 / -1; }
 .event-form { grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: end; }
 .event-form button { min-height: 43px; }
+.substitution-preview { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(212, 243, 106, 0.22); border-radius: 10px; background: rgba(212, 243, 106, 0.05); color: var(--muted); font-size: 0.76rem; }
+.substitution-preview strong { color: var(--accent); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.substitution-blocked { color: #ffcb7a; }
+.substitution-error { grid-column: 1 / -1; padding: 10px 12px; }
 .official-row { grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr) auto; align-items: end; }
 .roster-form { display: grid; gap: 11px; }
 .checkbox-label { display: flex; align-items: center; gap: 8px; }

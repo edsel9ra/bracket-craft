@@ -16,7 +16,12 @@ from app.core.locking import lock_stage_and_version, lock_version
 from app.core.permissions import require_permission
 from app.core.storage import StorageError, get_object_storage
 from app.core.tenancy import AuthContext, get_auth_context
-from app.modules.rules_engine.engine import remap_stage_overrides, validate_rules_config
+from app.modules.rules_engine.engine import (
+    effective_roster_lock_matchday,
+    normalize_rules_config,
+    remap_stage_overrides,
+    validate_rules_config,
+)
 from app.modules.rules_engine.schemas import CreateTournamentRequest, UpdateRulesConfigRequest
 from app.modules.tournaments.schemas import (
     AssignStageTeamsRequest,
@@ -104,6 +109,111 @@ async def _ensure_tournament(db: AsyncSession, organization_id: UUID, tournament
         raise HTTPException(status_code=404, detail="Torneo no encontrado")
 
 
+ROSTER_LOCK_DETAIL = (
+    "La plantilla está cerrada desde la jornada {matchday}: "
+    "no se pueden inscribir jugadores nuevos"
+)
+
+
+async def _published_version_rules(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID
+) -> tuple[UUID, dict] | None:
+    """Return the published version id and its rules config, if any (RF-022)."""
+
+    result = await db.execute(
+        text("""
+            SELECT id AS version_id, rules_config
+            FROM tournament_versions
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND status = 'published'
+        """),
+        {
+            "organization_id": str(organization_id),
+            "tournament_id": str(tournament_id),
+        },
+    )
+    row = result.mappings().one_or_none()
+    if row is None:
+        return None
+    config = row["rules_config"]
+    if isinstance(config, str):
+        config = json.loads(config)
+    return row["version_id"], config or {}
+
+
+async def _active_roster_lock_matchday(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID
+) -> int | None:
+    """Return the reference matchday when the roster lock is active (RF-023).
+
+    The value comes from the published version only: without one, with a null
+    key or without a reference matchday the lock never applies. The lock is
+    active when the first stage (``stage_order``, then ``id``) has at least one
+    non-cancelled match for the reference matchday and every one of them is
+    confirmed (``finished``/``administrative_resolution`` + ``result_confirmed``).
+    No new locks are taken: this is a read of the confirmed state (RF-028).
+    """
+
+    published = await _published_version_rules(db, organization_id, tournament_id)
+    if published is None:
+        return None
+    version_id, config = published
+    matchday = effective_roster_lock_matchday(config)
+    if matchday is None:
+        return None
+
+    result = await db.execute(
+        text("""
+            SELECT count(*) AS total,
+                   count(*) FILTER (
+                       WHERE m.status IN ('finished', 'administrative_resolution')
+                         AND m.result_confirmed = TRUE
+                   ) AS confirmed
+            FROM matches m
+            WHERE m.organization_id = :organization_id
+              AND m.tournament_id = :tournament_id
+              AND m.tournament_version_id = :version_id
+              AND m.stage_id = (
+                  SELECT s.id
+                  FROM stages s
+                  WHERE s.organization_id = :organization_id
+                    AND s.tournament_id = :tournament_id
+                    AND s.tournament_version_id = :version_id
+                  ORDER BY s.stage_order, s.id
+                  LIMIT 1
+              )
+              AND m.matchday = :matchday
+              AND m.status <> 'cancelled'
+        """),
+        {
+            "organization_id": str(organization_id),
+            "tournament_id": str(tournament_id),
+            "version_id": str(version_id),
+            "matchday": matchday,
+        },
+    )
+    counts = result.mappings().one()
+    total = counts["total"] or 0
+    confirmed = counts["confirmed"] or 0
+    if total > 0 and confirmed == total:
+        return matchday
+    return None
+
+
+async def _enforce_roster_lock(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID
+) -> None:
+    """Reject a new roster registration while the roster lock is active."""
+
+    matchday = await _active_roster_lock_matchday(db, organization_id, tournament_id)
+    if matchday is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ROSTER_LOCK_DETAIL.format(matchday=matchday),
+        )
+
+
 async def _load_draft_stage_context(
     db: AsyncSession,
     organization_id: UUID,
@@ -148,9 +258,8 @@ async def create_tournament(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> TournamentCreateResponse:
-    rules_config = payload.rules_config.model_dump(mode="json")
     try:
-        validate_rules_config(rules_config)
+        rules_config = normalize_rules_config(payload.rules_config.model_dump(mode="json"))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -360,7 +469,12 @@ async def _create_draft_version_record(
             },
         )
 
-    cloned_rules_config = remap_stage_overrides(source["rules_config"], stage_map)
+    source_rules_config = source["rules_config"]
+    if isinstance(source_rules_config, str):
+        source_rules_config = json.loads(source_rules_config)
+    cloned_rules_config = normalize_rules_config(
+        remap_stage_overrides(source_rules_config, stage_map)
+    )
     await db.execute(
         text("""
             UPDATE tournament_versions
@@ -614,8 +728,7 @@ async def _update_version_rules_record(
     version_id: UUID,
     payload: UpdateRulesConfigRequest,
 ) -> dict:
-    rules_config = payload.rules_config.model_dump(mode="json")
-    validate_rules_config(rules_config)
+    rules_config = normalize_rules_config(payload.rules_config.model_dump(mode="json"))
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
@@ -1785,6 +1898,8 @@ async def create_roster_player(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
         await _require_tournament_management(db, context)
+        # Checked before creating the player or the roster row (RF-024).
+        await _enforce_roster_lock(db, context.organization_id, tournament_id)
         try:
             roster_id, _ = await _create_roster_player_record(db, context, tournament_id, payload, settings)
         except IntegrityError as exc:
@@ -1851,6 +1966,9 @@ async def create_roster_players_bulk(
             )
             if team_result.scalar_one_or_none() is None:
                 raise HTTPException(status_code=404, detail="El equipo no está registrado en el torneo")
+            # First of the two checks: the lock is rejected before any photo is
+            # uploaded (RF-025).
+            await _enforce_roster_lock(db, context.organization_id, tournament_id)
 
         # N-2: upload every photo before opening the write transaction. The
         # roster id is generated here so the object key is final before the row
@@ -1882,6 +2000,10 @@ async def create_roster_players_bulk(
             await set_rls_context(db, context.organization_id, context.user_id)
             await _ensure_tournament(db, context.organization_id, tournament_id)
             await _require_tournament_management(db, context)
+            # Second check, inside the write transaction: if the lock turned
+            # active after the uploads, the request fails without rows and the
+            # `finally` below compensates the objects (RF-025).
+            await _enforce_roster_lock(db, context.organization_id, tournament_id)
             for row, (roster_id, photo_key) in zip(rows, prepared):
                 try:
                     await _create_roster_player_record(

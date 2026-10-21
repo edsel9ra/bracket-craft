@@ -1,6 +1,7 @@
 import hashlib
 import json
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping, Sequence
 from uuid import UUID
 
 from sqlalchemy import text
@@ -12,11 +13,270 @@ from app.core.permissions import require_administrative_resolution, require_perm
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
 from app.modules.matches.schemas import CloseMatchReportDTO
-from app.modules.rules_engine.engine import compute_match_outcome, evaluate_suspensions
+from app.modules.rule_contract import requires_decisive_winner
+from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
+from app.modules.rules_engine.engine import (
+    compute_match_outcome,
+    effective_stage_rules,
+    effective_substitutions,
+    evaluate_suspensions,
+)
+from app.modules.rules_engine.substitutions import (
+    RED_CARD,
+    SUBSTITUTION,
+    MatchEvent,
+    OnFieldState,
+    RosterEntry,
+    Segment,
+    SegmentBalance,
+    SubstitutionError,
+    SubstitutionErrorCode,
+    SubstitutionLimits,
+    TeamUsage,
+    apply_red_card,
+    apply_substitution,
+    build_on_field,
+    canonical_event_order,
+    remaining_limits,
+    segment_balances,
+    team_usage,
+    validate_player_on_field,
+    validate_roster_minutes,
+    validate_substitution,
+)
 
 
-REGULAR_TIME_MINUTE = 90
-EXTRA_TIME_MINUTE = 120
+# Structural request limits (RF-043): they are form limits, never a sporting
+# rule, so they are not named in business errors nor used as the match maximum.
+STRUCTURAL_MAX_ADDED_MINUTE = 30
+
+RESOLUTIONS_WITH_EXTRA_TIME = frozenset({"extra_time", "penalties"})
+
+NO_LINEUP_NOTICE = "No hay planilla para determinar el estado en campo"
+NO_LIMITS_NOTICE = "El equipo no tiene sustituciones ni ventanas disponibles"
+
+
+def effective_match_minutes(
+    config: Mapping[str, Any] | None,
+    stage_id: UUID | str | None,
+) -> dict[str, Any]:
+    """Effective minutes of a stage, resolved key by key (RF-040).
+
+    ``stage_defaults`` is merged over the 90/120 read defaults and the stage
+    override is then applied on top, so an old config without minutes and a
+    partial override both resolve to a complete pair without rewriting it.
+    """
+
+    effective = effective_stage_rules(config or {}, stage_id)
+    regular = int(effective["regular_time_minutes"])
+    extra_raw = effective.get("extra_time_minutes")
+    extra = int(extra_raw) if extra_raw is not None else None
+    extra_time_enabled = bool(effective.get("extra_time_enabled"))
+    return {
+        "regular_time_minutes": regular,
+        "extra_time_minutes": extra,
+        "extra_time_enabled": extra_time_enabled,
+        "max_minute": extra if extra_time_enabled and extra is not None else regular,
+        "added_minute_max": STRUCTURAL_MAX_ADDED_MINUTE,
+    }
+
+
+def maximum_minute_for_resolution(
+    minutes: Mapping[str, Any],
+    resolution_type: str | None,
+) -> int:
+    """Effective maximum of a resolution (RF-042)."""
+
+    if resolution_type in RESOLUTIONS_WITH_EXTRA_TIME and minutes.get("extra_time_enabled"):
+        extra = minutes.get("extra_time_minutes")
+        if extra is not None:
+            return int(extra)
+    return int(minutes["regular_time_minutes"])
+
+
+def validate_event_minute(
+    minute: int,
+    added_minute: int,
+    *,
+    maximum: int,
+) -> None:
+    """Apply the single business cap over ``minute + added_minute`` (RF-042).
+
+    The discount window is only opened on the final minute: before it, the sum
+    of both values cannot pass the maximum. The structural ``added_minute``
+    limit (30) is enforced by the request schema as a 422.
+    """
+
+    if minute > maximum:
+        raise ValueError(
+            f"El evento excede el máximo de {maximum} minutos de la resolución"
+        )
+    if minute < maximum and minute + added_minute > maximum:
+        raise ValueError(
+            f"El evento excede el máximo de {maximum} minutos de la resolución"
+        )
+    if added_minute > STRUCTURAL_MAX_ADDED_MINUTE:
+        raise ValueError(
+            "Los minutos añadidos superan el tope estructural de "
+            f"{STRUCTURAL_MAX_ADDED_MINUTE}"
+        )
+
+
+@dataclass(frozen=True)
+class ReportState:
+    """Result of replaying a report with the pure substitution engine."""
+
+    limits: SubstitutionLimits
+    states: Mapping[UUID, OnFieldState]
+    usage: Mapping[UUID, TeamUsage]
+
+
+def roster_entries(rows: Iterable[Mapping[str, Any] | RosterEntry]) -> tuple[RosterEntry, ...]:
+    """Normalise ``match_rosters`` rows into engine entries (single source)."""
+
+    entries: list[RosterEntry] = []
+    for row in rows:
+        if isinstance(row, RosterEntry):
+            entries.append(row)
+            continue
+        entries.append(
+            RosterEntry(
+                player_id=_as_uuid(row["player_id"]),
+                team_id=_as_uuid(row["team_id"]),
+                role=str(row.get("role") or "starter"),
+                is_valid=bool(row.get("is_valid", True)),
+                entered_minute=row.get("entered_minute"),
+                left_minute=row.get("left_minute"),
+            )
+        )
+    return tuple(entries)
+
+
+def replay_report_state(
+    rosters: Iterable[Mapping[str, Any] | RosterEntry],
+    events: Sequence[MatchEvent],
+    team_ids: Iterable[UUID],
+    limits: SubstitutionLimits,
+) -> ReportState:
+    """Replay a report in canonical order, validating it before any write.
+
+    The initial XI comes from ``match_rosters`` and every substitution and red
+    card is applied in ``(minute, added_minute, acta index)`` order, so the
+    derived state is deterministic and exactly the one ``build_on_field``
+    produces for the same events. Every business violation raises
+    :class:`SubstitutionError`, a ``ValueError`` the closing route maps to 409.
+
+    Limits are per team and per match. Two changes of the same team in the same
+    segment and minute share one window, so an already consumed window never
+    counts twice.
+    """
+
+    entries = roster_entries(rosters)
+    teams = tuple(dict.fromkeys(_as_uuid(team_id) for team_id in team_ids))
+    states = {team_id: build_on_field(entries, [], team_id) for team_id in teams}
+    usage = {team_id: TeamUsage() for team_id in teams}
+
+    for event in canonical_event_order(events):
+        state = states.get(event.team_id)
+        if state is None:
+            raise SubstitutionError(
+                SubstitutionErrorCode.TEAM_MISMATCH,
+                "El evento pertenece a un equipo que no participa en el partido",
+            )
+        current = usage[event.team_id]
+
+        if event.event_type == SUBSTITUTION:
+            if not event.is_substitution_with_pair:
+                # Legacy event: informational, never changes the state.
+                continue
+            window = (event.segment_id, event.minute, event.added_minute)
+            check = current
+            if window in current.windows:
+                # The window is already consumed: reuse it without counting it
+                # again against ``max_windows``.
+                check = TeamUsage(
+                    substitutions=current.substitutions,
+                    windows=tuple(item for item in current.windows if item != window),
+                )
+            validate_substitution(
+                state,
+                limits,
+                check,
+                event.player_out_id,
+                event.player_in_id,
+                team_id=event.team_id,
+            )
+            states[event.team_id] = apply_substitution(
+                state,
+                event.player_out_id,
+                event.player_in_id,
+                event.effective_minute,
+            )
+            usage[event.team_id] = current.merge(TeamUsage(1, (window,)))
+            continue
+
+        if event.player_id is None:
+            continue
+        if not state.is_in_roster(event.player_id):
+            raise SubstitutionError(
+                SubstitutionErrorCode.PLAYER_NOT_IN_ROSTER,
+                f"El jugador {event.player_id} no está en la plantilla del equipo",
+            )
+        validate_player_on_field(state, event.player_id, event.minute, event.added_minute)
+        if event.event_type == RED_CARD:
+            states[event.team_id] = apply_red_card(
+                state, event.player_id, event.effective_minute
+            )
+
+    for entry in entries:
+        state = states.get(entry.team_id)
+        if state is None:
+            continue
+        validate_roster_minutes(
+            state,
+            entry.player_id,
+            entered_minute=entry.entered_minute,
+            left_minute=entry.left_minute,
+        )
+
+    return ReportState(limits=limits, states=states, usage=usage)
+
+
+async def ensure_segment_team_state(
+    db: AsyncSession,
+    organization_id: UUID,
+    match_id: UUID,
+    segment_id: UUID,
+    team_ids: Iterable[UUID],
+    limits: SubstitutionLimits,
+) -> None:
+    """Create the projection row of a new segment for every present team."""
+
+    statement = text("""
+        INSERT INTO match_segment_team_state
+            (organization_id, match_id, segment_id, team_id,
+             substitutions_remaining, substitution_windows_remaining)
+        VALUES
+            (:organization_id, :match_id, :segment_id, :team_id,
+             :substitutions_remaining, :substitution_windows_remaining)
+        ON CONFLICT (segment_id, team_id) DO NOTHING
+    """)
+    for team_id in team_ids:
+        await db.execute(
+            statement,
+            {
+                "organization_id": str(organization_id),
+                "match_id": str(match_id),
+                "segment_id": str(segment_id),
+                "team_id": str(team_id),
+                "substitutions_remaining": limits.max_per_team,
+                "substitution_windows_remaining": limits.max_windows,
+            },
+        )
+
+
+def _as_uuid(value: Any) -> UUID:
+    return value if isinstance(value, UUID) else UUID(str(value))
 
 
 class CloseMatchReportService:
@@ -84,11 +344,17 @@ class CloseMatchReportService:
                 await self._lock_player(match["tournament_id"], player_id)
             self._validate_rosters(match, rosters)
             segments = await self._load_match_segments(context, match_id)
-            self._validate_segments(dto, segments)
+            minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
+            self._validate_segments(dto, segments, minutes)
+            limits = SubstitutionLimits.from_config(
+                effective_substitutions(match["rules_config"])
+            )
+            self._validate_substitutions(dto, match, rosters, limits)
             self._validate_event_score_consistency(
                 dto,
                 match["home_team_id"],
                 match["away_team_id"],
+                regular_time_minutes=minutes["regular_time_minutes"],
             )
             await self._validate_suspensions(context, match["tournament_id"], player_ids)
 
@@ -107,7 +373,7 @@ class CloseMatchReportService:
                 dto.away_penalties,
                 dto.winner_team_id,
             )
-            if match.get("bracket_code") in {"GF1", "GF2"} and outcome.winner_team_id is None:
+            if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
                 raise ValueError("La gran final de doble eliminación debe tener un ganador")
 
             target_status = "administrative_resolution" if dto.resolution_type == "administrative" else "finished"
@@ -161,6 +427,7 @@ class CloseMatchReportService:
                     ),
                 },
             )
+            await self._rewrite_segment_team_state(context, match, segments, limits)
 
             history = await self._load_discipline_history(context, match)
             suspensions = evaluate_suspensions(
@@ -270,7 +537,8 @@ class CloseMatchReportService:
     async def _load_match_rosters(self, context: AuthContext, match_id: UUID):
         result = await self.db.execute(
             text("""
-                SELECT mr.player_id, mr.team_id, mr.entered_minute, mr.left_minute,
+                SELECT mr.player_id, mr.team_id, mr.role, mr.is_valid,
+                       mr.entered_minute, mr.left_minute,
                        r.valid_from, r.valid_to, r.eligible_from, r.is_active
                 FROM match_rosters mr
                 JOIN rosters r
@@ -314,15 +582,15 @@ class CloseMatchReportService:
         return [dict(row) for row in result.mappings().all()]
 
     @staticmethod
-    def _validate_segments(dto: CloseMatchReportDTO, segments: list[dict[str, Any]]) -> None:
+    def _validate_segments(
+        dto: CloseMatchReportDTO,
+        segments: list[dict[str, Any]],
+        minutes: Mapping[str, Any],
+    ) -> None:
         if not segments:
             raise ValueError("El partido necesita al menos un segmento")
 
-        maximum_minute = (
-            EXTRA_TIME_MINUTE
-            if dto.resolution_type in {"extra_time", "penalties"}
-            else REGULAR_TIME_MINUTE
-        )
+        maximum_minute = maximum_minute_for_resolution(minutes, dto.resolution_type)
         segments_by_id = {segment["id"]: segment for segment in segments}
         previous_end: int | None = None
         for segment in segments:
@@ -331,7 +599,9 @@ class CloseMatchReportService:
             if previous_end is not None and minute_start < previous_end:
                 raise ValueError("Los segmentos del partido tienen tiempos incompatibles")
             if minute_start > maximum_minute or (minute_end is not None and minute_end > maximum_minute):
-                raise ValueError("Un segmento excede el tiempo permitido para la resolución")
+                raise ValueError(
+                    f"Un segmento excede el máximo de {maximum_minute} minutos de la resolución"
+                )
             if minute_end is not None:
                 previous_end = minute_end
             else:
@@ -347,14 +617,113 @@ class CloseMatchReportService:
                 raise ValueError("El evento no puede ocurrir antes del inicio de su segmento")
             if segment["minute_end"] is not None and event.minute > segment["minute_end"]:
                 raise ValueError("El evento no puede ocurrir después del final de su segmento")
-            if event.minute > maximum_minute:
-                raise ValueError("El evento excede el tiempo permitido para la resolución")
+            validate_event_minute(
+                event.minute,
+                event.added_minute,
+                maximum=maximum_minute,
+            )
+
+    @staticmethod
+    def _validate_substitutions(
+        dto: CloseMatchReportDTO,
+        match: Mapping[str, Any],
+        rosters: Iterable[Mapping[str, Any]],
+        limits: SubstitutionLimits,
+    ) -> None:
+        """Validate the complete report with the pure engine before any write.
+
+        No event, counter, score, standings or outbox row is touched when a
+        substitution breaks a rule (RF-017). Walkover and administrative
+        resolutions do not admit events, so they are not replayed.
+        """
+
+        if dto.resolution_type in {"walkover", "administrative"}:
+            return
+        replay_report_state(
+            rosters,
+            [
+                MatchEvent.from_mapping(event.model_dump(), index=index)
+                for index, event in enumerate(dto.events)
+            ],
+            (match["home_team_id"], match["away_team_id"]),
+            limits,
+        )
+
+    async def _rewrite_segment_team_state(
+        self,
+        context: AuthContext,
+        match: Mapping[str, Any],
+        segments: Sequence[Mapping[str, Any]],
+        limits: SubstitutionLimits,
+    ) -> tuple[SegmentBalance, ...]:
+        """Rewrite every segment/team row with the balance after that segment.
+
+        The balance is always recalculated from the persisted substitution
+        events, never decremented, and the rows are ordered by
+        ``match_segments.segment_number`` (never by minute) so an earlier
+        segment reflects only the consumption accumulated up to it (RF-016).
+        """
+
+        result = await self.db.execute(
+            text("""
+                SELECT id, event_type, team_id, minute, added_minute, player_id,
+                       player_out_id, player_in_id, segment_id
+                FROM match_events
+                WHERE organization_id = :organization_id
+                  AND match_id = :match_id
+                  AND event_type = 'substitution'
+                ORDER BY minute, added_minute, created_at, id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "match_id": str(match["id"]),
+            },
+        )
+        events = [
+            MatchEvent.from_mapping(row, index=index)
+            for index, row in enumerate(result.mappings().all())
+        ]
+        segment_rows = [
+            Segment(id=_as_uuid(segment["id"]), segment_number=segment["segment_number"])
+            for segment in segments
+        ]
+        balances = segment_balances(
+            segment_rows,
+            events,
+            (match["home_team_id"], match["away_team_id"]),
+            limits,
+        )
+        statement = text("""
+            INSERT INTO match_segment_team_state
+                (organization_id, match_id, segment_id, team_id,
+                 substitutions_remaining, substitution_windows_remaining)
+            VALUES
+                (:organization_id, :match_id, :segment_id, :team_id,
+                 :substitutions_remaining, :substitution_windows_remaining)
+            ON CONFLICT (segment_id, team_id) DO UPDATE
+            SET substitutions_remaining = EXCLUDED.substitutions_remaining,
+                substitution_windows_remaining = EXCLUDED.substitution_windows_remaining
+        """)
+        for balance in balances:
+            await self.db.execute(
+                statement,
+                {
+                    "organization_id": str(context.organization_id),
+                    "match_id": str(match["id"]),
+                    "segment_id": str(balance.segment_id),
+                    "team_id": str(balance.team_id),
+                    "substitutions_remaining": balance.substitutions_remaining,
+                    "substitution_windows_remaining": balance.substitution_windows_remaining,
+                },
+            )
+        return balances
 
     @staticmethod
     def _validate_event_score_consistency(
         dto: CloseMatchReportDTO,
         home_team_id: UUID,
         away_team_id: UUID,
+        regular_time_minutes: int = DEFAULT_REGULAR_TIME_MINUTES,
     ) -> None:
         if dto.resolution_type in {"walkover", "administrative"}:
             return
@@ -371,7 +740,7 @@ class CloseMatchReportService:
             credited_team = event.beneficiary_team_id if event.event_type == "own_goal" else event.team_id
             if credited_team is None:
                 continue
-            target = regular_goals if event.minute <= REGULAR_TIME_MINUTE else extra_time_goals
+            target = regular_goals if event.minute <= regular_time_minutes else extra_time_goals
             target[credited_team] = target.get(credited_team, 0) + 1
 
         regular_home = regular_goals.get(home_team_id, 0)
@@ -460,7 +829,8 @@ class CloseMatchReportService:
 
             existing_result = await self.db.execute(
                 text("""
-                    SELECT id, event_type, team_id, beneficiary_team_id, player_id, minute, added_minute, segment_id
+                    SELECT id, event_type, team_id, beneficiary_team_id, player_id,
+                           player_out_id, player_in_id, minute, added_minute, segment_id
                     FROM match_events
                     WHERE organization_id = :organization_id
                       AND match_id = :match_id
@@ -479,6 +849,8 @@ class CloseMatchReportService:
                     "team_id": event.team_id,
                     "beneficiary_team_id": event.beneficiary_team_id,
                     "player_id": event.player_id,
+                    "player_out_id": event.player_out_id,
+                    "player_in_id": event.player_in_id,
                     "minute": event.minute,
                     "added_minute": event.added_minute,
                     "segment_id": event.segment_id,
@@ -491,10 +863,13 @@ class CloseMatchReportService:
                 text("""
                     INSERT INTO match_events
                         (organization_id, match_id, segment_id, team_id, beneficiary_team_id, player_id,
+                         player_out_id, player_in_id,
                          event_type, minute, added_minute, client_event_id, metadata)
                     VALUES (:organization_id, :match_id, :segment_id, :team_id, :beneficiary_team_id, :player_id,
+                            :player_out_id, :player_in_id,
                             :event_type, :minute, :added_minute, :client_event_id, CAST(:metadata AS jsonb))
-                    RETURNING id, event_type, team_id, beneficiary_team_id, player_id, minute, added_minute, segment_id
+                    RETURNING id, event_type, team_id, beneficiary_team_id, player_id,
+                              player_out_id, player_in_id, minute, added_minute, segment_id
                 """),
                 {
                     "organization_id": str(context.organization_id),
@@ -503,6 +878,8 @@ class CloseMatchReportService:
                     "team_id": str(event.team_id),
                     "beneficiary_team_id": str(event.beneficiary_team_id) if event.beneficiary_team_id else None,
                     "player_id": str(event.player_id),
+                    "player_out_id": str(event.player_out_id) if event.player_out_id else None,
+                    "player_in_id": str(event.player_in_id) if event.player_in_id else None,
                     "event_type": event.event_type,
                     "minute": event.minute,
                     "added_minute": event.added_minute,

@@ -10,12 +10,15 @@ The tests use a session double, so they do not need PostgreSQL.
 
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.core.tenancy import AuthContext
+from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.tournaments.router import (
     _create_draft_version_record,
     _persist_bracket_schedule,
@@ -34,6 +37,20 @@ SOURCE_MATCH_ID = uuid4()
 TEAM_ID = uuid4()
 
 START_DATE = datetime(2026, 9, 18, 18, 0, tzinfo=timezone.utc)
+
+
+def legacy_published_rules() -> dict:
+    """A 3.2.0 config with the deprecated block and no top-level lock."""
+    config = deepcopy(DEFAULT_RULES_CONFIG)
+    config["schema_version"] = "3.2.0"
+    config.pop("roster_lock_matchday", None)
+    config["transfers"] = {
+        "allow_mid_season_transfers": True,
+        "same_matchday_participation_allowed": False,
+        "roster_lock_matchday": 5,
+    }
+    return config
+
 
 
 class Result:
@@ -96,7 +113,7 @@ class RecordingSession:
                 rows=[
                     {
                         "id": SOURCE_VERSION_ID,
-                        "rules_config": {},
+                        "rules_config": legacy_published_rules(),
                         "phase_config": {},
                         "status": "published",
                     }
@@ -239,6 +256,25 @@ async def test_clone_never_touches_stage_edges_and_clones_phase_slots(
     assert match_inserts[0]["away_slot_id"] is None
 
     assert result["version_number"] == 2
+
+
+@pytest.mark.asyncio
+async def test_clone_normalizes_rules_and_promotes_the_roster_lock():
+    session = RecordingSession()
+
+    await _create_draft_version_record(session, context(), TOURNAMENT_ID, None)
+
+    version_updates = session.parameters_for("UPDATE tournament_versions")
+    assert len(version_updates) == 1
+    rules = json.loads(version_updates[0]["rules"])
+    assert rules["schema_version"] == "3.3.0"
+    assert rules["roster_lock_matchday"] == 5
+    assert "transfers" not in rules
+    assert "substitutions" in rules
+
+    tournament_updates = session.parameters_for("UPDATE tournaments")
+    assert len(tournament_updates) == 1
+    assert json.loads(tournament_updates[0]["rules"]) == rules
 
 
 @pytest.mark.asyncio

@@ -253,6 +253,44 @@ MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
 
 `init/01` incluye el mismo `GRANT INSERT (id, ...)` para que una instalación limpia termine con el mismo estado que una base migrada. `MIGRATION_TARGET=019` sigue limitando el runbook destructivo de la 019; la 020 se aplica después en una segunda ejecución o con el runner sin target.
 
+## Migración 021: referencias de jugador en sustituciones (runbook)
+
+La **021** es **aditiva**: añade `player_out_id` y `player_in_id` (UUID nulas) a `match_events`, dos FKs compuestas `(player_out_id, organization_id)` y `(player_in_id, organization_id)` a `players (id, organization_id)` con `ON DELETE RESTRICT`, y `chk_match_event_substitution_pair` como `CHECK ... NOT VALID`. **No elimina `match_segment_team_state`** (sigue siendo la proyección de contadores), no toca `transfers` (no existe como tabla) y no modifica `init/01` ni las migraciones 019/020.
+
+**Orden de despliegue: migración 021 → código.** El código nuevo escribe las dos columnas y contra el esquema 020 falla al insertar una sustitución. A la inversa, el código anterior no escribe el par y sus eventos `substitution` no cumplen el `CHECK` nuevo, así que detén `api` y `worker` durante la ventana. No hay backfill: los eventos legados sin par se conservan, el motor los ignora y no se ejecuta `VALIDATE CONSTRAINT`.
+
+**Antes de aplicar**, con una copia verificada:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre021.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre021.dump" >/dev/null && echo "backup OK"
+$COMPOSE stop api worker
+```
+
+Pre-chequeos **informativos** (no abortan; los conteos quedan como evidencia):
+
+```sql
+SELECT count(*) AS eventos_substitution
+FROM public.match_events
+WHERE event_type = 'substitution';
+
+SELECT count(*) AS filas_match_segment_team_state
+FROM public.match_segment_team_state;
+```
+
+**Aplicación y smoke:**
+
+```sh
+MIGRATION_TARGET=021 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+Comprueba `GET /docs`, una lectura pública de torneo, una operación del Workspace con un borrador y, si hay datos, la pantalla de operación de un partido (`GET /matches/{id}/operation`) y el cierre de un acta con una sustitución válida; la fila de `match_segment_team_state` del segmento debe reflejar el saldo.
+
+**Si algo falla después:** no hay rollback de esquema ni de datos. La 021 no se desaplica y cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar `$HOME/backup-pre021.dump` solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-021) termina con el mismo esquema que una base migrada.
+
 ## Alcance inicial
 
 - Registro y login por email/password.
@@ -260,12 +298,25 @@ MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
 - Organizaciones con membresías y RBAC.
 - Torneos y versiones inmutables.
 - Configuración privada de versiones, fases, equipos y partidos.
-- Configuración JSON de puntuación, desempates, disciplina y transferencias.
-- Cierre de actas con goles, tarjetas, suspensiones y outbox.
+- Configuración JSON de puntuación, desempates, disciplina, sustituciones y ventana de inscripción; sin transferencias.
+- Cierre de actas con goles, tarjetas, sustituciones, suspensiones y outbox.
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
 - Avance manual de equipos entre fases en versiones en borrador.
 - Autorización por organización y por partido (`match_officials`); sin roles por torneo.
+
+## Reglas declaradas: sustituciones, inscripción y minutos
+
+La configuración efectiva sale del `rules_config` de la versión del partido (con el override de la fase) y se aplica en el cierre; no hay reglas «informativas» en el editor.
+
+- **Sustituciones:** `substitutions` (`max_per_team`, `max_windows`, `allow_reentry`; defaults **5/3/`false`**) se valida al cerrar el acta. Los límites son **por equipo y por partido**; `max_per_team = 0` deshabilita las sustituciones y `max_windows = 0` no admite ninguna ventana. Los eventos `substitution` llevan `player_out_id` y `player_in_id` y cumplen `player_id = player_out_id`. El estado en campo se deriva del XI de `match_rosters` y de los eventos en orden `(minute, added_minute, índice del acta)`: cada jugador tiene una **unión de intervalos** `[entrada, salida)` para modelar la reentrada. El cierre rechaza con **409** (sin escribir) un jugador de otro equipo o fuera de la plantilla, un saliente que no está en campo, un entrante en campo o expulsado, una reentrada no permitida, un exceso de sustituciones o ventanas y un evento fuera del intervalo del jugador; el incumplimiento estructural del evento es **422**. Los eventos de un acta confirmada son **inmutables** y no existe API incremental de eventos ni de anulación (R11 fuera de alcance); `is_voided` es legado.
+- **Ventanas:** una ventana es el grupo `(segment_id, minute, added_minute)`. Varias sustituciones del mismo equipo en el mismo segmento y minuto (incluido el descuento) consumen **una** sola ventana; distinto segmento o distinto `added_minute` abren ventanas distintas.
+- **Proyección de contadores:** `match_segment_team_state` guarda una fila por segmento y equipo con el saldo del partido tras ese segmento. Se asegura al abrir el segmento y se recalcula al cerrar ordenando por `segment_number`; la pantalla de operación calcula el estado con la misma función pura cuando la fila no existe y **no escribe** en un `GET`. La migración 021 **no elimina** esta tabla.
+- **Transferencias retiradas:** `transfers` no se ofrece, no está en los defaults y no se escribe en configuraciones nuevas; los bloques existentes se aceptan como deprecados y se ignoran. La no participación en dos partidos de la misma jornada es una **restricción de base de datos** (`uq_matchday_player_unique`), no una regla configurable.
+- **Ventana de inscripción (`roster_lock_matchday`):** clave de primer nivel, entero ≥ 1 o nulo (default nulo). El valor efectivo sale del `rules_config` de la **versión publicada**. La jornada de referencia es el `matchday` de la primera fase por `stage_order` (desempate por `id`) de esa versión, y el bloqueo se activa si hay al menos un partido no `cancelled` en esa jornada y **todos** están confirmados (`finished`/`administrative_resolution` + `result_confirmed`). Con el bloqueo activo, el alta individual y la importación responden **409** («La plantilla está cerrada desde la jornada {N}…») sin escribir filas ni subir objetos; la importación lo comprueba antes de subir fotos y de nuevo dentro de la transacción. No borra ni invalida inscripciones existentes.
+- **Minutos:** `regular_time_minutes` y `extra_time_minutes` salen de `stage_defaults` con overrides por fase (defaults **90** y **120**). Al guardar se valida la **pareja efectiva** antes de persistir: reglamentario entre 1 y 179; si la prórroga está habilitada, extra mayor que el reglamentario y ≤ 180; si está deshabilitada, el extra no se valida ni se materializa. Un override parcial solo cambia lo que declara. El cierre aplica el **máximo efectivo** (extra si la resolución es `extra_time`/`penalties` y la prórroga está habilitada; reglamentario en el resto), exige `minute + added_minute` dentro del máximo salvo descuento en el minuto final y separa goles reglamentarios y de prórroga en `regular_time_minutes`. El tope estructural de 180 y `added_minute ≤ 30` no es una regla de negocio.
+- **Impacto al desplegar una versión `3.2.0`:** una versión `3.2.0` **ya publicada** empieza a aplicar sus límites de sustitución en cuanto se despliega este código, porque la configuración efectiva sale de la versión publicada y no se reescribe. Las actas ya cerradas **no se revalidan** y los partidos aún abiertos pueden rechazar sustituciones que antes aceptaban; conviene revisar las configuraciones afectadas antes de desplegar.
+- **Contrato interno:** `docs/contrato-reglas.md` (`engine_version` **2026.1**) fija los códigos `GF1`/`GF2` y el catálogo cerrado de cuatro formaciones con sus posiciones. No es configurable desde el editor; una formación fuera del catálogo responde **422**.
 
 ## Autorización y avance manual entre fases
 

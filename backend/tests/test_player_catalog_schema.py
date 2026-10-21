@@ -191,18 +191,60 @@ async def test_player_references_use_composite_foreign_keys(db_session):
         )
     ).mappings().all()
 
-    by_table = {row["table_name"].rsplit(".", 1)[-1]: row for row in rows}
-    for table in PLAYER_TENANT_TABLES:
-        reference = by_table.get(table)
-        assert reference is not None, f"{table} no referencia players"
-        assert reference["columns"] == ["player_id", "organization_id"]
-        assert reference["referenced_columns"] == ["id", "organization_id"]
-        assert reference["referenced_table"].rsplit(".", 1)[-1] == "players"
+    # Isolation pattern from 015: every tenant-owned reference is a composite
+    # FK to players (id, organization_id). Migration 021 adds two more player
+    # references to match_events for the substitution pair, so a table may own
+    # several composite FKs and each allowed player column is declared here.
+    allowed_pairs: dict[str, set[tuple[str, str]]] = {
+        table: {("player_id", "organization_id")} for table in PLAYER_TENANT_TABLES
+    }
+    allowed_pairs["match_events"].update(
+        {
+            ("player_out_id", "organization_id"),
+            ("player_in_id", "organization_id"),
+        }
+    )
 
-    simple_references = [
-        row for row in rows if row["columns"] != ["player_id", "organization_id"]
+    by_table: dict[str, list] = {table: [] for table in PLAYER_TENANT_TABLES}
+    for row in rows:
+        table = row["table_name"].rsplit(".", 1)[-1]
+        if table in by_table:
+            by_table[table].append(row)
+
+    for table, allowed in allowed_pairs.items():
+        references = by_table[table]
+        assert references, f"{table} no referencia players"
+
+        found: set[tuple[str, str]] = set()
+        for reference in references:
+            assert reference["referenced_columns"] == ["id", "organization_id"], (
+                f"{table}.{reference['conname']} debe referenciar players(id, organization_id)"
+            )
+            assert reference["referenced_table"].rsplit(".", 1)[-1] == "players"
+            found.add(tuple(reference["columns"]))
+
+        missing = allowed - found
+        assert not missing, (
+            f"{table} no tiene las claves foráneas compuestas esperadas: {sorted(missing)}"
+        )
+        unexpected = found - allowed
+        assert not unexpected, (
+            f"{table} tiene claves foráneas a players no previstas: {sorted(unexpected)}"
+        )
+
+    # Nothing outside the declared map may reference players: a single-column
+    # FK (`player_id` alone) would rely on RLS only and break the 015 pattern.
+    unexpected_references = [
+        row
+        for row in rows
+        if row["table_name"].rsplit(".", 1)[-1] not in allowed_pairs
+        or tuple(row["columns"])
+        not in allowed_pairs[row["table_name"].rsplit(".", 1)[-1]]
     ]
-    assert not simple_references, "Quedan claves foráneas simples a players(id)"
+    assert not unexpected_references, (
+        "Quedan claves foráneas simples o no previstas a players(id): "
+        f"{[(row['table_name'], row['conname'], row['columns']) for row in unexpected_references]}"
+    )
 
 
 @pytest.mark.asyncio

@@ -1,61 +1,14 @@
-from typing import Final
+"""Backwards-compatible import path for the formation catalog.
 
+The single source is :mod:`app.modules.rule_contract` (RF-051). This module
+keeps the historical import path used by the matches router, the demo seed and
+the tests.
+"""
 
-FORMATION_SLOTS: Final[dict[str, tuple[str, ...]]] = {
-    "4-3-3": (
-        "GK",
-        "LB",
-        "LCB",
-        "RCB",
-        "RB",
-        "CM_L",
-        "CM",
-        "CM_R",
-        "LW",
-        "ST",
-        "RW",
-    ),
-    "4-4-2": (
-        "GK",
-        "LB",
-        "LCB",
-        "RCB",
-        "RB",
-        "LM",
-        "LCM",
-        "RCM",
-        "RM",
-        "ST_L",
-        "ST_R",
-    ),
-    "3-5-2": (
-        "GK",
-        "LCB",
-        "CB",
-        "RCB",
-        "LWB",
-        "LCM",
-        "CM",
-        "RCM",
-        "RWB",
-        "ST_L",
-        "ST_R",
-    ),
-    "4-2-3-1": (
-        "GK",
-        "LB",
-        "LCB",
-        "RCB",
-        "RB",
-        "CDM_L",
-        "CDM_R",
-        "LW",
-        "CAM",
-        "RW",
-        "ST",
-    ),
-}
+from app.modules.rule_contract import (
+    FORMATION_CODES,
+    FORMATION_SLOTS,
+    slots_for_formation,
+)
 
-
-def slots_for_formation(formation_code: str) -> tuple[str, ...] | None:
-    return FORMATION_SLOTS.get(formation_code)
+__all__ = ["FORMATION_CODES", "FORMATION_SLOTS", "slots_for_formation"]

@@ -1,5 +1,22 @@
+DEFAULT_SUBSTITUTIONS = {
+    "max_per_team": 5,
+    "max_windows": 3,
+    "allow_reentry": False,
+}
+
+DEFAULT_REGULAR_TIME_MINUTES = 90
+DEFAULT_EXTRA_TIME_MINUTES = 120
+
+DEFAULT_STAGE_RULES = {
+    "extra_time_enabled": False,
+    "penalties_enabled": False,
+    "regular_time_minutes": DEFAULT_REGULAR_TIME_MINUTES,
+    "extra_time_minutes": DEFAULT_EXTRA_TIME_MINUTES,
+    "walkover_score": {"winner": 3, "loser": 0},
+}
+
 DEFAULT_RULES_CONFIG = {
-    "schema_version": "3.2.0",
+    "schema_version": "3.3.0",
     "engine_version": "2026.1",
     "points_system": {"win": 3, "draw": 1, "loss": 0},
     "ranking_pipeline": [
@@ -9,7 +26,8 @@ DEFAULT_RULES_CONFIG = {
         {"step": 4, "criterion": "goals_for", "params": {}},
         {"step": 5, "criterion": "fair_play_points", "params": {}},
     ],
-    "substitutions": {"max_per_team": 5, "max_windows": 3, "allow_reentry": False},
+    "substitutions": dict(DEFAULT_SUBSTITUTIONS),
+    "roster_lock_matchday": None,
     "discipline": {
         "yellow_card_limit": 3,
         "yellow_card_suspension_matches": 1,
@@ -17,14 +35,11 @@ DEFAULT_RULES_CONFIG = {
         "clear_yellows_on_stage_change": True,
         "fair_play_penalties": {"yellow_card": 1, "double_yellow_red": 3, "direct_red": 3},
     },
-    "transfers": {
-        "allow_mid_season_transfers": True,
-        "same_matchday_participation_allowed": False,
-        "roster_lock_matchday": None,
-    },
     "stage_defaults": {
         "extra_time_enabled": False,
         "penalties_enabled": False,
+        "regular_time_minutes": DEFAULT_REGULAR_TIME_MINUTES,
+        "extra_time_minutes": DEFAULT_EXTRA_TIME_MINUTES,
         "walkover_score": {"winner": 3, "loser": 0},
     },
     "stage_overrides": {},

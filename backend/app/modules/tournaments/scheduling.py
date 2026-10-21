@@ -7,6 +7,8 @@ from random import Random
 from threading import Lock
 from uuid import UUID
 
+from app.modules.rule_contract import GRAND_FINAL_CODE, RESET_CODE
+
 
 MAX_SINGLE_ELIMINATION_TEAMS = 512
 MAX_SWISS_TEAMS = 64
@@ -722,7 +724,7 @@ def build_double_elimination_bracket(
 
     grand_final_round = losers_round_number
     append_match(
-        "GF1",
+        GRAND_FINAL_CODE,
         grand_final_round,
         "final",
         BracketEntrant(source_match_code=winners_rounds[-1][0].code),
@@ -735,6 +737,6 @@ def build_double_elimination_bracket(
         round_count=reset_round,
         matches=tuple(matches),
         advancement_links=tuple(advancement_links),
-        reset_code="GF2",
+        reset_code=RESET_CODE,
         reset_date=_schedule_date(start_date, reset_round, 1, round_interval_days, match_interval_hours),
     )

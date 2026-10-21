@@ -1,15 +1,20 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
-## Spec 006 — Scoping de torneo y avance manual (2026-10-20)
-- **Implementada, validada por @reviewer y cerrada (2026-10-20). CI en `main` en verde; PR #1 mergeado (merge commit `7284756`).** Queda solo desplegar las migraciones 019 y 020.
-- Evidencia: backend **469 passed / 132 skipped**; opt-in **42** (`player_catalog_isolation`, `schema`, `swiss_transaction`) y **23** (migración 019 y concurrencia) en bases desechables; frontend **77 passed**, typecheck OK (build no re-ejecutado por OOM local en la última pasada).
-- Autorización real: RBAC por organización + `match_officials` por partido; `tournament_user_roles` retirada; sin roles ni ámbito por torneo.
-- Avance manual: `GET/POST/DELETE /tournaments/{id}/stages/{stage_id}/teams`; solo borradores; POST atómico 1..64 sin duplicados (201/200); DELETE 204 idempotente con guardas 409 (versión, no registrado, partido, standings). El calendario no se regenera; `stage_rank`/sembrado automático no soportado; `phase_config` no se interpreta.
-- Bloqueo: fase → versión → partidos → segmentos → jugadores. El cierre pre-bloquea origen y destinos (incl. GF2); `standings` bloquea la fase antes del advisory; rendimiento no medido (RNF-003).
-- 019 destructiva sin rollback: retira `tournament_user_roles` y `stage_edges`, estrecha el CHECK a `direct_team`/`match_result` y conserva `phase_slots`; trigger con SQLSTATE `ZZ409` → API 409 por código, no por texto.
-- Despliegue: código nuevo primero (esquema 018), luego `MIGRATION_TARGET=019` y `020`; la 020 es un *forward-fix* no destructivo que concede `INSERT (id)` en `rosters` para el `id` pre-generado de la importación N-2 (`init/01` lo incluye). Backup verificado con `pg_restore -l`, pre-chequeo con `to_regclass` y catálogo con `incoming_fk`; después solo *forward-fix*.
-- Observaciones no bloqueantes: RNF-003 no medida y aclaración de RF-008 en la spec (los tests de la 019 nombran estructuras retiradas); no hay pendientes de código.
+## Spec 007 — Reglas declaradas y constantes (2026-10-20)
+- **Implementada y validada por @reviewer (APROBADA, 2026-10-21); T013 pendiente de CI en `main` y revisión humana.**
+- Evidencia: backend **616 passed/152 skipped**; suite con base **764 passed/2 skipped**; frontend **110 passed**, typecheck y build OK; runner de migraciones y Compose OK; `pip-audit --local` sin hallazgos; Trivy no disponible.
+- Migración **021 aditiva antes del código**: `player_out_id`/`player_in_id`, FKs compuestas y `CHECK ... NOT VALID`; no elimina `match_segment_team_state` ni toca `init/01`; sin rollback (*forward-fix*).
+- Sustituciones aplicadas **al cerrar el acta** (`max_per_team`/`max_windows`/`allow_reentry`, defaults 5/3/`false`); orden canónico `(minute, added_minute, índice)` e intervalos con reentrada; límites por equipo y partido; `match_segment_team_state` es proyección (el `GET /operation` calcula sin escribir).
+- `roster_lock_matchday` de primer nivel con valor efectivo de la **versión publicada**; jornada = `matchday` de la primera fase por `stage_order`; alta/importación → 409 sin escribir.
+- Minutos `regular_time_minutes`/`extra_time_minutes` desde `stage_defaults` + overrides (defaults 90/120); pareja efectiva validada; el cierre usa el máximo efectivo. Contrato interno en `docs/contrato-reglas.md` (`engine_version` 2026.1: `GF1`/`GF2` y cuatro formaciones).
+- Enmienda constitucional **1.3.0** (§3.2: retira «transferencias» y añade «sustituciones» y «ventana de inscripción») debe ir en un **commit separado** del cambio funcional.
+- Cierre serializado por fase (dos cierres simultáneos → 409); sin API incremental ni anulación (R11 fuera); eventos de acta confirmada inmutables; `is_voided` es legado.
+
+## Spec 006 — Scoping de torneo y avance manual (cerrada)
+- **Implementada y validada por @reviewer; PR #1 mergeado (`7284756`).** Solo queda desplegar las migraciones 019 y 020.
+- Autorización real: RBAC por organización + `match_officials` por partido; `tournament_user_roles` retirada. Avance manual solo en borradores (1..64, atómico, 204 idempotente); el calendario no se regenera.
+- La 019 es destructiva y sin rollback: código nuevo primero, luego 019 y 020; después solo *forward-fix*. Trigger de estructura con `ZZ409` → API 409 por código.
 
 ## Riesgo residual
 - Dos sorteos Swiss simultáneos en frío (ronda 1 sin filas) podrían duplicar calendarios; aceptado en la spec 005.
@@ -18,14 +23,16 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Specs anteriores
 - 001 (correctivos P0), 002 (cifrado 017/018, backfill y `MIGRATION_TARGET`) y 003 (deuda de dependencias): cerradas.
 - 004 (outbox y tiempo real): aprobada; stream de mejor esfuerzo, `event_id` aditivo, `RESYNC` y deduplicación 200.
-- 005 (firmas, Swiss y conexión): implementada y validada por review; pendiente CI en `main` y revisión humana.
+- 005 (firmas, Swiss y conexión): implementada y validada; pendiente CI en `main` y revisión humana.
 
 ## Entorno local
-- Sin Python ni pnpm en el host: backend con la imagen `bc-api-t007` sobre copia en `/tmp`; frontend con `node:24-alpine` y pnpm 12.12.1 en `/tmp`.
-- PostgreSQL local con credenciales desalineadas: la opt-in se ejecuta en bases desechables; no cambiar la base compartida.
-- Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. Trivy `aquasec/trivy:0.70.0`; `trivy-action@v0.36.0`.
+- Backend con venv `/tmp/opencode/bc-t007-venv`; frontend con Node 24.11 y pnpm 12.12.1 en `/tmp/opencode`; PostgreSQL 18 local en `/tmp/opencode/pgdata` (127.0.0.1:5432).
+- `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`), no a `postgres`: los tests de seed/fotos hacen `SET LOCAL ROLE bracket_app` sobre ella.
+- Docker daemon no disponible: `docker compose config` funciona (cliente) pero no se ejecutan contenedores ni Trivy. `pip-audit -r` falla por `ensurepip` ausente; `pip-audit --local` sí audita el venv.
+- Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
 
 ## Pendiente
-- Spec 006: solo desplegar las migraciones **019** y **020** en el entorno real (código nuevo primero); no hay pendientes de código ni de CI.
+- Spec 007: T013 pendiente de CI en `main` y revisión humana. Desplegar la **021 antes** del código.
+- Spec 006: desplegar las migraciones **019** y **020** (código nuevo primero).
 - Cerrar 005 en `main` (CI + revisión humana).
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.
