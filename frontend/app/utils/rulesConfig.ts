@@ -1,5 +1,9 @@
-export const RULES_SCHEMA_VERSION = '3.2.0';
+export const RULES_SCHEMA_VERSION = '3.3.0';
+export const SUPPORTED_RULES_SCHEMA_VERSIONS = ['3.2.0', '3.3.0'] as const;
 export const RULES_ENGINE_VERSION = '2026.1';
+
+export const DEFAULT_REGULAR_TIME_MINUTES = 90;
+export const DEFAULT_EXTRA_TIME_MINUTES = 120;
 
 export const RANKING_CRITERIA = [
   'points',
@@ -43,12 +47,6 @@ export interface DisciplineRules {
   };
 }
 
-export interface TransferRules {
-  allow_mid_season_transfers: boolean;
-  same_matchday_participation_allowed: boolean;
-  roster_lock_matchday: number | null;
-}
-
 export interface WalkoverScore {
   winner: number;
   loser: number;
@@ -57,12 +55,22 @@ export interface WalkoverScore {
 export interface StageResolutionRules {
   extra_time_enabled: boolean;
   penalties_enabled: boolean;
+  regular_time_minutes: number;
+  extra_time_minutes?: number;
   walkover_score: WalkoverScore;
 }
 
 export type StageOverride = Partial<StageResolutionRules> & {
   walkover_score?: WalkoverScore;
 };
+
+export interface EffectiveStageRules {
+  extra_time_enabled: boolean;
+  penalties_enabled: boolean;
+  regular_time_minutes: number;
+  extra_time_minutes: number;
+  walkover_score: WalkoverScore;
+}
 
 export interface RulesConfig {
   schema_version: string;
@@ -71,7 +79,7 @@ export interface RulesConfig {
   ranking_pipeline: RankingPipelineItem[];
   substitutions: SubstitutionRules;
   discipline: DisciplineRules;
-  transfers: TransferRules;
+  roster_lock_matchday: number | null;
   stage_defaults: StageResolutionRules;
   stage_overrides: Record<string, StageOverride>;
 }
@@ -99,6 +107,7 @@ export type RulesValidationErrorCode =
   | 'integer_field'
   | 'boolean_field'
   | 'walkover_score'
+  | 'minutes_pair'
   | 'section'
   | 'invalid_json';
 
@@ -120,6 +129,7 @@ export const RULES_VALIDATION_MESSAGE_KEYS: Record<RulesValidationErrorCode, str
   integer_field: 'rules.error.integerField',
   boolean_field: 'rules.error.booleanField',
   walkover_score: 'rules.error.walkoverScore',
+  minutes_pair: 'rules.error.minutesPair',
   section: 'rules.error.section',
   invalid_json: 'rules.error.invalidJson',
 };
@@ -143,14 +153,12 @@ export const DEFAULT_RULES_CONFIG: RulesConfig = {
     clear_yellows_on_stage_change: true,
     fair_play_penalties: { yellow_card: 1, double_yellow_red: 3, direct_red: 3 },
   },
-  transfers: {
-    allow_mid_season_transfers: true,
-    same_matchday_participation_allowed: false,
-    roster_lock_matchday: null,
-  },
+  roster_lock_matchday: null,
   stage_defaults: {
     extra_time_enabled: false,
     penalties_enabled: false,
+    regular_time_minutes: DEFAULT_REGULAR_TIME_MINUTES,
+    extra_time_minutes: DEFAULT_EXTRA_TIME_MINUTES,
     walkover_score: { winner: 3, loser: 0 },
   },
   stage_overrides: {},
@@ -163,6 +171,7 @@ const RULES_PROPERTY_NAMES = [
   'ranking_pipeline',
   'substitutions',
   'discipline',
+  'roster_lock_matchday',
   'transfers',
   'stage_defaults',
   'stage_overrides',
@@ -192,10 +201,6 @@ function normalizePositiveInteger(value: unknown, fallback: number): number {
   return isPositiveInteger(value) ? value : fallback;
 }
 
-function normalizeNullablePositiveInteger(value: unknown, fallback: number | null): number | null {
-  return isPositiveInteger(value) ? value : fallback;
-}
-
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
@@ -205,6 +210,26 @@ function normalizeWalkoverScore(value: unknown, fallback: WalkoverScore): Walkov
   return {
     winner: normalizeNonNegativeInteger(source.winner, fallback.winner),
     loser: normalizeNonNegativeInteger(source.loser, fallback.loser),
+  };
+}
+
+function normalizeStageDefaults(value: unknown): StageResolutionRules {
+  const source = isRecord(value) ? value : {};
+  const fallback = DEFAULT_RULES_CONFIG.stage_defaults;
+  const extraTimeEnabled = normalizeBoolean(source.extra_time_enabled, fallback.extra_time_enabled);
+  const regular = isInteger(source.regular_time_minutes)
+    ? source.regular_time_minutes
+    : DEFAULT_REGULAR_TIME_MINUTES;
+  const extra = isInteger(source.extra_time_minutes)
+    ? source.extra_time_minutes
+    : (extraTimeEnabled && regular < DEFAULT_EXTRA_TIME_MINUTES ? DEFAULT_EXTRA_TIME_MINUTES : undefined);
+
+  return {
+    extra_time_enabled: extraTimeEnabled,
+    penalties_enabled: normalizeBoolean(source.penalties_enabled, fallback.penalties_enabled),
+    regular_time_minutes: regular,
+    ...(extra === undefined ? {} : { extra_time_minutes: extra }),
+    walkover_score: normalizeWalkoverScore(source.walkover_score, fallback.walkover_score),
   };
 }
 
@@ -230,6 +255,8 @@ function normalizeStageOverrides(value: unknown): Record<string, StageOverride> 
     const override: StageOverride = {};
     if (typeof rawOverride.extra_time_enabled === 'boolean') override.extra_time_enabled = rawOverride.extra_time_enabled;
     if (typeof rawOverride.penalties_enabled === 'boolean') override.penalties_enabled = rawOverride.penalties_enabled;
+    if (isInteger(rawOverride.regular_time_minutes)) override.regular_time_minutes = rawOverride.regular_time_minutes;
+    if (isInteger(rawOverride.extra_time_minutes)) override.extra_time_minutes = rawOverride.extra_time_minutes;
     if (isRecord(rawOverride.walkover_score)) {
       override.walkover_score = normalizeWalkoverScore(rawOverride.walkover_score, DEFAULT_RULES_CONFIG.stage_defaults.walkover_score);
     }
@@ -249,6 +276,10 @@ function reportUnknownProperties(
   }
 }
 
+export function normalizeRosterLockMatchday(value: unknown): number | null {
+  return isPositiveInteger(value) ? value : null;
+}
+
 export function normalizeRulesConfig(value: unknown): RulesConfig {
   const source = isRecord(value) ? value : {};
   const points = isRecord(source.points_system) ? source.points_system : {};
@@ -256,10 +287,11 @@ export function normalizeRulesConfig(value: unknown): RulesConfig {
   const discipline = isRecord(source.discipline) ? source.discipline : {};
   const fairPlay = isRecord(discipline.fair_play_penalties) ? discipline.fair_play_penalties : {};
   const transfers = isRecord(source.transfers) ? source.transfers : {};
-  const stageDefaults = isRecord(source.stage_defaults) ? source.stage_defaults : {};
+  const rosterLockMatchday = normalizeRosterLockMatchday(source.roster_lock_matchday)
+    ?? normalizeRosterLockMatchday(transfers.roster_lock_matchday);
 
   return {
-    schema_version: typeof source.schema_version === 'string' ? source.schema_version : RULES_SCHEMA_VERSION,
+    schema_version: RULES_SCHEMA_VERSION,
     engine_version: typeof source.engine_version === 'string' ? source.engine_version : RULES_ENGINE_VERSION,
     points_system: {
       win: normalizeNonNegativeInteger(points.win, DEFAULT_RULES_CONFIG.points_system.win),
@@ -295,26 +327,21 @@ export function normalizeRulesConfig(value: unknown): RulesConfig {
         direct_red: normalizeNonNegativeInteger(fairPlay.direct_red, DEFAULT_RULES_CONFIG.discipline.fair_play_penalties.direct_red),
       },
     },
-    transfers: {
-      allow_mid_season_transfers: normalizeBoolean(
-        transfers.allow_mid_season_transfers,
-        DEFAULT_RULES_CONFIG.transfers.allow_mid_season_transfers,
-      ),
-      same_matchday_participation_allowed: normalizeBoolean(
-        transfers.same_matchday_participation_allowed,
-        DEFAULT_RULES_CONFIG.transfers.same_matchday_participation_allowed,
-      ),
-      roster_lock_matchday: normalizeNullablePositiveInteger(
-        transfers.roster_lock_matchday,
-        DEFAULT_RULES_CONFIG.transfers.roster_lock_matchday,
-      ),
-    },
-    stage_defaults: {
-      extra_time_enabled: normalizeBoolean(stageDefaults.extra_time_enabled, DEFAULT_RULES_CONFIG.stage_defaults.extra_time_enabled),
-      penalties_enabled: normalizeBoolean(stageDefaults.penalties_enabled, DEFAULT_RULES_CONFIG.stage_defaults.penalties_enabled),
-      walkover_score: normalizeWalkoverScore(stageDefaults.walkover_score, DEFAULT_RULES_CONFIG.stage_defaults.walkover_score),
-    },
+    roster_lock_matchday: rosterLockMatchday,
+    stage_defaults: normalizeStageDefaults(source.stage_defaults),
     stage_overrides: normalizeStageOverrides(source.stage_overrides),
+  };
+}
+
+export function effectiveStageRules(config: RulesConfig, stageId?: string | null): EffectiveStageRules {
+  const defaults = config.stage_defaults;
+  const override = stageId ? config.stage_overrides?.[stageId] : undefined;
+  return {
+    extra_time_enabled: override?.extra_time_enabled ?? defaults.extra_time_enabled,
+    penalties_enabled: override?.penalties_enabled ?? defaults.penalties_enabled,
+    regular_time_minutes: override?.regular_time_minutes ?? defaults.regular_time_minutes ?? DEFAULT_REGULAR_TIME_MINUTES,
+    extra_time_minutes: override?.extra_time_minutes ?? defaults.extra_time_minutes ?? DEFAULT_EXTRA_TIME_MINUTES,
+    walkover_score: override?.walkover_score ?? defaults.walkover_score,
   };
 }
 
@@ -346,8 +373,17 @@ export function validateRulesConfig(value: unknown): RulesValidationError[] {
   for (const key of Object.keys(value)) {
     if (!(RULES_PROPERTY_NAMES as readonly string[]).includes(key)) errors.push({ code: 'unknown_property', path: key });
   }
-  if (value.schema_version !== RULES_SCHEMA_VERSION) errors.push({ code: 'schema_version', path: 'schema_version' });
+  if (!(SUPPORTED_RULES_SCHEMA_VERSIONS as readonly unknown[]).includes(value.schema_version)) {
+    errors.push({ code: 'schema_version', path: 'schema_version' });
+  }
   if (value.engine_version !== RULES_ENGINE_VERSION) errors.push({ code: 'engine_version', path: 'engine_version' });
+
+  const rosterLockMatchday = value.roster_lock_matchday === '' ? null : value.roster_lock_matchday;
+  if (rosterLockMatchday !== undefined
+    && rosterLockMatchday !== null
+    && !isPositiveInteger(rosterLockMatchday)) {
+    errors.push({ code: 'integer_field', path: 'roster_lock_matchday' });
+  }
 
   const points = value.points_system;
   if (!isRecord(points)) {
@@ -388,14 +424,16 @@ export function validateRulesConfig(value: unknown): RulesValidationError[] {
   }
 
   const substitutions = value.substitutions;
-  if (!isRecord(substitutions)) {
-    errors.push({ code: 'section', path: 'substitutions' });
-  } else {
-    reportUnknownProperties(substitutions, ['max_per_team', 'max_windows', 'allow_reentry'], 'substitutions', errors);
-    for (const field of ['max_per_team', 'max_windows']) {
-      if (!isNonNegativeInteger(substitutions[field])) errors.push({ code: 'integer_field', path: `substitutions.${field}` });
+  if (substitutions !== undefined) {
+    if (!isRecord(substitutions)) {
+      errors.push({ code: 'section', path: 'substitutions' });
+    } else {
+      reportUnknownProperties(substitutions, ['max_per_team', 'max_windows', 'allow_reentry'], 'substitutions', errors);
+      for (const field of ['max_per_team', 'max_windows']) {
+        if (!isNonNegativeInteger(substitutions[field])) errors.push({ code: 'integer_field', path: `substitutions.${field}` });
+      }
+      if (typeof substitutions.allow_reentry !== 'boolean') errors.push({ code: 'boolean_field', path: 'substitutions.allow_reentry' });
     }
-    if (typeof substitutions.allow_reentry !== 'boolean') errors.push({ code: 'boolean_field', path: 'substitutions.allow_reentry' });
   }
 
   const discipline = value.discipline;
@@ -423,22 +461,9 @@ export function validateRulesConfig(value: unknown): RulesValidationError[] {
     }
   }
 
-  const transfers = value.transfers;
-  if (!isRecord(transfers)) {
+  // Deprecated block: accepted and ignored. It is never emitted again.
+  if (value.transfers !== undefined && !isRecord(value.transfers)) {
     errors.push({ code: 'section', path: 'transfers' });
-  } else {
-    reportUnknownProperties(
-      transfers,
-      ['allow_mid_season_transfers', 'same_matchday_participation_allowed', 'roster_lock_matchday'],
-      'transfers',
-      errors,
-    );
-    for (const field of ['allow_mid_season_transfers', 'same_matchday_participation_allowed']) {
-      if (typeof transfers[field] !== 'boolean') errors.push({ code: 'boolean_field', path: `transfers.${field}` });
-    }
-    if (transfers.roster_lock_matchday !== null && !isPositiveInteger(transfers.roster_lock_matchday)) {
-      errors.push({ code: 'integer_field', path: 'transfers.roster_lock_matchday' });
-    }
   }
 
   validateStageResolutionSection(value.stage_defaults, 'stage_defaults', errors);
@@ -451,9 +476,11 @@ export function validateRulesConfig(value: unknown): RulesValidationError[] {
         errors.push({ code: 'section', path: `stage_overrides.${stageId}` });
         continue;
       }
-      reportUnknownProperties(override, ['extra_time_enabled', 'penalties_enabled', 'walkover_score'], `stage_overrides.${stageId}`, errors);
+      reportUnknownProperties(override, STAGE_RESOLUTION_PROPERTIES, `stage_overrides.${stageId}`, errors);
       if ('extra_time_enabled' in override && typeof override.extra_time_enabled !== 'boolean') errors.push({ code: 'boolean_field', path: `stage_overrides.${stageId}.extra_time_enabled` });
       if ('penalties_enabled' in override && typeof override.penalties_enabled !== 'boolean') errors.push({ code: 'boolean_field', path: `stage_overrides.${stageId}.penalties_enabled` });
+      validateMinutesFields(override, `stage_overrides.${stageId}`, errors);
+      validateOverrideMinutes(value.stage_defaults, override, `stage_overrides.${stageId}`, errors);
       if ('walkover_score' in override) validateWalkoverScore(override.walkover_score, `stage_overrides.${stageId}.walkover_score`, errors);
     }
   }
@@ -469,14 +496,84 @@ function validateWalkoverScore(value: unknown, path: string, errors: RulesValida
   reportUnknownProperties(value, ['winner', 'loser'], path, errors);
 }
 
+const STAGE_RESOLUTION_PROPERTIES = [
+  'extra_time_enabled',
+  'penalties_enabled',
+  'regular_time_minutes',
+  'extra_time_minutes',
+  'walkover_score',
+] as const;
+
+function isRegularMinutes(value: unknown): value is number {
+  return isInteger(value) && value >= 1 && value <= 179;
+}
+
+function declaredMinutes(
+  value: Record<string, any>,
+  fallback: { enabled: boolean; regular: number; extra: number },
+): { enabled: boolean; regular: number; extra: number } {
+  return {
+    enabled: typeof value.extra_time_enabled === 'boolean' ? value.extra_time_enabled : fallback.enabled,
+    regular: isInteger(value.regular_time_minutes) ? value.regular_time_minutes : fallback.regular,
+    extra: isInteger(value.extra_time_minutes) ? value.extra_time_minutes : fallback.extra,
+  };
+}
+
+function validateMinutesFields(value: Record<string, any>, path: string, errors: RulesValidationError[]) {
+  if ('regular_time_minutes' in value && !isRegularMinutes(value.regular_time_minutes)) {
+    errors.push({ code: 'integer_field', path: `${path}.regular_time_minutes` });
+  }
+  if ('extra_time_minutes' in value && !isInteger(value.extra_time_minutes)) {
+    errors.push({ code: 'integer_field', path: `${path}.extra_time_minutes` });
+  }
+}
+
+function validateMinutesPair(
+  minutes: { enabled: boolean; regular: number; extra: number },
+  path: string,
+  errors: RulesValidationError[],
+) {
+  if (!minutes.enabled) return;
+  if (!(minutes.regular < minutes.extra && minutes.extra <= 180)) {
+    errors.push({ code: 'minutes_pair', path: `${path}.extra_time_minutes` });
+  }
+}
+
+function baseMinutes(stageDefaults: unknown) {
+  const value = isRecord(stageDefaults) ? stageDefaults : {};
+  return {
+    enabled: value.extra_time_enabled === true,
+    regular: isRegularMinutes(value.regular_time_minutes) ? value.regular_time_minutes : DEFAULT_REGULAR_TIME_MINUTES,
+    extra: isInteger(value.extra_time_minutes) ? value.extra_time_minutes : DEFAULT_EXTRA_TIME_MINUTES,
+  };
+}
+
+function validateOverrideMinutes(
+  stageDefaults: unknown,
+  override: Record<string, any>,
+  path: string,
+  errors: RulesValidationError[],
+) {
+  const merged = declaredMinutes(override, baseMinutes(stageDefaults));
+  const regularIsValid = !('regular_time_minutes' in override) || isRegularMinutes(override.regular_time_minutes);
+  const extraIsValid = !('extra_time_minutes' in override) || isInteger(override.extra_time_minutes);
+  if (regularIsValid && extraIsValid) validateMinutesPair(merged, path, errors);
+}
+
 function validateStageResolutionSection(value: unknown, path: string, errors: RulesValidationError[]) {
   if (!isRecord(value)) {
     errors.push({ code: 'section', path });
     return;
   }
-  reportUnknownProperties(value, ['extra_time_enabled', 'penalties_enabled', 'walkover_score'], path, errors);
+  reportUnknownProperties(value, STAGE_RESOLUTION_PROPERTIES, path, errors);
   if (typeof value.extra_time_enabled !== 'boolean') errors.push({ code: 'boolean_field', path: `${path}.extra_time_enabled` });
   if (typeof value.penalties_enabled !== 'boolean') errors.push({ code: 'boolean_field', path: `${path}.penalties_enabled` });
+  validateMinutesFields(value, path, errors);
+  const regularIsValid = !('regular_time_minutes' in value) || isRegularMinutes(value.regular_time_minutes);
+  const extraIsValid = !('extra_time_minutes' in value) || isInteger(value.extra_time_minutes);
+  if (regularIsValid && extraIsValid) {
+    validateMinutesPair(declaredMinutes(value, baseMinutes(value)), path, errors);
+  }
   validateWalkoverScore(value.walkover_score, `${path}.walkover_score`, errors);
 }
 
@@ -503,5 +600,5 @@ export function serializeRulesConfig(config: RulesConfig): string {
 }
 
 export function buildRulesRequest(config: RulesConfig): { rules_config: Record<string, unknown> } {
-  return { rules_config: cloneRulesConfig(config) as unknown as Record<string, unknown> };
+  return { rules_config: normalizeRulesConfig(config) as unknown as Record<string, unknown> };
 }

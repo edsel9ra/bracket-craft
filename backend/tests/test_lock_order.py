@@ -445,7 +445,7 @@ class CloseSession(RecordingSession):
                     {"target_match_id": TARGET_LOW},
                 ]
             )
-        if "bracket_code = 'GF2'" in sql:
+        if "bracket_code = :reset_code" in sql:
             return Result(rows=[{"id": RESET_ID}])
         if "id = ANY(CAST(:match_ids AS uuid[]))" in sql:
             ids = sorted(UUID(match_id) for match_id in params["match_ids"])
@@ -499,8 +499,9 @@ async def test_close_locks_source_and_destinations_by_id_before_persisting_event
     service._load_match_segments = no_segments
     service._validate_suspensions = no_suspensions
     service._validate_rosters = lambda match, rosters: None
-    service._validate_segments = lambda dto, segments: None
-    service._validate_event_score_consistency = lambda dto, home, away: None
+    service._validate_segments = lambda *args, **kwargs: None
+    service._validate_substitutions = lambda dto, match, rosters, limits: None
+    service._validate_event_score_consistency = lambda *args, **kwargs: None
     service._persist_events = stop_before_writing
 
     dto = SimpleNamespace(resolution_type="regular", events=[])
@@ -555,7 +556,7 @@ async def test_advancement_reset_does_not_lock_gf2_again():
     def handle(sql, params):
         if "set_config" in sql:
             return Result()
-        if "bracket_code = 'GF2'" in sql:
+        if "bracket_code = :reset_code" in sql:
             return Result(rows=[{"id": RESET_ID}])
         if sql.startswith("UPDATE matches"):
             return Result(rowcount=1)
@@ -745,7 +746,7 @@ async def test_gf2_target_is_included_even_when_it_is_not_cancelled():
     def handle(sql, params):
         if "FROM advancement_links" in sql:
             return Result(rows=[])
-        if "bracket_code = 'GF2'" in sql:
+        if "bracket_code = :reset_code" in sql:
             return Result(rows=[{"id": RESET_ID}])
         raise StopExecution(sql)
 
@@ -762,5 +763,5 @@ async def test_gf2_target_is_included_even_when_it_is_not_cancelled():
     )
 
     assert targets == (RESET_ID,)
-    gf2_sql = next(sql for sql in session.statements if "bracket_code = 'GF2'" in sql)
+    gf2_sql = next(sql for sql in session.statements if "bracket_code = :reset_code" in sql)
     assert "status = 'cancelled'" not in gf2_sql

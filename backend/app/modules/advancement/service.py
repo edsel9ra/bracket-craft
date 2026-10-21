@@ -4,6 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.locking import lock_matches
+from app.modules.rule_contract import GRAND_FINAL_CODE, RESET_CODE
 
 
 class AdvancementService:
@@ -34,7 +35,7 @@ class AdvancementService:
         )
         targets = [row["target_match_id"] for row in links_result.mappings().all()]
 
-        if match.get("bracket_code") == "GF1":
+        if match.get("bracket_code") == GRAND_FINAL_CODE:
             reset_result = await self.db.execute(
                 text("""
                     SELECT id
@@ -43,7 +44,7 @@ class AdvancementService:
                       AND tournament_id = :tournament_id
                       AND tournament_version_id = :version_id
                       AND stage_id = :stage_id
-                      AND bracket_code = 'GF2'
+                      AND bracket_code = :reset_code
                     ORDER BY id
                 """),
                 {
@@ -51,6 +52,7 @@ class AdvancementService:
                     "tournament_id": str(match["tournament_id"]),
                     "version_id": str(match["tournament_version_id"]),
                     "stage_id": str(match["stage_id"]),
+                    "reset_code": RESET_CODE,
                 },
             )
             targets.extend(row["id"] for row in reset_result.mappings().all())
@@ -113,7 +115,7 @@ class AdvancementService:
 
     async def activate_double_elimination_reset(self, context, match, outcome) -> None:
         """Activate GF2 only when the losers-bracket finalist wins GF1."""
-        if match.get("bracket_code") != "GF1" or outcome.winner_team_id != match.get("away_team_id"):
+        if match.get("bracket_code") != GRAND_FINAL_CODE or outcome.winner_team_id != match.get("away_team_id"):
             return
 
         reset_result = await self.db.execute(
@@ -124,7 +126,7 @@ class AdvancementService:
                   AND tournament_id = :tournament_id
                   AND tournament_version_id = :version_id
                   AND stage_id = :stage_id
-                  AND bracket_code = 'GF2'
+                  AND bracket_code = :reset_code
                   AND status = 'cancelled'
             """),
             {
@@ -132,6 +134,7 @@ class AdvancementService:
                 "tournament_id": str(match["tournament_id"]),
                 "version_id": str(match["tournament_version_id"]),
                 "stage_id": str(match["stage_id"]),
+                "reset_code": RESET_CODE,
             },
         )
         reset = reset_result.mappings().one_or_none()

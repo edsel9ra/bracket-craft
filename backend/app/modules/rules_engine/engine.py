@@ -7,18 +7,40 @@ from uuid import UUID
 
 from jsonschema import Draft7Validator
 
-from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
+from app.modules.rules_engine.defaults import (
+    DEFAULT_EXTRA_TIME_MINUTES,
+    DEFAULT_REGULAR_TIME_MINUTES,
+    DEFAULT_STAGE_RULES,
+    DEFAULT_SUBSTITUTIONS,
+)
+
+
+# RF-005: single source of truth for the top-level `rules_config` keys.
+# Every key of ``RULES_SCHEMA["properties"]`` must be classified here as
+# either applied or deprecated (``transfers``).
+APPLIED_RULE_KEYS = frozenset({
+    "schema_version",
+    "engine_version",
+    "points_system",
+    "ranking_pipeline",
+    "substitutions",
+    "discipline",
+    "roster_lock_matchday",
+    "stage_defaults",
+    "stage_overrides",
+})
+DEPRECATED_RULE_KEYS = frozenset({"transfers"})
 
 
 RULES_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": [
         "schema_version", "engine_version", "points_system", "ranking_pipeline",
-        "substitutions", "discipline", "transfers", "stage_defaults", "stage_overrides",
+        "discipline", "stage_defaults", "stage_overrides",
     ],
     "additionalProperties": False,
     "properties": {
-        "schema_version": {"const": "3.2.0"},
+        "schema_version": {"enum": ["3.2.0", "3.3.0"]},
         "engine_version": {"const": "2026.1"},
         "points_system": {
             "type": "object",
@@ -85,18 +107,10 @@ RULES_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "roster_lock_matchday": {"type": ["integer", "null"], "minimum": 1},
         "transfers": {
+            # Deprecated block: accepted and ignored, never written back.
             "type": "object",
-            "required": [
-                "allow_mid_season_transfers", "same_matchday_participation_allowed",
-                "roster_lock_matchday",
-            ],
-            "additionalProperties": False,
-            "properties": {
-                "allow_mid_season_transfers": {"type": "boolean"},
-                "same_matchday_participation_allowed": {"type": "boolean"},
-                "roster_lock_matchday": {"type": ["integer", "null"], "minimum": 1},
-            },
         },
         "stage_defaults": {
             "type": "object",
@@ -105,6 +119,8 @@ RULES_SCHEMA: dict[str, Any] = {
             "properties": {
                 "extra_time_enabled": {"type": "boolean"},
                 "penalties_enabled": {"type": "boolean"},
+                "regular_time_minutes": {"type": "integer", "minimum": 1, "maximum": 179},
+                "extra_time_minutes": {"type": "integer"},
                 "walkover_score": {
                     "type": "object",
                     "required": ["winner", "loser"],
@@ -124,6 +140,8 @@ RULES_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "extra_time_enabled": {"type": "boolean"},
                     "penalties_enabled": {"type": "boolean"},
+                    "regular_time_minutes": {"type": "integer", "minimum": 1, "maximum": 179},
+                    "extra_time_minutes": {"type": "integer"},
                     "walkover_score": {
                         "type": "object",
                         "required": ["winner", "loser"],
@@ -140,10 +158,104 @@ RULES_SCHEMA: dict[str, Any] = {
 }
 
 
+def effective_substitutions(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the applied substitution limits, with read-time defaults."""
+    declared = config.get("substitutions") or {}
+    return {**deepcopy(DEFAULT_SUBSTITUTIONS), **deepcopy(dict(declared))}
+
+
+def effective_roster_lock_matchday(config: Mapping[str, Any]) -> int | None:
+    """Return the top-level matchday lock, falling back to the deprecated block."""
+    top_level = config.get("roster_lock_matchday")
+    if top_level is not None:
+        return top_level
+    transfers = config.get("transfers")
+    if isinstance(transfers, Mapping):
+        return transfers.get("roster_lock_matchday")
+    return None
+
+
+def _merged_stage_rules(
+    config: Mapping[str, Any],
+    override: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    effective = deepcopy(DEFAULT_STAGE_RULES)
+    effective.update(deepcopy(dict(config.get("stage_defaults") or {})))
+    if override:
+        effective.update(deepcopy(dict(override)))
+    return effective
+
+
+def effective_stage_rules(config: Mapping[str, Any], stage_id: UUID | str | None) -> dict[str, Any]:
+    """Resolve stage minutes/flags key by key: defaults, stage_defaults, override."""
+    overrides = config.get("stage_overrides") or {}
+    override = overrides.get(str(stage_id)) if stage_id is not None else None
+    return _merged_stage_rules(config, override)
+
+
+def _validate_stage_minutes(scope: str, effective: Mapping[str, Any]) -> None:
+    regular = effective.get("regular_time_minutes")
+    if type(regular) is not int or not 1 <= regular <= 179:
+        raise ValueError(
+            f"{scope}: regular_time_minutes debe estar entre 1 y 179 "
+            f"(par {regular}/{effective.get('extra_time_minutes')})"
+        )
+    if effective.get("extra_time_enabled"):
+        extra = effective.get("extra_time_minutes")
+        if type(extra) is not int or not regular < extra <= 180:
+            raise ValueError(
+                f"{scope}: extra_time_minutes debe ser mayor que regular_time_minutes "
+                f"y menor o igual a 180 (par {regular}/{extra})"
+            )
+
+
+def validate_effective_rules(config: Mapping[str, Any]) -> None:
+    """Validate the effective minutes pair for stage defaults and every override."""
+    _validate_stage_minutes("stage_defaults", _merged_stage_rules(config))
+    for stage_id, override in (config.get("stage_overrides") or {}).items():
+        _validate_stage_minutes(f"stage_id {stage_id}", _merged_stage_rules(config, override))
+
+
+def normalize_rules_config(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Emit a 3.3.0 config: explicit substitutions, promoted lock, no transfers."""
+    config = deepcopy(dict(raw))
+
+    declared_substitutions = config.get("substitutions")
+    config["substitutions"] = {
+        **deepcopy(DEFAULT_SUBSTITUTIONS),
+        **deepcopy(dict(declared_substitutions or {})),
+    }
+
+    inherited_lock = None
+    transfers = config.get("transfers")
+    if isinstance(transfers, Mapping):
+        inherited_lock = transfers.get("roster_lock_matchday")
+    if config.get("roster_lock_matchday") is None and inherited_lock is not None:
+        config["roster_lock_matchday"] = inherited_lock
+    config.setdefault("roster_lock_matchday", None)
+    config.pop("transfers", None)
+
+    config["schema_version"] = "3.3.0"
+    config["stage_defaults"] = dict(config.get("stage_defaults") or {})
+
+    # Validate the effective pair before materializing any default.
+    validate_rules_config(config)
+
+    stage_defaults = config["stage_defaults"]
+    stage_defaults.setdefault("regular_time_minutes", DEFAULT_REGULAR_TIME_MINUTES)
+    if stage_defaults.get("extra_time_enabled"):
+        stage_defaults.setdefault("extra_time_minutes", DEFAULT_EXTRA_TIME_MINUTES)
+    return config
+
+
 def validate_rules_config(config: dict[str, Any]) -> None:
     errors = sorted(Draft7Validator(RULES_SCHEMA).iter_errors(config), key=lambda error: list(error.path))
     if errors:
-        raise ValueError("Configuración de reglas inválida: " + "; ".join(error.message for error in errors))
+        details = []
+        for error in errors:
+            path = ".".join(str(part) for part in error.path)
+            details.append(f"{path}: {error.message}" if path else error.message)
+        raise ValueError("Configuración de reglas inválida: " + "; ".join(details))
 
     pipeline = config["ranking_pipeline"]
     steps = [item["step"] for item in pipeline]
@@ -162,6 +274,8 @@ def validate_rules_config(config: dict[str, Any]) -> None:
             rounds_expected = item["params"].get("total_rounds_expected")
             if type(rounds_expected) is not int or rounds_expected not in {1, 2}:
                 raise ValueError("head_to_head requiere total_rounds_expected igual a 1 o 2")
+
+    validate_effective_rules(config)
 
 
 def remap_stage_overrides(

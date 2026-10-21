@@ -27,7 +27,22 @@ from app.modules.matches.schemas import (
     SaveMatchLineupRequest,
 )
 from app.modules.matches.formations import FORMATION_SLOTS
-from app.modules.matches.service import CloseMatchReportService
+from app.modules.matches.service import (
+    NO_LIMITS_NOTICE,
+    CloseMatchReportService,
+    effective_match_minutes,
+    ensure_segment_team_state,
+    replay_report_state,
+    roster_entries,
+)
+from app.modules.rules_engine.engine import effective_substitutions
+from app.modules.rules_engine.substitutions import (
+    MatchEvent,
+    SubstitutionError,
+    SubstitutionLimits,
+    remaining_limits,
+    team_usage,
+)
 
 
 router = APIRouter(prefix="/matches", tags=["matches"])
@@ -157,6 +172,89 @@ async def _load_match_tactical_lineups(
     return [dict(row) for row in result.mappings().all()]
 
 
+def _build_operation_limits(match: dict[str, Any]) -> dict[str, Any]:
+    """Effective minutes of the stage, so the client never guesses the cap."""
+
+    minutes = effective_match_minutes(
+        match.get("rules_config") or {},
+        match.get("stage_id"),
+    )
+    return {
+        "regular_time_minutes": minutes["regular_time_minutes"],
+        "extra_time_minutes": minutes["extra_time_minutes"],
+        "max_minute": minutes["max_minute"],
+        "added_minute_max": minutes["added_minute_max"],
+    }
+
+
+def _build_operation_substitutions(
+    match: dict[str, Any],
+    lineup: list[dict[str, Any]],
+    event_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Effective substitution config plus state and counters per team.
+
+    Computed with the same pure functions the closing service uses, so the
+    operation screen never reimplements the on-field rules. It only reads.
+    """
+
+    limits = SubstitutionLimits.from_config(
+        effective_substitutions(match.get("rules_config") or {})
+    )
+    participants = [
+        team_id
+        for team_id in (match.get("home_team_id"), match.get("away_team_id"))
+        if team_id is not None
+    ]
+    entries = roster_entries(lineup)
+    events = [
+        MatchEvent.from_mapping(row, index=index)
+        for index, row in enumerate(event_rows)
+    ]
+
+    teams: list[dict[str, Any]] = []
+    for team_id in participants:
+        team_events = [event for event in events if event.team_id == team_id]
+        balance = remaining_limits(limits, team_usage(team_events, team_id))
+        try:
+            state = replay_report_state(
+                entries, team_events, (team_id,), limits
+            ).states[team_id]
+        except SubstitutionError as error:
+            on_field: list[Any] = []
+            bench: list[Any] = []
+            can_register = False
+            reason: str | None = str(error)
+        else:
+            on_field = sorted(state.on_field, key=str)
+            bench = sorted(state.bench(), key=str)
+            can_register = not balance.is_exhausted
+            reason = None if can_register else NO_LIMITS_NOTICE
+        teams.append(
+            {
+                "team_id": team_id,
+                "on_field": on_field,
+                "bench": bench,
+                "substitutions_used": balance.substitutions_used,
+                "substitutions_remaining": balance.substitutions_remaining,
+                "windows_used": balance.windows_used,
+                "windows_remaining": balance.windows_remaining,
+                "max_per_team": limits.max_per_team,
+                "max_windows": limits.max_windows,
+                "allow_reentry": limits.allow_reentry,
+                "can_register": can_register,
+                "reason": reason,
+            }
+        )
+
+    return {
+        "max_per_team": limits.max_per_team,
+        "max_windows": limits.max_windows,
+        "allow_reentry": limits.allow_reentry,
+        "teams": teams,
+    }
+
+
 @router.post("/{match_id}/close", response_model=MatchCloseResponse)
 async def close_match(
     match_id: UUID,
@@ -272,6 +370,7 @@ async def get_match_operation(
             text("""
                 SELECT me.id, me.client_event_id, me.event_type, me.team_id,
                        t.name AS team_name, me.beneficiary_team_id, me.player_id,
+                       me.player_out_id, me.player_in_id,
                        p.first_name, p.last_name, me.minute, me.added_minute,
                        me.segment_id, me.metadata, me.is_voided, me.created_at
                 FROM match_events me
@@ -284,6 +383,7 @@ async def get_match_operation(
         )
         lineup = await _load_match_lineup(db, context.organization_id, match_id)
         tactical_lineups = await _load_match_tactical_lineups(db, context.organization_id, match_id)
+        event_rows = [dict(row) for row in event_result.mappings().all()]
 
     return {
         "match": match,
@@ -294,7 +394,9 @@ async def get_match_operation(
         "rosters": [dict(row) for row in roster_result.mappings().all()],
         "lineup": lineup,
         "tactical_lineups": tactical_lineups,
-        "events": [dict(row) for row in event_result.mappings().all()],
+        "events": event_rows,
+        "substitutions": _build_operation_substitutions(match, lineup, event_rows),
+        "limits": _build_operation_limits(match),
     }
 
 
@@ -310,6 +412,15 @@ async def create_match_segment(
         match = await _load_operation_match(db, context, match_id)
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite nuevos segmentos")
+        maximum_minute = effective_match_minutes(
+            match.get("rules_config") or {},
+            match.get("stage_id"),
+        )["max_minute"]
+        if payload.minute_start > maximum_minute:
+            raise HTTPException(
+                status_code=422,
+                detail=f"El segmento excede el máximo de {maximum_minute} minutos",
+            )
         try:
             latest_result = await db.execute(
                 text("""
@@ -372,7 +483,24 @@ async def create_match_segment(
             )
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="El número de segmento ya existe para este partido") from exc
-        return dict(result.mappings().one())
+        segment = dict(result.mappings().one())
+        limits = SubstitutionLimits.from_config(
+            effective_substitutions(match.get("rules_config") or {})
+        )
+        present_teams = [
+            team_id
+            for team_id in (match["home_team_id"], match["away_team_id"])
+            if team_id is not None
+        ]
+        await ensure_segment_team_state(
+            db,
+            context.organization_id,
+            match_id,
+            segment["id"],
+            present_teams,
+            limits,
+        )
+        return segment
 
 
 @router.post("/{match_id}/segments/{segment_id}/interrupt", response_model=MatchSegmentInterruptionResponse, status_code=status.HTTP_201_CREATED)
@@ -388,6 +516,15 @@ async def interrupt_match_segment(
         match = await _load_operation_match(db, context, match_id)
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite interrupciones")
+        maximum_minute = effective_match_minutes(
+            match.get("rules_config") or {},
+            match.get("stage_id"),
+        )["max_minute"]
+        if payload.minute > maximum_minute:
+            raise HTTPException(
+                status_code=422,
+                detail=f"La interrupción excede el máximo de {maximum_minute} minutos",
+            )
         segment_result = await db.execute(
             text("""
                 SELECT id, minute_start, status

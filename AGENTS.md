@@ -8,16 +8,17 @@ Ante cualquier duda, consulta en este orden:
 
 1. `docs/constitution.md`: principios innegociables, reglas de implementación y criterios obligatorios. Tiene precedencia sobre cualquier otro documento.
 2. `README.md`: alcance del producto, flujo local, datos demo, seguridad y modelo de acceso público/privado.
-3. `specs/NNN-nombre/` (`spec.md`, `plan.md`, `tasks.md`): requisitos, diseño y tareas de cada funcionalidad desarrollada con SDD.
-4. `MEMORY.md`: estado y decisiones del trabajo SDD en curso.
-5. `docker-compose.yml` y `docker-compose.production.yml`: servicios, puertos, variables y diferencias entre desarrollo y producción.
-6. `.env.example`: variables de entorno y defaults **solo de desarrollo**.
-7. `infra/postgres/migrations/`: fuente de verdad del esquema de base de datos (migraciones numeradas).
-8. `backend/app/main.py`: registro de routers y punto de entrada de la API.
-9. `backend/app/modules/`: límites de cada funcionalidad del backend.
-10. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
-11. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (se ejecuta en cada `push` y `pull_request`, con permisos `contents: read`).
-12. Documentación interactiva de la API en `http://localhost:8000/docs`.
+3. `docs/contrato-reglas.md`: contrato interno de reglas (`engine_version` 2026.1): códigos `GF1`/`GF2` y catálogo de formaciones. No es configurable.
+4. `specs/NNN-nombre/` (`spec.md`, `plan.md`, `tasks.md`): requisitos, diseño y tareas de cada funcionalidad desarrollada con SDD.
+5. `MEMORY.md`: estado y decisiones del trabajo SDD en curso.
+6. `docker-compose.yml` y `docker-compose.production.yml`: servicios, puertos, variables y diferencias entre desarrollo y producción.
+7. `.env.example`: variables de entorno y defaults **solo de desarrollo**.
+8. `infra/postgres/migrations/`: fuente de verdad del esquema de base de datos (migraciones numeradas).
+9. `backend/app/main.py`: registro de routers y punto de entrada de la API.
+10. `backend/app/modules/`: límites de cada funcionalidad del backend.
+11. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
+12. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (se ejecuta en cada `push` y `pull_request`, con permisos `contents: read`).
+13. Documentación interactiva de la API en `http://localhost:8000/docs`.
 
 Si este archivo contradice a la constitución, gana la constitución. Si contradice al código o a la CI, gana el código/CI. Actualiza este archivo en el mismo cambio.
 
@@ -44,13 +45,21 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - La autorización es **RBAC por organización** (roles/permisos de la membresía) más **`match_officials` por partido**. No hay roles por torneo; `tournament_user_roles` fue retirada por la migración 019.
 - El avance entre fases es **manual** y solo en versiones en borrador: `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams`. El sembrado automático por `stage_rank` no está soportado y el calendario no se regenera al asignar o quitar equipos.
 - La migración **019** es destructiva y no tiene rollback: se despliega el código nuevo primero y la 019 después; cualquier corrección posterior es una migración nueva (*forward-fix*).
+- La migración **021** es aditiva y se aplica **antes** del código que escribe `player_out_id`/`player_in_id`; no elimina `match_segment_team_state` ni toca `init/01`.
+- Las sustituciones se validan y aplican al **cerrar el acta** (`max_per_team`/`max_windows`/`allow_reentry`), con límites por equipo y partido. No hay API incremental de eventos ni de anulación (R11 fuera de alcance): los eventos de un acta confirmada son inmutables.
+- Al desplegar, una versión **`3.2.0` ya publicada** empieza a aplicar sus límites de sustitución (la configuración efectiva sale de la versión publicada y no se reescribe); las actas cerradas no se revalidan y un partido abierto puede rechazar sustituciones antes aceptadas.
+- `roster_lock_matchday` es una clave de primer nivel de `rules_config`; su valor efectivo sale de la **versión publicada**. Los minutos reglamentario y de prórroga también salen de `rules_config`.
 - No edites migraciones ya aplicadas; agrega una nueva.
 
 ## Arquitectura Clave
 
 - **Multi-tenancy con RLS:** las tablas tenant-owned usan Row Level Security. El backend fija `app.current_organization_id` y `app.current_user_id` dentro de cada transacción.
-- **Torneos:** torneos con versiones inmutables, fases componibles (Round Robin, grupos, playoffs), equipos y partidos. Puntuación, desempates, disciplina y transferencias se configuran con JSON.
-- **Actas de partido:** el cierre registra goles, tarjetas y suspensiones, y emite eventos al outbox.
+- **Torneos:** torneos con versiones inmutables, fases componibles (Round Robin, grupos, playoffs), equipos y partidos. Puntuación, desempates, disciplina, sustituciones y ventana de inscripción se configuran con JSON; las transferencias no son configuración.
+- **Actas de partido:** el cierre registra goles, tarjetas, sustituciones y suspensiones, y emite eventos al outbox.
+- **Sustituciones:** la configuración efectiva `substitutions` (`max_per_team`, `max_windows`, `allow_reentry`; defaults 5/3/`false`) se aplica **al cerrar el acta**. Los eventos `substitution` llevan `player_out_id`/`player_in_id` y `player_id = player_out_id`. El estado en campo se deriva del XI de `match_rosters` y de los eventos en orden `(minute, added_minute, índice)`, con una **unión de intervalos** `[entrada, salida)` por jugador para la reentrada. Los límites son por equipo y partido; una **ventana** es el grupo `(segment_id, minute, added_minute)`.
+- **Proyección de contadores:** `match_segment_team_state` guarda una fila por segmento y equipo con el saldo del partido tras ese segmento. Se asegura al abrir el segmento y se recalcula al cerrar ordenando por `segment_number` (nunca por minuto); el `GET` de operación calcula sin escribir.
+- **Minutos:** `regular_time_minutes`/`extra_time_minutes` salen de `stage_defaults` con overrides por fase (defaults 90/120). La pareja efectiva se valida al guardar (reglamentario 1..179; con prórroga, extra > reglamentario y ≤180) y el cierre usa el máximo efectivo, no un 180 fijo.
+- **Contrato interno:** `docs/contrato-reglas.md` (`engine_version` 2026.1) fija `GF1`/`GF2` y las cuatro formaciones; no se configura desde el editor.
 - **Outbox + worker + Redis:** los eventos se procesan de forma asíncrona y alimentan el tiempo real con Socket.IO. El stream es transporte de mejor esfuerzo con un tope fijo de 10 000 entradas aproximado; no es duradero ni la fuente de verdad.
 - **Autenticación y autorización:** email/password; Google OAuth preparado mediante `auth_identities`. RBAC por organización: los permisos se resuelven por la membresía y sus roles; no hay ámbito por torneo ni roles por torneo. La única delegación menor es por partido con `match_officials`.
 - **Avance manual entre fases:** `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams` en versiones en borrador. `POST` es atómico (1..64 equipos, sin duplicados); 201 si hay altas, 200 si todos ya estaban, 204 en la retirada idempotente; 403/404/409/422 según el contrato. No regenera el calendario ni resuelve `phase_slots` entre fases.
@@ -204,6 +213,44 @@ La **020** no es destructiva y va **después de la 019**. Concede solo `INSERT (
 MIGRATION_TARGET=020 $COMPOSE run --rm db-migrate
 ```
 
+### Migración 021 (referencias de jugador en sustituciones)
+
+La **021** es **aditiva** y se aplica **antes** del código que escribe las columnas: añade `player_out_id`/`player_in_id` (UUID nulas) a `match_events`, dos FKs compuestas `(player_out_id, organization_id)` y `(player_in_id, organization_id)` a `players(id, organization_id)` con `ON DELETE RESTRICT`, y `chk_match_event_substitution_pair` como `CHECK ... NOT VALID`. **No elimina `match_segment_team_state`** (sigue siendo la proyección de contadores), no toca `transfers` (no existe como tabla) y no modifica `init/01` ni las migraciones 019/020. Los eventos `substitution` legados (sin par salida/entrada) no se reescriben; el `CHECK` se evalúa en `INSERT`/`UPDATE` y el motor los ignora. No hay backfill ni `VALIDATE CONSTRAINT`.
+
+Prepara una copia verificada y detén `api`/`worker` durante la ventana: el código anterior no escribe el par y no debe seguir cerrando actas con eventos `substitution` contra el `CHECK` nuevo.
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre021.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre021.dump" >/dev/null && echo "backup OK"
+$COMPOSE stop api worker
+```
+
+Pre-chequeos **informativos** (no abortan; los conteos quedan como evidencia):
+
+```sql
+SELECT count(*) AS eventos_substitution
+FROM public.match_events
+WHERE event_type = 'substitution';
+
+SELECT count(*) AS filas_match_segment_team_state
+FROM public.match_segment_team_state;
+```
+
+Aplica la migración y después el código nuevo:
+
+```sh
+MIGRATION_TARGET=021 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+Orden obligatorio: **migración 021 → código**. El código nuevo contra el esquema 020 falla al insertar una sustitución porque las columnas no existen. Con la 021 aplicada, el código anterior sigue leyendo el esquema, pero no debe cerrar sustituciones (el `CHECK` rechaza el par ausente).
+
+**Smoke:** `GET /docs`, una lectura pública de torneo, una operación del Workspace con un borrador y, si hay datos, la pantalla de operación de un partido (`GET /matches/{id}/operation`) y el cierre de un acta con una sustitución válida. Comprueba que la fila de `match_segment_team_state` del segmento refleja el saldo.
+
+**Si algo falla después:** la 021 no se desaplica. Al ser aditiva, cualquier defecto se corrige con una migración nueva (*forward-fix*); no hay rollback de datos ni de esquema. Restaurar `$HOME/backup-pre021.dump` solo si se acepta perder los cambios posteriores. El volumen limpio (`init/00-03` → 001-021) termina con el mismo esquema que una base migrada.
+
 
 ### Verificación (mismos checks que CI)
 
@@ -271,6 +318,7 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 - **Cifrado de la fecha de nacimiento:** las migraciones 017 y 018 se aplican en dos fases con `MIGRATION_TARGET` y el backfill one-off `python -m scripts.encrypt_birth_dates` (`DATABASE_ADMIN_URL` + `PLAYER_DATA_KEY`, `--no-deps`). La 018 falla de forma cerrada si quedan pendientes.
 - **Migración 019:** retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` y recrea el trigger con `ZZ409`; es destructiva y sin rollback. Se aplica después del código nuevo con `MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate`, tras backup verificado y pre-chequeo de catálogo.
 - **Migración 020:** *forward-fix* no destructivo que concede `INSERT (id)` sobre `rosters` a `bracket_app` para el `id` pre-generado de la importación N-2; `init/01` incluye el mismo grant y se aplica después de la 019 (`MIGRATION_TARGET=020`).
+- **Migración 021:** aditiva; añade `player_out_id`/`player_in_id`, FKs compuestas y `chk_match_event_substitution_pair` (`NOT VALID`) a `match_events`; se aplica **antes** del código con `MIGRATION_TARGET=021` y no elimina `match_segment_team_state` ni tiene rollback (*forward-fix*).
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
@@ -284,6 +332,7 @@ AGENTS.md                    Guía para agentes (este archivo)
 MEMORY.md                    Estado y decisiones del trabajo SDD
 docs/
   constitution.md            Constitución del proyecto
+  contrato-reglas.md         Contrato interno: GF1/GF2 y formaciones (engine_version 2026.1)
 specs/
   NNN-nombre/                spec.md, plan.md y tasks.md por funcionalidad
 .agents/
@@ -316,6 +365,9 @@ docker-compose.production.yml  Perfil de producción
 - **Frontend:** toda llamada a la API pasa por `frontend/app/composables/useApi.ts`, que elige la URL base de servidor/cliente y lleva organización, cookies y CSRF.
 - **Nuevos módulos backend:** crea el módulo bajo `backend/app/modules/` y registra su router en `backend/app/main.py`.
 - **Vistas públicas:** no agregues campos sensibles (documentos, fechas de nacimiento) a las proyecciones públicas.
+- **Sustituciones:** en un evento `substitution` deben venir `player_out_id` y `player_in_id` no nulos y distintos, con `player_id = player_out_id`; en cualquier otro tipo, ambos nulos. El incumplimiento estructural es **422** y las reglas de negocio (equipo, plantilla, campo/banca, reentrada, límites, ventanas, minutos) son **409**. La comprobación coincide con `chk_match_event_substitution_pair` (021).
+- **Actas cerradas inmutables:** los eventos de un acta confirmada no se editan ni se anulan (`trg_validate_match_event_context` bloquea `INSERT`/`UPDATE` en `finished`, `cancelled` y `administrative_resolution`). No existe API incremental de eventos ni de anulación (R11 fuera de alcance); `is_voided` es legado y no es una vía operativa.
+- **Promoción de configuración:** el editor promueve `transfers.roster_lock_matchday` a la clave de primer nivel al cargar si esta falta, y el backend hace lo mismo al guardar; `transfers` se acepta como bloque deprecado y no se escribe.
 - **Configuración:** mantén los defaults de desarrollo únicamente en `.env.example`.
 - **Auditoría:** las acciones de administración de plataforma se registran en `platform_audit_logs`.
 
@@ -346,7 +398,8 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 - **Migración 019 (roles por torneo y `stage_edges`):** es destructiva y no tiene `down`. Retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` a `direct_team`/`match_result` y recrea el trigger de estructura con **`ZZ409`**. Despliega el código nuevo antes de aplicarla; después solo *forward-fix* con una migración nueva. `init/01` conserva las dos tablas (con RLS y sin políticas/grants) solo hasta que la 019 las elimina.
 - **Fotos y transacciones:** no firmes fotos, no subas ni borres objetos y no calcules emparejamientos dentro de una transacción; el contexto RLS es local a cada transacción y se vuelve a fijar en la escritura. En alta/importación, un fallo de firma posterior al commit deja la fila creada y responde 503: el cliente debe releer. Las subidas van antes de la escritura y se compensan si falla antes del commit. El objeto anterior de una subida se borra solo tras un commit confirmado; un commit fallido o cancelado (ambiguo) conserva ambos y puede dejar el nuevo huérfano. La importación puede dejar objetos huérfanos si el commit falla (best-effort): se prefiere un huérfano a una referencia rota.
 - **Cliente de firma cacheado:** conserva las credenciales resueltas al construirse; rotarlas exige reiniciar el proceso. La caché es por proceso y endpoint de firma efectivo, no por endpoint de subida.
-- **Límites Swiss:** 64 equipos, 50 000 evaluaciones y 10 s son límites de seguridad, no reglas deportivas (puntuación, desempates, disciplina y transferencias siguen en el JSON). El hilo de cálculo no se cancela: el timeout descarta el resultado y el hilo termina por su presupuesto.
+- **Límites Swiss:** 64 equipos, 50 000 evaluaciones y 10 s son límites de seguridad, no reglas deportivas (puntuación, desempates, disciplina, sustituciones y ventana de inscripción siguen en el JSON). El hilo de cálculo no se cancela: el timeout descarta el resultado y el hilo termina por su presupuesto.
+- **Sustituciones y 021:** el número de línea del acta es el **índice del payload** y desempata el orden canónico `(minute, added_minute, índice)`. `max_per_team = 0` deshabilita las sustituciones y `max_windows = 0` no admite ninguna ventana. Los eventos legados sin par no consumen cupo ni ventana y el `CHECK` no tolera reescribirlos. `match_segment_team_state` no se elimina en la 021; sin filas previas se aseguran al cerrar y el `GET` de operación no escribe.
 - **Sorteo simultáneo en frío:** la ronda 1 sin partidos previos no bloquea filas inexistentes, así que dos sorteos concurrentes podrían insertar calendarios duplicados (no hay unicidad de `bracket_code`). Es el riesgo residual aceptado por la spec 005.
 - **Migración 002:** un volumen limpio de PostgreSQL había fallado antes con `cannot drop columns from view`. Causa raíz: `infra/postgres/init/02_public_projections.sql` había sido actualizado para reflejar el estado post-012 (`v_public_stages` y `bracket_code` en `v_public_matches`), pero la migración 001 reescribe `v_public_matches` sin `bracket_code`, y `CREATE OR REPLACE VIEW` no puede soltar columnas. La corrección fue revertir `init/02` al estado pre-012 (los scripts de init no son migraciones y no tienen checksum), de modo que 012 introduzca esos cambios en el orden correcto. Solo afecta a volúmenes limpios; los existentes no re-ejecutan init.
 - **Windows/WSL:** si pnpm falla con `EPERM` al enlazar `node_modules`, construye y ejecuta mediante el servicio `web` de Docker.
@@ -372,6 +425,13 @@ La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que c
   ```sh
   cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
     pytest -q tests/test_migration_019.py tests/test_concurrency_006.py
+  ```
+
+- **Sustituciones y migración 021 (opt-in):** requieren PostgreSQL y `DATABASE_ADMIN_URL`.
+
+  ```sh
+  cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
+    pytest -q tests/test_migration_021.py tests/test_substitutions.py tests/test_roster_lock.py
   ```
 
 - Ejecuta todas las verificaciones relevantes antes de dar una tarea por terminada y reporta cuáles no pudiste correr.

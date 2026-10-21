@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.modules.rule_contract import FORMATION_CODES
+
 
 OfficialRole = Literal[
     "main_referee",
@@ -15,7 +17,7 @@ OfficialRole = Literal[
 
 SegmentStatus = Literal["active", "completed", "interrupted"]
 SegmentInterruptionReason = Literal["lighting_failure", "weather", "pitch_invasion", "other"]
-FormationCode = Literal["4-3-3", "4-4-2", "3-5-2", "4-2-3-1"]
+FormationCode = Literal[*FORMATION_CODES]
 
 
 class OfficialAssignmentRequest(BaseModel):
@@ -29,6 +31,11 @@ class MatchEventPayload(BaseModel):
     team_id: UUID
     beneficiary_team_id: UUID | None = None
     player_id: UUID | None = None
+    # Only a substitution carries the pair; every other event must leave both
+    # null (RF-011). The contract is enforced here so a structural violation is
+    # a 422 before the handler runs.
+    player_out_id: UUID | None = None
+    player_in_id: UUID | None = None
     minute: int = Field(ge=0, le=180)
     added_minute: int = Field(default=0, ge=0, le=30)
     segment_id: UUID
@@ -45,6 +52,15 @@ class MatchEventPayload(BaseModel):
     def validate_event(self) -> "MatchEventPayload":
         if self.event_type in {"goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "substitution", "foul"} and self.player_id is None:
             raise ValueError(f"{self.event_type} requiere player_id")
+        if self.event_type == "substitution":
+            if self.player_out_id is None or self.player_in_id is None:
+                raise ValueError("Una sustitución requiere player_out_id y player_in_id")
+            if self.player_out_id == self.player_in_id:
+                raise ValueError("El jugador que sale y el que entra deben ser distintos")
+            if self.player_id != self.player_out_id:
+                raise ValueError("player_id debe coincidir con player_out_id")
+        elif self.player_out_id is not None or self.player_in_id is not None:
+            raise ValueError("player_out_id y player_in_id solo aplican a una sustitución")
         if self.event_type == "own_goal":
             if self.beneficiary_team_id is None or self.beneficiary_team_id == self.team_id:
                 raise ValueError("Un autogol requiere un equipo beneficiario distinto")
@@ -214,6 +230,8 @@ class MatchOperationResponse(BaseModel):
     lineup: list[dict[str, Any]]
     tactical_lineups: list[dict[str, Any]]
     events: list[dict[str, Any]]
+    substitutions: dict[str, Any]
+    limits: dict[str, Any]
 
 
 class MatchOfficialResponse(BaseModel):

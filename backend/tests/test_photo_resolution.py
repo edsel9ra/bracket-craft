@@ -730,6 +730,10 @@ class WorkspaceSession:
             return FakeScalar(self.set_photo_result)
         if "set_roster_photo_consent" in sql:
             return FakeScalar(self.set_consent_result)
+        if "FROM tournament_versions" in sql:
+            # These flows do not model a published version, so the roster lock
+            # never applies (RF-022).
+            return FakeResult([])
         if "FROM tournaments" in sql:
             return FakeScalar(1)
         if "FROM tournament_teams" in sql:
