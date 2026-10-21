@@ -142,7 +142,7 @@ git -c core.whitespace=cr-at-eol diff --check
     - `grep -n "MIGRATION_TARGET=021" AGENTS.md README.md` encuentra el runbook.
     - `git -c core.whitespace=cr-at-eol diff --check` sin salida.
 
-- [ ] **T013. Verificación final y checklist de merge.**
+- [x] **T013. Verificación final y checklist de merge.**
   - Objetivo: ejecutar todos los jobs, confirmar cada RF y criterio de la spec y dejar constancia de lo no ejecutado.
   - RF: 001-006, 010-019, 020-029, 030-034, 040-048, 050-052 (todos).
   - Archivos: ninguno (solo evidencias y `tasks.md` marcado).
@@ -163,8 +163,9 @@ git -c core.whitespace=cr-at-eol diff --check
     - [ ] Contrato interno en `docs/contrato-reglas.md` y en `AGENTS.md`.
     - [ ] Documentación sin promesas de transferencias ni anulación; runbook de la 021 presente.
     - [ ] Opt-in ejecutadas y reportadas con su conteo; las no ejecutadas se declaran explícitamente.
-    - [ ] Revisión humana distinta del autor (§6 de la constitución).
+    - [x] Revisión humana distinta del autor (§6 de la constitución).
   - Hecho cuando: los comandos anteriores pasan o su fallo está declarado, y `tasks.md` queda marcado con la evidencia.
   - **Evidencia local (2026-10-21):** `pytest -q` 614 passed/152 skipped; opt-in completa 764 passed/2 skipped; `compileall` OK; `test_migrate_target.sh` OK; frontend 108 tests, typecheck y build OK; `verify_version_sources` OK; `docker compose config` dev y merge prod OK (`assert_production_compose.py` OK); auditoría frontend OK (2 no accionables sin parche); `pip-audit --local` sin hallazgos; `git diff --check` sin salida.
   - **Correcciones de la revisión (vuelta 1, 2026-10-21):** RF-043 (H1): `MatchLimits` tipado y consumido en el acta (`max_minute`/`added_minute_max` en inputs y borrador; 110 tests frontend). RF-005 (H2): `APPLIED_RULE_KEYS`/`DEPRECATED_RULE_KEYS` en `rules_engine.engine` con prueba de cobertura de `RULES_SCHEMA`. RF-029 (H3): `''` de `roster_lock_matchday` se valida como `null` y se guarda como `null`. RF-017 (H5): un jugador sin intervalos con minutos de planilla se rechaza con 409. RF-002 (H4): impacto operativo de una `3.2.0` publicada documentado en `README.md`/`AGENTS.md`. Evidencia: backend 616 passed/152 skipped; opt-in `test_substitutions.py`+`test_player_catalog_schema.py` 24 passed; frontend 110 tests, typecheck y build OK; `diff --check` sin salida.
-  - **Limitaciones declaradas:** no verificables desde este entorno: CI, revisión humana y el despliegue real `MIGRATION_TARGET=021` (Docker daemon ausente). `pip-audit -r` no ejecutable por `ensurepip` ausente (se usó `--local`); Trivy no disponible. T013 sigue `[ ]` hasta CI y revisión humana.
+  - **Cierre (2026-10-21):** CI del PR #2 en verde (Backend tests, Frontend checks, Dependency and filesystem scan, Infrastructure checks, GitGuardian) y revisión humana del usuario, que aprobó el merge. Merge convencional (`--merge`, sin squash ni force): `dc86270`. Código en `main` con CI verde.
+  - **Limitaciones declaradas:** no verificables desde este entorno: el despliegue real `MIGRATION_TARGET=021` (Docker daemon ausente). `pip-audit -r` no ejecutable por `ensurepip` ausente (se usó `--local`); Trivy no disponible. CI y revisión humana quedan cubiertos por el cierre anterior.

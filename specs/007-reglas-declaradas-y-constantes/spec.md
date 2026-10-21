@@ -1,6 +1,6 @@
 # Spec 007 — Reglas declaradas y constantes de partido (R09/R10)
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-21); pendiente de CI en main y revisión humana (T013).
+Estado: Implementada, validada por @reviewer y cerrada (2026-10-21). CI en main en verde (PR #2).
 
 > **Bloque D del P1** de `docs/auditoria-2026-10-19.md`: R09 (reglas declaradas no aplicadas) y R10 (constantes hardcodeadas). **Revisión 2026-10-20: Q1 y Q3 quedan revocadas.** Las sustituciones son necesarias en la operación, así que se **implementan por completo** y `match_segment_team_state` se **implementa** en vez de retirarse. Se mantienen el retiro de transferencias, `roster_lock_matchday`, la enmienda constitucional §3.2 → 1.3.0, los minutos desde `rules_config`, el contrato interno de `GF1`/`GF2` y formaciones, y la migración **021** (ahora **añade columnas**, no elimina la tabla). R11, R12 (spec 006) y R18-R32 quedan fuera.
 

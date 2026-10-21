@@ -1,6 +1,6 @@
 # Plan 007 — Reglas declaradas y constantes de partido
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-21); pendiente de CI en main y revisión humana (T013).
+Estado: Implementada, validada por @reviewer y cerrada (2026-10-21). CI en main en verde (PR #2).
 
 Spec: `specs/007-reglas-declaradas-y-constantes/spec.md` (aprobada 2026-10-20).
 

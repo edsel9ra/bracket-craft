@@ -1,8 +1,8 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
-## Spec 007 — Reglas declaradas y constantes (2026-10-20)
-- **Implementada y validada por @reviewer (APROBADA, 2026-10-21); T013 pendiente de CI en `main` y revisión humana.**
+## Spec 007 — Reglas declaradas y constantes (cerrada 2026-10-21)
+- **Implementada, validada por @reviewer y cerrada. PR #2 mergeado (`dc86270`); CI en `main` en verde.** Solo queda el despliegue de la **021 antes** del código.
 - Evidencia: backend **616 passed/152 skipped**; suite con base **764 passed/2 skipped**; frontend **110 passed**, typecheck y build OK; runner de migraciones y Compose OK; `pip-audit --local` sin hallazgos; Trivy no disponible.
 - Migración **021 aditiva antes del código**: `player_out_id`/`player_in_id`, FKs compuestas y `CHECK ... NOT VALID`; no elimina `match_segment_team_state` ni toca `init/01`; sin rollback (*forward-fix*).
 - Sustituciones aplicadas **al cerrar el acta** (`max_per_team`/`max_windows`/`allow_reentry`, defaults 5/3/`false`); orden canónico `(minute, added_minute, índice)` e intervalos con reentrada; límites por equipo y partido; `match_segment_team_state` es proyección (el `GET /operation` calcula sin escribir).
@@ -32,7 +32,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
 
 ## Pendiente
-- Spec 007: T013 pendiente de CI en `main` y revisión humana. Desplegar la **021 antes** del código.
+- Spec 007: desplegar la **021 antes** del código (backup verificado, pre-chequeos, smoke).
 - Spec 006: desplegar las migraciones **019** y **020** (código nuevo primero).
 - Cerrar 005 en `main` (CI + revisión humana).
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.
