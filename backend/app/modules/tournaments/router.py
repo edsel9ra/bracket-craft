@@ -23,6 +23,11 @@ from app.modules.rules_engine.engine import (
     validate_rules_config,
 )
 from app.modules.rules_engine.schemas import CreateTournamentRequest, UpdateRulesConfigRequest
+from app.modules.tournaments.pairings import (
+    count_pair_meetings,
+    max_meetings_per_pair,
+    pair_limit_detail,
+)
 from app.modules.tournaments.schemas import (
     AssignStageTeamsRequest,
     CreateDraftVersionRequest,
@@ -224,7 +229,8 @@ async def _load_draft_stage_context(
 ):
     result = await db.execute(
         text("""
-            SELECT tv.status AS version_status, s.tournament_version_id, s.stage_type
+            SELECT tv.status AS version_status, s.tournament_version_id, s.stage_type,
+                   s.name AS stage_name, s.schedule_legs
             FROM stages s
             JOIN tournament_versions tv
               ON tv.id = s.tournament_version_id
@@ -435,7 +441,7 @@ async def _create_draft_version_record(
 
     stage_result = await db.execute(
         text("""
-            SELECT id, name, stage_type, stage_order
+            SELECT id, name, stage_type, stage_order, schedule_legs
             FROM stages
             WHERE tournament_version_id = :version_id
               AND tournament_id = :tournament_id
@@ -455,8 +461,10 @@ async def _create_draft_version_record(
         await db.execute(
             text("""
                 INSERT INTO stages
-                    (id, organization_id, tournament_id, tournament_version_id, name, stage_type, stage_order)
-                VALUES (:id, :organization_id, :tournament_id, :version_id, :name, :stage_type, :stage_order)
+                    (id, organization_id, tournament_id, tournament_version_id, name, stage_type,
+                     stage_order, schedule_legs)
+                VALUES (:id, :organization_id, :tournament_id, :version_id, :name, :stage_type,
+                        :stage_order, :schedule_legs)
             """),
             {
                 "id": str(new_stage_id),
@@ -466,6 +474,7 @@ async def _create_draft_version_record(
                 "name": stage["name"],
                 "stage_type": stage["stage_type"],
                 "stage_order": stage["stage_order"],
+                "schedule_legs": stage["schedule_legs"],
             },
         )
 
@@ -3406,6 +3415,28 @@ async def _draw_non_swiss_schedule(
         )
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="No se pudo guardar el calendario sorteado") from exc
+
+    # The league format is persisted with the generated calendar so the manual
+    # pairing limit can read it later. Elimination brackets keep the default
+    # (one leg) and Swiss has no legs at all (RF-009).
+    if stage_type in {"round_robin", "custom_group"}:
+        await db.execute(
+            text("""
+                UPDATE stages
+                SET schedule_legs = :schedule_legs
+                WHERE id = :stage_id
+                  AND organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND tournament_version_id = :version_id
+            """),
+            {
+                "schedule_legs": payload.legs,
+                "stage_id": str(payload.stage_id),
+                "organization_id": str(context.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(payload.version_id),
+            },
+        )
     return GenerateSingleEliminationResponse(
         version_id=payload.version_id,
         stage_id=payload.stage_id,
@@ -3618,6 +3649,27 @@ async def list_tournament_matches(
         return [dict(row) for row in result.mappings().all()]
 
 
+async def _team_display_names(
+    db: AsyncSession, organization_id: UUID, team_ids: tuple[UUID, UUID]
+) -> tuple[str, str]:
+    """Return the team names used in the pairing-limit message."""
+
+    result = await db.execute(
+        text("""
+            SELECT id, name
+            FROM teams
+            WHERE organization_id = :organization_id
+              AND id = ANY(CAST(:team_ids AS uuid[]))
+        """),
+        {
+            "organization_id": str(organization_id),
+            "team_ids": [str(team_id) for team_id in team_ids],
+        },
+    )
+    names = {str(row["id"]): row["name"] for row in result.mappings().all()}
+    return tuple(names.get(str(team_id), str(team_id)) for team_id in team_ids)
+
+
 @router.post("/{tournament_id}/matches", response_model=TournamentMatchSummaryResponse, status_code=status.HTTP_201_CREATED)
 async def create_match(
     tournament_id: UUID,
@@ -3629,7 +3681,7 @@ async def create_match(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _ensure_tournament(db, context.organization_id, tournament_id)
         await _require_tournament_management(db, context)
-        await _load_draft_stage_context(
+        stage = await _load_draft_stage_context(
             db,
             context.organization_id,
             tournament_id,
@@ -3710,6 +3762,44 @@ async def create_match(
                 raise HTTPException(
                     status_code=409,
                     detail="El equipo no está asignado a la fase y grupo indicados",
+                )
+
+        # Manual pairings are limited by the persisted stage format (RF-009),
+        # inside the phase -> version lock and before any INSERT. Generated
+        # calendars are never validated with this rule. A pair needs both sides
+        # to be a meeting, and cancelled matches do not count.
+        max_meetings = max_meetings_per_pair(
+            stage["stage_type"], stage["schedule_legs"]
+        )
+        if (
+            max_meetings is not None
+            and payload.home_team_id is not None
+            and payload.away_team_id is not None
+        ):
+            existing_meetings = await count_pair_meetings(
+                db,
+                organization_id=context.organization_id,
+                tournament_id=tournament_id,
+                version_id=payload.version_id,
+                stage_id=payload.stage_id,
+                group_id=payload.group_id,
+                home_team_id=payload.home_team_id,
+                away_team_id=payload.away_team_id,
+            )
+            if existing_meetings >= max_meetings:
+                home_name, away_name = await _team_display_names(
+                    db,
+                    context.organization_id,
+                    (payload.home_team_id, payload.away_team_id),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=pair_limit_detail(
+                        stage_name=stage["stage_name"],
+                        home_team_name=home_name,
+                        away_team_name=away_name,
+                        max_meetings=max_meetings,
+                    ),
                 )
 
         result = await db.execute(

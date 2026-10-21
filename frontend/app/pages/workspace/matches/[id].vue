@@ -1008,7 +1008,7 @@ onBeforeUnmount(() => {
       <div class="hero-line">
          <p class="eyebrow">{{ t('match.matchReport') }}</p>
          <span v-if="realtimeStatusLabel" class="realtime-status" :class="`realtime-${realtime.status.value}`" role="status">{{ realtimeStatusLabel }}</span>
-         <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.connect()">{{ t('common.retry') }}</button>
+         <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.retry()">{{ t('common.retry') }}</button>
          <span class="status-pill" :class="{ finished: isTerminal, interrupted: match?.status === 'interrupted' }">{{ statusLabel(match?.status) }}</span>
       </div>
       <div v-if="match" class="match-heading">

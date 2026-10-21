@@ -9,6 +9,7 @@ import {
   type ResyncPayload,
 } from '~/utils/realtimeDispatch';
 import { createInitializationWindow, createReconnectJoinController } from '~/utils/realtimeReload';
+import { shouldForceReconnect } from '~/utils/realtimeRetry';
 import { normalizeOrganizationId, normalizeUuid } from '~/utils/validation';
 
 export type RealtimeEventName = 'MATCH_CLOSED' | 'MATCH_UPDATED' | 'STANDINGS_UPDATED';
@@ -187,6 +188,20 @@ export function useRealtime() {
     setStatus('idle');
   }
 
+  /**
+   * Reintento manual (R18): si la conexión actual no se puede reutilizar,
+   * cierra el intento anterior antes de abrir uno nuevo. `disconnect(false)`
+   * conserva el alcance solicitado y `activeHandlers` sobrevive al cierre, de
+   * modo que el socket nuevo se suscribe con los mismos handlers. Con un
+   * socket en curso o conectado el guard de `connect()` evita duplicarlo.
+   */
+  function retry() {
+    if (shouldForceReconnect(status.value, socket !== null)) {
+      disconnect(false);
+    }
+    connect(activeHandlers);
+  }
+
   const stopSessionWatch = watch(
     [() => organizationId.value, () => auth.userId, () => auth.sessionVersion],
     () => connect(activeHandlers),
@@ -196,5 +211,5 @@ export function useRealtime() {
     disconnect();
   });
 
-  return { connect, disconnect, status, error, initialization };
+  return { connect, disconnect, retry, status, error, initialization };
 }

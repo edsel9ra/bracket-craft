@@ -15,12 +15,14 @@ from app.core.config import get_settings
 from app.core.database import get_db, set_rls_context
 from app.core.email import send_invitation_email
 from app.core.permissions import require_permission
+from app.core.roles import ROLE_PRECEDENCE_SQL
 from app.core.security import (
     create_user_session,
     get_optional_current_user_id,
     hash_password,
 )
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.invitations.lifecycle import effective_invitation_status
 from app.modules.invitations.schemas import (
     AcceptInvitationRequest,
     AcceptInvitationResponse,
@@ -48,6 +50,35 @@ def _invite_url(token: str) -> str:
 
 def _db_error_code(exc: DBAPIError) -> str | None:
     return getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
+
+
+async def _materialize_expired_pending(
+    db: AsyncSession,
+    organization_id: UUID,
+    email: str,
+    now: datetime,
+) -> None:
+    """Mark a stored pending invitation that already expired as expired (R22).
+
+    Called only from the write paths that the contract allows to materialize the
+    expiration (create and resend), never from reads or revocation.
+    """
+
+    await db.execute(
+        text("""
+            UPDATE organization_invitations
+            SET status = 'expired', updated_at = CURRENT_TIMESTAMP
+            WHERE organization_id = :organization_id
+              AND email = :email
+              AND status = 'pending'
+              AND expires_at <= :now
+        """),
+        {
+            "organization_id": str(organization_id),
+            "email": email,
+            "now": now,
+        },
+    )
 
 
 async def _require_member_management(db: AsyncSession, context: AuthContext) -> None:
@@ -80,7 +111,11 @@ async def _load_invitation_for_email(
     return dict(invitation)
 
 
-def _invitation_payload(row: dict, invite_url: str | None = None) -> dict:
+def _invitation_payload(
+    row: dict,
+    invite_url: str | None = None,
+    now: datetime | None = None,
+) -> dict:
     payload = {
         key: row[key]
         for key in (
@@ -98,6 +133,10 @@ def _invitation_payload(row: dict, invite_url: str | None = None) -> dict:
             "updated_at",
         )
     }
+    if now is not None:
+        payload["status"] = effective_invitation_status(
+            row["status"], row["expires_at"], now
+        )
     payload["invite_url"] = invite_url
     return payload
 
@@ -112,7 +151,8 @@ async def create_invitation(
     email = str(payload.email).lower()
     raw_token = secrets.token_urlsafe(32)
     token_hash = _token_hash(raw_token)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.invitation_expire_hours)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=settings.invitation_expire_hours)
 
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
@@ -121,6 +161,10 @@ async def create_invitation(
         organization_name = organization_result.scalar_one_or_none()
         if organization_name is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organización no encontrada")
+        # R22: una pendiente vencida se materializa antes de insertar la nueva,
+        # de modo que la unicidad de pendientes por organización y correo no
+        # deja al destinatario bloqueado por una invitación que ya no sirve.
+        await _materialize_expired_pending(db, context.organization_id, email, now)
         try:
             result = await db.execute(
                 text("""
@@ -169,16 +213,7 @@ async def list_invitations(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
-        await db.execute(
-            text("""
-                UPDATE organization_invitations
-                SET status = 'expired', updated_at = CURRENT_TIMESTAMP
-                WHERE organization_id = :organization_id
-                  AND status = 'pending'
-                  AND expires_at <= CURRENT_TIMESTAMP
-            """),
-            {"organization_id": str(context.organization_id)},
-        )
+        now = datetime.now(timezone.utc)
         result = await db.execute(
             text("""
                 SELECT id, organization_id, email, role_code, expires_at, status,
@@ -190,7 +225,11 @@ async def list_invitations(
             """),
             {"organization_id": str(context.organization_id)},
         )
-        return [_invitation_payload(dict(row)) for row in result.mappings().all()]
+        # R22: el estado efectivo se calcula por fila; la lectura no escribe.
+        return [
+            _invitation_payload(dict(row), now=now)
+            for row in result.mappings().all()
+        ]
 
 
 @router.post("/organizations/invitations/{invitation_id}/resend", response_model=InvitationResponse)
@@ -201,7 +240,8 @@ async def resend_invitation(
 ) -> InvitationResponse:
     settings = get_settings()
     raw_token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.invitation_expire_hours)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=settings.invitation_expire_hours)
     token_hash = _token_hash(raw_token)
 
     async with db.begin():
@@ -210,28 +250,63 @@ async def resend_invitation(
         invitation = await _load_invitation_for_email(db, context, invitation_id)
         if invitation["status"] == "accepted":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Una invitación aceptada no se puede reenviar")
-        result = await db.execute(
+        # R22: materializar las pendientes vencidas del correo antes de
+        # reutilizar la fila evita que la unicidad de pendientes convierta el
+        # reenvío en un error 500.
+        await _materialize_expired_pending(db, context.organization_id, invitation["email"], now)
+        other_pending = await db.execute(
             text("""
-                UPDATE organization_invitations
-                SET token_hash = :token_hash,
-                    token_encrypted = pgp_sym_encrypt(:token, :encryption_key),
-                    expires_at = :expires_at,
-                    status = 'pending',
-                    revoked_at = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :invitation_id
-                RETURNING id, organization_id, email, role_code, expires_at, status,
-                          invited_by_member_id, accepted_by_user_id, accepted_at,
-                          revoked_at, created_at, updated_at
+                SELECT 1
+                FROM organization_invitations
+                WHERE organization_id = :organization_id
+                  AND email = :email
+                  AND id <> :invitation_id
+                  AND status = 'pending'
+                LIMIT 1
             """),
             {
+                "organization_id": str(context.organization_id),
+                "email": invitation["email"],
                 "invitation_id": str(invitation_id),
-                "token_hash": token_hash,
-                "token": raw_token,
-                "encryption_key": settings.invitation_token_key,
-                "expires_at": expires_at,
             },
         )
+        if other_pending.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe una invitación pendiente para ese correo",
+            )
+        # R22: reenviar reutiliza la misma fila (también si estaba vencida) y la
+        # deja pendiente con token y fecha nuevos, sin crear otra invitación.
+        try:
+            result = await db.execute(
+                text("""
+                    UPDATE organization_invitations
+                    SET token_hash = :token_hash,
+                        token_encrypted = pgp_sym_encrypt(:token, :encryption_key),
+                        expires_at = :expires_at,
+                        status = 'pending',
+                        revoked_at = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :invitation_id
+                    RETURNING id, organization_id, email, role_code, expires_at, status,
+                              invited_by_member_id, accepted_by_user_id, accepted_at,
+                              revoked_at, created_at, updated_at
+                """),
+                {
+                    "invitation_id": str(invitation_id),
+                    "token_hash": token_hash,
+                    "token": raw_token,
+                    "encryption_key": settings.invitation_token_key,
+                    "expires_at": expires_at,
+                },
+            )
+        except IntegrityError as exc:
+            # Carrera con otra escritura: la unicidad de pendientes sigue siendo
+            # la garantía final y el cliente recibe un 409 de dominio.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe una invitación pendiente para ese correo",
+            ) from exc
         updated = dict(result.mappings().one())
         organization_result = await db.execute(text("SELECT name FROM get_current_organization()"))
         organization_name = organization_result.scalar_one_or_none()
@@ -263,7 +338,15 @@ async def revoke_invitation(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         invitation = await _load_invitation_for_email(db, context, invitation_id)
-        if invitation["status"] != "pending":
+        # R22: revocar evalúa el estado efectivo y responde 409 sobre una vencida
+        # sin materializarla ni reescribir el registro.
+        now = datetime.now(timezone.utc)
+        if (
+            effective_invitation_status(
+                invitation["status"], invitation["expires_at"], now
+            )
+            != "pending"
+        ):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La invitación ya no está pendiente")
         await db.execute(
             text("""
@@ -351,7 +434,6 @@ async def accept_invitation(
 
         set_auth_cookie(response, access_token)
     return {
-        "access_token": access_token,
         "user_id": accepted["user_id"],
         "organization_id": accepted["organization_id"],
         "organization_user_id": accepted["organization_user_id"],
@@ -368,20 +450,19 @@ async def current_access(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         result = await db.execute(
-            text("""
-                SELECT rd.code AS role_code, r.permissions
-                FROM organization_user_roles our
-                JOIN roles r ON r.id = our.role_id AND r.organization_id = our.organization_id
-                JOIN role_definitions rd ON rd.id = r.role_definition_id
-                WHERE our.organization_id = :organization_id
-                  AND our.organization_user_id = :organization_user_id
-                ORDER BY CASE rd.code
-                    WHEN 'owner' THEN 1
-                    WHEN 'administrator' THEN 2
-                    WHEN 'operator' THEN 3
-                    WHEN 'referee' THEN 4
-                    ELSE 5
-                END
+            text(f"""
+                SELECT COALESCE(rd.code, 'viewer') AS role_code, r.permissions
+                FROM organization_users ou
+                LEFT JOIN organization_user_roles our
+                  ON our.organization_user_id = ou.id
+                 AND our.organization_id = ou.organization_id
+                LEFT JOIN roles r
+                  ON r.id = our.role_id
+                 AND r.organization_id = ou.organization_id
+                LEFT JOIN role_definitions rd ON rd.id = r.role_definition_id
+                WHERE ou.organization_id = :organization_id
+                  AND ou.id = :organization_user_id
+                ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
                 LIMIT 1
             """),
             {
@@ -410,13 +491,17 @@ async def list_members(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         result = await db.execute(
-            text("""
+            text(f"""
                 SELECT ou.id AS organization_user_id,
                        u.id AS user_id,
                        u.email,
                        u.full_name,
                        ou.is_active,
-                       COALESCE(MIN(rd.code), 'viewer') AS role_code,
+                       COALESCE(
+                           (ARRAY_AGG(rd.code ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")})
+                               FILTER (WHERE rd.code IS NOT NULL))[1],
+                           'viewer'
+                       ) AS role_code,
                        ou.created_at
                 FROM organization_users ou
                 JOIN users u ON u.id = ou.user_id
@@ -447,7 +532,7 @@ async def update_member_role(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         target_result = await db.execute(
-            text("""
+            text(f"""
                 SELECT ou.id, ou.user_id,
                        COALESCE((
                            SELECT rd.code
@@ -456,13 +541,7 @@ async def update_member_role(
                            JOIN role_definitions rd ON rd.id = r.role_definition_id
                            WHERE our.organization_user_id = ou.id
                              AND our.organization_id = ou.organization_id
-                           ORDER BY CASE rd.code
-                               WHEN 'owner' THEN 1
-                               WHEN 'administrator' THEN 2
-                               WHEN 'operator' THEN 3
-                               WHEN 'referee' THEN 4
-                               ELSE 5
-                           END
+                           ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
                            LIMIT 1
                        ), 'viewer') AS role_code
                 FROM organization_users ou
@@ -536,7 +615,7 @@ async def update_member_status(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         target_result = await db.execute(
-            text("""
+            text(f"""
                 SELECT ou.is_active,
                        COALESCE((
                            SELECT rd.code
@@ -545,13 +624,7 @@ async def update_member_status(
                            JOIN role_definitions rd ON rd.id = r.role_definition_id
                            WHERE our.organization_user_id = ou.id
                              AND our.organization_id = ou.organization_id
-                           ORDER BY CASE rd.code
-                               WHEN 'owner' THEN 1
-                               WHEN 'administrator' THEN 2
-                               WHEN 'operator' THEN 3
-                               WHEN 'referee' THEN 4
-                               ELSE 5
-                           END
+                           ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
                            LIMIT 1
                        ), 'viewer') AS role_code
                 FROM organization_users ou
@@ -610,13 +683,17 @@ async def update_member_status(
 
 async def _load_member(db: AsyncSession, organization_id: UUID, member_id: UUID) -> dict:
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT ou.id AS organization_user_id,
                    u.id AS user_id,
                    u.email,
                    u.full_name,
                    ou.is_active,
-                   COALESCE(MIN(rd.code), 'viewer') AS role_code,
+                   COALESCE(
+                       (ARRAY_AGG(rd.code ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")})
+                           FILTER (WHERE rd.code IS NOT NULL))[1],
+                       'viewer'
+                   ) AS role_code,
                    ou.created_at
             FROM organization_users ou
             JOIN users u ON u.id = ou.user_id

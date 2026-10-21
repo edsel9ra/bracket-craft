@@ -1,0 +1,3 @@
+# Dependencias de prueba: se instalan junto a requirements.txt (nunca en la imagen de producción).
+pytest==9.1.1
+pytest-asyncio==1.4.0

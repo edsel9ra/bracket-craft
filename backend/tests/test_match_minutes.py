@@ -366,7 +366,7 @@ class RecordingSession:
 
 
 def _loader(match: dict):
-    async def load(db, context_, match_id, require_operation_permission=True):
+    async def load(db, context_, match_id, require_operation_permission=True, lock=True):
         return match
 
     return load

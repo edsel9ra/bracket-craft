@@ -182,7 +182,7 @@ onBeforeUnmount(() => {
           <span class="live-status" :class="`realtime-${realtime.status.value}`" role="status">
             <span aria-hidden="true" /> {{ realtimeStatusLabel }}
           </span>
-          <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="connectRealtime">{{ t('common.retry') }}</button>
+          <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.retry()">{{ t('common.retry') }}</button>
       </div>
        <h1>{{ t('workspace.headline') }}</h1>
        <p class="workspace-copy">{{ t('workspace.copy') }}</p>

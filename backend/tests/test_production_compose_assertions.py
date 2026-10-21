@@ -38,6 +38,9 @@ def _service(
     volumes: list[dict[str, Any]] | None = None,
     networks: dict[str, Any] | None = None,
     command: list[str] | None = None,
+    healthcheck: dict[str, Any] | None = None,
+    user: Any = None,
+    depends_on: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     service: dict[str, Any] = {}
     if command is not None:
@@ -48,7 +51,40 @@ def _service(
         service["volumes"] = volumes
     if networks is not None:
         service["networks"] = networks
+    if healthcheck is not None:
+        service["healthcheck"] = healthcheck
+    if user is not None:
+        service["user"] = user
+    if depends_on is not None:
+        service["depends_on"] = depends_on
     return service
+
+
+def _healthcheck() -> dict[str, Any]:
+    """Forma mínima de un healthcheck renderizado por Compose."""
+
+    return {
+        "test": ["CMD-SHELL", "true"],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 3,
+    }
+
+
+def _published(host_ip: str | None, published: str, target: int) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "mode": "ingress",
+        "published": published,
+        "target": target,
+        "protocol": "tcp",
+    }
+    if host_ip is not None:
+        entry["host_ip"] = host_ip
+    return entry
+
+
+def _web_waits_for_api() -> dict[str, Any]:
+    return {"api": {"condition": "service_healthy", "required": True}}
 
 
 def _bind(source: str, target: str, *, read_only: bool = False) -> dict[str, Any]:
@@ -108,11 +144,13 @@ def _valid_config() -> dict[str, Any]:
                     "--workers",
                     "2",
                 ],
+                healthcheck=_healthcheck(),
             ),
             "worker": _service(
                 volumes=[],
                 networks=deepcopy(internal),
                 command=["python", "-m", "app.workers.outbox"],
+                healthcheck=_healthcheck(),
             ),
             "redis": _service(
                 volumes=[_named_volume("redis_data", "/data")],
@@ -126,6 +164,9 @@ def _valid_config() -> dict[str, Any]:
                 volumes=[],
                 networks=deepcopy(internal_and_edge),
                 command=["node", ".output/server/index.mjs"],
+                healthcheck=_healthcheck(),
+                user="node",
+                depends_on=_web_waits_for_api(),
             ),
         },
         "volumes": {
@@ -142,6 +183,77 @@ def _valid_config() -> dict[str, Any]:
 
 def _errors(config: dict[str, Any]) -> list[str]:
     return assertions.validate_production_config(config)
+
+
+def _valid_development_config() -> dict[str, Any]:
+    """Configuración renderizada de desarrollo, con las formas reales del JSON.
+
+    El ``web`` publica ``3000:3000`` sin ``host_ip`` (todas las interfaces) y
+    conserva la excepción de usuario raíz de desarrollo (NFR-012).
+    """
+
+    return {
+        "services": {
+            "db": _service(
+                ports=[_published("127.0.0.1", "5432", 5432)],
+                volumes=[
+                    _named_volume("postgres_data", "/var/lib/postgresql/data"),
+                    _bind(
+                        "./infra/postgres/init",
+                        "/docker-entrypoint-initdb.d",
+                        read_only=True,
+                    ),
+                ],
+                healthcheck=_healthcheck(),
+            ),
+            "db-migrate": _service(
+                volumes=[
+                    _bind("./infra/postgres", "/migrations", read_only=True)
+                ],
+            ),
+            "api": _service(
+                ports=[_published("127.0.0.1", "8000", 8000)],
+                volumes=[
+                    _bind("./backend", "/app"),
+                    _bind("./infra", "/infra", read_only=True),
+                ],
+                healthcheck=_healthcheck(),
+            ),
+            "worker": _service(
+                volumes=[_bind("./backend", "/app")],
+                command=["python", "-m", "app.workers.outbox"],
+                healthcheck=_healthcheck(),
+            ),
+            "redis": _service(
+                ports=[_published("127.0.0.1", "6379", 6379)],
+                volumes=[_named_volume("redis_data", "/data")],
+                healthcheck=_healthcheck(),
+            ),
+            "storage": _service(
+                ports=[
+                    _published("127.0.0.1", "9000", 9000),
+                    _published("127.0.0.1", "9001", 8888),
+                ],
+                volumes=[_named_volume("storage_data", "/data")],
+                healthcheck=_healthcheck(),
+            ),
+            "web": _service(
+                ports=[_published(None, "3000", 3000)],
+                volumes=[
+                    _bind("./frontend", "/app"),
+                    {"type": "volume", "target": "/app/node_modules"},
+                ],
+                command=["pnpm", "run", "dev"],
+                healthcheck=_healthcheck(),
+                user="0:0",
+                depends_on=_web_waits_for_api(),
+            ),
+        }
+    }
+
+
+def _dev_errors(config: dict[str, Any]) -> list[str]:
+    return assertions.validate_development_config(config)
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +513,166 @@ def test_requires_postgres_data_mounted_in_db() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Verificaciones de salud y orden de arranque
+# ---------------------------------------------------------------------------
+
+
+def test_production_requires_healthchecks() -> None:
+    for name in ("api", "worker", "web"):
+        config = _valid_config()
+        del config["services"][name]["healthcheck"]
+
+        errors = _errors(config)
+
+        assert any(name in error and "healthcheck" in error for error in errors), name
+
+
+def test_production_rejects_healthcheck_without_test() -> None:
+    config = _valid_config()
+    config["services"]["worker"]["healthcheck"] = {"test": []}
+
+    errors = _errors(config)
+
+    assert any("worker" in error and "healthcheck" in error for error in errors)
+
+
+def test_production_requires_web_to_wait_for_healthy_api() -> None:
+    config = _valid_config()
+    config["services"]["web"]["depends_on"] = {
+        "api": {"condition": "service_started", "required": True}
+    }
+
+    errors = _errors(config)
+
+    assert any("web" in error and "API" in error for error in errors)
+
+
+# ---------------------------------------------------------------------------
+# Usuario del servicio web en producción
+# ---------------------------------------------------------------------------
+
+
+def test_production_rejects_web_running_as_root() -> None:
+    for user in ("0", "0:0", "root", "root:root"):
+        config = _valid_config()
+        config["services"]["web"]["user"] = user
+
+        errors = _errors(config)
+
+        assert any("web" in error and "raíz" in error for error in errors), user
+
+
+def test_production_requires_web_user_declared() -> None:
+    config = _valid_config()
+    del config["services"]["web"]["user"]
+
+    errors = _errors(config)
+
+    assert any("web" in error and "usuario" in error for error in errors)
+
+
+def test_production_accepts_non_root_web_users() -> None:
+    for user in ("node", "1000", "1000:1000"):
+        config = _valid_config()
+        config["services"]["web"]["user"] = user
+
+        assert _errors(config) == [], user
+
+
+# ---------------------------------------------------------------------------
+# Perfil de desarrollo (RF-013)
+# ---------------------------------------------------------------------------
+
+
+def test_valid_development_config_has_no_errors() -> None:
+    assert _dev_errors(_valid_development_config()) == []
+
+
+def test_development_requires_api_on_loopback() -> None:
+    config = _valid_development_config()
+    config["services"]["api"]["ports"] = [_published(None, "8000", 8000)]
+
+    errors = _dev_errors(config)
+
+    assert any("api" in error and "interfaz local" in error for error in errors)
+    assert any("api" in error and "todas las interfaces" in error for error in errors)
+
+
+def test_development_rejects_api_on_all_interfaces() -> None:
+    config = _valid_development_config()
+    config["services"]["api"]["ports"] = [_published("0.0.0.0", "8000", 8000)]
+
+    errors = _dev_errors(config)
+
+    assert any("api" in error and "interfaz local" in error for error in errors)
+
+
+def test_development_requires_api_port_published() -> None:
+    config = _valid_development_config()
+    config["services"]["api"].pop("ports")
+
+    errors = _dev_errors(config)
+
+    assert any("api" in error and "8000" in error for error in errors)
+
+
+def test_development_keeps_web_publication() -> None:
+    config = _valid_development_config()
+    config["services"]["web"].pop("ports")
+
+    errors = _dev_errors(config)
+
+    assert any("web" in error and "3000" in error for error in errors)
+
+
+def test_development_rejects_web_published_only_on_loopback() -> None:
+    config = _valid_development_config()
+    config["services"]["web"]["ports"] = [_published("127.0.0.1", "3000", 3000)]
+
+    errors = _dev_errors(config)
+
+    assert any("web" in error and "3000" in error for error in errors)
+
+
+def test_development_keeps_data_services_on_loopback() -> None:
+    for name in ("db", "redis", "storage"):
+        config = _valid_development_config()
+        first = config["services"][name]["ports"][0]
+        first["host_ip"] = "0.0.0.0"
+
+        errors = _dev_errors(config)
+
+        assert any(name in error and "interfaz local" in error for error in errors), name
+
+
+def test_development_requires_healthchecks() -> None:
+    for name in ("api", "worker", "web"):
+        config = _valid_development_config()
+        del config["services"][name]["healthcheck"]
+
+        errors = _dev_errors(config)
+
+        assert any(name in error and "healthcheck" in error for error in errors), name
+
+
+def test_development_requires_web_to_wait_for_healthy_api() -> None:
+    config = _valid_development_config()
+    config["services"]["web"]["depends_on"] = {}
+
+    errors = _dev_errors(config)
+
+    assert any("web" in error and "API" in error for error in errors)
+
+
+def test_production_rejects_development_config() -> None:
+    """Sin ``--profile development`` el perfil por defecto sigue siendo producción."""
+
+    errors = _errors(_valid_development_config())
+
+    assert any("api" in error and "puerto" in error.lower() for error in errors)
+
+
+# ---------------------------------------------------------------------------
 # Versión de Compose
 # ---------------------------------------------------------------------------
 
@@ -455,3 +727,49 @@ def test_cli_fails_when_compose_is_too_old(tmp_path: Path) -> None:
     assert _run_cli([str(path), "--compose-version", "2.24.3"]) == 1
     assert _run_cli([str(path), "--compose-version", "2.24.4"]) == 0
     assert _run_cli([str(path), "--compose-version", "v5.5.1"]) == 0
+
+
+def test_cli_validates_development_profile(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(_valid_development_config()), encoding="utf-8")
+
+    assert _run_cli([str(path), "--profile", "development"]) == 0
+
+
+def test_cli_development_profile_fails_on_api_on_all_interfaces(
+    tmp_path: Path,
+) -> None:
+    config = _valid_development_config()
+    config["services"]["api"]["ports"] = [_published("0.0.0.0", "8000", 8000)]
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+    assert _run_cli([str(path), "--profile", "development"]) == 1
+
+
+def test_cli_development_profile_fails_on_missing_healthcheck(
+    tmp_path: Path,
+) -> None:
+    config = _valid_development_config()
+    del config["services"]["worker"]["healthcheck"]
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+    assert _run_cli([str(path), "--profile", "development"]) == 1
+
+
+def test_cli_production_profile_fails_on_root_web(tmp_path: Path) -> None:
+    config = _valid_config()
+    config["services"]["web"]["user"] = "0:0"
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+    assert _run_cli([str(path), "--profile", "production"]) == 1
+
+
+def test_cli_default_profile_is_production(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(_valid_development_config()), encoding="utf-8")
+
+    # La invocación existente (sin perfil) sigue validando producción.
+    assert _run_cli([str(path)]) == 1

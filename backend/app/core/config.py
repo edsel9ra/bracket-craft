@@ -2,8 +2,13 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import unquote, urlparse
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.development_credentials import (
+    DEVELOPMENT_STORAGE_ACCESS_KEY,
+    DEVELOPMENT_STORAGE_SECRET_KEY,
+)
 
 
 DEVELOPMENT_DATABASE_PASSWORD = "bracket_app_dev_password"
@@ -14,8 +19,6 @@ DEVELOPMENT_DATABASE_URL = (
     "postgresql+asyncpg://bracket_app:bracket_app_dev_password@localhost:5432/bracket_craft"
 )
 DEVELOPMENT_REDIS_URL = "redis://localhost:6379/0"
-DEVELOPMENT_STORAGE_ACCESS_KEY = "minioadmin"
-DEVELOPMENT_STORAGE_SECRET_KEY = "minioadmin"
 
 JWT_ALGORITHMS = Literal["HS256", "HS384", "HS512"]
 DEVELOPMENT_ENVS = {"development", "dev", "local"}
@@ -68,6 +71,15 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    @field_validator("google_audience", "storage_signing_endpoint_url", mode="after")
+    @classmethod
+    def blank_optional_string_to_none(cls, value: str | None) -> str | None:
+        """Trata las variables opcionales vacías como ausentes (Compose inyecta "")."""
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         environment = self.app_env.lower().strip()
@@ -86,9 +98,15 @@ class Settings(BaseSettings):
             if database_user == "postgres":
                 raise ValueError("DATABASE_URL no puede usar el superusuario postgres fuera de desarrollo")
             if self.storage_access_key == DEVELOPMENT_STORAGE_ACCESS_KEY:
-                raise ValueError("STORAGE_ACCESS_KEY no puede usar las credenciales de MinIO fuera de desarrollo")
+                raise ValueError(
+                    "STORAGE_ACCESS_KEY no puede usar las credenciales de desarrollo "
+                    "del almacenamiento fuera de desarrollo"
+                )
             if self.storage_secret_key == DEVELOPMENT_STORAGE_SECRET_KEY:
-                raise ValueError("STORAGE_SECRET_KEY no puede usar las credenciales de MinIO fuera de desarrollo")
+                raise ValueError(
+                    "STORAGE_SECRET_KEY no puede usar las credenciales de desarrollo "
+                    "del almacenamiento fuera de desarrollo"
+                )
             if self.auth_cookie_secure is not True and self.cookie_secure is not True:
                 raise ValueError("AUTH_COOKIE_SECURE debe estar activo fuera de desarrollo")
             if self.auth_cookie_samesite == "none" and self.cookie_secure is not True:

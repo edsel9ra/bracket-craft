@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -10,6 +11,23 @@ from sqlalchemy import text
 from app.core.database import SessionFactory, validate_application_role
 from app.core.config import get_settings
 from app.core.outbox import OUTBOX_STREAM, OUTBOX_STREAM_MAXLEN
+from app.workers.heartbeat import (
+    HEARTBEAT_INTERVAL_SECONDS,
+    heartbeat_is_due,
+    heartbeat_is_fresh,
+    publish_heartbeat,
+)
+
+# ``heartbeat_is_fresh`` se reexporta desde aquí porque el plan de la spec lo
+# documenta en este módulo; el healthcheck importa ``app.workers.heartbeat``
+# para no cargar la base de datos ni Redis.
+__all__ = [
+    "build_stream_message",
+    "heartbeat_is_fresh",
+    "main",
+    "process_once",
+    "publish_stream_event",
+]
 
 
 logger = logging.getLogger(__name__)
@@ -94,7 +112,17 @@ async def process_once() -> int:
 async def main():
     if get_settings().app_env.lower().strip() not in {"development", "dev", "local"}:
         await validate_application_role()
+    last_heartbeat: float | None = None
     while True:
+        # El latido mide que el bucle avanza: se publica también cuando la base
+        # de datos falla y ``process_once`` reintenta.
+        now = time.monotonic()
+        if heartbeat_is_due(last_heartbeat, now, HEARTBEAT_INTERVAL_SECONDS):
+            try:
+                publish_heartbeat()
+                last_heartbeat = now
+            except OSError:
+                logger.exception("No se pudo publicar el latido del worker")
         try:
             await process_once()
         except Exception:

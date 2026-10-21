@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import { invitationStatusLabelKey, memberStatusLabelKey, roleLabelKey } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
 
 definePageMeta({ middleware: 'auth' });
@@ -38,12 +39,11 @@ const pageError = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const generatedLink = ref<string | null>(null);
 const inviteForm = reactive<{ email: string; role_code: MemberRole }>({ email: '', role_code: 'viewer' });
-const roles: Array<{ value: MemberRole; label: string }> = [
-  { value: 'administrator', label: 'Administrator' },
-  { value: 'operator', label: 'Operator' },
-  { value: 'referee', label: 'Referee' },
-  { value: 'viewer', label: 'Viewer' },
-];
+const roles: MemberRole[] = ['administrator', 'operator', 'referee', 'viewer'];
+
+function isEditableRole(code: string): boolean {
+  return roles.some((role) => role === code);
+}
 
 useHead({
   title: () => `${t('members.title')} | Bracket Craft`,
@@ -195,12 +195,12 @@ await loadData();
                 <h2>{{ t('members.inviteTitle') }}</h2>
               </div>
               <label>{{ t('members.email') }}<input v-model="inviteForm.email" type="email" autocomplete="email" required /></label>
-              <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in roles" :key="role.value" :value="role.value">{{ role.label }}</option></select></label>
+              <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in roles" :key="role" :value="role">{{ t(roleLabelKey(role)) }}</option></select></label>
               <p class="field-hint">{{ t('members.expiryHint') }}</p>
               <button class="button-primary" type="submit" :disabled="saving">{{ saving ? t('common.processing') : t('members.invite') }}</button>
               <div v-if="generatedLink" class="generated-link" role="status">
                 <strong>{{ t('members.generatedLink') }}</strong>
-                <input :value="generatedLink" readonly aria-label="Invitation link" />
+                <input :value="generatedLink" readonly :aria-label="t('members.generatedLinkAria')" />
                 <button class="button-secondary" type="button" @click="copyLink">{{ t('members.copyLink') }}</button>
               </div>
             </form>
@@ -209,7 +209,7 @@ await loadData();
               <div class="panel-heading"><div><p class="eyebrow">{{ t('members.pendingEyebrow') }}</p><h2>{{ t('members.invitations') }}</h2></div><span class="muted-note">{{ invitations.length }}</span></div>
               <ul v-if="invitations.length" class="resource-list">
                 <li v-for="invitation in invitations" :key="invitation.id">
-                  <div><strong>{{ invitation.email }}</strong><small>{{ invitation.role_code }} · {{ invitation.status }} · {{ formatDate(invitation.expires_at) }}</small></div>
+                  <div><strong>{{ invitation.email }}</strong><small>{{ t(roleLabelKey(invitation.role_code)) }} · {{ t(invitationStatusLabelKey(invitation.status)) }} · {{ formatDate(invitation.expires_at) }}</small></div>
                   <div class="row-actions">
                     <button v-if="invitation.status !== 'accepted'" class="text-button" type="button" :disabled="saving" @click="resendInvitation(invitation)">{{ t('members.resend') }}</button>
                     <button v-if="invitation.status === 'pending'" class="text-button danger" type="button" :disabled="saving" @click="revokeInvitation(invitation)">{{ t('members.revoke') }}</button>
@@ -232,11 +232,12 @@ await loadData();
                     <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
                     <td>
                       <select :value="member.role_code" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
-                        <option v-if="member.role_code === 'owner'" value="owner">Owner</option>
-                        <option v-for="role in roles" :key="role.value" :value="role.value">{{ role.label }}</option>
+                        <option v-if="member.role_code === 'owner'" value="owner">{{ t(roleLabelKey('owner')) }}</option>
+                        <option v-else-if="!isEditableRole(member.role_code)" :value="member.role_code">{{ member.role_code }}</option>
+                        <option v-for="role in roles" :key="role" :value="role">{{ t(roleLabelKey(role)) }}</option>
                       </select>
                     </td>
-                    <td><span class="status-tag" :class="{ inactive: !member.is_active }">{{ member.is_active ? t('members.active') : t('members.inactive') }}</span></td>
+                    <td><span class="status-tag" :class="{ inactive: !member.is_active }">{{ t(memberStatusLabelKey(member.is_active ? 'active' : 'inactive')) }}</span></td>
                     <td><button class="text-button" type="button" :disabled="saving" @click="toggleMember(member)">{{ member.is_active ? t('members.deactivate') : t('members.activate') }}</button></td>
                   </tr>
                 </tbody>

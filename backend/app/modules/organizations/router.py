@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.security import get_current_user_id
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.organizations.ordering import ordered_organizations
 from app.modules.organizations.schemas import CurrentOrganizationResponse, OrganizationSummaryResponse
 
 
@@ -24,7 +25,8 @@ async def list_organizations(
                 FROM list_user_organizations()
             """),
         )
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        return ordered_organizations(rows)
 
 
 @router.get("/current", response_model=CurrentOrganizationResponse)

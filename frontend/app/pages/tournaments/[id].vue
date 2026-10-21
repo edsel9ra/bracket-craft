@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
        <NuxtLink to="/" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
         <div class="detail-actions">
           <span v-if="realtimeStatusLabel" class="realtime-status" :class="`realtime-${realtime.status.value}`" role="status">{{ realtimeStatusLabel }}</span>
-  <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="connectRealtime">{{ t('common.retry') }}</button>
+  <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.retry()">{{ t('common.retry') }}</button>
           <NuxtLink to="/login" class="button-secondary">{{ t('common.login') }}</NuxtLink>
         </div>
     </header>

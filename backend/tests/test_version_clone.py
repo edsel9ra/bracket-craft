@@ -5,6 +5,9 @@ while ``stage_edges`` no longer exists as a code path. The clone endpoint must
 not query or insert ``stage_edges``, and the generator may only emit the two
 supported ``source_type`` values (``direct_team`` and ``match_result``).
 
+RF-009: the stage format (``schedule_legs``) is persisted by the league draw and
+copied by the version clone, so the manual-pairing limit can read it later.
+
 The tests use a session double, so they do not need PostgreSQL.
 """
 
@@ -21,8 +24,11 @@ from app.core.tenancy import AuthContext
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.tournaments.router import (
     _create_draft_version_record,
+    _draw_non_swiss_schedule,
+    _load_draft_stage_context,
     _persist_bracket_schedule,
 )
+from app.modules.tournaments.schemas import GenerateSingleEliminationRequest
 from app.modules.tournaments.scheduling import build_single_elimination_bracket
 
 ORGANIZATION_ID = uuid4()
@@ -83,8 +89,11 @@ class Result:
 class RecordingSession:
     """AsyncSession double that records every statement and its parameters."""
 
-    def __init__(self, *, slot_source_type: str = "direct_team"):
+    def __init__(
+        self, *, slot_source_type: str = "direct_team", schedule_legs: int = 2
+    ):
         self.slot_source_type = slot_source_type
+        self.schedule_legs = schedule_legs
         self.statements: list[str] = []
         self.calls: list[tuple[str, dict]] = []
 
@@ -131,6 +140,7 @@ class RecordingSession:
                         "name": "Group",
                         "stage_type": "round_robin",
                         "stage_order": 1,
+                        "schedule_legs": self.schedule_legs,
                     }
                 ]
             )
@@ -285,6 +295,153 @@ async def test_clone_only_persists_supported_source_types():
 
     for params in session.parameters_for("INSERT INTO phase_slots"):
         assert params["source_type"] in {"direct_team", "match_result"}
+
+
+# ---------------------------------------------------------------------------
+# Persisted stage format (schedule_legs, RF-009)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schedule_legs", [1, 2])
+async def test_clone_copies_schedule_legs(schedule_legs):
+    session = RecordingSession(schedule_legs=schedule_legs)
+
+    await _create_draft_version_record(session, context(), TOURNAMENT_ID, None)
+
+    # The clone reads the stored format from the source stage...
+    stage_selects = [
+        sql for sql in session.statements if sql.startswith("SELECT id, name, stage_type")
+    ]
+    assert len(stage_selects) == 1
+    assert "schedule_legs" in stage_selects[0]
+
+    # ...and writes it unchanged on the cloned stage.
+    stage_inserts = session.parameters_for("INSERT INTO stages")
+    assert len(stage_inserts) == 1
+    assert stage_inserts[0]["schedule_legs"] == schedule_legs
+    assert stage_inserts[0]["stage_type"] == "round_robin"
+
+
+class DrawResult:
+    """Result double for the draw path: no pre-existing matches."""
+
+    def scalar_one_or_none(self):
+        return None
+
+
+class DrawRecordingSession:
+    """AsyncSession double for ``_draw_non_swiss_schedule``."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    async def execute(self, statement, params=None):
+        sql = " ".join(str(statement).split())
+        self.calls.append((sql, dict(params or {})))
+        return DrawResult()
+
+    def parameters_for(self, prefix: str) -> list[dict]:
+        return [params for sql, params in self.calls if sql.startswith(prefix)]
+
+
+def draw_payload(**overrides) -> GenerateSingleEliminationRequest:
+    values = {
+        "version_id": SOURCE_VERSION_ID,
+        "stage_id": SOURCE_STAGE_ID,
+        "start_date": START_DATE,
+        "round_interval_days": 7,
+        "match_interval_hours": 2,
+        "seed": 11,
+    }
+    values.update(overrides)
+    return GenerateSingleEliminationRequest(**values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legs", [1, 2])
+async def test_league_draw_persists_the_received_legs(legs):
+    session = DrawRecordingSession()
+    home_id, away_id = UUID(int=1), UUID(int=2)
+    team_rows = [
+        {"team_id": home_id, "group_id": None},
+        {"team_id": away_id, "group_id": None},
+    ]
+
+    response = await _draw_non_swiss_schedule(
+        session,
+        context(),
+        TOURNAMENT_ID,
+        draw_payload(legs=legs),
+        "round_robin",
+        team_rows,
+        [home_id, away_id],
+    )
+
+    # With a single pair each leg contributes exactly one match.
+    assert response.match_count == legs
+
+    stage_updates = session.parameters_for("UPDATE stages")
+    assert len(stage_updates) == 1
+    assert stage_updates[0]["schedule_legs"] == legs
+    assert stage_updates[0]["stage_id"] == str(SOURCE_STAGE_ID)
+
+
+@pytest.mark.asyncio
+async def test_elimination_draw_does_not_write_schedule_legs():
+    session = DrawRecordingSession()
+    team_ids = [UUID(int=index) for index in range(1, 5)]
+    team_rows = [{"team_id": team_id, "group_id": None} for team_id in team_ids]
+
+    await _draw_non_swiss_schedule(
+        session,
+        context(),
+        TOURNAMENT_ID,
+        draw_payload(),
+        "single_elimination",
+        team_rows,
+        team_ids,
+    )
+
+    assert session.parameters_for("UPDATE stages") == []
+
+
+class StageContextSession:
+    """AsyncSession double that returns one draft stage row."""
+
+    def __init__(self, schedule_legs: int):
+        self.schedule_legs = schedule_legs
+        self.statements: list[str] = []
+
+    async def execute(self, statement, params=None):
+        self.statements.append(" ".join(str(statement).split()))
+        return Result(
+            rows=[
+                {
+                    "version_status": "draft",
+                    "tournament_version_id": SOURCE_VERSION_ID,
+                    "stage_type": "round_robin",
+                    "schedule_legs": self.schedule_legs,
+                }
+            ]
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schedule_legs", [1, 2])
+async def test_draft_stage_context_returns_schedule_legs(schedule_legs):
+    session = StageContextSession(schedule_legs=schedule_legs)
+
+    stage = await _load_draft_stage_context(
+        session,
+        ORGANIZATION_ID,
+        TOURNAMENT_ID,
+        SOURCE_VERSION_ID,
+        SOURCE_STAGE_ID,
+    )
+
+    assert "schedule_legs" in session.statements[0]
+    assert stage["schedule_legs"] == schedule_legs
 
 
 # ---------------------------------------------------------------------------

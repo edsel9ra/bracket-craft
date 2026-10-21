@@ -20,6 +20,20 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 
 La inicialización PostgreSQL se ejecuta en el primer arranque del volumen. Las migraciones numeradas de `infra/postgres/migrations` se aplican una sola vez y quedan registradas en `schema_migrations` por el servicio `db-migrate`.
 
+El servicio `web` de desarrollo se ejecuta como `root` (`user: "0:0"` en `docker-compose.yml`): el servidor de desarrollo escribe caché en el árbol montado `./frontend` y el identificador del contenedor puede no coincidir con el dueño del host (Linux frente a Windows/WSL). Es una excepción **solo de desarrollo**: la etapa de ejecución de `frontend/Dockerfile` declara `USER node` y el perfil de producción fija `user: "node"`, sin heredar la excepción. Se retirará cuando el flujo de desarrollo deje de necesitar escritura en el montaje.
+
+La API de desarrollo se publica solo en `127.0.0.1:8000`: el navegador la alcanza por esa interfaz local y el renderizado en servidor por la red interna. El servicio `web` conserva `3000:3000` porque es el punto de entrada del desarrollador y el flujo en Windows/WSL depende de esa publicación.
+
+Cada servicio declara su propia verificación de salud. La API comprueba `/health/ready` (base de datos y Redis); el web responde por HTTP con el recurso estático `/health.txt`, sin depender de la API ni de la base de datos una vez arrancado; el worker publica un latido de fichero cada 10 s y se considera caducado a los 90 s. El web espera una sola vez a que la API esté sana al arrancar. Con la base de datos detenida la API queda `unhealthy` (insana), el web sigue `healthy` y el worker sigue `healthy` mientras su bucle avance y reintente. El latido se escribe en `/tmp/bracket-craft-worker-heartbeat` y la ruta se configura con `WORKER_HEARTBEAT_PATH` en el proceso y en el healthcheck.
+
+## Configuración y contrato de entorno
+
+`.env.example` documenta los defaults de desarrollo. Cada variable declara su consumidor: la API recibe la configuración de la aplicación (JWT, CSRF, autenticación, SMTP, almacenamiento, CORS, límites y URLs); el worker recibe `DATABASE_URL`, `REDIS_URL` y `APP_ENV`, más `JWT_SECRET` y `PLAYER_DATA_KEY` fuera de desarrollo; el web recibe `NUXT_*` y las marcas `CI`/`NODE_ENV`; `db` recibe las credenciales de PostgreSQL; `db-migrate` recibe `POSTGRES_*`, `PGPASSWORD`, `MIGRATION_TARGET` y `PLATFORM_ADMIN_EMAIL`; el one-off de cifrado recibe `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY` con `-e`, nunca la API. Redis y el almacenamiento no reciben variables.
+
+Son excepciones declaradas `PGPASSWORD` (alias de `POSTGRES_PASSWORD`), `DATABASE_URL` (derivada por Compose y obligatoria en producción), `DATABASE_ADMIN_URL` (solo el one-off), `CI` y `NODE_ENV` (marcas del servidor Nuxt), además de los valores de pruebas o de entornos locales. El mapa y la lista cerrada de excepciones viven en `infra/scripts/check_env_contract.py`.
+
+La comprobación se ejecuta sobre la configuración renderizada (comandos en «Verificación»). Falla, con el nombre de la variable y del servicio, si una variable documentada no llega a ningún consumidor (documentada sin efecto), si un servicio declara una variable que no está documentada (declarada sin documentar) o si una variable aparece en un servicio que no la consume (mal atribuida). El merge de producción se valida con `--profile production` y las variables dummy que detalla `AGENTS.md`.
+
 ## Datos demo
 
 El seed de desarrollo crea una cuenta de prueba, una organización y una llave de eliminación directa de ocho equipos. Se ejecuta explícitamente después de levantar los servicios:
@@ -52,6 +66,30 @@ cd frontend
 pnpm install
 pnpm dev
 ```
+
+## Contratos de invitación, presentación y versión
+
+Cambios de contrato de la spec 008 (higiene P2). Cliente y servidor se despliegan juntos; no hay periodo de transición ni parámetro que reactive el comportamiento anterior.
+
+- **Invitación vencida.** Una invitación `pending` cuya fecha de vencimiento ya pasó se presenta como `expired` **sin reescribir la fila**; la lectura y la vista previa no escriben. El registro se materializa como vencido solo al **crear** y al **reenviar**.
+
+  | Acción | Respuesta |
+  |---|---|
+  | `GET /organizations/invitations` | `expired` calculado por fila; no cambia el estado almacenado ni `updated_at` |
+  | `POST /organizations/invitations` con una pendiente vencida del mismo correo | `201`: la anterior queda vencida y se crea la nueva |
+  | `POST /organizations/invitations` con una pendiente vigente | `409` (ya existe una invitación pendiente) |
+  | `DELETE /organizations/invitations/{id}` sobre una vencida | `409` («ya no está pendiente»), sin marcarla revocada ni reescribirla |
+  | `POST /organizations/invitations/{id}/resend` sobre una vencida | `200`: reutiliza la fila y la deja `pending` con token y fecha nuevos |
+  | `POST /organizations/invitations/{id}/resend` con **otra** pendiente vigente del mismo correo | `409` (ya existe una invitación pendiente), sin escribir ni enviar correo |
+  | `POST /invitations/{token}/accept` de una vencida | `410`, sin consumirla |
+
+  Se mantiene la unicidad de invitaciones pendientes por organización y correo.
+- **Aceptación sin token.** `POST /invitations/{token}/accept` ya no devuelve `access_token` ni `token_type` en el cuerpo: la sesión se entrega solo con la cookie de sesión. No hay versión, cabecera ni parámetro que reactive el token en el cuerpo; un consumidor externo que lo leyera debe usar la cookie.
+- **Rol por precedencia.** El rol mostrado de un miembro con varios roles sigue el orden **dueño → administrador → operador → árbitro → observador**, de forma consistente en el listado de miembros, la respuesta de cambio de rol y los datos de acceso de la sesión. Es una regla de **presentación**: la autorización sigue siendo aditiva por permisos y por `match_officials`, y el rol mostrado no concede permiso.
+- **Organización activa.** El servidor devuelve solo las organizaciones de la persona, activas y con membresía activa, en **orden estable** por nombre y, en empate, por identificador. El cliente (entrega 008C de la spec 008) restaura la última organización usada solo si su identificador aparece en esa lista; si no hay historial válido, activa la primera del orden estable. El servidor no guarda historial por navegador y revalida la membresía en cada petición.
+- **Versión del producto.** `backend/pyproject.toml` (`[project].version`) es la **única** fuente; `/docs` y `/openapi.json` la leen de ahí. La versión del contrato de reglas (`engine_version`, `2026.1`) es otra y no se usa como versión del producto ni al revés.
+
+Los cambios de esquema que acompañan a esta entrega están en «Migración 022: topes de minuto en eventos de partido (runbook)» y «Migración 023: vueltas de fase persistidas (runbook)», en este mismo documento.
 
 ## Despliegue de producción
 
@@ -150,6 +188,19 @@ export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.productio
 - **Entre 017 y 018:** la aplicación antigua no puede insertar la fecha porque la 017 revocó el permiso. No vuelvas a la imagen antigua sobre el esquema intermedio: corrige la clave o los datos y reintenta el backfill. Para una reversión total, restaura la copia previa a la 017 y despliega la imagen anterior.
 - **Después de 018:** no hay vuelta atrás de código; solo *forward-fix* con una migración nueva. No edites la 018 ni restaures la fecha en claro a mano. Los snapshots anteriores a la 017 pueden contenerla: su tratamiento y la rotación de `PLAYER_DATA_KEY` son deuda separada.
 - **Fallo de la 018:** es transaccional; corrige los pendientes, reintenta el backfill y vuelve a ejecutar la 018. Si el backfill reporta una fecha imposible, corrige los datos reportados (solo ids internos) y reanuda.
+
+## Migración 013: reescritura por texto ya aplicada (riesgo documentado)
+
+La migración **013** ya está aplicada y **no se edita** (historial append-only). Endureció cinco funciones de plataforma (`platform_set_user_active`, `platform_set_organization_active`, `platform_set_membership_active`, `platform_create_membership` y `requeue_outbox_events`) y reescribió la vista cruda de formación (`v_public_match_lineups_unpublished`) **sustituyendo texto sobre su definición vigente**. La sustitución solo actúa cuando el texto coincide; si no coincide, **no hace nada y no avisa**. Una base migrada antes de la comprobación podría conservar una función con `<> 'platform_admin'` o la vista con el orden anterior, y nadie lo habría notado.
+
+El estado final esperado se comprueba con `backend/tests/test_migration_013_hardening.py`: exige `fn_platform_actor_role() IS DISTINCT FROM 'platform_admin'` en las cinco funciones y el orden `tl.match_id, tl.team_id, tl.published_at DESC, ms.segment_number DESC, tl.id DESC` en la vista, y falla nombrando la función o la vista incumplidora. Es una prueba opt-in con PostgreSQL:
+
+```sh
+cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
+  pytest -q tests/test_migration_013_hardening.py
+```
+
+Si la comprobación falla, la corrección es una **migración nueva** (*forward-fix*) que reescriba la función o la vista; no se reescribe, reaplica ni edita la 013.
 
 ## Migración 019: retiro de roles por torneo y selectores entre fases (runbook)
 
@@ -291,6 +342,38 @@ Comprueba `GET /docs`, una lectura pública de torneo, una operación del Worksp
 
 **Si algo falla después:** no hay rollback de esquema ni de datos. La 021 no se desaplica y cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar `$HOME/backup-pre021.dump` solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-021) termina con el mismo esquema que una base migrada.
 
+## Migración 022: topes de minuto en eventos de partido (runbook)
+
+La **022** es **aditiva**: añade a `public.match_events` los `CHECK` `chk_match_event_minute_range` (`minute BETWEEN 0 AND 180`) y `chk_match_event_added_minute_range` (`added_minute BETWEEN 0 AND 30`). No añade columnas, no toca datos ni `init/01` y no cambia las políticas RLS existentes. Son **topes estructurales**, no la regla deportiva: la API sigue aplicando el máximo efectivo de la fase (reglamentario/prórroga) y responde con su error actual (422) antes de llegar a la base.
+
+En la misma transacción, un **pre-chequeo aborta** la migración si hay filas con `minute` fuera de 0..180 o `added_minute` fuera de 0..30, nombrando ambos conteos. No recorta ni corrige datos: el operador decide la corrección y aplica una migración nueva. Si el pre-chequeo pasa, las dos restricciones se añaden **validadas** (no `NOT VALID`), así que PostgreSQL recorre la tabla una vez y toma un bloqueo breve; aplícala en una ventana de baja actividad.
+
+```sh
+MIGRATION_TARGET=022 $COMPOSE run --rm db-migrate
+```
+
+**Orden de despliegue:** la 022 es compatible con el código actual (la API ya limita a 180/30), así que puede aplicarse antes o junto con el despliegue; va **antes** de la 023. **No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). La cadena de volumen limpio (`init/00-03` → 001-022) termina con el mismo esquema que una base migrada.
+
+## Migración 023: vueltas de fase persistidas (runbook)
+
+La **023** es **aditiva**: añade a `public.stages` la columna `schedule_legs SMALLINT NOT NULL DEFAULT 1` con `CHECK (schedule_legs IN (1, 2))` (`chk_stages_schedule_legs`). No reescribe filas, no toca `init/01` ni cambia las políticas RLS existentes: las fases que ya existen quedan en una vuelta. El sorteo de liga (`round_robin`) y de grupos (`custom_group`) escribe las vueltas recibidas en `legs`; el clonado de versiones copia el valor a la fase clonada; las eliminatorias y la fase Swiss conservan el default. Los triggers de estructura existentes impiden reescribir `schedule_legs` en una versión publicada o archivada.
+
+```sh
+MIGRATION_TARGET=023 $COMPOSE run --rm db-migrate
+```
+
+**Orden de despliegue: migración 023 → código.** El backend nuevo lee `schedule_legs` al cargar el borrador y lo escribe al sortear, así que contra el esquema 022 falla; va **después** de la 022. **No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). La cadena de volumen limpio (`init/00-03` → 001-023) termina con el mismo esquema que una base migrada.
+
+**Limitación documentada:** no hay *backfill*, porque las vueltas de un calendario histórico no se pueden reconstruir. Una liga o fase de grupos de dos vueltas ya generada queda en una hasta que se regenere su calendario; mientras tanto, el límite de enfrentamientos manuales por pareja es uno. Como las versiones publicadas no admiten altas manuales, la limitación solo alcanza a borradores que aún no se han vuelto a sortear.
+
+## Proyección interna de jugadores por torneo
+
+`v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
+
+- **Qué calcula:** `public_age` (edad derivada: `age_at_reference` más la diferencia de año entre el inicio del torneo y el año de referencia), junto con nombre, dorsal, equipo y `photo_url`. La calcula para el **rol de aplicación** (`bracket_app`): «público» significa respuesta de la API, no el acceso del rol de aplicación a la base.
+- **Qué no expone:** documentos de identidad ni fechas de nacimiento; la definición no selecciona `national_id_*` ni `birth_date_encrypted`. Conserva su protección: solo filas activas de torneos publicados, en juego o finalizados, y `photo_url` solo con consentimiento de imagen.
+- **Contrato público de jugadores:** sale de `v_public_match_lineups` en `GET /api/v1/tournaments/public/{id}/matches` (`player_id`, nombre, dorsal, rol, posición y `photo_url`), sin edad ni dato de identidad. `backend/tests/test_public_player_views.py` comprueba con base real que las respuestas públicas no incluyen edad, documento ni fecha de nacimiento y que ningún endpoint consume la proyección interna (opt-in con PostgreSQL; comando en `AGENTS.md`).
+
 ## Alcance inicial
 
 - Registro y login por email/password.
@@ -338,12 +421,21 @@ El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un 
 - **Arranque y reconexión:** un proceso nuevo del relay resuelve la posición en el último id y **no reemite el histórico**. Si se pierde la conexión con Redis con el proceso vivo, conserva la posición y **reanuda** desde ahí, por lo que puede repetir entradas retenidas.
 - **`RESYNC`:** evento de control `{event_id, reason}` con `reason` entre `JOIN`, `RELAY_START`, `STREAM_TRIMMED` y `REDIS_RESET`. No lleva datos de negocio, no se persiste y no se escribe en el stream. `JOIN` va solo al socket que entra en su sala; los huecos se emiten a las salas con clientes conectados; sin clientes no se emite nada.
 - **Cliente:** deduplica por `event_id` en una ventana FIFO de 200 entregas y separa `RESYNC` de los eventos de dominio. El Workspace y la operación de partido recargan al reconectar; la página pública mantiene su polling de 30 s mientras el socket no está conectado y, ante un `RESYNC` de hueco, recarga y reinicia la paginación.
+- **Alcance por organización, sin filtro de rol (riesgo aceptado, R32f):** el relay emite cada evento a la sala `organization:{id}`, así que **todo miembro conectado** de la organización lo recibe con independencia de su rol o permisos, y el payload no se filtra por evento. *Mitigación vigente:* cada 30 s se revalidan la sesión, la membresía y la huella de permisos; si cambian, el socket se desconecta y deja de recibir eventos. Un filtrado por evento y por rol exige una spec propia y no forma parte de la spec 008.
 
 | Tramo | Garantía | Consecuencia |
 |---|---|---|
 | `outbox_events` → stream | at-least-once | El mismo evento puede escribirse más de una vez con el mismo `event_id`. |
 | stream → cliente | best-effort | Hay huecos (reinicio, recorte, caída de Redis, cliente desconectado) y duplicados posibles; se mitigan con `RESYNC`, deduplicación, polling y reconciliación. |
 | cliente → API HTTP | fuente de verdad | Cualquier estado visible se reconstruye con una recarga HTTP; el tiempo real es una optimización. |
+
+## Auditoría organizacional de la operación
+
+Guardar la planilla de un partido, publicar o despublicar la formación de un equipo y asignar o retirar un oficial dejan **una** entrada en `administrative_audit_logs` con la acción, el partido, el miembro que la ejecuta y un resumen (formaciones, conteos y un digest de contenido; nunca nombres, correos, documentos ni el contenido de la planilla).
+
+- La entrada depende del **cambio efectivo**: repetir la misma publicación o el mismo guardado no añade nada aunque la petición actualice marcas de tiempo, y las lecturas no generan entradas.
+- La inserción ocurre en la misma transacción: una operación fallida o revertida no deja rastro, y no se duplica el registro del cierre de acta ni el de la interrupción de segmento.
+- Las entradas quedan sujetas al aislamiento por organización y no se exponen en ninguna ruta ni proyección pública. No hay endpoint ni pantalla de consulta de esta auditoría.
 
 ## Rendimiento, fotos y conexión
 
@@ -365,6 +457,14 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+Las dependencias de ejecución y las de prueba se declaran en archivos separados. `backend/requirements-dev.txt` se instala en local y en CI y **nunca** entra en la imagen de producción, que instala solo `backend/requirements.txt`; la auditoría de dependencias cubre ambos archivos:
+
+```sh
+python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+cd backend && pytest -q
+cd backend && python -m compileall -q app
+```
+
 Con Node 24 y pnpm 12.12.1, la auditoría de dependencias del frontend se ejecuta desde la raíz del repositorio:
 
 ```sh
@@ -376,11 +476,23 @@ PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDI
 
 El filtro `infra/scripts/audit_frontend.py` falla ante cualquier hallazgo `high` o `critical` con corrección publicada, muestra los no accionables (incluidos los que no tienen parche) para su revisión y no persiste exclusiones. No se admiten listas de GHSA ni flags que persistan exclusiones, como `--ignore-unfixable`, `audit.ignore` o `auditConfig.ignoreGhsas`. El resto de comprobaciones de CI está en `AGENTS.md` y la política completa en la §3.4 de `docs/constitution.md`.
 
+El contrato de entorno y las aserciones de Compose se ejecutan sobre la configuración renderizada. El merge de producción requiere las variables dummy que detalla `AGENTS.md`:
+
+```sh
+docker compose config --format json | python3 infra/scripts/check_env_contract.py -
+python3 infra/scripts/check_env_contract.py --self-test
+docker compose config --format json | python3 infra/scripts/assert_production_compose.py --profile development -
+docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
+  | python3 infra/scripts/assert_production_compose.py -
+```
+
 ## Seguridad
 
 El backend establece `app.current_organization_id` y `app.current_user_id` dentro de cada transacción. Las tablas tenant-owned tienen RLS y las vistas públicas no exponen documentos ni fechas de nacimiento.
 
 La autorización efectiva es **RBAC por organización** (roles y permisos de la membresía) más el ámbito menor de **`match_officials`** por partido. No hay roles por torneo: `tournament_user_roles` fue retirada por la 019. La inmutabilidad de versiones publicadas se refuerza con triggers; el conflicto de estructura usa `ZZ409` y la API responde **409** sin comparar el texto.
+
+Toda escritura valida `Origin` y `Referer` **por separado**: sin ninguna de las dos se admite (renderizado en servidor y clientes externos); si cualquiera está presente y no es un origen permitido, responde **403**, aunque la otra sí lo esté. Un `Referer` vacío o no parseable también se rechaza. Un proxy que reescriba `Referer` a un host interno debe permitir ese origen o retirar la cabecera; de lo contrario sus escrituras serán rechazadas.
 
 La fecha de nacimiento se almacena cifrada con `PLAYER_DATA_KEY` y el rol de aplicación no puede leer el texto cifrado (patrón *write-only*, igual que el documento). Desde la migración 017 tampoco puede leer ni insertar la fecha en claro; solo escribe el campo cifrado y la edad derivada. La API y el Workspace exponen la edad (`age` solo en `GET /tournaments/{id}/rosters`), nunca la fecha completa. La exposición declarada —la edad y el año de referencia permiten inferir el año de nacimiento— es el mismo dato derivado que la proyección pública ya mostraba. La rotación de `PLAYER_DATA_KEY` y el tratamiento de copias anteriores a la 017 son deuda separada.
 

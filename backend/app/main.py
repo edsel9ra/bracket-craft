@@ -1,22 +1,30 @@
 import asyncio
 import json
 import logging
+import tomllib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from enum import Enum
 from http.cookies import SimpleCookie
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import socketio
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 
 from app.core.config import get_settings
-from app.core.csrf import CSRF_HEADER_NAME, new_csrf_token, validate_csrf_request
+from app.core.csrf import (
+    CSRF_HEADER_NAME,
+    new_csrf_token,
+    validate_csrf_token,
+    validate_request_origin,
+)
 from app.core.database import (
     SessionFactory,
     log_database_configuration,
@@ -37,9 +45,28 @@ PUBLIC_REALTIME_EVENTS = frozenset({"MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_
 RESYNC = "RESYNC"
 SOCKET_REVALIDATION_SECONDS = 30
 RELAY_RETRY_SECONDS = 1
+# nginx-style "client closed request": no body, no domain result. A disconnected
+# client never receives it, but the connection is closed without running the
+# handler or writing anything.
+CLIENT_CLOSED_REQUEST = 499
 VALIDATION_ERROR_FIELDS = ("type", "loc", "msg")
 logger = logging.getLogger(__name__)
 settings = get_settings()
+PYPROJECT_PATH = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+
+def _product_version() -> str:
+    """Lee la versión única del producto desde los metadatos del backend.
+
+    Es la única fuente: no se repite como literal ni se toma de
+    ``engine_version`` (versión del contrato de reglas, que es otra).
+    """
+
+    with PYPROJECT_PATH.open("rb") as pyproject:
+        return tomllib.load(pyproject)["project"]["version"]
+
+
+PRODUCT_VERSION = _product_version()
 allowed_origins = [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -553,7 +580,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-api = FastAPI(title="Bracket Craft API", version="0.1.0", lifespan=lifespan)
+api = FastAPI(title="Bracket Craft API", version=PRODUCT_VERSION, lifespan=lifespan)
 
 
 async def _request_validation_exception_handler(
@@ -631,17 +658,32 @@ api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
 api.add_exception_handler(PoolTimeoutError, _pool_timeout_exception_handler)
 
 
-async def _buffer_request_body(request: Request, max_bytes: int) -> bool:
+class BodyBufferResult(Enum):
+    """Resultado de leer el cuerpo completo antes de ejecutar el manejador."""
+
+    COMPLETE = "complete"
+    TOO_LARGE = "too_large"
+    DISCONNECTED = "disconnected"
+
+
+async def _buffer_request_body(request: Request, max_bytes: int) -> BodyBufferResult:
+    """Lee todo el cuerpo y lo deja disponible para el manejador.
+
+    Un cuerpo incompleto por desconexión del cliente no se procesa como
+    completo: se devuelve ``DISCONNECTED`` y no se instala un cuerpo parcial.
+    """
+
     body = bytearray()
     while True:
         message = await request.receive()
-        if message.get("type") == "http.disconnect":
-            break
-        if message.get("type") != "http.request":
+        message_type = message.get("type")
+        if message_type == "http.disconnect":
+            return BodyBufferResult.DISCONNECTED
+        if message_type != "http.request":
             continue
         body.extend(message.get("body", b""))
         if len(body) > max_bytes:
-            return False
+            return BodyBufferResult.TOO_LARGE
         if not message.get("more_body", False):
             break
     buffered_body = bytes(body)
@@ -658,7 +700,7 @@ async def _buffer_request_body(request: Request, max_bytes: int) -> bool:
         return {"type": "http.request", "body": buffered_body, "more_body": False}
 
     request._receive = replay_body
-    return True
+    return BodyBufferResult.COMPLETE
 
 
 @api.middleware("http")
@@ -678,11 +720,16 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 content={"detail": "La solicitud supera el tamaño máximo permitido"},
             )
-    if not await _buffer_request_body(request, current_settings.max_request_body_bytes):
+    body_result = await _buffer_request_body(request, current_settings.max_request_body_bytes)
+    if body_result is BodyBufferResult.TOO_LARGE:
         return JSONResponse(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             content={"detail": "La solicitud supera el tamaño máximo permitido"},
         )
+    if body_result is BodyBufferResult.DISCONNECTED:
+        # El cliente abortó a mitad del cuerpo: no se ejecuta el manejador, no
+        # se escribe nada y la respuesta de cierre no es un resultado de dominio.
+        return Response(status_code=CLIENT_CLOSED_REQUEST)
 
     try:
         has_auth_credentials = bool(
@@ -690,12 +737,11 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
             or request.cookies.get(current_settings.auth_cookie_name)
         )
         is_identity_endpoint = request.url.path.startswith("/api/v1/auth/")
-        if has_auth_credentials or is_identity_endpoint or request.method.upper() in {"GET", "HEAD", "OPTIONS", "TRACE"}:
-            validate_csrf_request(
-                request,
-                frozenset(allowed_origins),
-                current_settings.csrf_cookie_name,
-            )
+        # El origen se valida en toda escritura; el token doble solo cuando la
+        # petición lleva credenciales o va a una ruta de identidad.
+        validate_request_origin(request, frozenset(allowed_origins))
+        if has_auth_credentials or is_identity_endpoint:
+            validate_csrf_token(request, current_settings.csrf_cookie_name)
     except HTTPException as exc:
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 

@@ -1,7 +1,7 @@
 """Opt-in PostgreSQL coverage for the spec 006 concurrency and access rules.
 
 Requires ``RUN_DATABASE_TESTS=1`` and ``DATABASE_ADMIN_URL``. Every test builds
-a throwaway database from the real ``init`` scripts and migrations 1..19, seeds
+a throwaway database from the real ``init`` scripts and migrations 1..23, seeds
 its own tenants and runs the real route functions through a **dedicated role**
 that inherits the application role privileges (the shared ``bracket_app`` role
 is never altered).
@@ -670,7 +670,7 @@ async def harness(database_admin_url):
     role_password = secrets.token_hex(16)
     try:
         await apply_init(admin)
-        await apply_migrations(admin, first=1, last=19)
+        await apply_migrations(admin, first=1, last=23)
         # Dedicated role per throwaway database: it inherits bracket_app
         # privileges but the shared role is never altered.
         await admin.execute(

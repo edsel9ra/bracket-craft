@@ -46,8 +46,6 @@ class AcceptInvitationRequest(BaseModel):
 
 
 class AcceptInvitationResponse(BaseModel):
-    access_token: str | None = None
-    token_type: str = "bearer"
     user_id: UUID
     organization_id: UUID
     organization_user_id: UUID

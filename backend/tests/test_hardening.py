@@ -4,16 +4,23 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from app.core import rate_limit as rate_limit_module
 from app.core import storage as storage_module
-from app.core.csrf import validate_csrf_request
+from app.core.csrf import (
+    validate_csrf_request,
+    validate_csrf_token,
+    validate_request_origin,
+)
 from app.core.rate_limit import enforce_rate_limit
 from app.core.storage import ObjectStorage, StorageError
 from app.main import (
+    BodyBufferResult,
     RelayState,
     _buffer_request_body,
+    csrf_and_request_size_middleware,
     emit_domain_event,
     relay_cycle,
     sio,
@@ -21,14 +28,19 @@ from app.main import (
 
 
 ALLOWED_ORIGINS = {"http://localhost:3000"}
+PUBLIC_WRITE_PATH = "/api/v1/invitations/invitation-token/accept"
 
 
-def make_request(method: str = "POST", headers: dict[str, str] | None = None) -> Request:
-    scope = {
+def http_scope(
+    method: str = "POST",
+    path: str = "/api/v1/test",
+    headers: dict[str, str] | None = None,
+) -> dict:
+    return {
         "type": "http",
         "method": method,
-        "path": "/api/v1/test",
-        "raw_path": b"/api/v1/test",
+        "path": path,
+        "raw_path": path.encode(),
         "query_string": b"",
         "headers": [
             (name.lower().encode(), value.encode())
@@ -37,8 +49,40 @@ def make_request(method: str = "POST", headers: dict[str, str] | None = None) ->
         "client": ("127.0.0.1", 1234),
         "server": ("test", 80),
         "scheme": "http",
+        "http_version": "1.1",
     }
-    return Request(scope)
+
+
+def make_request(
+    method: str = "POST",
+    headers: dict[str, str] | None = None,
+    path: str = "/api/v1/test",
+) -> Request:
+    return Request(http_scope(method, path, headers))
+
+
+async def run_middleware(
+    method: str = "POST",
+    path: str = PUBLIC_WRITE_PATH,
+    headers: dict[str, str] | None = None,
+):
+    """Ejecuta el middleware de origen/CSRF y devuelve la respuesta y si el
+    manejador llegó a ejecutarse."""
+
+    messages = [{"type": "http.request", "body": b"", "more_body": False}]
+
+    async def receive():
+        return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+    request = Request(http_scope(method, path, headers), receive)
+    handled = []
+
+    async def call_next(_request):
+        handled.append(True)
+        return JSONResponse({"ok": True})
+
+    response = await csrf_and_request_size_middleware(request, call_next)
+    return response, handled
 
 
 def test_csrf_accepts_an_allowed_origin_and_matching_token():
@@ -84,6 +128,181 @@ def test_csrf_does_not_require_tokens_for_safe_methods():
     request = make_request("GET", headers={"Origin": "https://attacker.example"})
 
     validate_csrf_request(request, ALLOWED_ORIGINS, "bc_csrf_token")
+
+
+def test_validate_request_origin_allows_a_request_without_any_origin():
+    validate_request_origin(make_request(), ALLOWED_ORIGINS)
+
+
+def test_validate_request_origin_rejects_a_disallowed_referer_without_origin():
+    request = make_request(headers={"Referer": "https://attacker.example/roster"})
+
+    with pytest.raises(HTTPException) as failure:
+        validate_request_origin(request, ALLOWED_ORIGINS)
+
+    assert failure.value.status_code == 403
+
+
+def test_validate_request_origin_rejects_a_disallowed_referer_even_when_origin_is_allowed():
+    request = make_request(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Referer": "https://attacker.example/roster",
+        }
+    )
+
+    with pytest.raises(HTTPException) as failure:
+        validate_request_origin(request, ALLOWED_ORIGINS)
+
+    assert failure.value.status_code == 403
+
+
+def test_validate_request_origin_allows_allowed_origin_and_referer():
+    request = make_request(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Referer": "http://localhost:3000/workspace/members",
+        }
+    )
+
+    validate_request_origin(request, ALLOWED_ORIGINS)
+
+
+def test_validate_request_origin_rejects_an_unparseable_referer():
+    request = make_request(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Referer": "not-a-valid-url",
+        }
+    )
+
+    with pytest.raises(HTTPException) as failure:
+        validate_request_origin(request, ALLOWED_ORIGINS)
+
+    assert failure.value.status_code == 403
+
+
+def test_validate_csrf_token_only_checks_credentials():
+    request = make_request(headers={"Origin": "http://localhost:3000"})
+
+    with pytest.raises(HTTPException) as failure:
+        validate_csrf_token(request, "bc_csrf_token")
+
+    assert failure.value.status_code == 403
+
+    validate_csrf_token(
+        make_request(
+            headers={
+                "Origin": "https://attacker.example",
+                "Cookie": "bc_csrf_token=token-value",
+                "X-CSRF-Token": "token-value",
+            }
+        ),
+        "bc_csrf_token",
+    )
+
+
+@pytest.mark.asyncio
+async def test_write_without_credentials_from_untrusted_origin_is_forbidden_without_effect():
+    response, handled = await run_middleware(headers={"Origin": "https://attacker.example"})
+
+    assert response.status_code == 403
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_write_without_origin_rejects_a_disallowed_referer():
+    response, handled = await run_middleware(
+        headers={"Referer": "https://attacker.example/roster"}
+    )
+
+    assert response.status_code == 403
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_write_with_an_allowed_origin_and_a_disallowed_referer_is_forbidden():
+    response, handled = await run_middleware(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Referer": "https://attacker.example/roster",
+        }
+    )
+
+    assert response.status_code == 403
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_write_with_allowed_origin_and_referer_is_allowed_without_token():
+    response, handled = await run_middleware(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Referer": "http://localhost:3000/workspace/members",
+        }
+    )
+
+    assert response.status_code == 200
+    assert handled == [True]
+
+
+@pytest.mark.asyncio
+async def test_write_without_origin_or_referer_is_allowed_without_token():
+    response, handled = await run_middleware()
+
+    assert response.status_code == 200
+    assert handled == [True]
+
+
+@pytest.mark.asyncio
+async def test_write_from_an_allowed_origin_is_allowed_without_token():
+    response, handled = await run_middleware(
+        headers={"Origin": "http://localhost:3000"}
+    )
+
+    assert response.status_code == 200
+    assert handled == [True]
+
+
+@pytest.mark.asyncio
+async def test_write_with_credentials_still_requires_the_double_submit_token():
+    response, handled = await run_middleware(
+        headers={
+            "Origin": "http://localhost:3000",
+            "Authorization": "Bearer access-token",
+        }
+    )
+
+    assert response.status_code == 403
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_identity_writes_still_validate_origin_and_token():
+    response, handled = await run_middleware(
+        path="/api/v1/auth/logout",
+        headers={"Origin": "https://attacker.example"},
+    )
+
+    assert response.status_code == 403
+    assert handled == []
+
+    response, handled = await run_middleware(path="/api/v1/auth/logout")
+
+    assert response.status_code == 403
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_reads_keep_ignoring_origins_and_tokens():
+    response, handled = await run_middleware(
+        "GET",
+        path="/api/v1/tournaments/public",
+        headers={"Origin": "https://attacker.example"},
+    )
+
+    assert response.status_code == 200
+    assert handled == [True]
 
 
 class FakeRedis:
@@ -201,7 +420,7 @@ async def test_request_body_limit_counts_chunked_messages_and_replays_small_bodi
         receive,
     )
 
-    assert await _buffer_request_body(request, 6) is True
+    assert await _buffer_request_body(request, 6) is BodyBufferResult.COMPLETE
     downstream = Request(request.scope, request.receive)
     assert await downstream.body() == b"abcdef"
 
@@ -221,7 +440,7 @@ async def test_request_body_limit_rejects_chunked_messages_over_limit():
         receive,
     )
 
-    assert await _buffer_request_body(request, 5) is False
+    assert await _buffer_request_body(request, 5) is BodyBufferResult.TOO_LARGE
 
 
 @pytest.mark.asyncio

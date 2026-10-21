@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isNotFound, isUnauthorized } from '~/utils/api';
+import { roleLabelKey } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
 
 interface InvitationPreview {
@@ -14,8 +15,6 @@ interface InvitationPreview {
 }
 
 interface AcceptResponse {
-  access_token?: string | null;
-  token_type: string;
   user_id: string;
   organization_id: string;
   organization_user_id: string;
@@ -72,8 +71,6 @@ async function accept() {
     await auth.adoptSession({
       user_id: result.user_id,
       organization_id: result.organization_id,
-      access_token: result.access_token,
-      token_type: result.token_type,
     });
     await navigateTo('/workspace');
   } catch (cause) {
@@ -102,7 +99,7 @@ await loadPreview();
         <p class="invitation-copy">{{ t('invitation.copy', { organization: preview.organization_name }) }}</p>
         <dl class="invitation-details">
           <div><dt>{{ t('invitation.email') }}</dt><dd>{{ preview.email }}</dd></div>
-          <div><dt>{{ t('invitation.role') }}</dt><dd>{{ preview.role_code }}</dd></div>
+          <div><dt>{{ t('invitation.role') }}</dt><dd>{{ t(roleLabelKey(preview.role_code)) }}</dd></div>
           <div><dt>{{ t('invitation.expires') }}</dt><dd>{{ formatDate(preview.expires_at) }}</dd></div>
         </dl>
         <div v-if="preview.status !== 'pending'" class="form-error" role="alert">{{ t('invitation.unavailable') }}</div>
