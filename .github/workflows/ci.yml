@@ -259,12 +259,20 @@ jobs:
           mkdir -p frontend/e2e-report
           docker compose logs --no-color api worker web > "$RUNNER_TEMP/e2e-server.log" 2>&1 || true
           node --input-type=module -e "
-            import { readFileSync, writeFileSync } from 'node:fs';
-            import { redactLog } from './frontend/e2e/artifacts.ts';
-            writeFileSync(
-              'frontend/e2e-report/server.log',
-              redactLog(readFileSync(process.env.RUNNER_TEMP + '/e2e-server.log', 'utf8')),
-            );
+            import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+            import { composeServerLog } from './frontend/e2e/runModel.ts';
+            const destino = 'frontend/e2e-report/server.log';
+            const existing = existsSync(destino) ? readFileSync(destino, 'utf8') : null;
+            const fallback = composeServerLog({
+              existing,
+              rawOutput: readFileSync(process.env.RUNNER_TEMP + '/e2e-server.log', 'utf8'),
+            });
+            if (!fallback.write || fallback.content === null) {
+              console.log('[ci] server.log del arnés conservado');
+            } else {
+              writeFileSync(destino, fallback.content);
+              console.log('[ci] server.log reescrito: el arnés no lo dejó disponible');
+            }
           "
       # Solo el informe saneado del arnés: nada de trace.zip (cabeceras con
       # cookies), de .auth/state.json ni de logs sin sanear.
