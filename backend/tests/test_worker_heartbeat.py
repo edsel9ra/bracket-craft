@@ -7,6 +7,8 @@ que recibe el instante actual: nada dentro del helper lee el reloj.
 
 import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,8 @@ from app.workers.heartbeat import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = REPO_ROOT / "docker-compose.yml"
+CI_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+VERIFY_SCRIPT = REPO_ROOT / "infra" / "scripts" / "verify_worker_loop_health.sh"
 BACKEND_APP = Path(__file__).resolve().parents[1] / "app"
 
 
@@ -314,3 +318,79 @@ async def test_worker_main_publishes_heartbeat_even_when_processing_fails(
     )
     assert path.exists()
     assert heartbeat_is_fresh_at_path(path, now_epoch=os.stat(path).st_mtime) is True
+
+
+# --- Verificación operativa con contenedores (spec 009, RF-011) ---------------
+# Pruebas baratas, sin Docker: el script se ejecuta a mano contra una pila viva
+# y estos tests solo fijan su contrato estático y su sintaxis POSIX.
+
+
+def verify_script_text() -> str:
+    """Devuelve el código del script de verificación operativa."""
+
+    return VERIFY_SCRIPT.read_text(encoding="utf-8")
+
+
+def test_operational_verification_script_is_valid_posix_sh():
+    assert VERIFY_SCRIPT.is_file()
+
+    text = verify_script_text()
+    assert text.splitlines()[0] == "#!/bin/sh"
+    assert "\nset -eu\n" in text
+
+    shell = shutil.which("sh")
+    if shell is None:  # pragma: no cover - el entorno de CI siempre tiene sh
+        pytest.skip("sh no está disponible")
+
+    result = subprocess.run(
+        [shell, "-n", str(VERIFY_SCRIPT)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_operational_verification_script_freezes_only_the_loop_process():
+    text = verify_script_text()
+
+    # Congela el bucle (PID 1 del contenedor) y lo reanuda; nunca el contenedor
+    # completo, que también pararía el proceso del healthcheck.
+    assert "kill -STOP 1" in text
+    assert "kill -CONT 1" in text
+    assert "docker pause" not in text
+    assert "docker unpause" not in text
+    # Dos usos de SIGCONT: el del flujo normal y el del trap de limpieza.
+    assert text.count("kill -CONT 1") >= 2
+    assert "trap cleanup EXIT" in text
+    # El estado se lee del orquestador, no de una simulación.
+    assert "{{.State.Health.Status}}" in text
+
+
+def test_operational_verification_script_declares_exit_codes_and_timeouts():
+    text = verify_script_text()
+
+    # Códigos de salida: 0 verificado, 1 fallo, 2 no ejecutable.
+    assert "NO EJECUTADA" in text
+    assert "exit 2" in text
+    assert "exit 1" in text
+    # Valores por defecto del contrato de la tarea (T7).
+    assert "WORKER_TARGET=${WORKER_TARGET:-bracket-craft-worker-1}" in text
+    assert (
+        "WORKER_HEALTH_UNHEALTHY_TIMEOUT=${WORKER_HEALTH_UNHEALTHY_TIMEOUT:-180}"
+        in text
+    )
+    assert (
+        "WORKER_HEALTH_RECOVERY_TIMEOUT=${WORKER_HEALTH_RECOVERY_TIMEOUT:-120}"
+        in text
+    )
+
+
+def test_operational_verification_script_is_not_automated_in_ci():
+    # RF-011 exige declarar la verificación, no automatizarla en CI.
+    text = verify_script_text()
+    assert ".github" not in text
+    assert "ci.yml" not in text
+
+    assert CI_PATH.is_file()
+    assert "verify_worker_loop_health" not in CI_PATH.read_text(encoding="utf-8")
