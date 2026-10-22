@@ -44,6 +44,32 @@ function hasKey(source: string, key: string): boolean {
   return new RegExp(`'${key.replace(/\./g, '\\.')}':`).test(source);
 }
 
+/** Cuerpo de una función del `<script setup>`, contando llaves para no cortar en un objeto o plantilla. */
+function functionBody(name: string): string {
+  const start = membersScript.indexOf(`async function ${name}(`);
+  assert.ok(start >= 0, `members.vue must define ${name}()`);
+  const open = membersScript.indexOf('{', start);
+  assert.ok(open > start, `${name}() needs a body`);
+  let depth = 0;
+  for (let index = open; index < membersScript.length; index += 1) {
+    if (membersScript[index] === '{') depth += 1;
+    if (membersScript[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return membersScript.slice(open + 1, index);
+    }
+  }
+  assert.fail(`unbalanced body for ${name}()`);
+}
+
+/** Rama de error de una petición: desde su `catch` hasta el `finally`. */
+function failurePath(name: string): string {
+  const body = functionBody(name);
+  const start = body.indexOf('} catch (cause) {');
+  assert.ok(start >= 0, `${name}() must handle its request failure`);
+  const end = body.indexOf('} finally', start);
+  return body.slice(start, end > start ? end : undefined);
+}
+
 const OPERATIONS: InvitationOperation[] = ['creating', 'resending', 'reopening', 'revoking'];
 
 test('offers one action set per invitation status (RF-005)', () => {
@@ -241,6 +267,57 @@ test('the invitation operation and the member directory keep separate busy state
     'the invitation form and rows must be governed by invitationOperation, not by saving',
   );
   assert.match(invitationPanels, /invitationControlsDisabled\(invitationOperation\)/);
+});
+
+test('a request that fails after the commit reloads the list and keeps the message and the link (RF-007)', () => {
+  const actionFailure = failurePath('runInvitationAction');
+  assert.match(
+    actionFailure,
+    /await refreshInvitationLists\(\);/,
+    'the server may have written before the failure (502 after the commit): the list must be reloaded',
+  );
+  assert.match(
+    actionFailure,
+    /if \(!\(await redirectOnSessionFailure\(cause\)\)\)/,
+    'the session/redirect handling must stay in front of the error message and the reload',
+  );
+  assert.match(
+    actionFailure,
+    /actionError\.value = invitationErrorMessage\(cause, invitationActionErrorKey\(action\)\)/,
+    'the translated 409 and the per-action fallback must survive the reload',
+  );
+  assert.ok(
+    actionFailure.indexOf('redirectOnSessionFailure(cause)') < actionFailure.indexOf('refreshInvitationLists()'),
+    'a lost session must redirect instead of reloading the page',
+  );
+
+  const createFailure = failurePath('inviteMember');
+  assert.match(
+    createFailure,
+    /await refreshInvitationLists\(\);/,
+    'creating has the same defect: a 502 after the commit must show the new invitation',
+  );
+  assert.match(
+    createFailure,
+    /if \(!\(await redirectOnSessionFailure\(cause\)\)\)/,
+    'creating keeps its session/redirect handling',
+  );
+  assert.match(
+    createFailure,
+    /actionError\.value = invitationErrorMessage\(cause, 'members\.noInvite'\)/,
+    'creating keeps its own fallback message',
+  );
+
+  const refresh = functionBody('refreshInvitationLists');
+  assert.match(refresh, /invitations\.value = invitationRows;/);
+  assert.match(refresh, /members\.value = memberRows;/);
+  for (const state of ['loading', 'pageError', 'actionError', 'generatedLink']) {
+    assert.doesNotMatch(
+      refresh,
+      new RegExp(`${state}\\.value`),
+      `a failed reload must not touch ${state}: it would hide the error or delete the shown link`,
+    );
+  }
 });
 
 test('each invitation control names its role and expiry date, never the email (RF-005)', () => {

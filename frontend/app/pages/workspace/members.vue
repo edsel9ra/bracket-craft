@@ -92,21 +92,41 @@ async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
   return false;
 }
 
+async function fetchLists(): Promise<[Member[], Invitation[]]> {
+  await auth.loadAccess();
+  return Promise.all([
+    request<Member[]>('/organizations/members'),
+    request<Invitation[]>('/organizations/invitations'),
+  ]);
+}
+
 async function loadData() {
   loading.value = true;
   pageError.value = null;
   try {
-    await auth.loadAccess();
-    const [memberRows, invitationRows] = await Promise.all([
-      request<Member[]>('/organizations/members'),
-      request<Invitation[]>('/organizations/invitations'),
-    ]);
+    const [memberRows, invitationRows] = await fetchLists();
     members.value = memberRows;
     invitations.value = invitationRows;
   } catch (cause) {
     if (!(await redirectOnSessionFailure(cause))) pageError.value = errorMessage(cause, t('members.noLoad'));
   } finally {
     loading.value = false;
+  }
+}
+
+/**
+ * Recarga las listas tras una petición de invitación fallida: el servidor pudo escribir
+ * antes de fallar (un 502 al enviar el correo llega **después** del commit) y la lista debe
+ * reflejar el estado real (RF-007). No toca `loading`, `pageError`, `actionError` ni
+ * `generatedLink`: si la recarga falla se conserva lo mostrado, el mensaje y el enlace.
+ */
+async function refreshInvitationLists() {
+  try {
+    const [memberRows, invitationRows] = await fetchLists();
+    members.value = memberRows;
+    invitations.value = invitationRows;
+  } catch (cause) {
+    await redirectOnSessionFailure(cause);
   }
 }
 
@@ -132,7 +152,10 @@ async function inviteMember() {
     inviteForm.email = '';
     await loadData();
   } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = invitationErrorMessage(cause, 'members.noInvite');
+    if (!(await redirectOnSessionFailure(cause))) {
+      actionError.value = invitationErrorMessage(cause, 'members.noInvite');
+      await refreshInvitationLists();
+    }
   } finally {
     invitationOperation.value = 'idle';
   }
@@ -159,7 +182,10 @@ async function runInvitationAction(action: InvitationAction, invitation: Invitat
     }
     await loadData();
   } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = invitationErrorMessage(cause, invitationActionErrorKey(action));
+    if (!(await redirectOnSessionFailure(cause))) {
+      actionError.value = invitationErrorMessage(cause, invitationActionErrorKey(action));
+      await refreshInvitationLists();
+    }
   } finally {
     invitationOperation.value = 'idle';
   }
