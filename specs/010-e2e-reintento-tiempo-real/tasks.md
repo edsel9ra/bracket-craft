@@ -131,7 +131,7 @@ lockfile. Ninguna otra.
   run e2e:test` sale **2** y se declara como fallo de infraestructura; `cd frontend && pnpm run
   typecheck:e2e` pasa y `grep -n 'retries' frontend/playwright.config.ts` muestra `retries: 0`.
 
-- [ ] **T8. Job `e2e` en la integración continua.** RF-004, RNF-002, RNF-003, RNF-008
+- [x] **T8. Job `e2e` en la integración continua.** RF-004, RNF-002, RNF-003, RNF-008
 - Hecho cuando: `.github/workflows/ci.yml` gana un quinto job `e2e` **sin tocar los cuatro existentes**,
   con `if` que lo ejecuta en cada `pull_request` y solo en `push` a `main`, `timeout-minutes: 25`,
   pasos de pnpm 12.12.1 y Node 24 con caché por `frontend/pnpm-lock.yaml`, caché de
