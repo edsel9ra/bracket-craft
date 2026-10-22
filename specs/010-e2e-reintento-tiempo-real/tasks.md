@@ -17,7 +17,7 @@ lockfile. Ninguna otra.
 
 ---
 
-- [ ] **T1. Guardas y etiqueta puras del estado manual de reintento.** RF-001, RNF-009, RNF-011
+- [x] **T1. Guardas y etiqueta puras del estado manual de reintento.** RF-001, RNF-009, RNF-011
 - Hecho cuando: se escriben primero `frontend/tests/realtime-manual-retry.test.ts` (rojo) y las
   ampliaciones de `frontend/tests/realtime-retry.test.ts` y `frontend/tests/realtime-reload.test.ts`
   (rojo), y después `frontend/app/utils/realtimeConnection.ts` añade `'retrying'` a

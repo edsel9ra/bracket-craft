@@ -1,4 +1,18 @@
-export type RealtimeConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+/**
+ * Estado visible de la conexión de tiempo real.
+ *
+ * `retrying` es **exclusivo del reintento manual** (RF-001): solo lo fija
+ * `retry()` y solo cuando esa pulsación inicia un intento de conexión nuevo.
+ * El motor y la reconexión automática no lo producen, y cualquier transición
+ * (`connected`, `error`, `reconnecting`, `idle`) lo sustituye.
+ */
+export type RealtimeConnectionStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'retrying'
+  | 'error';
 
 export interface ReconnectionInput {
   hasConnectedOnce: boolean;
@@ -9,6 +23,8 @@ export interface ReconnectionInput {
 /**
  * Una reconexión exige una conexión exitosa previa y una pérdida observada
  * (estado `reconnecting` o `error`) entre ambas. La conexión inicial no cuenta.
+ * El estado manual `retrying` tampoco: lo produce la pulsación, que abre un
+ * intento nuevo, no una pérdida del transporte.
  */
 export function isReconnection({
   hasConnectedOnce,
