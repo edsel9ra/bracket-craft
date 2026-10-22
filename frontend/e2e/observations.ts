@@ -342,18 +342,18 @@ export function assertScenarioOrder(marks: ScenarioMarks): readonly ScenarioViol
 export interface ConnectionCount {
   /** Conexión inicial aceptada más la que queda tras la última pulsación. */
   readonly established: number;
-  /** Ningún intento bloqueado llega a establecer transporte. */
-  readonly establishedDuringBlock: number;
 }
 
 /**
  * Conexiones persistentes esperadas. Cada intento hecho con el canal bloqueado
  * cuenta como intento, nunca como conexión establecida: solo la inicial y la
  * que queda conectada al final son transporte real (Q3, punto 3 de QA).
+ *
+ * No se cuenta «establecidas durante el bloqueo»: el interceptor nunca acepta un
+ * handshake con el canal bloqueado, así que ese recuento era estructuralmente
+ * cero y no aportaba evidencia. La prueba real de que no hubo transporte es la
+ * ausencia de estado conectado entre el cierre y el desbloqueo (`states`).
  */
 export function expectedConnectionCount(input: { readonly cycles: number }): ConnectionCount {
-  return {
-    established: input.cycles > 0 ? 2 : 1,
-    establishedDuringBlock: 0,
-  };
+  return { established: input.cycles > 0 ? 2 : 1 };
 }

@@ -1,11 +1,11 @@
 /**
  * Artefactos de diagnóstico del arnés E2E (RF-005, RNF-006).
  *
- * Se publica una traza **propia** (`trace.jsonl`) en lugar de la de Playwright:
- * `trace.zip` incrusta cabeceras con cookies y no admite saneado soportado. Por
- * construcción aquí solo hay método, ruta sin consulta, estado e instante; ni
- * cabeceras, ni cuerpos, ni credenciales. Las capturas son de la interfaz y el
- * registro del servidor pasa por `redactLog`.
+ * Se publica una traza **propia** (`trace-<vista>.jsonl`, una por vista) en
+ * lugar de la de Playwright: `trace.zip` incrusta cabeceras con cookies y no
+ * admite saneado soportado. Por construcción aquí solo hay método, ruta sin
+ * consulta, estado e instante; ni cabeceras, ni cuerpos, ni credenciales. Las
+ * capturas son de la interfaz y el registro del servidor pasa por `redactLog`.
  *
  * Todo lo que depende del tiempo recibe el instante por parámetro: la lógica es
  * pura y las funciones que escriben no leen el reloj.
@@ -180,8 +180,6 @@ export interface ViewArtifact {
   readonly connections: ConnectionCount;
   readonly attempts: number;
   readonly reloads: ArtifactReloads;
-  /** Identificador del canal si el navegador lo expuso: informativo, no concluyente. */
-  readonly sessionId: { readonly value: string; readonly conclusive: false } | null;
 }
 
 export interface ViewArtifactInput {
@@ -194,7 +192,6 @@ export interface ViewArtifactInput {
   readonly connections: ConnectionCount;
   readonly attempts: number;
   readonly reloads: ReloadClassification;
-  readonly sessionId?: string | null;
 }
 
 function toArtifactReloads(reloads: ReloadClassification): ArtifactReloads {
@@ -236,7 +233,6 @@ export function buildViewArtifact(input: ViewArtifactInput): ViewArtifact {
     connections: input.connections,
     attempts: input.attempts,
     reloads: toArtifactReloads(input.reloads),
-    sessionId: input.sessionId ? { value: input.sessionId, conclusive: false } : null,
   };
 }
 
@@ -359,9 +355,26 @@ export function writeViewArtifact(artifact: ViewArtifact): Promise<string> {
   return writeJsonReport(`view-${artifact.view}.json`, artifact);
 }
 
-/** Vuelca la traza propia completa; una entrada JSON por línea. */
-export function writeTrace(entries: readonly TraceEntry[], fileName = 'trace.jsonl'): Promise<string> {
+/**
+ * Nombre de la traza de una vista. Un fichero **por vista**: la corrida ejecuta
+ * las tres en serie y un único `trace.jsonl` haría que la última pisara a las
+ * anteriores, de modo que en un fallo se perdería la traza de la vista que falló
+ * (B2 de la validación). La consola del navegador viaja en este mismo JSONL con
+ * `type: 'console'`, así que tampoco se comparte entre vistas.
+ */
+export function traceFileName(view: ViewId): string {
+  return `trace-${view}.jsonl`;
+}
+
+/** Vuelca la traza propia de una vista; una entrada JSON por línea. */
+export function writeTrace(entries: readonly TraceEntry[], fileName: string): Promise<string> {
   const body = entries.length > 0 ? `${entries.map(traceLine).join('\n')}\n` : '';
+  return writeReportFile(reportPath(fileName), body);
+}
+
+/** Escritura de un artefacto de texto ya saneado (`server.log`, por ejemplo). */
+export function writeTextReport(fileName: string, content: string): Promise<string> {
+  const body = content.endsWith('\n') ? content : `${content}\n`;
   return writeReportFile(reportPath(fileName), body);
 }
 

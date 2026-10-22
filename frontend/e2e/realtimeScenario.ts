@@ -24,6 +24,7 @@ import {
   captureScreenshot,
   reportPath,
   traceConsole,
+  traceFileName,
   tracePageError,
   writeTrace,
   writeViewArtifact,
@@ -55,6 +56,7 @@ import {
   type ViewId,
 } from './observations.ts';
 import type { StateObservation, StateSample } from './artifacts.ts';
+import { createStatusModel } from './statusObserver.ts';
 import { readRealtimeStatusTexts, realtimeRetryControl } from './viewLocators.ts';
 
 /** Dos ciclos de pulsación: la doble pulsación se prueba con dos errores. */
@@ -151,10 +153,12 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Marca estrictamente posterior a la anterior. Los eventos ocurren en ese
- * orden; como el reloj del borde tiene resolución de milisegundos, dos pasos
- * seguidos pueden compartir marca. Se registra el primero de la milésima
- * siguiente para que el artefacto conserve el orden real sin inventar deltas.
+ * Marca estrictamente posterior a la anterior para las marcas **sintéticas**
+ * (bloqueo, cierre, clic y desbloqueo): el reloj del borde tiene resolución de
+ * milisegundos y dos pasos seguidos pueden compartir marca. Solo se usa en
+ * instantes que no son una observación; **nunca** desplaza una marca observada
+ * (`manualVisibleAt`, `manualGoneAt`…), que se registran con el instante real de
+ * la observación (B1 de la validación).
  */
 function stampAfter(previous: number, at: number = Date.now()): number {
   return at > previous ? at : previous + 1;
@@ -181,27 +185,42 @@ interface StatusObserver {
   lastTexts(): readonly string[];
   current(): VisibleRealtimeStatus | null;
   read(): Promise<{ texts: readonly string[]; status: VisibleRealtimeStatus | null }>;
+  /** Registra una observación real hecha fuera de una espera. */
+  observe(status: VisibleRealtimeStatus, at: number): void;
   waitFor(
     status: VisibleRealtimeStatus,
     timeoutMs: number,
     condition: string,
     verdict?: ScenarioVerdict,
   ): Promise<number>;
-  /** Espera a que el muestreo haya registrado el estado a partir de `after`. */
-  waitForRecorded(status: VisibleRealtimeStatus, after: number, timeoutMs: number): Promise<void>;
+  /** Espera a que el estado deje de ser `status` y devuelve el instante real. */
+  waitForOtherThan(
+    status: VisibleRealtimeStatus,
+    timeoutMs: number,
+    condition: string,
+  ): Promise<number>;
+  /** Primera transición registrada desde `after` con un estado distinto. */
+  firstChangeAfter(status: VisibleRealtimeStatus, after: number): StateSample | null;
 }
 
 /**
- * Muestrea el contenido de los elementos con `role="status"` (la interfaz) y
- * guarda cada cambio con su instante. Nunca inyecta código en la página ni lee
- * estado interno de la aplicación (RNF-010). Los textos se comparan sin
- * distinguir mayúsculas: el CSS de la vista transforma el texto a mayúsculas,
- * pero `textContent` conserva el original.
+ * Muestrea el contenido de los elementos con `role="status"` (la interfaz) y lo
+ * combina con las observaciones directas del escenario en el modelo puro
+ * `createStatusModel`. Nunca inyecta código en la página ni lee estado interno de
+ * la aplicación (RNF-010). Los textos se comparan sin distinguir mayúsculas: el
+ * CSS de la vista transforma el texto a mayúsculas, pero `textContent` conserva
+ * el original.
+ *
+ * Dos fuentes, a propósito: el bucle registra solo **cambios** cada 40 ms; cada
+ * espera registra **siempre** la observación con su instante real, porque el
+ * estado puede durar menos que un ciclo de muestreo (entre los dos ciclos de
+ * pulsación el error pasa fugazmente y `latest` se queda en `retrying`). Sin la
+ * segunda fuente, el segundo ciclo se declararía `manual-not-sampled` aunque el
+ * producto sí mostró el estado (B1 de la validación).
  */
 function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver {
-  const samples: StateSample[] = [];
+  const model = createStatusModel();
   let lastTexts: readonly string[] = [];
-  let latest: VisibleRealtimeStatus | null = null;
   let running = false;
   let loop: Promise<void> | null = null;
 
@@ -218,10 +237,7 @@ function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver 
   async function tick(): Promise<void> {
     const observed = await read();
     lastTexts = observed.texts;
-    if (observed.status !== null && observed.status !== latest) {
-      latest = observed.status;
-      samples.push({ status: observed.status, at: Date.now() });
-    }
+    model.sample(observed.status, Date.now());
   }
 
   async function runLoop(): Promise<void> {
@@ -244,15 +260,18 @@ function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver 
       loop = null;
     },
     states(): readonly StateSample[] {
-      return samples;
+      return model.samples();
     },
     lastTexts(): readonly string[] {
       return lastTexts;
     },
     current(): VisibleRealtimeStatus | null {
-      return latest;
+      return model.current();
     },
     read,
+    observe(status, at): void {
+      model.observe(status, at);
+    },
     async waitFor(status, timeoutMs, condition, verdict = 'behavioral'): Promise<number> {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
@@ -260,13 +279,9 @@ function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver 
         lastTexts = observed.texts;
         if (observed.status === status) {
           const at = Date.now();
-          // La observación es la misma fuente que el muestreo: se registra una
-          // sola vez, para que una espera no deje un muestreo tardío con la
-          // marca posterior al siguiente paso del escenario.
-          if (latest !== status) {
-            latest = status;
-            samples.push({ status, at });
-          }
+          // Observación real de una espera: se registra siempre, aunque coincida
+          // con el último estado, y con el instante tal cual (sin desplazarlo).
+          model.observe(status, at);
           return at;
         }
         if (Date.now() > deadline) {
@@ -281,19 +296,28 @@ function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver 
         await delay(STATUS_POLL_INTERVAL_MS);
       }
     },
-    async waitForRecorded(status, after, timeoutMs): Promise<void> {
+    async waitForOtherThan(status, timeoutMs, condition): Promise<number> {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
-        if (samples.some((sample) => sample.status === status && sample.at >= after)) return;
+        const observed = await read();
+        lastTexts = observed.texts;
+        if (observed.status !== null && observed.status !== status) {
+          const at = Date.now();
+          model.observe(observed.status, at);
+          return at;
+        }
         if (Date.now() > deadline) {
           throw new ScenarioFailure(
             'behavioral',
-            'manual-not-sampled',
-            `el estado «${status}» no se mantuvo hasta el siguiente muestreo tras ${after}`,
+            'manual-survived',
+            `el estado «${status}» siguió visible ${timeoutMs} ms después (${condition})`,
           );
         }
         await delay(STATUS_POLL_INTERVAL_MS);
       }
+    },
+    firstChangeAfter(status, after): StateSample | null {
+      return model.firstChangeAfter(status, after);
     },
   };
 }
@@ -391,10 +415,7 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     cause: string | null,
   ): Promise<ScenarioResult> => {
     const counts = gate.counts();
-    const connections: ConnectionCount = {
-      established: counts.established,
-      establishedDuringBlock: counts.establishedDuringBlock,
-    };
+    const connections: ConnectionCount = { established: counts.established };
     const reloads = reloadsFor(gate, view, ids, marks.connectedAt);
     const artifactMarks = freezeMarks(marks);
     const artifact = buildViewArtifact({
@@ -409,7 +430,12 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
       reloads,
     });
     const artifactPath = await writeViewArtifact(artifact);
-    await writeTrace([...gate.trace(), ...trace].sort((left, right) => left.at - right.at));
+    // Una traza por vista: la corrida ejecuta las tres en serie y un fichero
+    // compartido haría que la última pisara la traza de la vista que falló.
+    await writeTrace(
+      [...gate.trace(), ...trace].sort((left, right) => left.at - right.at),
+      traceFileName(view.id),
+    );
     if (verdict !== 'passed') {
       await captureScreenshot(page, view.id).catch(() => '');
     }
@@ -484,9 +510,11 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     await gate.closeEstablishedTransport();
     marks.closedAt = stampAfter(marks.blockedAt);
 
-    // 4. El error se hace visible: el control solo existe en `error`. El
-    //    localizador se acota al contenedor del estado del tiempo real, así que
-    //    no compite con otros «Reintentar» ni con otros `role="status"`.
+    // 4. El error se hace visible: el control solo existe en `error`, así que su
+    //    aparición **es** la observación del estado, con su instante real (no se
+    //    desplaza para forzar el orden). El localizador se acota al contenedor
+    //    del estado del tiempo real, así que no compite con otros «Reintentar»
+    //    ni con otros `role="status"`.
     const retryButton = realtimeRetryControl(page, view);
     try {
       await retryButton.waitFor({ state: 'visible', timeout: MAX_MS.errorVisible });
@@ -499,7 +527,8 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
         )}; último texto visible: ${JSON.stringify(observer.lastTexts())}`,
       );
     }
-    marks.errorVisibleAt = stampAfter(marks.closedAt);
+    marks.errorVisibleAt = Date.now();
+    observer.observe('error', marks.errorVisibleAt);
 
     if (!gate.isBlocked() || gate.counts().blocked === 0) {
       fail(
@@ -533,12 +562,12 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
       const clickedAt = stampAfter(previousMark);
       await retryButton.click();
 
+      // Instantes observados, tal cual: el inicio del intento lo registra el
+      // canal y el estado manual lo observa la espera. No se desplazan marcas
+      // observadas (B1 de la validación).
       let attemptStartedAt = 0;
       try {
-        attemptStartedAt = stampAfter(
-          clickedAt,
-          await gate.waitForChannelRequestAfter(clickedAt, MAX_MS.manualVisible),
-        );
+        attemptStartedAt = await gate.waitForChannelRequestAfter(clickedAt, MAX_MS.manualVisible);
       } catch (error) {
         fail(
           'behavioral',
@@ -551,10 +580,7 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
 
       let manualVisibleAt = 0;
       try {
-        manualVisibleAt = stampAfter(
-          attemptStartedAt,
-          await observer.waitFor('retrying', MAX_MS.manualVisible, 'manual-visible'),
-        );
+        manualVisibleAt = await observer.waitFor('retrying', MAX_MS.manualVisible, 'manual-visible');
       } catch (error) {
         fail(
           'behavioral',
@@ -563,17 +589,8 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
         );
       }
 
-      // El estado manual tiene que permanecer hasta el siguiente muestreo y el
+      // El estado manual permanece mientras el intento sigue en curso y el
       // control solo existe en `error`: con el estado manual ya no está.
-      try {
-        await observer.waitForRecorded('retrying', clickedAt, MAX_MS.manualVisible);
-      } catch (error) {
-        fail(
-          'behavioral',
-          'manual-not-visible',
-          `el estado manual no se mantuvo observable en el ciclo ${index + 1}: ${describeError(error)}`,
-        );
-      }
       await expect(retryButton).toHaveCount(0);
       const manualNow = await observer.read();
       if (manualNow.status !== 'retrying') {
@@ -609,6 +626,15 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
       marks.cycles.push(cycle);
 
       await gate.releaseHeld();
+      // La desaparición del estado manual es una observación real: se espera a
+      // que el estado deje de ser `retrying` (si sobrevive, es un fallo, no una
+      // espera agotada) y se usa el instante de la transición ya registrada si
+      // la hubo, sin adelantar ninguna marca.
+      const manualGoneObservedAt = await observer.waitForOtherThan(
+        'retrying',
+        MAX_MS.attemptFailed,
+        `manual-gone-${index + 1}`,
+      );
       try {
         await retryButton.waitFor({ state: 'visible', timeout: MAX_MS.attemptFailed });
       } catch (error) {
@@ -620,15 +646,8 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
           )}`,
         );
       }
-      const afterFailure = await observer.read();
-      if (afterFailure.status === 'retrying') {
-        fail(
-          'behavioral',
-          'manual-survived',
-          `el estado manual sobrevivió al fallo del intento en el ciclo ${index + 1}`,
-        );
-      }
-      cycle.manualGoneAt = stampAfter(manualVisibleAt);
+      const transition = observer.firstChangeAfter('retrying', manualVisibleAt);
+      cycle.manualGoneAt = transition ? transition.at : manualGoneObservedAt;
     }
 
     // 6. Desbloqueo, reconexión y asentamiento sin nuevas secuencias.
@@ -640,10 +659,8 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     await gate.unblock();
 
     try {
-      marks.connectedAt = stampAfter(
-        marks.unblockedAt,
-        await observer.waitFor('connected', MAX_MS.reconnect, 'reconnect'),
-      );
+      // Instante observado tal cual: es la misma marca que la muestra de estado.
+      marks.connectedAt = await observer.waitFor('connected', MAX_MS.reconnect, 'reconnect');
     } catch (error) {
       fail(
         'behavioral',
@@ -666,10 +683,7 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     }
 
     try {
-      marks.settledAt = stampAfter(
-        marks.connectedAt,
-        await gate.settle(marks.connectedAt, MAX_MS.settle, MAX_MS.reconnect),
-      );
+      marks.settledAt = await gate.settle(marks.connectedAt, MAX_MS.settle, MAX_MS.reconnect);
     } catch (error) {
       fail(
         'behavioral',
@@ -695,13 +709,6 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     // 7. Recuentos de conexión y recargas.
     const expected = expectedConnectionCount({ cycles: SCENARIO_CYCLES });
     const counts = gate.counts();
-    if (counts.establishedDuringBlock !== expected.establishedDuringBlock) {
-      fail(
-        'behavioral',
-        'established-during-block',
-        `se establecieron ${counts.establishedDuringBlock} conexiones con el canal bloqueado`,
-      );
-    }
     if (counts.established !== expected.established) {
       fail(
         'behavioral',

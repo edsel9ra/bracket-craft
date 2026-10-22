@@ -129,7 +129,9 @@ test('operación del partido: el reintento manual reconecta con el canal bloquea
   ).toBe(false);
   expect(result.orderViolations).toEqual([]);
   expect(result.artifact.connections.established).toBe(2);
-  expect(result.artifact.connections.establishedDuringBlock).toBe(0);
+  // Sin `establishedDuringBlock` (retirado por ser un contador estructural): la
+  // prueba de que no hubo transporte durante el bloqueo es la ausencia de
+  // estado conectado en la ventana, comprobada arriba.
 
   // El consumidor de la operación es el único medido, y su recarga es una como
   // máximo, sin duplicado y sin recargar el documento.

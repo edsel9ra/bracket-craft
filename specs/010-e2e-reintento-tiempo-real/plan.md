@@ -65,10 +65,13 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
    interpretación de Q3 y el usuario debe confirmarla.**
 6. **El observable de «no otra secuencia de conexión después» son los eventos WebSocket del
    navegador**, contados por el interceptor: `wsEstablecidos` debe ser **2** (el inicial antes del
-   bloqueo y el que termina conectado tras la pulsación), **0** durante el bloqueo, y en una ventana
-   de asentamiento de 3 s tras `connected` **no debe iniciarse ninguna petición nueva a
-   `/socket.io/`**. *Descartado:* contar handshakes bloqueados como si fueran conexiones (punto 3 de
-   QA: un intento rechazado no es un transporte) y contar sesiones del servidor (retirado por D8).
+   bloqueo y el que termina conectado tras la pulsación), y en una ventana de asentamiento de 3 s tras
+   `connected` **no debe iniciarse ninguna petición nueva a `/socket.io/`**. *Descartado:* contar
+   handshakes bloqueados como si fueran conexiones (punto 3 de QA: un intento rechazado no es un
+   transporte), un contador aparte de «establecidas durante el bloqueo» (el interceptor nunca acepta
+   un handshake con el canal bloqueado, así que era estructuralmente cero: la evidencia real es la
+   ausencia de estado conectado entre el cierre y el desbloqueo) y contar sesiones del servidor
+   (retirado por D8).
 7. **La doble pulsación se prueba de dos maneras complementarias y ninguna es una carrera de DOM.**
    (a) **Prueba unitaria**: con el estado ya en `retrying` y socket vivo, `shouldForceReconnect`
    devuelve `false` y `needsNewSocketSession` también, así que una segunda llamada a `retry()` no
@@ -89,11 +92,12 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
 9. **Los artefactos son propios y sin cabeceras: no se publica la traza de Playwright.**
    La traza de Playwright (`trace.zip`) incrusta peticiones y respuestas con sus cabeceras, es decir
    `Cookie`/`Set-Cookie`, y no ofrece saneado soportado; RF-005 exige artefactos **sin** cookies ni
-   tokens. En su lugar el arnés escribe su **propia traza del navegador** (`trace.jsonl`: navegación,
-   peticiones con método + ruta + estado + instante relativo y **sin cabeceras**, apertura/cierre de
-   WebSocket, mensajes de consola y errores de página), las capturas PNG por vista, el JSON de estados
-   y marcas, y el registro del servidor (`docker compose logs --no-color`, saneado por lista de
-   patrones). *Descartado:* publicar `trace.zip` (contradice el criterio de artefactos) y
+   tokens. En su lugar el arnés escribe su **propia traza del navegador** (`trace-<vista>.jsonl`, un
+   fichero por vista: navegación, peticiones con método + ruta + estado + instante relativo y **sin
+   cabeceras**, apertura/cierre de WebSocket, mensajes de consola y errores de página), las capturas
+   PNG por vista, el JSON de estados y marcas, y el registro del servidor
+   (`docker compose logs --no-color`, saneado por lista de patrones). Un único fichero compartido haría
+   que la última vista pisara la traza de la que falló (corrección B2). *Descartado:* publicar `trace.zip` (contradice el criterio de artefactos) y
    post-procesar el zip (exigiría una dependencia de descompresión nueva y una enumeración frágil de
    ficheros internos). **Cambia la lectura literal de «traza del navegador» en RF-005 y el usuario debe
    confirmarlo.**
@@ -335,14 +339,15 @@ runScenario(page, view, timeouts)
   8. gate.unblock()                                  -> marcas.unblockedAt
      esperarEstado(view, CONECTADO, T.reconnect)     -> marcas.connectedAt
   9. asentar(3 s): ninguna petición nueva a /socket\.io/   -> marcas.settledAt   # punto 3 de QA
- 10. afirmar counts.establecidas == 2 y establecidas durante el bloqueo == 0
+ 10. afirmar counts.establecidas == 2   # sin transporte durante el bloqueo: ver paso 8 (estados)
  11. afirmar navegaciones del frame principal == 0  (framenavigated)             # sin recarga del documento
  12. reloads = classifyReloads(...)  sobre las peticiones de los endpoints del consumidor
      afirmar reloads.attributable <= 1 y reloads.duplicates == 0
  13. afirmar assertScenarioOrder(marks) == []
- 14. escribir artefacto {vista, marcas, counts, reloads (observado 0|1), documentReload: false,
-                         sessionId?: {valor, concluyente: false}}
-                                                        # RF-005; el sid se toma del handshake inicial
+ 14. escribir artefacto {vista, marcas, counts, reloads (observado 0|1), documentReload: false}
+                                                        # RF-005; sin identificador de sesión: el
+                                                        # arnés no puede obtenerlo sin esperas no
+                                                        # deterministas y no se publica un campo vacío
 ```
 
 `view` fija: la URL, el namespace de las etiquetas (`public`/`workspace`/`match`) y el endpoint del
@@ -535,6 +540,37 @@ Mismos motores, mismo bloqueo, mismas tres vistas y mismos artefactos que CI. Si
 `.env.example`. Si el entorno no puede ejecutarlo (sin Docker o sin navegador), el runner sale con `2`
 y la validación lo declara **no ejecutado**.
 
+## Correcciones tras la validación (ronda 1 de 2)
+
+No cambian requisitos ni el contrato de la spec; corrigen el arnés para que el veredicto sea honesto y
+reproducible.
+
+- **B1 — Muestreo del estado manual.** El bucle muestrea cada 40 ms y solo registraba cambios; entre los
+  dos ciclos de pulsación el error duraba menos que ese intervalo, `latest` se quedaba en `retrying` y
+  el segundo ciclo se declaraba `manual-not-sampled` (1 rojo en 3 corridas). El modelo puro
+  `e2e/statusObserver.ts` separa `sample` (solo cambios) de `observe` (cada espera registra **siempre**
+  su observación con el instante real), `waitFor` usa `observe` y las marcas observadas
+  (`manualVisibleAt`, `manualGoneAt`, `attemptStartedAt`, `errorVisibleAt`) dejan de pasar por
+  `stampAfter`: no se adelanta ninguna marca. `manualGoneAt` usa la transición real registrada. Se
+  añaden pruebas unitarias del modelo (cambio, repetición tras un clic, estado intermedio más corto que
+  el intervalo y ausencia de instantes inventados) y se repite la corrida al menos cinco veces.
+- **B2 — Traza por vista.** `trace.jsonl` se sustituye por `trace-<vista>.jsonl`: la tercera vista
+  pisaba la traza de las anteriores y en un fallo se perdía la de la vista afectada. La consola del
+  navegador viaja en el mismo JSONL por vista. `traceFileName(view)` es puro y la prueba comprueba que
+  dos vistas no comparten fichero. El `path` del artefacto del job sigue siendo `frontend/e2e-report`.
+- **B3 — `server.log` en local.** El runner recoge `docker compose logs --no-color api worker web` tras
+  la corrida, lo sanea con `redactLog` y lo escribe antes de bajar la pila. Sin Docker (contenedor del
+  arnés) escribe `no disponible: docker CLI ausente` y lo declara en consola: el artefacto nunca falta
+  en silencio. `buildServerLog` es puro y se prueba con Docker disponible, ausente y con el comando
+  fallando.
+- **Sin contadores vacíos.** `establishedDuringBlock` se retira del interceptor, del artefacto y de las
+  aserciones: nunca se incrementaba y no aportaba evidencia. La comprobación real de que no hubo
+  transporte durante el bloqueo es la ausencia de estado conectado entre `closedAt` y `unblockedAt`,
+  ya exigida en las tres vistas.
+- **Sin `sessionId`.** Se retira del artefacto: el arnés no puede obtener el identificador sin esperas
+  no deterministas, así que no se publica un campo que siempre llegaría vacío. La spec (D8, RF-005) ya
+  lo trata como opcional y no evaluado; ningún RF cambia.
+
 ## Datos de la corrida y artefactos
 
 - **Datos:** `scripts.seed_demo` sin cambios (organización `demo-federation`, cuenta
@@ -546,14 +582,18 @@ y la validación lo declara **no ejecutado**.
   - `summary.json` — resultado de las tres vistas, duración total y de cada una, causa cuando no es
     verde.
   - `view-<vista>.json` — marcas de cada ciclo (bloqueo, cierre, error, clic, inicio del intento,
-    estado manual, desaparición, desbloqueo, conectado, asentamiento), recuento de conexiones
-    establecidas e intentos, recargas por consumidor con su origen y su instante, recargas del
-    documento, y `sid` **informativo y no concluyente** si se pudo leer del handshake inicial.
-  - `trace.jsonl` — traza propia del navegador: navegación, peticiones (método, ruta, estado,
-    instante relativo), aperturas y cierres de WebSocket, consola y errores de página. **Sin
-    cabeceras**, por construcción.
+    estado manual, desaparición, desbloqueo, conectado, asentamiento), conexiones establecidas e
+    intentos, recargas por consumidor con su origen y su instante y recargas del documento. Sin
+    identificador de sesión: se retiró por no poder observarse sin esperas no deterministas.
+  - `trace-<vista>.jsonl` — traza propia del navegador **por vista**: navegación, peticiones (método,
+    ruta, estado, instante relativo), aperturas y cierres de WebSocket, consola y errores de página.
+    **Sin cabeceras**, por construcción. Al ser un fichero por vista, el fallo conserva la traza de
+    **su** vista.
   - `screenshots/<vista>.png` — captura en el instante del fallo (o del último estado si pasa).
-  - `server.log` — `docker compose logs --no-color api worker web`, pasado por `redactLine`.
+  - `server.log` — `docker compose logs --no-color api worker web`, pasado por `redactLine` (que
+    cubre también la consola del navegador, que viaja en el JSONL por vista). El runner local lo
+    escribe igual que el job; en un entorno sin Docker el fichero declara
+    `no disponible: docker CLI ausente` en lugar de faltar en silencio (corrección B3).
   - Saneado: `redactLine`/`redactPath` eliminan valores de `Cookie`, `Set-Cookie`, `Authorization`,
     `token` y la cookie CSRF; no se registran credenciales ni cuerpos de petición.
 - **Retención:** 7 días en CI; local queda en el directorio ignorado. El estado de sesión de la prueba

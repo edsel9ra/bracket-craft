@@ -12,7 +12,7 @@
  * resultado que el reporter volcó en `results.json`.
  */
 
-import { redactLine, type ArtifactVerdict, type ViewArtifact } from './artifacts.ts';
+import { redactLine, redactLog, type ArtifactVerdict, type ViewArtifact } from './artifacts.ts';
 import { EXPECTED_VIEWS, MAX_MS, type ViewId } from './observations.ts';
 
 /* -------------------------------------------------------------------------- */
@@ -302,6 +302,84 @@ export function buildRunSummary(input: RunSummaryInput): RunSummary {
     limits,
     views,
     missing,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Registro del servidor                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Frase explícita para el `server.log` cuando el entorno no tiene Docker (por
+ * ejemplo, el contenedor del arnés de Playwright). RF-006 exige los mismos
+ * artefactos en local que en la integración continua: si no se pueden recoger,
+ * el propio fichero **declara** la diferencia; nunca se omite en silencio.
+ */
+export const SERVER_LOG_UNAVAILABLE = 'no disponible: docker CLI ausente';
+
+export interface ServerLogCommandResult {
+  readonly code: number | null;
+  readonly timedOut: boolean;
+  readonly output: string;
+}
+
+export interface ServerLogCapture {
+  /** `true` solo si `docker compose logs` respondió con código 0. */
+  readonly available: boolean;
+  /** Contenido final del artefacto, saneado y con la cabecera. */
+  readonly content: string;
+  /** Motivo declarado en el artefacto; `null` cuando sí se recogió. */
+  readonly note: string | null;
+}
+
+const SERVER_LOG_HEADER = '# server.log — docker compose logs --no-color api worker web';
+
+function serverLogBody(lines: readonly string[]): string {
+  return `${[SERVER_LOG_HEADER, ...lines].join('\n')}\n`;
+}
+
+function withoutTrailingBlankLines(text: string): string {
+  return text.replace(/\n+$/, '');
+}
+
+/**
+ * Decide y sanea el registro del servidor local. Función pura: la
+ * disponibilidad de Docker y el resultado del comando llegan por parámetro, y el
+ * saneado es el mismo `redactLog` que protege al resto de artefactos.
+ */
+export function buildServerLog(input: {
+  readonly dockerAvailable: boolean;
+  readonly command: ServerLogCommandResult | null;
+}): ServerLogCapture {
+  if (!input.dockerAvailable) {
+    return {
+      available: false,
+      content: serverLogBody([`# ${SERVER_LOG_UNAVAILABLE}`]),
+      note: SERVER_LOG_UNAVAILABLE,
+    };
+  }
+
+  const command = input.command;
+  if (command === null || command.timedOut || command.code !== 0) {
+    const reason =
+      command === null
+        ? 'no se ejecutó'
+        : command.timedOut
+          ? 'tiempo agotado'
+          : `código ${command.code ?? 'desconocido'}`;
+    const note = `no disponible: docker compose logs ${reason}`;
+    const output = command === null ? '' : withoutTrailingBlankLines(redactLog(command.output));
+    return {
+      available: false,
+      content: serverLogBody([`# ${note}`, ...(output.length > 0 ? [output] : [])]),
+      note,
+    };
+  }
+
+  return {
+    available: true,
+    content: serverLogBody([withoutTrailingBlankLines(redactLog(command.output))]),
+    note: null,
   };
 }
 

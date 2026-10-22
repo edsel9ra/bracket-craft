@@ -33,6 +33,7 @@ import {
   redactLog,
   redactPath,
   traceConsole,
+  traceFileName,
   traceLine,
   traceRequest,
 } from '../e2e/artifacts.ts';
@@ -296,18 +297,9 @@ test('assertScenarioOrder: una recarga anterior a la reconexión se informa', ()
 });
 
 test('expectedConnectionCount: una conexión inicial y otra tras la última pulsación', () => {
-  assert.deepEqual(expectedConnectionCount({ cycles: 2 }), {
-    established: 2,
-    establishedDuringBlock: 0,
-  });
-  assert.deepEqual(expectedConnectionCount({ cycles: 1 }), {
-    established: 2,
-    establishedDuringBlock: 0,
-  });
-  assert.deepEqual(expectedConnectionCount({ cycles: 0 }), {
-    established: 1,
-    establishedDuringBlock: 0,
-  });
+  assert.deepEqual(expectedConnectionCount({ cycles: 2 }), { established: 2 });
+  assert.deepEqual(expectedConnectionCount({ cycles: 1 }), { established: 2 });
+  assert.deepEqual(expectedConnectionCount({ cycles: 0 }), { established: 1 });
 });
 
 test('las tres vistas se seleccionan con su namespace, su URL y su endpoint', () => {
@@ -538,7 +530,7 @@ test('observeStates sitúa cada estado respecto a la pulsación y al inicio del 
   assert.equal(observed[4]?.relativeToClickMs, 2_800);
 });
 
-test('buildViewArtifact publica estados, recargas por origen, sesión informativa y veredicto', () => {
+test('buildViewArtifact publica estados, recargas por origen y veredicto', () => {
   const artifact = buildViewArtifact({
     view: 'operation',
     verdict: 'passed',
@@ -548,7 +540,6 @@ test('buildViewArtifact publica estados, recargas por origen, sesión informativ
     connections: expectedConnectionCount({ cycles: 2 }),
     attempts: 2,
     reloads: artifactReloads(),
-    sessionId: 'sid-abc',
   });
 
   assert.equal(artifact.schemaVersion, 1);
@@ -557,16 +548,18 @@ test('buildViewArtifact publica estados, recargas por origen, sesión informativ
   assert.equal(artifact.cause, null);
   assert.equal(artifact.durationMs, 9_000);
   assert.equal(artifact.states.length, 5);
-  assert.deepEqual(artifact.connections, { established: 2, establishedDuringBlock: 0 });
+  assert.deepEqual(artifact.connections, { established: 2 });
   assert.equal(artifact.reloads.attributable, 1);
   assert.equal(artifact.reloads.documentReloads, 0);
   assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments/public/t1']?.origin, 'reconnect');
   assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments']?.origin, 'polling');
   assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments']?.polling, 1);
-  assert.deepEqual(artifact.sessionId, { value: 'sid-abc', conclusive: false });
+  // Ningún campo del artefacto publica un identificador de sesión que el arnés
+  // no puede observar: se retiró en la corrección de la validación.
+  assert.equal('sessionId' in artifact, false);
 });
 
-test('buildViewArtifact sanea la causa y declara el veredicto sin sesión', () => {
+test('buildViewArtifact sanea la causa', () => {
   const artifact = buildViewArtifact({
     view: 'public',
     verdict: 'behavioral',
@@ -580,7 +573,6 @@ test('buildViewArtifact sanea la causa y declara el veredicto sin sesión', () =
   });
 
   assert.equal(artifact.verdict, 'behavioral');
-  assert.equal(artifact.sessionId, null);
   assert.match(artifact.cause ?? '', /no apareció/);
   assert.doesNotMatch(artifact.cause ?? '', /secret|cookie/i);
 });
@@ -602,6 +594,22 @@ test('traceRequest no guarda cabeceras ni consulta, y traceLine sanea la consola
 
   const consoleLine = traceLine(traceConsole({ at: 2_000, level: 'error', text: 'Cookie: a=b' }));
   assert.doesNotMatch(consoleLine, /a=b/);
+});
+
+test('cada vista escribe su propia traza: ninguna pisa la de otra', () => {
+  const files = EXPECTED_VIEWS.map((view) => traceFileName(view));
+
+  assert.deepEqual(files, ['trace-public.jsonl', 'trace-workspace.jsonl', 'trace-operation.jsonl']);
+  assert.equal(new Set(files).size, files.length, 'dos vistas no comparten fichero');
+
+  // La traza de la consola viaja en el mismo JSONL por vista: si el escenario
+  // vuelve al nombre compartido, el fallo de la tercera vista borra las otras.
+  const scenarioSource = readFileSync(
+    new URL('../e2e/realtimeScenario.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(scenarioSource, /traceFileName\(view\.id\)/);
+  assert.doesNotMatch(scenarioSource, /['"]trace\.jsonl['"]/);
 });
 
 /* -------------------------------------------------------------------------- */

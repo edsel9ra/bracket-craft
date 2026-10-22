@@ -80,7 +80,7 @@ lockfile. Ninguna otra.
   `frontend/e2e/session.setup.ts` (fija `bc_locale=es`, inicia sesión **por la interfaz** con la cuenta
   demo, verifica `/workspace` y guarda `storageState` en `frontend/.auth/state.json`, que se reutiliza y
   sirve para reautenticar de forma declarada, caso límite 13) y `frontend/e2e/artifacts.ts`
-  (`summary.json`, `view-<vista>.json`, `trace.jsonl` sin cabeceras, capturas PNG y lectura saneada de
+  (`summary.json`, `view-<vista>.json`, `trace-<vista>.jsonl` sin cabeceras, capturas PNG y lectura saneada de
   `docker compose logs`); `cd frontend && pnpm test` pasa y demuestra que `redactLine` elimina los
   valores de `Cookie`, `Set-Cookie`, `Authorization`, `token` y `bc_csrf_token` y deja el resto de la
   línea intacto; `cd frontend && pnpm run typecheck:e2e` pasa; con la pila levantada y sembrada, `cd
@@ -101,7 +101,7 @@ lockfile. Ninguna otra.
   e2e/realtime-public.spec.ts`) sale **0** y deja `e2e-report/view-public.json` con: `blockedAt` <
   `errorVisibleAt` < `clickedAt` < `attemptStartedAt` < `manualVisibleAt` < `manualGoneAt` <
   `unblockedAt` < `connectedAt` < `settledAt` en los dos ciclos, `retryingVisibleAt` posterior al inicio
-  del intento y anterior al desbloqueo, **0** conexiones establecidas durante el bloqueo, **2**
+  del intento y anterior al desbloqueo, **2**
   establecidas en total, **0** navegaciones del frame principal, ≤1 recarga atribuible del consumidor
   público con su número observado declarado y `assertScenarioOrder` sin violaciones; el texto manual
   observado es «Reintentando…» y **no** aparece sin pulsación; `cd frontend && pnpm run typecheck:e2e`
@@ -113,7 +113,7 @@ lockfile. Ninguna otra.
   escenario ni el bloqueo) y, con la pila levantada y sembrada, `cd frontend && pnpm exec playwright test
   e2e/realtime-workspace.spec.ts e2e/realtime-operation.spec.ts` sale **0** y deja
   `e2e-report/view-workspace.json` y `e2e-report/view-operation.json` con las mismas invariantes que la
-  vista pública (orden, 2 conexiones establecidas, 0 durante el bloqueo, 0 recargas del documento, ≤1
+  vista pública (orden, 2 conexiones establecidas, ninguna recuperación durante el bloqueo, 0 recargas del documento, ≤1
   recarga atribuible por consumidor —`/api/v1/tournaments` y `/api/v1/matches/{id}/operation`
   respectivamente—, estado manual en ambos ciclos y ausencia de estado manual sin pulsación); ninguna de
   las dos usa `test.skip` ni `test.fixme` (`grep -n 'test\.\(skip\|fixme\)' frontend/e2e/*.ts` no
@@ -179,3 +179,34 @@ lockfile. Ninguna otra.
   las ejecuta; se confirma que **no hay migraciones** ni cambios en `init/`, `backend/`, la API ni los
   contratos, y que la única deuda declarada es la enmienda menor de la §4 de la constitución (§5.2) para
   nombrar el quinto job.
+
+## Correcciones surgidas de la validación (ronda 1 de 2)
+
+- [x] **C1. Corrección B1: muestreo del estado manual sin falsos rojos.** RF-001, RNF-001
+- Hecho cuando: `frontend/e2e/statusObserver.ts` es el modelo puro del observador (`sample` registra solo
+  cambios; `observe` registra siempre, con el instante real), `waitFor` lo usa y las marcas observadas
+  dejan de pasar por `stampAfter`; `frontend/tests/e2e-status-observer.test.ts` demuestra cambio de
+  estado, repetición del mismo estado tras un clic, estado intermedio más corto que el intervalo de
+  muestreo y ausencia de instantes inventados (rojo antes del código: el módulo no existía);
+  `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck:e2e` pasan; cinco corridas de
+  `cd frontend && pnpm run e2e:test` no producen falsos rojos.
+
+- [x] **C2. Corrección B2: una traza por vista.** RF-005, RNF-006
+- Hecho cuando: `writeTrace` recibe el nombre y el escenario usa `traceFileName(view)`; la corrida deja
+  `trace-public.jsonl`, `trace-workspace.jsonl` y `trace-operation.jsonl` (la consola del navegador
+  viaja en el JSONL de su vista), de modo que el fallo conserva la traza de **su** vista; la prueba
+  unitaria comprueba que dos vistas no comparten fichero y que el escenario no vuelve a `trace.jsonl`;
+  el `path` del artefacto del job (`frontend/e2e-report`) no cambia.
+
+- [x] **C3. Corrección B3: registro del servidor en local.** RF-005, RF-006
+- Hecho cuando: `frontend/e2e/run.ts` recoge `docker compose logs --no-color api worker web` tras la
+  corrida, lo sanea con `redactLog` y lo escribe como `server.log` antes de bajar la pila; sin Docker
+  escribe `no disponible: docker CLI ausente` y lo declara en consola; `buildServerLog` se prueba con
+  Docker disponible, ausente y con el comando fallando; `README.md` lo documenta.
+
+- [x] **C4. Retirada de comprobaciones vacuas.** RF-001, RF-005
+- Hecho cuando: `establishedDuringBlock` desaparece del interceptor, del artefacto, del recuento
+  esperado y de las aserciones (la evidencia de que no hubo transporte durante el bloqueo es la
+  ausencia de estado conectado entre `closedAt` y `unblockedAt`); `sessionId` desaparece del artefacto
+  (siempre era `null`) y el plan deja de publicarlo; `cd frontend && pnpm test`, `pnpm run
+  typecheck:e2e` y las tres vistas del escenario siguen en verde.

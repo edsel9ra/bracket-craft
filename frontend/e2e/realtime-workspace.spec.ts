@@ -124,7 +124,9 @@ test('vista del Workspace: el reintento manual reconecta con el canal bloqueado'
   ).toBe(false);
   expect(result.orderViolations).toEqual([]);
   expect(result.artifact.connections.established).toBe(2);
-  expect(result.artifact.connections.establishedDuringBlock).toBe(0);
+  // Sin `establishedDuringBlock` (retirado por ser un contador estructural): la
+  // prueba de que no hubo transporte durante el bloqueo es la ausencia de
+  // estado conectado en la ventana, comprobada arriba.
 
   // Recargas: ninguna del documento, ninguna duplicada y como máximo una del
   // consumidor del panel, atribuida a la reconexión y no al sondeo.

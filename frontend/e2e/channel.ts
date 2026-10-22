@@ -74,8 +74,6 @@ export interface ChannelNavigationRecord {
 export interface ChannelCounts {
   /** Conexiones persistentes aceptadas por el servidor real. */
   readonly established: number;
-  /** Conexiones aceptadas mientras el canal estaba bloqueado (debe ser 0). */
-  readonly establishedDuringBlock: number;
   /** Peticiones HTTP al canal (sondeo y elevación), incluidas las bloqueadas. */
   readonly attempts: number;
   /** Peticiones al canal retenidas o abortadas por el bloqueo. */
@@ -151,7 +149,6 @@ class BrowserChannelGate implements ChannelGate {
 
   private currentMode: ChannelMode = 'pass';
   private establishedCount = 0;
-  private establishedDuringBlockCount = 0;
   private blockedCount = 0;
   private rejectedHandshakes = 0;
   private lastUsable: WebSocketRoute | null = null;
@@ -229,7 +226,6 @@ class BrowserChannelGate implements ChannelGate {
   counts(): ChannelCounts {
     return {
       established: this.establishedCount,
-      establishedDuringBlock: this.establishedDuringBlockCount,
       attempts: this.requestRecords.filter((record) => record.channel).length,
       blocked: this.blockedCount,
       held: this.heldRoutes.length,

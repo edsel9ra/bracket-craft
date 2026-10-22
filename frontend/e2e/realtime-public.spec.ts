@@ -69,7 +69,11 @@ test('vista pública: el reintento manual reconecta con el canal bloqueado', asy
   expect(result.orderViolations).toEqual([]);
   expect(result.marks.settledAt).toBeGreaterThan(result.marks.connectedAt);
   expect(result.artifact.connections.established).toBe(2);
-  expect(result.artifact.connections.establishedDuringBlock).toBe(0);
+  // `connections.establishedDuringBlock` se retiró en la corrección de la
+  // validación: el interceptor nunca acepta un handshake con el canal bloqueado,
+  // así que era un contador estructural que nunca cambiaba. La evidencia real es
+  // la ausencia de estado conectado durante el bloqueo, comprobada arriba con
+  // las muestras observadas.
   expect(result.artifact.reloads.documentReloads).toBe(0);
   expect(result.artifact.reloads.attributable).toBeLessThanOrEqual(1);
   expect(result.artifact.reloads.duplicates).toBe(0);

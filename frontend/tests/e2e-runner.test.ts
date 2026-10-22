@@ -15,7 +15,9 @@ import type { ArtifactVerdict, ViewArtifact } from '../e2e/artifacts.ts';
 import type { ScenarioMarks, ViewId } from '../e2e/observations.ts';
 import {
   EXIT_CODES,
+  SERVER_LOG_UNAVAILABLE,
   buildRunSummary,
+  buildServerLog,
   formatDuration,
   formatSummaryTable,
   parseRunnerArgs,
@@ -71,7 +73,7 @@ function artifact(
     durationMs: options.durationMs ?? 12_000,
     states,
     marks: MARKS,
-    connections: { established: 2, establishedDuringBlock: 0 },
+    connections: { established: 2 },
     attempts: 2,
     reloads: {
       attributable: options.attributable ?? 0,
@@ -82,7 +84,6 @@ function artifact(
       documentReloads: 0,
       byEndpoint: {},
     },
-    sessionId: null,
   };
 }
 
@@ -385,6 +386,52 @@ test('el runner separa --no-stack y reenvía el resto a Playwright, con o sin --
     noStack: false,
     forwarded: ['--grep=workspace'],
   });
+});
+
+test('el registro del servidor local se sanea antes de escribirse', () => {
+  const capture = buildServerLog({
+    dockerAvailable: true,
+    command: {
+      code: 0,
+      timedOut: false,
+      output:
+        'api-1  | Cookie: bc_access_token=secret\nweb-1  | GET /health.txt 200\napi-1  | Authorization: Bearer abc\n',
+    },
+  });
+
+  assert.equal(capture.available, true);
+  assert.equal(capture.note, null);
+  assert.match(capture.content, /GET \/health\.txt 200/);
+  assert.match(capture.content, /\[REDACTED\]/);
+  assert.doesNotMatch(capture.content, /secret|Bearer abc|Cookie/);
+});
+
+test('sin docker el server.log lo declara en el propio artefacto, nunca en silencio', () => {
+  const capture = buildServerLog({ dockerAvailable: false, command: null });
+
+  assert.equal(capture.available, false);
+  assert.equal(capture.note, SERVER_LOG_UNAVAILABLE);
+  assert.match(capture.content, /server\.log/);
+  assert.match(capture.content, /no disponible: docker CLI ausente/);
+});
+
+test('un fallo de docker compose logs se declara con su código y su salida saneada', () => {
+  const capture = buildServerLog({
+    dockerAvailable: true,
+    command: { code: 1, timedOut: false, output: 'no such service: api token=abc123' },
+  });
+
+  assert.equal(capture.available, false);
+  assert.match(capture.note ?? '', /código 1/);
+  assert.match(capture.content, /no such service: api/);
+  assert.doesNotMatch(capture.content, /abc123/);
+
+  const timedOut = buildServerLog({
+    dockerAvailable: true,
+    command: { code: null, timedOut: true, output: '' },
+  });
+  assert.equal(timedOut.available, false);
+  assert.match(timedOut.note ?? '', /tiempo agotado/);
 });
 
 test('formatea duraciones en milisegundos y segundos', () => {

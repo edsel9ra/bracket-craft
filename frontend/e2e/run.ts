@@ -16,6 +16,9 @@
  * En un entorno sin Docker pero con la pila ya sana (por ejemplo, un contenedor
  * de Playwright con la pila en la red del host), el runner lo declara y ejecuta
  * contra la pila existente. Sin pila alcanzable sale 2: no se declara verde.
+ * En ese mismo entorno el registro del servidor no se puede recoger y
+ * `server.log` lo declara con una línea explícita (RF-006): el artefacto nunca
+ * falta en silencio.
  */
 
 import { spawn } from 'node:child_process';
@@ -27,17 +30,20 @@ import {
   redactLine,
   reportPath,
   writeJsonReport,
+  writeTextReport,
   type ArtifactVerdict,
   type ViewArtifact,
 } from './artifacts.ts';
 import { EXPECTED_VIEWS, MAX_MS, type ViewId } from './observations.ts';
 import {
   buildRunSummary,
+  buildServerLog,
   formatSummaryTable,
   parseRunnerArgs,
   type PlaywrightProjectOutcome,
   type PlaywrightStatus,
   type RunStackInfo,
+  type ServerLogCapture,
 } from './runModel.ts';
 
 const FRONTEND_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -287,6 +293,44 @@ async function prepareStack(noStack: boolean): Promise<StackPreparation> {
   };
 }
 
+/**
+ * Recoge el registro del servidor (RF-005, RF-006) **antes** de bajar la pila y
+ * lo deja saneado en `e2e-report/server.log`, igual que hace el job de CI. Si el
+ * entorno no tiene Docker —el contenedor del arnés, por ejemplo— el artefacto
+ * declara la diferencia con una línea explícita en lugar de faltar en silencio.
+ */
+async function writeServerLog(): Promise<void> {
+  let capture: ServerLogCapture;
+  try {
+    const hasDocker = await dockerAvailable();
+    if (!hasDocker) {
+      capture = buildServerLog({ dockerAvailable: false, command: null });
+    } else {
+      const result = await runCommand(
+        'docker',
+        ['compose', 'logs', '--no-color', 'api', 'worker', 'web'],
+        { cwd: REPO_ROOT, timeoutMs: COMMAND_TIMEOUT_MS },
+      );
+      capture = buildServerLog({
+        dockerAvailable: true,
+        command: { code: result.code, timedOut: result.timedOut, output: result.output },
+      });
+    }
+  } catch (error) {
+    capture = buildServerLog({
+      dockerAvailable: true,
+      command: { code: null, timedOut: false, output: describeError(error) },
+    });
+  }
+
+  await writeTextReport('server.log', capture.content);
+  console.log(
+    capture.available
+      ? '[e2e] server.log recogido y saneado en e2e-report/.'
+      : `[e2e] server.log: ${capture.note ?? 'no disponible'}`,
+  );
+}
+
 async function main(): Promise<number> {
   const args = parseRunnerArgs(process.argv.slice(2));
 
@@ -325,6 +369,10 @@ async function main(): Promise<number> {
   } catch (error) {
     infrastructureCause = `runner-error: ${describeError(error)}`;
   }
+
+  await writeServerLog().catch((error: unknown) => {
+    console.error(`[e2e] no se pudo escribir server.log: ${describeError(error)}`);
+  });
 
   const artifacts = await readArtifacts();
   const summary = buildRunSummary({
