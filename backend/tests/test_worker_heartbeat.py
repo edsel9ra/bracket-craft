@@ -394,3 +394,183 @@ def test_operational_verification_script_is_not_automated_in_ci():
 
     assert CI_PATH.is_file()
     assert "verify_worker_loop_health" not in CI_PATH.read_text(encoding="utf-8")
+
+
+# --- Sonda de outbox en la verificación operativa (spec 011, RF-003) ---------
+# Pruebas baratas, sin contenedores: fijan el contrato estático del script, su
+# orden (guard antes de congelar) y, con un ``docker`` de mentira, que un
+# entorno no desarrollo/local sale 2 sin tocar el worker.
+
+
+def shell_block(text: str, start: str) -> str:
+    """Devuelve el bloque ``if``/``fi`` que contiene ``start``."""
+
+    start_index = text.index(start)
+    end = text.index("\nfi\n", start_index)
+    return text[start_index:end]
+
+
+def cleanup_block(text: str) -> str:
+    """Devuelve el cuerpo de ``cleanup()`` del script."""
+
+    match = re.search(r"\ncleanup\(\) \{\n(.*?)\n\}\n", text, re.DOTALL)
+    assert match is not None
+    return match.group(1)
+
+
+def probe_step_block(text: str) -> str:
+    """Devuelve el paso 7 (sonda) del script, desde su inserción al final."""
+
+    return text[text.index("scripts.outbox_probe insert") :]
+
+
+def verification_code(text: str) -> str:
+    """Devuelve el código del script, sin la cabecera de documentación."""
+
+    return text.split("\nset -eu\n", 1)[1]
+
+
+def test_operational_verification_script_guards_the_environment_before_the_worker():
+    text = verify_script_text()
+    code = verification_code(text)
+
+    guard_line = next(
+        line for line in code.splitlines() if "scripts.outbox_probe guard" in line
+    )
+    # El guard corre dentro del contenedor (configuración efectiva del worker).
+    assert "worker_exec" in guard_line
+    assert "--force" not in text
+
+    guard_index = code.index(guard_line)
+    # Paso 0: antes de esperar el estado sano y antes de congelar el PID 1.
+    assert guard_index < code.index('info "Paso 1')
+    assert guard_index < code.index("kill -STOP 1")
+    assert guard_index < code.index("wait_for_status healthy")
+
+    # Un entorno no desarrollo/local es «no ejecutable» (código 2, sin escrituras).
+    block = shell_block(code, "scripts.outbox_probe guard")
+    assert "not_executable" in block
+
+
+def test_operational_verification_script_declares_the_probe_budget():
+    text = verify_script_text()
+
+    assert "WORKER_PROBE_TIMEOUT=${WORKER_PROBE_TIMEOUT:-120}" in text
+    assert "WORKER_PROBE_POLL_INTERVAL=${WORKER_PROBE_POLL_INTERVAL:-2}" in text
+    # Se validan como enteros positivos en el bucle existente de los tiempos.
+    assert '"WORKER_PROBE_TIMEOUT=$WORKER_PROBE_TIMEOUT"' in text
+    assert '"WORKER_PROBE_POLL_INTERVAL=$WORKER_PROBE_POLL_INTERVAL"' in text
+
+    # La cabecera documenta el paso nuevo, sus variables y los códigos 0/1/2.
+    header = text.split("\nset -eu\n", 1)[0]
+    assert "WORKER_PROBE_TIMEOUT" in header
+    assert "WORKER_PROBE_POLL_INTERVAL" in header
+    assert "sonda" in header.lower()
+    assert "0  " in header and "1  " in header and "2  " in header
+
+
+def test_operational_verification_script_probes_after_the_recovery():
+    text = verify_script_text()
+    code = verification_code(text)
+    insert_index = code.index("scripts.outbox_probe insert")
+
+    # Paso 7: solo después de reanudar y de comprobar que no hubo reinicio.
+    assert insert_index > code.index('info "Paso 4')
+    assert insert_index > code.index('info "Paso 5')
+    assert insert_index > code.index('info "Paso 6')
+
+    block = probe_step_block(code)
+    assert "scripts.outbox_probe status" in block
+    assert '--id "$PROBE_ID"' in block
+    assert '--marker "$PROBE_MARKER"' in block
+    assert "WORKER_PROBE_TIMEOUT" in block
+    assert "WORKER_PROBE_POLL_INTERVAL" in block
+
+    # pending/processing se siguen esperando; processed es éxito y failed falla.
+    assert "status=processed" in block
+    assert "status=failed" in block
+    assert "status=retrying" in block
+    assert "status=missing" in block
+
+    # Marcador único por corrida: instante, PID y azar.
+    marker_line = next(
+        line
+        for line in code.splitlines()
+        if line.startswith("PROBE_MARKER=") and "/dev/urandom" in line
+    )
+    assert "date +%s" in marker_line
+    assert "$$" in marker_line
+
+
+def test_operational_verification_script_deletes_the_probe_on_exit():
+    text = verify_script_text()
+    block = cleanup_block(text)
+
+    assert "scripts.outbox_probe delete" in block
+    assert '--id "$PROBE_ID"' in block
+    assert '--marker "$PROBE_MARKER"' in block
+    # La limpieza reanuda el bucle antes de tocar la cola.
+    assert block.index("kill -CONT 1") < block.index("scripts.outbox_probe delete")
+    # Un borrado imposible no puede quedar en verde: informa y sale 1.
+    assert "status=1" in block
+    assert "PROBE_MARKER" in block
+
+
+def test_operational_verification_script_exits_2_on_non_development_environment(
+    tmp_path,
+):
+    # ``docker`` de mentira: el guard del worker responde 2 (entorno no dev) y
+    # el script debe salir 2 sin congelar ni esperar el healthcheck.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "docker-calls.log"
+    docker = bin_dir / "docker"
+    docker.write_text(
+        """#!/bin/sh
+printf '%s\\n' "$*" >> "$DOCKER_CALLS"
+case "$1" in
+    info) exit 0 ;;
+    --version) printf 'Docker version 27.0.0\\n'; exit 0 ;;
+    inspect)
+        case "$3" in
+            '{{.Id}}') printf 'abc123\\n' ;;
+            '{{.State.Running}}') printf 'true\\n' ;;
+            '{{.RestartCount}}|{{.State.StartedAt}}|{{.State.Pid}}') printf '0|now|1\\n' ;;
+            *) printf '\\n' ;;
+        esac
+        exit 0
+        ;;
+    exec)
+        case "$*" in
+            *'scripts.outbox_probe guard'*) printf 'no ejecutable: APP_ENV=production\\n'; exit 2 ;;
+            *) exit 0 ;;
+        esac
+        ;;
+esac
+exit 0
+""",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+
+    env = {key: value for key, value in os.environ.items() if key != "WORKER_TARGET"}
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["DOCKER_CALLS"] = str(calls)
+
+    result = subprocess.run(
+        [shutil.which("sh"), str(VERIFY_SCRIPT)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "NO EJECUTADA" in result.stderr
+    assert "no ejecutable" in (result.stdout + result.stderr).lower()
+    recorded = calls.read_text(encoding="utf-8") if calls.exists() else ""
+    # Ni congelación ni espera del healthcheck: el guard es lo único que corre.
+    assert "kill" not in recorded
+    assert "STOP" not in recorded
+    assert "Health" not in recorded
+    assert "STOP" not in result.stdout

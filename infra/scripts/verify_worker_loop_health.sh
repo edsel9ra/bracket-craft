@@ -12,6 +12,17 @@
 # el PID 1 de un namespace de PID ignora SIGSTOP enviado desde su propio
 # namespace, si no se detiene se envía el mismo SIGSTOP al PID 1 desde el host.
 #
+# Además, tras la recuperación y sin reiniciar, la verificación inserta una
+# sonda de outbox inocua con ``python -m scripts.outbox_probe insert`` y espera
+# a que el worker la marque como ``processed`` (paso 7). La cola es la prueba
+# persistida; el stream solo se cita como corroboración y nunca decide. La
+# sonda se borra siempre en el trap de salida, tanto en éxito como en fallo.
+#
+# Antes de esperar o congelar nada, el paso 0 pregunta al propio worker su
+# ``APP_ENV`` (``python -m scripts.outbox_probe guard``): la sonda escribe en la
+# cola, así que fuera de desarrollo/local la verificación es NO EJECUTABLE
+# (código 2) y no toca el worker. La utilidad repite el guard en cada comando.
+#
 # Uso:
 #   sh infra/scripts/verify_worker_loop_health.sh [servicio|contenedor]
 #
@@ -22,12 +33,18 @@
 #   WORKER_HEALTH_UNHEALTHY_TIMEOUT s de espera al estado insano (defecto: 180)
 #   WORKER_HEALTH_RECOVERY_TIMEOUT  s de espera a la recuperación (defecto: 120)
 #   WORKER_HEALTH_POLL_INTERVAL     s entre sondeos (defecto: 5)
+#   WORKER_PROBE_TIMEOUT            s de presupuesto para la sonda (defecto: 120);
+#                                   cubre los reintentos del outbox (5 x 5 s)
+#   WORKER_PROBE_POLL_INTERVAL      s entre sondeos de la sonda (defecto: 2)
 #
 # Códigos de salida:
-#   0  se observó la transición healthy -> unhealthy -> healthy
-#   1  algún paso falló (se indica cuál)
-#   2  no ejecutable: falta Docker, falta el contenedor o los argumentos son
-#      inválidos. La verificación queda declarada como NO EJECUTADA.
+#   0  se observó la transición healthy -> unhealthy -> healthy y el worker
+#      procesó la sonda
+#   1  fallo de comportamiento: algún paso falló (se indica cuál), incluida la
+#      sonda (failed, desaparecida o presupuesto agotado) y su borrado
+#   2  no ejecutable: falta Docker, falta el contenedor, los argumentos o las
+#      variables son inválidos, o el worker no está en desarrollo/local (no se
+#      escribe nada). La verificación queda declarada como NO EJECUTADA.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -40,8 +57,12 @@ WORKER_HEALTH_READY_TIMEOUT=${WORKER_HEALTH_READY_TIMEOUT:-60}
 WORKER_HEALTH_UNHEALTHY_TIMEOUT=${WORKER_HEALTH_UNHEALTHY_TIMEOUT:-180}
 WORKER_HEALTH_RECOVERY_TIMEOUT=${WORKER_HEALTH_RECOVERY_TIMEOUT:-120}
 WORKER_HEALTH_POLL_INTERVAL=${WORKER_HEALTH_POLL_INTERVAL:-5}
+WORKER_PROBE_TIMEOUT=${WORKER_PROBE_TIMEOUT:-120}
+WORKER_PROBE_POLL_INTERVAL=${WORKER_PROBE_POLL_INTERVAL:-2}
 
 LOOP_FROZEN=0
+PROBE_ID=""
+PROBE_MARKER=""
 
 info() {
     printf '\n== %s\n' "$*"
@@ -94,7 +115,9 @@ for setting in \
     "WORKER_HEALTH_READY_TIMEOUT=$WORKER_HEALTH_READY_TIMEOUT" \
     "WORKER_HEALTH_UNHEALTHY_TIMEOUT=$WORKER_HEALTH_UNHEALTHY_TIMEOUT" \
     "WORKER_HEALTH_RECOVERY_TIMEOUT=$WORKER_HEALTH_RECOVERY_TIMEOUT" \
-    "WORKER_HEALTH_POLL_INTERVAL=$WORKER_HEALTH_POLL_INTERVAL"
+    "WORKER_HEALTH_POLL_INTERVAL=$WORKER_HEALTH_POLL_INTERVAL" \
+    "WORKER_PROBE_TIMEOUT=$WORKER_PROBE_TIMEOUT" \
+    "WORKER_PROBE_POLL_INTERVAL=$WORKER_PROBE_POLL_INTERVAL"
 do
     name=${setting%%=*}
     value=${setting#*=}
@@ -216,6 +239,19 @@ cleanup() {
             printf 'AVISO: no se pudo reanudar el bucle del worker; revisa el contenedor %s\n' "$CONTAINER" >&2
         fi
     fi
+    if [ -n "$PROBE_ID" ]; then
+        printf '\n== Borrando la sonda del outbox (id=%s marcador=%s)\n' \
+            "$PROBE_ID" "$PROBE_MARKER" >&2
+        if delete_output=$(worker_exec python -m scripts.outbox_probe delete \
+            --id "$PROBE_ID" --marker "$PROBE_MARKER" 2>&1); then
+            printf '   %s\n' "$delete_output" >&2
+            PROBE_ID=""
+        else
+            printf 'FAIL: no se pudo borrar la sonda id=%s marcador=%s: %s\n' \
+                "$PROBE_ID" "$PROBE_MARKER" "$delete_output" >&2
+            status=1
+        fi
+    fi
     exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
@@ -252,6 +288,13 @@ info "Comprobando Docker y el worker"
 progress "docker: $(docker --version 2>/dev/null || printf 'disponible')"
 progress "destino: $WORKER_TARGET"
 progress "contenedor: $CONTAINER"
+
+info "Paso 0: comprobando el entorno del worker (sin escribir nada)"
+if ! guard_output=$(worker_exec python -m scripts.outbox_probe guard 2>&1); then
+    printf '   %s\n' "$guard_output" >&2
+    not_executable "el worker no está en desarrollo/local (la sonda no se ejecuta ni escribe)"
+fi
+progress "sonda permitida: $guard_output"
 
 initial_status=$(health_status)
 if [ "$initial_status" = none ]; then
@@ -328,6 +371,53 @@ if [ -n "$mtime_before" ]; then
     progress "el bucle completó una vuelta tras la recuperación (latido $mtime_before -> $mtime_after)"
 fi
 
+info "Paso 7: sonda de outbox procesada por el worker (máximo ${WORKER_PROBE_TIMEOUT}s)"
+PROBE_MARKER="worker-probe-$(date +%s)-$$-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \r\n')"
+probe_started=$(now_seconds)
+if ! insert_output=$(worker_exec python -m scripts.outbox_probe insert --marker "$PROBE_MARKER" 2>&1); then
+    fail "no se pudo insertar la sonda (paso 7): $insert_output"
+fi
+PROBE_ID=$(printf '%s' "$insert_output" | awk '{print $1}')
+if [ -z "$PROBE_ID" ]; then
+    fail "la sonda no devolvió su identificador (paso 7): $insert_output"
+fi
+progress "sonda insertada: id=$PROBE_ID marcador=$PROBE_MARKER"
+probe_deadline=$(( $(now_seconds) + WORKER_PROBE_TIMEOUT ))
+while :; do
+    probe_elapsed=$(( $(now_seconds) - probe_started ))
+    if probe_output=$(worker_exec python -m scripts.outbox_probe status \
+        --id "$PROBE_ID" --marker "$PROBE_MARKER" 2>&1); then
+        probe_status=0
+    else
+        probe_status=$?
+    fi
+    probe_state=$(printf '%s\n' "$probe_output" | sed -n '1p' | cut -d' ' -f1)
+    case "$probe_state" in
+        status=processed)
+            progress "[${probe_elapsed}s] procesada: $probe_output"
+            break
+            ;;
+        status=failed)
+            fail "la sonda agotó sus reintentos (paso 7): $probe_output"
+            ;;
+        status=retrying)
+            progress "[${probe_elapsed}s] sigue esperando: $probe_output"
+            ;;
+        status=missing)
+            fail "la sonda desapareció de la cola (paso 7): id=$PROBE_ID marcador=$PROBE_MARKER"
+            ;;
+        *)
+            fail "la sonda devolvió una salida inesperada (código $probe_status; paso 7): $probe_output"
+            ;;
+    esac
+    if [ "$(now_seconds)" -ge "$probe_deadline" ]; then
+        fail "la sonda no llegó a processed en ${WORKER_PROBE_TIMEOUT}s (paso 7): id=$PROBE_ID marcador=$PROBE_MARKER"
+    fi
+    sleep "$WORKER_PROBE_POLL_INTERVAL"
+done
+probe_elapsed=$(( $(now_seconds) - probe_started ))
+progress "sonda procesada en ${probe_elapsed}s; el stream solo corrobora, la cola decide"
+
 total_elapsed=$(( $(now_seconds) - frozen_at ))
 info "Transición verificada: healthy -> unhealthy -> healthy"
 progress "estado sano inicial: ${ready_elapsed_saved}s de espera"
@@ -335,5 +425,6 @@ progress "congelación -> unhealthy: ${unhealthy_elapsed}s"
 progress "reanudación -> healthy: ${recovered_elapsed}s"
 progress "tiempo total congelado/sondeando: ${total_elapsed}s"
 progress "contenedor: $CONTAINER (sin reinicio)"
-printf '\nOK: el healthcheck del worker refleja el bucle detenido y su recuperación\n'
+progress "sonda de outbox: id=$PROBE_ID marcador=$PROBE_MARKER (se borra al salir)"
+printf '\nOK: el healthcheck del worker refleja el bucle detenido y su recuperación,\ny el worker procesó la sonda de outbox sin reiniciar el contenedor\n'
 exit 0
