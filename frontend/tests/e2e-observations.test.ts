@@ -7,9 +7,12 @@ import {
   VIEWS,
   assertScenarioOrder,
   classifyReloads,
+  countSamples,
+  countTransitions,
   expectedConnectionCount,
   isDuplicateReload,
   maxMillis,
+  shouldCaptureScreenshot,
   type ScenarioMarks,
 } from '../e2e/observations.ts';
 import {
@@ -36,6 +39,7 @@ import {
   traceFileName,
   traceLine,
   traceRequest,
+  type StateSample,
 } from '../e2e/artifacts.ts';
 import {
   DemoDataError,
@@ -300,6 +304,64 @@ test('expectedConnectionCount: una conexión inicial y otra tras la última puls
   assert.deepEqual(expectedConnectionCount({ cycles: 2 }), { established: 2 });
   assert.deepEqual(expectedConnectionCount({ cycles: 1 }), { established: 2 });
   assert.deepEqual(expectedConnectionCount({ cycles: 0 }), { established: 1 });
+});
+
+test('countSamples cuenta las muestras observadas por estado', () => {
+  const samples: StateSample[] = [
+    { status: 'connected', at: 1_000 },
+    { status: 'connected', at: 1_200 },
+    { status: 'error', at: 2_400 },
+    { status: 'retrying', at: 3_600 },
+    { status: 'retrying', at: 3_800 },
+    { status: 'error', at: 4_400 },
+    { status: 'connected', at: 7_800 },
+  ];
+
+  assert.deepEqual(countSamples(samples), { connected: 3, error: 2, retrying: 2 });
+  assert.deepEqual(countSamples([]), {});
+});
+
+test('countTransitions solo cuenta cambios consecutivos distintos', () => {
+  const samples: StateSample[] = [
+    { status: 'connected', at: 1_000 },
+    { status: 'connected', at: 1_200 },
+    { status: 'error', at: 2_400 },
+    { status: 'retrying', at: 3_600 },
+    { status: 'retrying', at: 3_800 },
+    { status: 'error', at: 4_400 },
+    { status: 'connected', at: 7_800 },
+  ];
+
+  // connected→error, error→retrying, retrying→error, error→connected: 4.
+  assert.equal(countTransitions(samples), 4);
+  assert.equal(countTransitions([]), 0, 'sin muestras no hay transiciones');
+  assert.equal(countTransitions([{ status: 'connected', at: 1_000 }]), 0);
+  assert.equal(
+    countTransitions([
+      { status: 'connected', at: 1_000 },
+      { status: 'connected', at: 1_200 },
+    ]),
+    0,
+    'una muestra repetida no es una transición',
+  );
+});
+
+test('shouldCaptureScreenshot solo captura cuando el veredicto no es verde', () => {
+  assert.equal(shouldCaptureScreenshot('passed'), false);
+  for (const verdict of ['behavioral', 'infrastructure', 'invalid', 'missing'] as const) {
+    assert.equal(shouldCaptureScreenshot(verdict), true, verdict);
+  }
+});
+
+test('el escenario decide la captura con shouldCaptureScreenshot, nunca con un if a mano', () => {
+  const scenarioSource = readFileSync(
+    new URL('../e2e/realtimeScenario.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(scenarioSource, /shouldCaptureScreenshot\(verdict\)/);
+  assert.match(scenarioSource, /if \(shouldCaptureScreenshot\(verdict\)\) \{\s*await captureScreenshot/);
+  assert.doesNotMatch(scenarioSource, /if\s*\(\s*verdict\s*!==\s*'passed'\s*\)/);
 });
 
 test('las tres vistas se seleccionan con su namespace, su URL y su endpoint', () => {

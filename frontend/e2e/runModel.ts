@@ -13,7 +13,13 @@
  */
 
 import { redactLine, redactLog, type ArtifactVerdict, type ViewArtifact } from './artifacts.ts';
-import { EXPECTED_VIEWS, MAX_MS, type ViewId } from './observations.ts';
+import {
+  EXPECTED_VIEWS,
+  MAX_MS,
+  countSamples,
+  countTransitions,
+  type ViewId,
+} from './observations.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Argumentos                                                                 */
@@ -108,8 +114,13 @@ export interface ViewSummary {
   readonly verdict: ViewVerdict;
   readonly cause: string | null;
   readonly durationMs: number;
-  /** Recuento de estados visibles observados (retrying, connected, error…). */
+  /** Recuento de **muestras** por estado visible (retrying, connected, error…). */
   readonly states: Readonly<Record<string, number>>;
+  /**
+   * Número de cambios de estado consecutivos distintos; `null` si la vista no
+   * dejó artefacto. Campo aditivo y opcional: `schemaVersion` sigue en 1.
+   */
+  readonly transitions: number | null;
   /** Recargas observadas por consumidor: 0 o 1 atribuible, nunca el documento. */
   readonly reloads: {
     readonly attributable: number;
@@ -148,15 +159,6 @@ export interface RunSummaryInput {
 
 const DEFAULT_LIMITS: RunLimits = { viewMs: MAX_MS.view, runMs: MAX_MS.run };
 
-function countStates(artifact: ViewArtifact | undefined): Readonly<Record<string, number>> {
-  if (!artifact) return {};
-  const counts: Record<string, number> = {};
-  for (const state of artifact.states) {
-    counts[state.status] = (counts[state.status] ?? 0) + 1;
-  }
-  return counts;
-}
-
 function sanitizeCause(cause: string | null | undefined): string | null {
   if (cause === null || cause === undefined || cause.trim().length === 0) return null;
   return redactLine(cause.trim());
@@ -183,7 +185,8 @@ function evaluateView(input: {
 }): ViewSummary {
   const { view, artifact, project, limits } = input;
   const baseDuration = project?.durationMs ?? artifact?.durationMs ?? 0;
-  const states = countStates(artifact);
+  const states = artifact ? countSamples(artifact.states) : {};
+  const transitions = artifact ? countTransitions(artifact.states) : null;
   const reloads = artifact
     ? {
         attributable: artifact.reloads.attributable,
@@ -202,6 +205,7 @@ function evaluateView(input: {
     cause: sanitizeCause(cause),
     durationMs,
     states,
+    transitions,
     reloads,
   });
 
@@ -399,10 +403,14 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-function formatStates(states: Readonly<Record<string, number>>): string {
+function formatSamples(states: Readonly<Record<string, number>>): string {
   const entries = Object.entries(states);
   if (entries.length === 0) return '-';
   return entries.map(([status, count]) => `${status}=${count}`).join(' ');
+}
+
+function formatTransitions(transitions: number | null): string {
+  return transitions === null ? '-' : String(transitions);
 }
 
 function formatReloads(reloads: ViewSummary['reloads']): string {
@@ -411,16 +419,18 @@ function formatReloads(reloads: ViewSummary['reloads']): string {
 }
 
 /**
- * Tabla legible para la salida del runner: vista, veredicto, duración, estados
- * observados y recargas. La causa de cada vista no verde va debajo.
+ * Tabla legible para la salida del runner: vista, veredicto, duración,
+ * **muestras**, **transiciones** y recargas. La causa de cada vista no verde va
+ * debajo. Las cabeceras separan explícitamente ambas cifras (RF-006).
  */
 export function formatSummaryTable(summary: RunSummary): readonly string[] {
-  const header = ['VISTA', 'RESULTADO', 'DURACIÓN', 'ESTADOS', 'RECARGAS'];
+  const header = ['VISTA', 'RESULTADO', 'DURACIÓN', 'MUESTRAS', 'TRANSICIONES', 'RECARGAS'];
   const rows = summary.views.map((view) => [
     view.view,
     view.verdict,
     formatDuration(view.durationMs),
-    formatStates(view.states),
+    formatSamples(view.states),
+    formatTransitions(view.transitions),
     formatReloads(view.reloads),
   ]);
 

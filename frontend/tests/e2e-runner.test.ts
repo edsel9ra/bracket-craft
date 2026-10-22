@@ -12,7 +12,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import type { ArtifactVerdict, ViewArtifact } from '../e2e/artifacts.ts';
-import type { ScenarioMarks, ViewId } from '../e2e/observations.ts';
+import {
+  shouldCaptureScreenshot,
+  type ScenarioMarks,
+  type ViewId,
+} from '../e2e/observations.ts';
 import {
   EXIT_CODES,
   SERVER_LOG_UNAVAILABLE,
@@ -149,12 +153,66 @@ test('agrega las tres vistas y sus duraciones en una corrida verde', () => {
   assert.deepEqual(summary.stack, { mode: 'started', durationMs: 30_000 });
 
   const table = formatSummaryTable(summary).join('\n');
+  assert.match(table, /MUESTRAS\s+TRANSICIONES/);
   assert.match(table, /public\s+passed/);
   assert.match(table, /workspace\s+passed/);
   assert.match(table, /operation\s+passed/);
   assert.match(table, /10\.0 s/);
   assert.match(table, /retrying=1/);
   assert.match(table, /total/i);
+});
+
+test('transitions cuenta cambios distintos y states sigue siendo muestras', () => {
+  const summary = buildRunSummary(
+    runInput({
+      artifacts: [
+        artifact('public', 'passed', { retrying: 3 }),
+        artifact('workspace', 'passed'),
+        artifact('operation', 'passed'),
+      ],
+    }),
+  );
+
+  const publicView = summary.views[0];
+  assert.ok(publicView);
+  // connected, error y tres muestras retrying: states cuenta las cinco muestras.
+  assert.equal(publicView.states.connected, 1);
+  assert.equal(publicView.states.retrying, 3);
+  assert.equal(publicView.states.error, 1);
+  // Solo connected→error y error→retrying son transiciones.
+  assert.equal(publicView.transitions, 2);
+  assert.equal(summary.schemaVersion, 1);
+  assert.equal(summary.exitCode, EXIT_CODES.green);
+});
+
+test('un artefacto ausente publica transitions null sin inventar cifras', () => {
+  const summary = buildRunSummary(
+    runInput({
+      artifacts: [artifact('public', 'passed'), artifact('workspace', 'passed')],
+      projects: [project('setup'), project('public'), project('workspace'), project('operation')],
+    }),
+  );
+
+  const operation = summary.views[2];
+  assert.ok(operation);
+  assert.equal(operation.verdict, 'infrastructure');
+  assert.equal(operation.transitions, null);
+  assert.deepEqual(operation.states, {});
+
+  const table = formatSummaryTable(summary).join('\n');
+  const row = table.split('\n').find((line) => line.startsWith('operation'));
+  assert.ok(row, 'la fila de la vista debe existir');
+  assert.match(row, /\s-\s+-\s/, 'MUESTRAS y TRANSICIONES se muestran como guion cuando faltan');
+});
+
+test('una corrida verde no activa ninguna captura', () => {
+  const summary = buildRunSummary(runInput());
+
+  assert.equal(summary.status, 'green');
+  assert.deepEqual(
+    summary.views.filter((view) => shouldCaptureScreenshot(view.verdict)).map((view) => view.view),
+    [],
+  );
 });
 
 test('un fallo de comportamiento sale con 1 y conserva la causa de la vista', () => {

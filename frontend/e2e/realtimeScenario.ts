@@ -46,6 +46,7 @@ import {
   assertScenarioOrder,
   classifyReloads,
   expectedConnectionCount,
+  shouldCaptureScreenshot,
   type ConnectionCount,
   type CycleMarks,
   type DemoIdentifiers,
@@ -436,7 +437,7 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
       [...gate.trace(), ...trace].sort((left, right) => left.at - right.at),
       traceFileName(view.id),
     );
-    if (verdict !== 'passed') {
+    if (shouldCaptureScreenshot(verdict)) {
       await captureScreenshot(page, view.id).catch(() => '');
     }
     return {

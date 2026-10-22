@@ -9,6 +9,7 @@
  */
 
 import type { RealtimeLabelNamespace } from '../app/utils/realtimeStatusLabel.ts';
+import type { VisibleRealtimeStatus } from './labels.ts';
 
 /** Vistas que ejecutan el escenario (RF-003). El orden es el de la corrida. */
 export const EXPECTED_VIEWS = ['public', 'workspace', 'operation'] as const;
@@ -333,6 +334,55 @@ export function assertScenarioOrder(marks: ScenarioMarks): readonly ScenarioViol
   }
 
   return [...violations];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Muestras y transiciones                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Muestra mínima de estado visible: el instante no interviene en los recuentos. */
+export interface StatusSample {
+  readonly status: VisibleRealtimeStatus;
+}
+
+/**
+ * Recuento de **muestras** por estado observado (semántica de `states` en el
+ * resumen). Una muestra repetida suma: describe cuántas veces se vio el estado,
+ * no cuántas veces cambió (RF-006).
+ */
+export function countSamples(samples: readonly StatusSample[]): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const sample of samples) {
+    counts[sample.status] = (counts[sample.status] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Transiciones de estado: pares **consecutivos** con estado distinto. El primer
+ * elemento no cuenta (no hay estado anterior) y una muestra repetida tampoco:
+ * `[]` y `[x]` dan 0. Función pura y sin reloj (RF-006).
+ */
+export function countTransitions(samples: readonly StatusSample[]): number {
+  let transitions = 0;
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    if (previous && current && previous.status !== current.status) transitions += 1;
+  }
+  return transitions;
+}
+
+/** Veredicto con el que se decide una captura; `missing` también es un fallo. */
+export type CapturableVerdict = 'passed' | 'behavioral' | 'infrastructure' | 'invalid' | 'missing';
+
+/**
+ * La captura de pantalla es un artefacto **de fallo**: solo se escribe cuando el
+ * veredicto de la vista no es verde. Una corrida verde no deja `screenshots/`
+ * (RF-007).
+ */
+export function shouldCaptureScreenshot(verdict: CapturableVerdict): boolean {
+  return verdict !== 'passed';
 }
 
 /* -------------------------------------------------------------------------- */
