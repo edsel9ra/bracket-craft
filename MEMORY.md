@@ -2,10 +2,10 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Sin specs abiertas.** Última cerrada: **010** (2026-10-22). Pendiente: enmienda constitucional **1.4.0** y revisión humana §6 de la 010.
+- **Sin specs abiertas.** Última cerrada: **010** (2026-10-22). **§6 aprobada** para 005, 008, 009 y 010. **Constitución 1.4.0** (job `e2e` en la §4).
 
 ## Spec 010 — E2E del reintento del tiempo real (cerrada 2026-10-22)
-- **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#6** (`0e735e1`); CI en verde, incluido el job `e2e` (**3m10s** en la PR, omitido en push de rama). **Sin migraciones.**
+- **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#6** (`0e735e1`); CI en verde, incluido el job `e2e` (**3m10s** en la PR, omitido en push de rama). **Sin migraciones.** **§6 aprobada por el usuario (2026-10-22).**
 - **Producto:** estado `retrying` («Reintentando…»/«Retrying…»), distinto del automático, `role="status"` en las tres vistas; **solo** lo fija el clic si `connect()` inicia un intento nuevo (un no-op no lo pinta y el E2E se pone rojo).
 - **Arnés:** `frontend/e2e/` (Playwright 1.64.1, Chromium headless, `retries: 0`), interceptor `pass/hold/abort` + `routeWebSocket`, escenario bloquear → error → clic → estado manual → error → desbloquear → conectado; ≤1 recarga por consumidor y 0 del documento; sin conteo de sesiones ni identificador en el artefacto.
 - **Artefactos saneados:** `summary.json`, `view-<vista>.json`, `trace-<vista>.jsonl`, `server.log`; sin cookies/tokens/`trace.zip`. `frontend/.auth/` y `e2e-report/` ignorados.
@@ -29,7 +29,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`). Docker 29.9.1; Trivy con `aquasec/trivy` y caché local si falla la descarga.
 
 ## Pendiente
-- **Enmienda constitucional 1.4.0** (§4) para nombrar el quinto job `e2e`; cambio propio según §5.2. Marcar `e2e` como *required check* es configuración del repositorio.
-- **§6 de la 010:** revisión humana pendiente (005, 008 y 009 ya aprobadas).
+- Marcar el job `e2e` como ***required check*** en la protección de rama (configuración del repositorio; la §4 ya lo exige desde la 1.4.0).
 - **Despliegue en servidor:** 019 → 020 → 021 → 022 → 023 y el código, por ese orden; en local ya está hecho.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).
