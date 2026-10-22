@@ -107,7 +107,7 @@ lockfile. Ninguna otra.
   observado es «Reintentando…» y **no** aparece sin pulsación; `cd frontend && pnpm run typecheck:e2e`
   pasa y `cd frontend && pnpm test` sigue en verde.
 
-- [ ] **T6. Vistas del Workspace y de la operación del partido.** RF-002, RF-003
+- [x] **T6. Vistas del Workspace y de la operación del partido.** RF-002, RF-003
 - Hecho cuando: se escriben `frontend/e2e/realtime-workspace.spec.ts` y
   `frontend/e2e/realtime-operation.spec.ts` reutilizando `realtimeScenario.ts` (sin duplicar el
   escenario ni el bloqueo) y, con la pila levantada y sembrada, `cd frontend && pnpm exec playwright test

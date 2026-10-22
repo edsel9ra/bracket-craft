@@ -122,13 +122,35 @@ export const REALTIME_STATUS_TEXT: Readonly<
   },
 };
 
-/** Controles y datos de la preparación (sesión del Workspace y control de reintento). */
+/**
+ * Controles y datos de la preparación (sesión del Workspace y control de
+ * reintento) y anclas accesibles de cada vista: encabezados y etiquetas con los
+ * que se acota el localizador y se comprueba que la vista está cargada.
+ */
 export const E2E_LABELS = {
   retry: { key: 'common.retry', es: 'Reintentar', en: 'Retry' },
   loginEmail: { key: 'auth.email', es: 'Email', en: 'Email' },
   loginPassword: { key: 'auth.password', es: 'Contraseña', en: 'Password' },
   loginSubmit: { key: 'auth.login', es: 'Entrar', en: 'Log in' },
   workspaceReady: { key: 'workspace.private', es: 'Workspace privado', en: 'Private workspace' },
+  workspaceTournaments: {
+    key: 'workspace.yourTournaments',
+    es: 'Tus torneos',
+    en: 'Your tournaments',
+  },
+  workspaceConfigure: {
+    key: 'workspace.configure',
+    es: 'Configurar torneo',
+    en: 'Configure tournament',
+  },
+  operationReportHeading: { key: 'match.buildReport', es: 'Construye el acta', en: 'Build the report' },
+  operationEventType: { key: 'match.eventType', es: 'Tipo', en: 'Type' },
+  operationEventMinute: { key: 'match.minute', es: 'Minuto', en: 'Minute' },
+  operationSubstitutionPreview: {
+    key: 'match.substitutionPreview',
+    es: 'Vista previa de sustituciones',
+    en: 'Substitution preview',
+  },
 } as const satisfies Record<string, LocalizedText>;
 
 export type E2ELabelName = keyof typeof E2E_LABELS;

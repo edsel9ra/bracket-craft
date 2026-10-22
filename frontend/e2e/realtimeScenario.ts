@@ -55,6 +55,7 @@ import {
   type ViewId,
 } from './observations.ts';
 import type { StateObservation, StateSample } from './artifacts.ts';
+import { readRealtimeStatusTexts, realtimeRetryControl } from './viewLocators.ts';
 
 /** Dos ciclos de pulsación: la doble pulsación se prueba con dos errores. */
 export const SCENARIO_CYCLES = 2;
@@ -88,6 +89,21 @@ export interface ScenarioInput {
   readonly view: ViewDefinition;
   readonly ids: DemoIdentifiers;
   readonly baseURL?: string | undefined;
+  /** Estado propio de la vista que el reintento no debe alterar (por vista). */
+  readonly pageState?: ViewPageState | undefined;
+}
+
+/**
+ * Trabajo en curso propio de una vista. `prepare` deja la página en ese estado
+ * antes de bloquear el canal y `assertPreserved` comprueba, tras reconectar,
+ * que el reintento no lo descartó ni disparó una acción de la página. Cada
+ * spec declara el suyo; el escenario solo decide cuándo se ejecutan.
+ */
+export interface ViewPageState {
+  prepare(page: Page): Promise<void>;
+  /** Se ejecuta con el estado manual visible, en cada ciclo de pulsación. */
+  assertDuringManual?(page: Page): Promise<void>;
+  assertPreserved(page: Page, gate: ChannelGate): Promise<void>;
 }
 
 export interface ScenarioResult {
@@ -191,9 +207,7 @@ function createStatusObserver(page: Page, view: ViewDefinition): StatusObserver 
 
   async function read(): Promise<{ texts: readonly string[]; status: VisibleRealtimeStatus | null }> {
     try {
-      const texts = await page.locator('[role="status"]').evaluateAll((elements) =>
-        elements.map((element) => (element.textContent ?? '').trim()).filter((text) => text.length > 0),
-      );
+      const texts = await readRealtimeStatusTexts(page, view);
       return { texts, status: statusFromTexts(texts, view) };
     } catch {
       // Contexto destruido por una navegación: no hay texto que observar.
@@ -450,17 +464,30 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
     }
     gate.markDocumentBaseline();
 
+    // 2b. Trabajo en curso propio de la vista, antes de tocar el canal: es el
+    //     estado que el reintento no debe alterar (RF-002).
+    if (input.pageState) {
+      try {
+        await input.pageState.prepare(page);
+      } catch (error) {
+        fail(
+          'infrastructure',
+          'page-state-unavailable',
+          `la vista ${view.id} no ofreció su estado propio: ${describeError(error)}`,
+        );
+      }
+    }
+
     // 3. Bloqueo del canal y caída real del transporte interceptado.
     marks.blockedAt = stampAfter(marks.connectedOnceAt);
     gate.setMode('abort');
     await gate.closeEstablishedTransport();
     marks.closedAt = stampAfter(marks.blockedAt);
 
-    // 4. El error se hace visible: el control solo existe en `error`.
-    const retryButton = page.getByRole('button', {
-      name: labelText(E2E_LABELS.retry),
-      exact: true,
-    });
+    // 4. El error se hace visible: el control solo existe en `error`. El
+    //    localizador se acota al contenedor del estado del tiempo real, así que
+    //    no compite con otros «Reintentar» ni con otros `role="status"`.
+    const retryButton = realtimeRetryControl(page, view);
     try {
       await retryButton.waitFor({ state: 'visible', timeout: MAX_MS.errorVisible });
     } catch (error) {
@@ -559,6 +586,20 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
         );
       }
 
+      if (input.pageState?.assertDuringManual) {
+        try {
+          await input.pageState.assertDuringManual(page);
+        } catch (error) {
+          fail(
+            'behavioral',
+            'page-interference-during-manual',
+            `el estado manual del ciclo ${index + 1} interfirió con la página ${view.id}: ${describeError(
+              error,
+            )}`,
+          );
+        }
+      }
+
       const cycle: MutableCycle = {
         clickedAt,
         attemptStartedAt,
@@ -635,6 +676,20 @@ export async function runRealtimeScenario(input: ScenarioInput): Promise<Scenari
         'connection-after-settle',
         `se inició otra secuencia de conexión después de conectar: ${describeError(error)}`,
       );
+    }
+
+    // 6b. El reintento no descarta el trabajo en curso de la vista ni ejecuta
+    //     sus acciones: el estado propio sigue intacto tras reconectar.
+    if (input.pageState) {
+      try {
+        await input.pageState.assertPreserved(page, gate);
+      } catch (error) {
+        fail(
+          'behavioral',
+          'page-state-changed',
+          `el reintento alteró el estado propio de la vista ${view.id}: ${describeError(error)}`,
+        );
+      }
     }
 
     // 7. Recuentos de conexión y recargas.
