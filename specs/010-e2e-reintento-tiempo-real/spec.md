@@ -1,6 +1,6 @@
 # Spec 010 — Prueba de extremo a extremo del reintento del tiempo real
 
-Estado: aprobada (2026-10-22)
+Estado: implementada, validada por @reviewer y cerrada (2026-10-22).
 
 ## Contexto y objetivo
 

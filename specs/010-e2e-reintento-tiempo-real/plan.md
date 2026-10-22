@@ -1,7 +1,9 @@
 # Plan 010 — Prueba de extremo a extremo del reintento del tiempo real
 
-Spec: `specs/010-e2e-reintento-tiempo-real/spec.md` (aprobada 2026-10-22).
-Estado del plan: **pendiente de aprobación del usuario**.
+Spec: `specs/010-e2e-reintento-tiempo-real/spec.md` (implementada, validada por @reviewer y cerrada el
+2026-10-22).
+Estado del plan: aprobado e implementado; validación cerrada el 2026-10-22 con las correcciones C1–C4; el
+job `e2e` verificado en CI (3m10s).
 
 ## Objetivo y alcance técnico
 
@@ -62,7 +64,7 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
    al `pingTimeout` del servidor (10-20 s por vista y depende del temporizador del servidor),
    reiniciar el contenedor (tumba la API y la sesión) y arrancar con el canal ya bloqueado (rompe el
    caso límite 1, que exige una conexión aceptada y estable antes del bloqueo). **Se declara como
-   interpretación de Q3 y el usuario debe confirmarla.**
+   interpretación de Q3, confirmada por el usuario al aprobar el plan el 2026-10-22.**
 6. **El observable de «no otra secuencia de conexión después» son los eventos WebSocket del
    navegador**, contados por el interceptor: `wsEstablecidos` debe ser **2** (el inicial antes del
    bloqueo y el que termina conectado tras la pulsación), y en una ventana de asentamiento de 3 s tras
@@ -99,8 +101,8 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
    (`docker compose logs --no-color`, saneado por lista de patrones). Un único fichero compartido haría
    que la última vista pisara la traza de la que falló (corrección B2). *Descartado:* publicar `trace.zip` (contradice el criterio de artefactos) y
    post-procesar el zip (exigiría una dependencia de descompresión nueva y una enumeración frágil de
-   ficheros internos). **Cambia la lectura literal de «traza del navegador» en RF-005 y el usuario debe
-   confirmarlo.**
+   ficheros internos). **Cambia la lectura literal de «traza del navegador» en RF-005, confirmada por
+   el usuario al aprobar el plan el 2026-10-22.**
 10. **El resultado se clasifica en cuatro salidas y el runner decide el código de salida**: `0` verde,
     `1` fallo de comportamiento, `2` fallo de infraestructura, `3` **corrida inválida**. En CI las
     cuatro últimas son **no verdes**: la invalidez no acusa al producto (la spec no la declara ni
@@ -656,9 +658,9 @@ corrección B2) y el registro del servidor se documenta como saneado por `redact
 - **Coste de dependencias nuevas:** `@playwright/test` es solo de desarrollo; `pnpm audit --prod` no lo
   audita y Trivy solo mira el lockfile con `--ignore-unfixed`; cualquier hallazgo accionable que
   aparezca se corrige subiendo la versión, sin exclusiones (RNF-003).
-- **Interpretaciones que el usuario debe confirmar:** el cierre del transporte para provocar la caída
-  (decisión 5) y la sustitución de la traza de Playwright por una traza propia sin cabeceras
-  (decisión 9).
+- **Interpretaciones confirmadas al aprobar el plan (2026-10-22):** el cierre del transporte para
+  provocar la caída (decisión 5) y la sustitución de la traza de Playwright por una traza propia sin
+  cabeceras (decisión 9). Ambas están implementadas y verificadas en la entrega.
 
 ## Riesgos residuales
 
@@ -714,16 +716,31 @@ corrección B2) y el registro del servidor se documenta como saneado por `redact
 | §4 Cambios de infraestructura | Parcial | No cambia Compose ni el perfil de producción; solo un job nuevo y comandos documentados. `docker compose config -q` y las aserciones de producción siguen pasando. |
 | §4 Cambios de dependencias | Sí | Una `devDependency` (`@playwright/test@1.64.1`) con lockfile actualizado; `pip-audit`, la auditoría del frontend y Trivy pasan sin listas de supresión ni `--ignore-unfixable` añadido por nosotros. |
 | §5.1 Excepciones | No aplica | No se omite ninguna regla ni criterio; no se requiere excepción. |
-| §5.2 Evolución (quinto job en la §4) | Sí | La §4 enumera hoy cuatro jobs. El job `e2e` **no omite** ningún criterio, pero la enumeración queda desactualizada: se corrige con una **enmienda menor (1.4.0) tramitada por separado**, según §5.2 y según el «Fuera de alcance» de la spec 010. Dueño: responsable del producto; condición: antes del cierre de la spec 010. No se mezcla con este cambio. |
+| §5.2 Evolución (quinto job en la §4) | Sí | La §4 enumera hoy cuatro jobs. El job `e2e` **no omite** ningún criterio, pero la enumeración queda desactualizada: se corrige con una **enmienda menor (1.4.0) tramitada por separado**, según §5.2 y según el «Fuera de alcance» de la spec 010. Dueño: responsable del producto; condición: cambio propio **posterior a este cierre**, que **no bloquea** el cierre de la spec 010. No se mezcla con este cambio. |
 | §6 Definición de cumplimiento | Sí | Principios respetados, reglas y criterios cumplidos, CI en verde (incluido el job nuevo) y revisión humana distinta del autor antes de fusionar. |
 
 **Conclusión:** no hay incumplimientos ni excepciones pendientes. La única deuda declarada es la
-enmienda menor de la §4 para nombrar el quinto job, que se tramita como cambio propio (no bloquea la
-implementación, sí su cierre documental).
+enmienda menor de la §4 para nombrar el quinto job, que se tramita como cambio propio y queda
+**pendiente fuera de esta entrega**: no bloquea la implementación ni el cierre de la spec 010.
 
 ## Dudas abiertas
 
-Ninguna bloqueante. Se piden dos confirmaciones al aprobar el plan: la **decisión 5** (el cierre del
+Ninguna. Las dos confirmaciones que se pidieron al aprobar el plan —la **decisión 5** (el cierre del
 transporte interceptado como forma de provocar la caída con el canal bloqueado) y la **decisión 9**
-(traza propia sin cabeceras en lugar de `trace.zip` de Playwright), ambas dentro de RF-001/Q3 y
-RF-005 respectivamente.
+(traza propia sin cabeceras en lugar de `trace.zip` de Playwright)— quedaron confirmadas con la
+aprobación del plan el 2026-10-22, están implementadas y se reflejan en RF-001/Q3 y RF-005.
+
+## Cierre de la validación (2026-10-22)
+
+- **Tareas:** las **10 tareas** (T1–T10) y las **cuatro correcciones** surgidas de la validación
+  (C1–C4) están marcadas en `tasks.md`; ninguna casilla queda abierta.
+- **Entrega fusionada** en `main` con la PR **#6** (merge `0e735e1`, commits `1a651c1`…`1316d0a`).
+  **Sin migraciones** y sin cambios de backend, API ni contratos (RNF-004): `init/`,
+  `infra/postgres/migrations/` y `backend/` quedan intactos.
+- **CI en verde**, incluido el job **`e2e`**: **3m10s** en la PR y **omitido** en el `push` de la rama,
+  como exige Q1; en `main` se ejecuta en el `push` de cierre.
+- **Revisión humana:** @reviewer **APROBADO** tras dos rondas (determinismo del observador, traza por
+  vista, `server.log` local y alineación del identificador de sesión).
+- **Deuda declarada, fuera de esta entrega:** la **enmienda menor 1.4.0** de la constitución (§4),
+  que añade el quinto job a la lista autoritativa, sigue **pendiente y se tramita como cambio propio**
+  según §5.2. `docs/constitution.md` continúa en **1.3.0** y no se editó en esta entrega.
