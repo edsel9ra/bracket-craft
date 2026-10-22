@@ -1,6 +1,6 @@
 # Spec 009 — Ciclo de vida de las invitaciones y salud del worker
 
-Estado: aprobada (2026-10-21)
+Estado: implementada, validada por @reviewer y cerrada (2026-10-21).
 
 ## Contexto y objetivo
 

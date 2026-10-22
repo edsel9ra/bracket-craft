@@ -1,7 +1,7 @@
 # Plan 009 — Ciclo de vida de las invitaciones y salud del worker
 
 Spec: `specs/009-invitaciones-y-salud-del-worker/spec.md` (aprobada 2026-10-21).
-Estado del plan: propuesto, pendiente de aprobación del usuario.
+Estado del plan: aprobado e implementado; la validación cerró el 2026-10-21 y la corrección de RF-007 se aplicó en la ronda de corrección posterior a la primera validación.
 
 ## Objetivo y alcance técnico
 
