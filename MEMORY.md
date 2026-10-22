@@ -7,6 +7,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Spec 008 — Higiene P2 de auditoría (cerrada 2026-10-21)
 - **Implementada, validada por @reviewer y cerrada.** PR **#3** (`spec/008-higiene-p2-auditoria`) fusionada en `main` con merge commit **`393f9fb`**; commit de la spec **`67fcce7`**. 22 tareas (008A/008B/008C) completas.
 - **CI real en verde** en `main` y en la PR: `Backend tests` (2m27s en la PR), `Frontend checks`, `Infrastructure checks`, `Dependency and filesystem scan` y GitGuardian.
+- **Opt-in local ejecutada** contra la base real con el rol de aplicación: `RUN_DATABASE_TESTS=1` → **958 passed** (3m25s).
 - **@reviewer validó RF por RF (R18-R32; R11 fuera de alcance)** sin ningún RF sin evidencia; veredicto favorable tras corregir el estado documental de `spec.md` y `plan.md`.
 - Decisiones: Q1 anti-duplicado solo en altas manuales (1 por pareja, 2 en ida y vuelta); Q2 orden estable al restaurar organización; Q3 `public_age` interna sin consumo; Q4 aceptar invitación sin `access_token`; Q5 solo la API a loopback en dev; Q6 crear sobre vencida → 201, revocar vencida → 409, reenviar la reutiliza. `Origin`/`Referer` se validan por separado.
 - Migraciones **aditivas** 022 (topes de minuto) y 023 (`schedule_legs`); despliegue **022 → 023 → backend → frontend**, sin rollback (*forward-fix*).
@@ -35,8 +36,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Constitución en CRLF: `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
 
 ## Pendiente
-- Desplegar migraciones en orden: **019 → 020** (006, código nuevo primero), **021** (007, antes del código) y **022 → 023 → backend → frontend** (008).
+- **Despliegue en servidor** pendiente: **019 → 020** (006, código nuevo primero), **021** (007, antes del código) y **022 → 023 → backend → frontend** (008). En local ya está en **023** con smoke OK.
 - Cerrar **005** en `main`: ya cumplió CI, falta la revisión humana de la §6. Revisión humana de la §6 también para **008**.
-- Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.
 - TypeScript fijado en **`~6.0.3`** (instalado 6.0.3) con `vue-tsc` 3.3.13 y `vue` 3.5.44; **no subir a 7.x** (`vue-tsc` rompe `typecheck`). El `~` evita que un bot abra el rango.
 - Decisiones posteriores sin spec: UI de «Reenviar» para vencidas/revocadas, reapertura de revocadas, E2E de navegador del reintento y transición real del worker a insano por bucle detenido.
