@@ -160,7 +160,7 @@ lockfile. Ninguna otra.
   -c core.whitespace=cr-at-eol diff --check` no reporta errores; no se edita `docs/constitution.md`,
   `MEMORY.md`, `backend/`, `infra/` ni otras specs.
 
-- [ ] **T10. Validación completa de la entrega.** Todos los RF (criterios 1 a 10)
+- [x] **T10. Validación completa de la entrega.** Todos los RF (criterios 1 a 10)
 - Hecho cuando: `cd frontend && pnpm install --frozen-lockfile`, `cd frontend && pnpm test`, `cd
   frontend && pnpm run typecheck`, `cd frontend && pnpm run build` y `cd frontend && pnpm run
   typecheck:e2e` pasan; **se ejecuta de verdad el E2E**: `docker compose up -d --build --wait` +
