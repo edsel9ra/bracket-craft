@@ -527,7 +527,7 @@ cd frontend && pnpm run e2e:test   # solo el escenario, con la pila ya levantada
 
 Los artefactos quedan en `frontend/e2e-report/` (ignorado por git y sin cookies ni tokens): `summary.json` con la tabla de las tres vistas, un `view-<vista>.json` por vista con marcas y recuentos, una traza propia `trace-<vista>.jsonl` por vista con peticiones sin cabeceras y la consola del navegador, capturas en `screenshots/` y `server.log` con el registro saneado de `api`, `worker` y `web`. El `server.log` también se escribe en local, no solo en la integración continua; si el entorno no tiene Docker (por ejemplo, el contenedor del arnés) el fichero declara `no disponible: docker CLI ausente` en lugar de faltar en silencio. El estado de sesión en `frontend/.auth/state.json` nunca se publica.
 
-**No cubre:** la entrega duplicada del transporte (queda en las pruebas unitarias de deduplicación) ni el conteo de sesiones del servidor; si el handshake expone un identificador, el artefacto lo adjunta como dato informativo no concluyente.
+**No cubre:** la entrega duplicada del transporte (queda en las pruebas unitarias de deduplicación) ni el conteo de sesiones del servidor. El identificador de sesión no forma parte del artefacto de esta entrega: es un dato opcional, no evaluado y no concluyente.
 
 ## Seguridad
 

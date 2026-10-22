@@ -204,7 +204,7 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
 - `frontend/e2e/realtimeScenario.ts` — escenario determinista compartido por las tres vistas: fija
   idioma, navega, observa estados, ejecuta dos ciclos de pulsación y devuelve marcas, recargas y
   recuentos (RF-001, RF-002, RF-003).
-- `frontend/e2e/artifacts.ts` — escritura de `e2e-report/view-<vista>.json`, `trace.jsonl` sin
+- `frontend/e2e/artifacts.ts` — escritura de `e2e-report/view-<vista>.json`, `trace-<vista>.jsonl` sin
   cabeceras, capturas PNG y resumen legible; funciones de saneado puras (RF-005, RNF-006).
 - `frontend/e2e/realtime-public.spec.ts`, `frontend/e2e/realtime-workspace.spec.ts`,
   `frontend/e2e/realtime-operation.spec.ts` — una vista cada uno, con su propio resultado; sin
@@ -243,7 +243,7 @@ No cambia la lógica que decide cuándo abrir una conexión nueva (`shouldForceR
 | `assertScenarioOrder(marks)` | `e2e/observations.ts` | Lista de violaciones con código (`manual-before-click`, `connected-while-blocked`, `manual-survived`, `connected-without-manual`, `reload-before-reconnect`…); vacía = orden válido. |
 | `expectedConnectionCount({cycles, blockedWindow})` | `e2e/observations.ts` | `establecidas = 1 (inicial) + 1 (tras la última pulsación)`; `establecidas durante el bloqueo = 0`. |
 | `isDuplicateReload(group)` | `e2e/observations.ts` | Dos recargas del mismo consumidor en la misma ventana → `true`. |
-| `redactLine(line)` / `redactPath(path)` | `e2e/artifacts.ts` | Elimina valores de `Cookie`, `Set-Cookie`, `Authorization`, `token` y `bc_csrf_token` de cualquier línea registrada. Sin red, sin reloj. |
+| `redactLine(line)` / `redactLog(text)` / `redactPath(path)` | `e2e/artifacts.ts` | Elimina valores de `Cookie`, `Set-Cookie`, `Authorization`, `token` y `bc_csrf_token` de cualquier línea registrada; `redactLog` aplica `redactLine` línea a línea al registro del servidor. Sin red, sin reloj. |
 
 Ninguna función de lógica temporal lee el reloj: los instantes los toma el arnés en el borde
 (`Date.now()` en `channel.ts`, `realtimeScenario.ts` y `artifacts.ts`) y los pasa como parámetro.
@@ -472,7 +472,8 @@ mensaje incluye el último texto visible observado (RF-005).
 ### Qué **no** cubre esta prueba (declarado)
 
 - Entrega duplicada del transporte y deduplicación: pruebas unitarias (`realtime-dedup.test.ts`).
-- Conteo de sesiones del servidor: retirado por D8; el `sid` solo se adjunta como dato informativo.
+- Conteo de sesiones del servidor: retirado por D8, y el identificador de sesión no forma parte del
+  artefacto de esta entrega (dato opcional, no evaluado y no concluyente, D9).
 - Motores distintos de Chromium headless, móviles reales y emulación de red móvil (RNF-008).
 - Otros flujos (planilla, clasificaciones, invitaciones, miembros), regresión visual y accesibilidad
   general.
@@ -568,8 +569,24 @@ reproducible.
   transporte durante el bloqueo es la ausencia de estado conectado entre `closedAt` y `unblockedAt`,
   ya exigida en las tres vistas.
 - **Sin `sessionId`.** Se retira del artefacto: el arnés no puede obtener el identificador sin esperas
-  no deterministas, así que no se publica un campo que siempre llegaría vacío. La spec (D8, RF-005) ya
-  lo trata como opcional y no evaluado; ningún RF cambia.
+  no deterministas, así que no se publica un campo que siempre llegaría vacío. La spec se corrigió el
+  2026-10-22 (D9) para que el identificador **no forme parte del artefacto de esta entrega** (dato
+  opcional, no evaluado y no concluyente); el alcance de los RF no cambia y RF-005 solo exige estados
+  con instantes, recargas por origen, recarga del documento, captura, traza por vista y registro del
+  servidor saneado.
+
+### Corrección documental de cierre (2026-10-22)
+
+Alinea el texto de los documentos con la decisión ya aprobada de **no contar sesiones**; **no cambia el
+alcance, ni el producto, ni el arnés**. En la `spec.md`: el objetivo 6, el criterio de artefactos de
+RF-005 y los criterios 3 y 6 dejan de prometer que se adjunte el identificador «si el navegador lo
+expone» y pasan a declararlo como dato **opcional, no evaluado y no concluyente** que **no forma parte
+del artefacto de esta entrega** (estados con instantes, recargas por origen, recarga del documento,
+captura, traza por vista y `server.log` saneado); la definición de «Sesión del canal» se alinea con esa
+misma redacción y se añade **D9** al bloque de correcciones. En este plan: los nombres de artefacto se
+fijan en `trace-<vista>.jsonl` (la mención a `trace.jsonl` de B2 se conserva como registro de la
+corrección B2) y el registro del servidor se documenta como saneado por `redactLog`, que aplica
+`redactLine` línea a línea. No se editan `README.md`, `ci.yml`, `MEMORY.md`, `tasks.md` ni código.
 
 ## Datos de la corrida y artefactos
 
@@ -590,12 +607,12 @@ reproducible.
     **Sin cabeceras**, por construcción. Al ser un fichero por vista, el fallo conserva la traza de
     **su** vista.
   - `screenshots/<vista>.png` — captura en el instante del fallo (o del último estado si pasa).
-  - `server.log` — `docker compose logs --no-color api worker web`, pasado por `redactLine` (que
-    cubre también la consola del navegador, que viaja en el JSONL por vista). El runner local lo
-    escribe igual que el job; en un entorno sin Docker el fichero declara
+  - `server.log` — `docker compose logs --no-color api worker web`, pasado por `redactLog` (que
+    aplica `redactLine` línea a línea y cubre también la consola del navegador, que viaja en el JSONL
+    por vista). El runner local lo escribe igual que el job; en un entorno sin Docker el fichero declara
     `no disponible: docker CLI ausente` en lugar de faltar en silencio (corrección B3).
-  - Saneado: `redactLine`/`redactPath` eliminan valores de `Cookie`, `Set-Cookie`, `Authorization`,
-    `token` y la cookie CSRF; no se registran credenciales ni cuerpos de petición.
+  - Saneado: `redactLine`/`redactLog`/`redactPath` eliminan valores de `Cookie`, `Set-Cookie`,
+    `Authorization`, `token` y la cookie CSRF; no se registran credenciales ni cuerpos de petición.
 - **Retención:** 7 días en CI; local queda en el directorio ignorado. El estado de sesión de la prueba
   vive en `frontend/.auth/state.json`, **fuera** de `e2e-report/`: se reutiliza entre vistas, no se
   versiona y no se sube como artefacto.
@@ -630,9 +647,10 @@ reproducible.
 - **Lectura del texto por muestreo del DOM** (no hay observador inyectado, por RNF-010): la espera usa
   `expect(locator).toHaveText` con reintento interno, así que la granularidad no afecta al veredicto,
   pero sí al instante registrado (±100 ms); las aserciones son de **orden**, no de delta exacto.
-- **El `sid` puede no ser legible** (respuesta del sondeo inicial fuera del alcance de
-  `page.on('response')` si se sirve por otro transporte): se registra si aparece y su ausencia no es
-  fallo.
+- **El identificador de sesión no se publica:** su ausencia no es fallo. La respuesta del sondeo
+  inicial puede quedar fuera del alcance de `page.on('response')` y obtenerlo exigiría esperas no
+  deterministas; el conteo de sesiones no es un requisito (D8) y el artefacto no incluye ese campo
+  (D9).
 - **`docker compose up --build` en CI** consume 2-4 min y puede agotar disco: el paso tiene su propio
   límite y `down -v` al final; el job declara 25 min de techo.
 - **Coste de dependencias nuevas:** `@playwright/test` es solo de desarrollo; `pnpm audit --prod` no lo
