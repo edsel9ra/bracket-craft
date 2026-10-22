@@ -1,8 +1,8 @@
 # Spec 005 — Rendimiento: firmas de fotos en lote, Swiss acotado y timeouts de conexión
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de CI en main y revisión humana (T010).
+Estado: implementada, validada por @reviewer (APROBADA, 2026-10-20) y cerrada (2026-10-20, commits `37019e7` y `8b5eae0`); §6 aprobada por el usuario (2026-10-21). Checklist de T010 completo.
 
-> Bloque **B (rendimiento)** del P1 de `docs/auditoria-2026-10-19.md`: R15, R16 y R17. El alcance está cerrado por el usuario y no se amplía a otros hallazgos. Las decisiones **P-1 a P-5** (clarificación) y **N-1 y N-2** (transacciones y event loop) están cerradas y el plan no puede reabrirlas. Las observaciones del QA se resolvieron en la sección «Resoluciones del QA». La implementación se validó en la vuelta 1 (399 passed/108 skipped; opt-in no ejecutado por falta de credenciales); el plan y las tareas están redactados y queda la revalidación por @reviewer y el cierre T010.
+> Bloque **B (rendimiento)** del P1 de `docs/auditoria-2026-10-19.md`: R15, R16 y R17. El alcance está cerrado por el usuario y no se amplía a otros hallazgos. Las decisiones **P-1 a P-5** (clarificación) y **N-1 y N-2** (transacciones y event loop) están cerradas y el plan no puede reabrirlas. Las observaciones del QA se resolvieron en la sección «Resoluciones del QA». La implementación se validó en la vuelta 1 (399 passed/108 skipped; opt-in no ejecutado por falta de credenciales); la revalidación por @reviewer quedó registrada en esta cabecera y el cierre T010 está completo (véase la evidencia de cierre al final del documento).
 
 ## Contexto y objetivo
 
@@ -337,7 +337,7 @@ CUANDO se ejecutan las verificaciones del proyecto, EL SISTEMA prueba el comport
   cd backend && python -m compileall -q app
   ```
   No se toca el frontend ni Compose, así que `pnpm test`/`pnpm run typecheck`/`pnpm run build` y `docker compose config -q` **no** aplican. Si el plan descubriera que necesita tocar cualquiera de los dos, sería una desviación: se detiene y se pregunta antes de implementar.
-- No se añaden servicios a `ci.yml`; los cuatro jobs (`backend`, `frontend`, `infrastructure`, `security`) siguen siendo los mismos.
+- No se añaden servicios ni jobs a `ci.yml`; los jobs son los de la §4 de la constitución (`backend`, `frontend`, `infrastructure`, `security` y, desde la enmienda 1.4.0, `e2e`).
 - Si alguna verificación no puede ejecutarse en el entorno local, se declara expresamente en la evidencia; no se infiere el verde.
 
 ### RF-011 — Documentación de los cambios observables (B-3)
@@ -470,7 +470,7 @@ Las cifras de la columna «Hoy» son cotas derivadas del código y de los límit
     cd backend && python -m compileall -q app
     ```
     Las verificaciones opt-in con `RUN_DATABASE_TESTS=1` se ejecutan o se declaran como no ejecutadas. El seed demo se ejecuta en desarrollo y se reporta; si no puede ejecutarse, se declara. No se toca el frontend ni Compose.
-12. Los cuatro jobs de CI (`backend`, `frontend`, `infrastructure`, `security`) en verde sobre el commit de `main`, con revisión humana distinta del autor.
+12. Los cinco jobs de CI (`backend`, `frontend`, `infrastructure`, `security` y `e2e`) en verde sobre el commit de `main`, con revisión humana distinta del autor.
 13. La evidencia no declara ninguna verificación que no se haya ejecutado y distingue lo medido de lo inferido por inspección.
 
 ## Verificación contra la constitución
@@ -500,4 +500,6 @@ Las cifras de la columna «Hoy» son cotas derivadas del código y de los límit
 
 ## Dudas abiertas
 
-Ninguna. Las decisiones P-1 a P-5, N-1 y N-2 y las resoluciones del QA B-1 a B-17 cierran las preguntas anteriores; el timeout, la política de credenciales y los casos del seed y de la suite opt-in quedan decididos en esta spec. La implementación se validó en la vuelta 1 (399 passed/108 skipped; opt-in no ejecutado por credenciales); quedan la revalidación por @reviewer y el cierre T010 (CI en `main` y revisión humana).
+Ninguna. Las decisiones P-1 a P-5, N-1 y N-2 y las resoluciones del QA B-1 a B-17 cierran las preguntas anteriores; el timeout, la política de credenciales y los casos del seed y de la suite opt-in quedan decididos en esta spec. La implementación se validó en la vuelta 1 (399 passed/108 skipped; opt-in no ejecutado por credenciales); la revalidación por @reviewer quedó registrada el 2026-10-20 y el cierre T010 (CI en `main` y revisión humana) se completa con la evidencia del 2026-10-22 sobre `9ad8db1`.
+
+**Evidencia de cierre (2026-10-22, `main` en `9ad8db1`):** `cd backend && pytest -q` con `RUN_DATABASE_TESTS=1` y base en 023 (999 passed, incluidas las opt-in de `tests/test_database_timeouts.py` y `tests/test_swiss_transaction.py`), `python -m compileall -q app` y los cinco jobs de CI en verde, incluido `e2e`.

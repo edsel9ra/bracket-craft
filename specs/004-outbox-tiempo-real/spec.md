@@ -1,6 +1,6 @@
 # Spec 004 — Outbox y tiempo real: stream acotado, entregas deduplicables y resync
 
-Estado: Implementada y validada (APROBADA por @reviewer, 2026-10-20); pendiente de CI en main y revisión humana (T008)
+Estado: implementada, validada por @reviewer y cerrada (2026-10-20, commit `3b6210f`); §6 aprobada por el usuario (2026-10-22). CI en `main` en verde (cinco jobs, corrida de `9ad8db1` del 2026-10-22) y checklist de T008 completo.
 
 ## Contexto y objetivo
 
@@ -261,9 +261,9 @@ CUANDO se ejecutan las verificaciones del proyecto, EL SISTEMA prueba el comport
   cd frontend && pnpm run build
   ```
 - Se actualizan las pruebas existentes del relay (`backend/tests/test_hardening.py`) para el nuevo contrato, sin eliminar la cobertura de entradas malformadas.
-- No se añaden servicios a `ci.yml` ni se depende de `RUN_DATABASE_TESTS=1`; los cuatro jobs (`backend`, `frontend`, `infrastructure`, `security`) siguen siendo los mismos.
+- No se añaden servicios ni jobs a `ci.yml` ni se depende de `RUN_DATABASE_TESTS=1`; los jobs son los de la §4 de la constitución (`backend`, `frontend`, `infrastructure`, `security` y, desde la enmienda 1.4.0, `e2e`).
 - Si alguna verificación no puede ejecutarse en el entorno local, se declara expresamente en la evidencia; no se infiere el verde.
-- El cierre exige los cuatro jobs de CI en verde sobre el commit de `main`.
+- El cierre exige los cinco jobs de CI (`backend`, `frontend`, `infrastructure`, `security` y `e2e`) en verde sobre el commit de `main`.
 
 ### RF-009 — Documentación de la semántica, las garantías y el resync
 
@@ -364,7 +364,7 @@ CUANDO el relay detecta un salto de continuidad (recorte del stream, pérdida o 
    cd frontend && pnpm run build
    ```
 9. La documentación de estado actual describe la nueva semántica, el tope fijo, `event_id`, `RESYNC` y la ausencia de configuración nueva (RF-009).
-10. Los cuatro jobs de CI (`backend`, `frontend`, `infrastructure`, `security`) están en verde sobre el commit de `main` y el cambio tiene revisión humana distinta del autor.
+10. Los cinco jobs de CI (`backend`, `frontend`, `infrastructure`, `security` y `e2e`) están en verde sobre el commit de `main` y el cambio tiene revisión humana distinta del autor.
 11. Lo que no se pueda ejecutar se declara; no se afirma ninguna verificación no realizada.
 
 ## Riesgos y mitigaciones
@@ -402,3 +402,5 @@ CUANDO el relay detecta un salto de continuidad (recorte del stream, pérdida o 
 ## Dudas abiertas
 
 Ninguna.
+
+**Evidencia de cierre (2026-10-22, `main` en `9ad8db1`):** `cd backend && pytest -q` con `RUN_DATABASE_TESTS=1` y base en 023 (999 passed), `python -m compileall -q app`, `pnpm test` (236 passed), `pnpm run typecheck`, `pnpm run build` y los cinco jobs de CI en verde, incluido `e2e`.

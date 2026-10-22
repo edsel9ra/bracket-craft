@@ -1,6 +1,6 @@
 # Spec 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
-Estado: implementada y validada funcionalmente (2026-10-19); validación documental final en curso. Los commits de la entrega ya están materializados.
+Estado: implementada y validada funcionalmente (2026-10-19); validación documental final completada (2026-10-22) y spec cerrada. Los commits de la entrega están materializados.
 
 ## Contexto y objetivo
 
@@ -447,7 +447,7 @@ EL SISTEMA ejecuta en integración continua las pruebas de aislamiento de R01 y 
 7. La constitución quedó en `1.1.0` en esta entrega, con cabecera e historial coherentes, enmienda que regulariza §3.5 y separada de R01-R03, con revisión humana; la versión vigente es `1.2.0` por la spec 003.
 8. El orden de migraciones aplicadas es 015 y luego 016, sin huecos en el historial, aunque las entregas se fusionen por separado.
 9. Los jobs de CI aplicables están en verde; el job `security` está verde desde el run 39361295825 y la excepción §5.1 fue retirada por la spec 003. Las verificaciones no ejecutadas se declaran como tales.
-10. La spec queda implementada y validada funcionalmente, con la validación documental final en curso, y `MEMORY.md` actualizado al estado real.
+10. La spec queda implementada, validada funcionalmente y cerrada, con la validación documental final completada (2026-10-22), y `MEMORY.md` actualizado al estado real.
 
 ## Excepción a la constitución (§5.1)
 
@@ -478,3 +478,5 @@ No quedan dudas abiertas. Las decisiones adoptadas son:
 3. **R03:** ningún camino de corrección; trigger `BEFORE UPDATE OR DELETE` sobre resultados confirmados; sin excepción para `platform_admin`; migración 016 idempotente y aplicada después de 015.
 4. **R04:** Python 3.14, Node 24 y pnpm **12.12.1** (12.12.2 no existe; publicadas 12.12.0/12.12.1/12.13.0/12.14.0); alineación de todas las fuentes; se permite el ajuste del pin de pnpm en `packageManagerDependencies`, sin tocar dependencias ni el resto del lockfile; puerta de compatibilidad con parada y reporte si falla por incompatibilidad de las versiones objetivo. La deuda preexistente era de la cadena de producción de Nuxt (no de `devDependencies`); la excepción §5.1 quedó retirada por la spec 003 y el job `security` está verde desde el run 39361295825. Enmienda constitucional 1.1.0 que regulariza §3.5, separada y con revisión humana; la versión vigente es 1.2.0 por la spec 003.
 5. **Pruebas:** CI con PostgreSQL de servicio para aislamiento R01 e inmutabilidad R03; harness explícito (rol administrador para migraciones, rol de aplicación para tests, organizaciones creadas con `create_organization_with_owner`), datos propios por prueba, pruebas de `v_public_tournament_players` y `v_public_match_lineups`, acceso denegado a la vista cruda y prueba específica de migración desde 014.
+
+**Evidencia de cierre documental (2026-10-22, `main` en `9ad8db1`):** `python3 infra/scripts/verify_version_sources.py --exclude-constitution` → «OK: Python 3.14, Node 24 y pnpm 12.12.1 coinciden en las fuentes verificadas»; `git status --porcelain` sin cambios antes de esta reconciliación documental; ninguna referencia a Python 3.12, Node 22 ni pnpm 12.11.2 en `docs/constitution.md`, `AGENTS.md`, `README.md`, `.github/workflows/ci.yml` ni los Dockerfiles; cabecera e historial de la constitución coherentes en `1.4.0` (la versión avanzó con las specs 003 y 010 sobre la `1.1.0` de esta entrega).

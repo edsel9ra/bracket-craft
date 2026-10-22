@@ -1,6 +1,6 @@
 # Plan 005 — Rendimiento: firmas de fotos en lote, Swiss acotado y timeouts de conexión
 
-Estado: Implementada y validada por @reviewer (APROBADA, 2026-10-20); pendiente de CI en main y revisión humana (T010).
+Estado: implementada, validada por @reviewer (APROBADA, 2026-10-20) y cerrada (2026-10-20, commits `37019e7` y `8b5eae0`); §6 aprobada por el usuario (2026-10-21). Checklist de T010 completo.
 
 Spec: `specs/005-rendimiento-firmas-swiss-conexion/spec.md` (aprobada 2026-10-20)
 
@@ -368,7 +368,7 @@ cd backend && python -m compileall -q app
 git -c core.whitespace=cr-at-eol diff --check
 ```
 
-No aplican `pnpm test`/`typecheck`/`build` (sin frontend) ni `docker compose config -q` (sin cambios de Compose). Los cuatro jobs de CI siguen siendo los mismos.
+No aplican `pnpm test`/`typecheck`/`build` (sin frontend) ni `docker compose config -q` (sin cambios de Compose). Los jobs son los de la §4 de la constitución (`backend`, `frontend`, `infrastructure`, `security` y, desde la enmienda 1.4.0, `e2e`); no se añaden pasos nuevos.
 
 ## 8. Orden de implementación y cortes verdes
 
@@ -398,7 +398,7 @@ Cada fila es un commit. T001-T003 y T004-T008 son independientes entre sí; el o
 | §2.5 Lo público es una proyección mínima | Sí | `photo_url` sigue dependiendo del consentimiento; el fallo en público es `null`; no se añaden documentos ni fechas. |
 | §2.6 Ningún secreto por defecto fuera de desarrollo | Sí | Sin variables ni secretos nuevos; el cliente cacheado usa las credenciales ya configuradas y no las registra. |
 | §2.7 Administración global separada y auditada | No aplica | No se toca `/admin` ni `platform_admins`. |
-| §2.8 Nada se da por terminado sin verificación | Sí | Pruebas unitarias/opt-in, comandos locales y cuatro jobs; lo no ejecutado se declara. |
+| §2.8 Nada se da por terminado sin verificación | Sí | Pruebas unitarias/opt-in, comandos locales y los cinco jobs de CI (incluido `e2e`); lo no ejecutado se declara. |
 | §2.9 El código de desarrollo no llega a producción | No aplica | No se tocan seeds ni datos demo; el seed sigue siendo solo de desarrollo. |
 | §3.1 Base de datos y multi-tenancy | Sí | Sin tablas ni políticas nuevas; `set_rls_context` en cada transacción tenant. |
 | §3.2 Backend asíncrono y reglas configurables | Sí | El acceso sigue siendo asíncrono y el cálculo pesado sale del event loop. Los límites de 64/50 000/10 s son límites de seguridad, no reglas deportivas: puntuación, desempates, disciplina y transferencias siguen en el JSON. Precedentes: `MAX_SINGLE_ELIMINATION_TEAMS = 512` y topes de 64 de grupos/cabezas. No requiere excepción §5.1. |

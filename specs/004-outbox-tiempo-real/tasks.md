@@ -5,7 +5,7 @@ Plan: `specs/004-outbox-tiempo-real/plan.md`
 
 Orden: **T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008**. T001-T003 son backend y se mergean antes que T004-T006 para que el contrato `RESYNC` exista cuando el frontend lo consuma. T007 actualiza la documentación y T008 cierra.
 
-Cada tarea se ejecuta en una sola invocación del implementador, escribe primero sus pruebas y deja los cuatro jobs de CI en verde. No hay migraciones ni cambios de configuración: la reversión es el commit anterior.
+Cada tarea se ejecuta en una sola invocación del implementador, escribe primero sus pruebas y deja los cinco jobs de CI en verde (`backend`, `frontend`, `infrastructure`, `security` y `e2e`). No hay migraciones ni cambios de configuración: la reversión es el commit anterior.
 
 ## Progreso
 
@@ -16,7 +16,7 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 - [x] **T005.** Frontend: reconexión, política de recarga y coalescencia.
 - [x] **T006.** Frontend: página pública, `RESYNC` y reset de paginación.
 - [x] **T007.** Documentación: README, AGENTS y MEMORY.
-- [ ] **T008.** Verificación final y checklist de merge.
+- [x] **T008.** Verificación final y checklist de merge.
 
 ---
 
@@ -253,17 +253,17 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 **RF:** RF-001 a RF-010.
 
 **Checklist:**
-- [ ] `cd backend && pytest -q` pasa.
-- [ ] `cd backend && python -m compileall -q app` pasa.
-- [ ] `cd frontend && pnpm test` pasa.
-- [ ] `cd frontend && pnpm run typecheck` pasa.
-- [ ] `cd frontend && pnpm run build` pasa.
-- [ ] Los cuatro jobs de CI (`backend`, `frontend`, `infrastructure`, `security`) están en verde sobre el commit de `main`.
-- [ ] `git diff --name-only` no incluye `infra/postgres/migrations/`, `infra/postgres/init/`, `docker-compose.yml`, `docker-compose.production.yml`, `.env.example` ni `frontend/package.json`.
-- [ ] El contrato `RESYNC` se verificó con una prueba manual o con los fakes: `JOIN` dirigido, tres motivos de hueco y ausencia de emisión sin sockets.
-- [ ] No se declara resuelto ningún hallazgo distinto de R13 y R14; R18, R32 y el resto siguen fuera de alcance.
-- [ ] Lo que no se pudo ejecutar se declara; no se afirma una verificación no realizada.
-- [ ] La revisión humana es distinta del autor.
+- [x] `cd backend && pytest -q` pasa. *(2026-10-22: 999 passed, 2 warnings, con `RUN_DATABASE_TESTS=1` y base en 023.)*
+- [x] `cd backend && python -m compileall -q app` pasa.
+- [x] `cd frontend && pnpm test` pasa. *(236 passed.)*
+- [x] `cd frontend && pnpm run typecheck` pasa. *(exit 0.)*
+- [x] `cd frontend && pnpm run build` pasa. *(exit 0, 44,6 s.)*
+- [x] Los cinco jobs de CI (`backend`, `frontend`, `infrastructure`, `security` y `e2e`) están en verde sobre `main`. *(Corrida de `9ad8db1`, 2026-10-22. En el momento del commit de 004 (`3b6210f`) `ci.yml` tenía cuatro jobs: `e2e` llegó con la enmienda 1.4.0 de la constitución y la spec 010.)*
+- [x] `git diff --name-only` no incluye `infra/postgres/migrations/`, `infra/postgres/init/`, `docker-compose.yml`, `docker-compose.production.yml`, `.env.example` ni `frontend/package.json`. *(Verificado con `git show --name-only 3b6210f`, el commit de 004: no aparece ninguna de esas rutas.)*
+- [x] El contrato `RESYNC` se verificó con una prueba manual o con los fakes: `JOIN` dirigido, tres motivos de hueco y ausencia de emisión sin sockets. *(`backend/tests/test_outbox_resync.py`: `test_emit_join_resync_targets_only_the_joining_socket`, los motivos `STREAM_TRIMMED`/`REDIS_RESET`/`RELAY_START` y `test_emit_gap_resync_without_clients_emits_nothing_and_stores_nothing`.)*
+- [x] No se declara resuelto ningún hallazgo distinto de R13 y R14; R18, R32 y el resto siguen fuera de alcance. *(Sin referencias a otros hallazgos como resueltos; R18 y R32 figuran como fuera de alcance en `spec.md`, y `AGENTS.md` mantiene que el filtrado por rol exige una spec propia.)*
+- [x] Lo que no se pudo ejecutar se declara; no se afirma una verificación no realizada. *(Véase la evidencia de cierre al final de este archivo.)*
+- [x] La revisión humana es distinta del autor. *(Aprobada por el usuario el 2026-10-22; la validación de @reviewer no sustituye la §6.)*
 
 **Comandos de cierre:**
 ```sh
@@ -285,3 +285,5 @@ git -c core.whitespace=cr-at-eol diff --check
 ## Cierre
 
 No se crean migraciones, scripts operativos ni variables de entorno. Las tareas T001-T006 son independientes de la base de datos y pueden revertirse commit a commit; T007 y T008 no modifican el comportamiento.
+
+**Evidencia de cierre (2026-10-22, `main` en `9ad8db1`):** `cd backend && pytest -q` con `RUN_DATABASE_TESTS=1` y base en 023 (999 passed, 2 warnings), `python -m compileall -q app`, `pnpm test` (236 passed), `pnpm run typecheck`, `pnpm run build` y los cinco jobs de CI en verde (incluido `e2e`); alcance del commit `3b6210f` comprobado con `git show --name-only`.

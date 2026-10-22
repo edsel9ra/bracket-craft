@@ -1,6 +1,6 @@
 # Plan 004 — Outbox y tiempo real: stream acotado, `event_id` y `RESYNC`
 
-Estado: Implementada y validada (APROBADA por @reviewer, 2026-10-20); pendiente de CI en main y revisión humana (T008)
+Estado: implementada, validada por @reviewer y cerrada (2026-10-20, commit `3b6210f`); checklist de T008 completo.
 
 Spec: `specs/004-outbox-tiempo-real/spec.md` (aprobada 2026-10-19)
 
@@ -221,7 +221,7 @@ Los tests viven en `frontend/tests/*.test.ts` e importan desde `../app/utils/...
 
 ### 6.4 Comandos y CI
 
-Cada tarea ejecuta los comandos de su lado y deja los cuatro jobs en verde:
+Cada tarea ejecuta los comandos de su lado y deja los cinco jobs en verde (`backend`, `frontend`, `infrastructure`, `security` y `e2e`):
 
 ```sh
 cd backend && pytest -q
@@ -259,7 +259,7 @@ Cada fila es un commit o un PR pequeño; T001-T003 se mergean antes que T004-T00
 | §2.5 Lo público es una proyección mínima | Sí | No se amplían proyecciones ni payloads de dominio; `RESYNC` no contiene datos de negocio ni PII. |
 | §2.6 Ningún secreto por defecto fuera de desarrollo | Sí | No se añaden secretos ni variables; no se toca `.env.example` ni Compose. |
 | §2.7 Administración global separada y auditada | No | No se toca `/admin` ni `platform_audit_logs`. |
-| §2.8 Nada se da por terminado sin verificación | Sí | Pruebas unitarias, comandos locales y cuatro jobs de CI; lo no ejecutado se declara. |
+| §2.8 Nada se da por terminado sin verificación | Sí | Pruebas unitarias, comandos locales y los cinco jobs de CI (incluido `e2e`); lo no ejecutado se declara. |
 | §2.9 El código de desarrollo no llega a producción | No | No se tocan seeds ni datos demo. |
 | §3.1 Base de datos y multi-tenancy | No | Sin migraciones, tablas, políticas ni `set_rls_context()`. |
 | §3.2 Backend | Sí | El worker y el relay son asíncronos; no se añade router ni se mueven efectos de dominio fuera del outbox. |

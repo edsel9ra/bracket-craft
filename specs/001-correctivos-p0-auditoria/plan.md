@@ -1,6 +1,6 @@
 # Plan 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
-Estado: aprobado e implementado; validación documental final en curso (2026-10-19)
+Estado: aprobado, implementado y cerrado; validación documental final completada (2026-10-22)
 
 Spec: `specs/001-correctivos-p0-auditoria/spec.md` (aprobada 2026-10-19)
 

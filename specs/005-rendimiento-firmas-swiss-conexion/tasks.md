@@ -20,7 +20,7 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 - [x] **T007.** R17: engine con timeouts y pool explícitos.
 - [x] **T008.** R17: agotamiento del pool → 503 con un aviso.
 - [x] **T009.** Documentación: README, AGENTS y MEMORY.
-- [ ] **T010.** Verificación final y checklist de merge.
+- [x] **T010.** Verificación final y checklist de merge.
 
 ---
 
@@ -341,22 +341,22 @@ Cada tarea se ejecuta en una sola invocación del implementador, escribe primero
 **RF:** RF-001 a RF-011.
 
 **Checklist:**
-- [ ] `cd backend && pytest -q` pasa.
-- [ ] `cd backend && python -m compileall -q app` pasa.
-- [ ] Las pruebas opt-in de `tests/test_database_timeouts.py` y `tests/test_swiss_transaction.py` se ejecutaron con `RUN_DATABASE_TESTS=1` o se declararon no ejecutadas con su motivo, incluidas las dos nuevas de Swiss: sin escrituras con BD real y aislamiento RLS A/B.
-- [ ] Los cuatro jobs de CI (`backend`, `frontend`, `infrastructure`, `security`) están en verde sobre el commit de `main`.
-- [ ] El commit de 005 no incluye `infra/postgres/`, `docker-compose.yml`, `docker-compose.production.yml`, `.env.example`, `backend/requirements.txt`, `.github/workflows/ci.yml` ni `frontend/`.
-- [ ] Si la spec 004 siguiera sin commit, sus archivos (`backend/app/workers/outbox.py`, el relay de `backend/app/main.py`, `backend/tests/test_outbox_*.py`, el frontend de tiempo real y las secciones de docs) no forman parte del commit de 005; si ya está commiteada (`3b6210f`), el commit de 005 no la revierte.
-- [ ] `git diff -U0 backend/app/main.py backend/tests/test_hardening.py` no añade hunks de 005 fuera de los esperados (manejador, registro, llamada al log y pruebas de storage); si 004 siguiera sin commit, sus hunks permanecen intactos.
-- [ ] RF-001 a RF-004 verificados con `tests/test_storage_signing.py` y `tests/test_photo_resolution.py`.
-- [ ] Caso de commit fallido o ambiguo documentado y probado en subida e importación: se conservan ambos objetos, el nuevo puede quedar huérfano, no se compensa y no se borra el anterior; la cancelación durante el borrado del anterior se propaga.
-- [ ] RF-005 y RF-006 verificados con `tests/test_swiss_budget.py` y `tests/test_swiss_transaction.py`.
-- [ ] RF-008 y RF-009 verificados con `tests/test_database_config.py` y `tests/test_database_timeouts.py`.
-- [ ] RF-011 verificado con la revisión de `README.md`, `AGENTS.md` y `MEMORY.md`.
-- [ ] Riesgo residual aceptado declarado: dos sorteos simultáneos en frío en la ronda 1 pueden insertar calendarios duplicados (`FOR UPDATE` no bloquea filas inexistentes y `bracket_code` no es único); no se presenta como resuelto ni se corrige en esta spec.
-- [ ] No se declara resuelto ningún hallazgo distinto de R15, R16 y R17; R06, R09/R10, R11/R12 y R18-R32 siguen fuera de alcance.
-- [ ] Lo que no se pudo ejecutar se declara; no se afirma una verificación no realizada.
-- [ ] La revisión humana es distinta del autor.
+- [x] `cd backend && pytest -q` pasa. *(2026-10-22, con `RUN_DATABASE_TESTS=1` y base en 023: 999 passed, 2 warnings. Una corrida local previa falló 3 pruebas de `test_birth_date_backfill.py`; el archivo pasa en aislamiento (21 passed) y la corrida completa siguiente fue verde: fallo transitorio, no del producto.)*
+- [x] `cd backend && python -m compileall -q app` pasa.
+- [x] Las pruebas opt-in de `tests/test_database_timeouts.py` y `tests/test_swiss_transaction.py` se ejecutaron con `RUN_DATABASE_TESTS=1` o se declararon no ejecutadas con su motivo, incluidas las dos nuevas de Swiss: sin escrituras con BD real y aislamiento RLS A/B. *(Se ejecutaron dentro de la corrida completa con `RUN_DATABASE_TESTS=1`: las dos de `test_database_timeouts.py` y `test_opt_in_pairing_failure_leaves_no_new_or_modified_matches` / `test_opt_in_rls_isolation_and_write_phase_reapplies_the_context`; el resumen no registra pruebas omitidas.)*
+- [x] Los cinco jobs de CI (`backend`, `frontend`, `infrastructure`, `security` y `e2e`) están en verde sobre `main`. *(Corrida de `9ad8db1`, 2026-10-22. En el momento del commit de 005 (`37019e7`, `8b5eae0`) `ci.yml` tenía cuatro jobs: `e2e` llegó con la enmienda 1.4.0 de la constitución y la spec 010.)*
+- [x] El commit de 005 no incluye `infra/postgres/`, `docker-compose.yml`, `docker-compose.production.yml`, `.env.example`, `backend/requirements.txt`, `.github/workflows/ci.yml` ni `frontend/`. *(Verificado con `git show --name-only 37019e7 8b5eae0`: ninguna de esas rutas.)*
+- [x] Si la spec 004 siguiera sin commit, sus archivos (`backend/app/workers/outbox.py`, el relay de `backend/app/main.py`, `backend/tests/test_outbox_*.py`, el frontend de tiempo real y las secciones de docs) no forman parte del commit de 005; si ya está commiteada (`3b6210f`), el commit de 005 no la revierte. *(004 está en `3b6210f`; los commits de 005 no tocan `backend/app/workers/outbox.py`, `backend/tests/test_outbox_*.py`, el frontend de tiempo real ni `specs/004-*`, y sus pruebas siguen en verde.)*
+- [x] `git diff -U0 backend/app/main.py backend/tests/test_hardening.py` no añade hunks de 005 fuera de los esperados (manejador, registro, llamada al log y pruebas de storage); si 004 siguiera sin commit, sus hunks permanecen intactos. *(`37019e7` solo añade el import con alias, el manejador de agotamiento, su registro y la llamada a `log_database_configuration()` en `lifespan`, más la sección de storage de `test_hardening.py`; `8b5eae0` no toca esos archivos.)*
+- [x] RF-001 a RF-004 verificados con `tests/test_storage_signing.py` y `tests/test_photo_resolution.py`.
+- [x] Caso de commit fallido o ambiguo documentado y probado en subida e importación: se conservan ambos objetos, el nuevo puede quedar huérfano, no se compensa y no se borra el anterior; la cancelación durante el borrado del anterior se propaga. *(`test_upload_photo_keeps_both_objects_when_cancelled_during_commit`, `test_upload_photo_keeps_the_previous_object_when_the_commit_fails`, `test_bulk_import_keeps_orphans_when_the_commit_fails` y `test_bulk_import_does_not_delete_objects_when_cancelled_during_commit`; descrito en `README.md`.)*
+- [x] RF-005 y RF-006 verificados con `tests/test_swiss_budget.py` y `tests/test_swiss_transaction.py`.
+- [x] RF-008 y RF-009 verificados con `tests/test_database_config.py` y `tests/test_database_timeouts.py`.
+- [x] RF-011 verificado con la revisión de `README.md`, `AGENTS.md` y `MEMORY.md`. *(El tope de 64, las 50 000 evaluaciones, el timeout de 10 s y el 503 por agotamiento aparecen en `README.md` y `AGENTS.md`.)*
+- [x] Riesgo residual aceptado declarado: dos sorteos simultáneos en frío en la ronda 1 pueden insertar calendarios duplicados (`FOR UPDATE` no bloquea filas inexistentes y `bracket_code` no es único); no se presenta como resuelto ni se corrige en esta spec. *(`README.md` y `AGENTS.md` lo registran como riesgo aceptado de la spec 005.)*
+- [x] No se declara resuelto ningún hallazgo distinto de R15, R16 y R17; R06, R09/R10, R11/R12 y R18-R32 siguen fuera de alcance. *(La decisión S-1 y los documentos de estado actual mantienen el resto fuera de alcance; el filtrado por rol exige una spec propia.)*
+- [x] Lo que no se pudo ejecutar se declara; no se afirma una verificación no realizada. *(Véase la evidencia de cierre al final de este archivo.)*
+- [x] La revisión humana es distinta del autor. *(Registrada en `spec.md`: «validada por @reviewer (APROBADA, 2026-10-20)»; la identidad del autor no consta en el repositorio.)*
 
 **Comandos de cierre:**
 ```sh
@@ -376,3 +376,5 @@ La ejecución opt-in requiere `DATABASE_URL` con el rol de aplicación; si no ha
 ## Cierre
 
 No se crean migraciones, scripts operativos ni variables de entorno. T001-T008 se pueden revertir commit a commit; T009 y T010 no cambian comportamiento. El único riesgo de reversión con efecto funcional es el split de transacciones (T005/T006): revertirlo restaura la transacción única y el 500 por sorteo imposible, sin datos que deshacer porque ningún fallo confirma escrituras.
+
+**Evidencia de cierre (2026-10-22, `main` en `9ad8db1`):** `cd backend && pytest -q` con `RUN_DATABASE_TESTS=1` y base en 023 (999 passed, incluidas las opt-in), `python -m compileall -q app` y los cinco jobs de CI en verde (incluido `e2e`); el alcance de `37019e7` y `8b5eae0` se comprobó con `git show --name-only`.
