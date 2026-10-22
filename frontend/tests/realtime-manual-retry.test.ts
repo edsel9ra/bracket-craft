@@ -18,8 +18,31 @@ const translations = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',
 );
+const realtimeComposable = readFileSync(
+  new URL('../app/composables/useRealtime.ts', import.meta.url),
+  'utf8',
+);
 
 const NAMESPACES: RealtimeLabelNamespace[] = ['public', 'workspace', 'match'];
+
+/**
+ * Las tres vistas donde existe el control «Reintentar» (RF-003). Cada una debe
+ * calcular su etiqueta con la función compartida y anunciar el estado manual.
+ */
+function loadViews(): Array<{ file: string; namespace: RealtimeLabelNamespace; source: string }> {
+  const views = [
+    { file: '../app/pages/tournaments/[id].vue', namespace: 'public' as const },
+    { file: '../app/pages/workspace/index.vue', namespace: 'workspace' as const },
+    { file: '../app/pages/workspace/matches/[id].vue', namespace: 'match' as const },
+  ];
+  return views.map(({ file, namespace }) => ({
+    file,
+    namespace,
+    source: readFileSync(new URL(file, import.meta.url), 'utf8'),
+  }));
+}
+
+const VIEWS = loadViews();
 
 function catalogSlices(): { spanish: string; english: string } {
   const englishStart = translations.indexOf('\n  en: {');
@@ -201,4 +224,182 @@ test('la pulsación que abre un intento nuevo no se contabiliza como reconexión
 
 test('la página pública sigue refrescándose por HTTP mientras dura el manual', () => {
   assert.equal(shouldPollPublicRealtime('retrying'), true);
+});
+
+/** Cuerpo de una función del composable, contando llaves y sin cortar en plantillas. */
+function functionBody(source: string, signature: string): string {
+  const start = source.indexOf(signature);
+  assert.ok(start >= 0, `missing ${signature}`);
+  const open = source.indexOf('{', start);
+  assert.ok(open > start, `${signature} needs a body`);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, index);
+    }
+  }
+  assert.fail(`unbalanced body for ${signature}`);
+}
+
+/** Trozo del `<span>` que anuncia la etiqueta, desde su apertura hasta el texto. */
+function statusElement(source: string): string {
+  const marker = '{{ realtimeStatusLabel }}';
+  const label = source.indexOf(marker);
+  assert.ok(label >= 0, 'the view must render realtimeStatusLabel');
+  let open = source.lastIndexOf('<span', label);
+  while (open >= 0) {
+    const element = source.slice(open, label + marker.length);
+    if (/role="status"/.test(element)) return element;
+    open = source.lastIndexOf('<span', open - 1);
+  }
+  assert.fail('the label must live inside a role="status" element');
+}
+
+test('el catálogo cubre toda etiqueta visible de las tres vistas en es y en', () => {
+  const { spanish, english } = catalogSlices();
+  const visible: RealtimeConnectionStatus[] = ['connected', 'reconnecting', 'retrying', 'error'];
+
+  for (const namespace of NAMESPACES) {
+    for (const status of visible) {
+      const key = realtimeStatusLabelKey(status, namespace);
+      assert.ok(key, `${namespace}/${status} must have a label key`);
+      const escaped = key.replace(/\./g, '\\.');
+      assert.match(spanish, new RegExp(`'${escaped}':`), `missing Spanish key ${key}`);
+      assert.match(english, new RegExp(`'${escaped}':`), `missing English key ${key}`);
+      assert.ok(messageText(spanish, key).trim().length > 0, `empty Spanish text for ${key}`);
+      assert.ok(messageText(english, key).trim().length > 0, `empty English text for ${key}`);
+    }
+  }
+
+  // Paridad: tres claves de reintento manual en cada catálogo, ni una más.
+  assert.equal(spanish.match(/\.realtimeRetrying':/g)?.length ?? 0, 3);
+  assert.equal(english.match(/\.realtimeRetrying':/g)?.length ?? 0, 3);
+  assert.equal(spanish.match(/\.realtimeReconnecting':/g)?.length ?? 0, 3);
+  assert.equal(english.match(/\.realtimeReconnecting':/g)?.length ?? 0, 3);
+});
+
+test('connect() devuelve si inició el intento y no fija el estado manual', () => {
+  const signature = 'function connect(input?: HandlerInput, options?: ConnectionOptions): boolean';
+  assert.ok(realtimeComposable.includes(signature), 'connect() must report whether it created a socket');
+
+  const body = functionBody(realtimeComposable, signature);
+  const guard = body.indexOf('needsNewSocketSession(');
+  const noAttempt = body.indexOf('return false;', guard);
+  const socketCreation = body.indexOf('socket = io(');
+  const started = body.lastIndexOf('return true;');
+
+  assert.ok(guard >= 0, 'connect() must keep the session-reuse guard');
+  assert.ok(noAttempt > guard, 'the guard must return false without starting an attempt');
+  assert.ok(socketCreation > noAttempt, 'the socket must be created only after the guard admits it');
+  assert.ok(started > socketCreation, 'connect() must return true only after creating the socket');
+  assert.doesNotMatch(body, /setStatus\('retrying'\)/, 'connect() must never set the manual state');
+});
+
+test('retry() fija el estado manual solo cuando el intento se inició de verdad', () => {
+  const signature = 'function retry(): boolean';
+  assert.ok(realtimeComposable.includes(signature), 'retry() must report whether it showed the manual state');
+
+  const body = functionBody(realtimeComposable, signature);
+  const attempt = body.indexOf('const started = connect(activeHandlers)');
+  const noAttempt = body.indexOf('return false;', attempt);
+  const manual = body.indexOf("setStatus('retrying')");
+
+  assert.ok(attempt >= 0, 'retry() must ask connect() for the attempt');
+  assert.ok(noAttempt > attempt, 'a click that creates no socket must return false');
+  assert.match(body, /if \(!started\) return false;/, 'the no-op must be explicit');
+  assert.ok(manual > noAttempt, "retrying is set only after connect() created the socket");
+
+  // Una única asignación en todo el composable, y siempre dentro de retry().
+  assert.equal(realtimeComposable.match(/setStatus\('retrying'\)/g)?.length, 1);
+  assert.ok(
+    realtimeComposable.indexOf("setStatus('retrying')") > realtimeComposable.indexOf('function retry()'),
+    'no transition may set the manual state outside retry()',
+  );
+});
+
+test('un retry() sin socket nuevo no deja la vista en reintento', () => {
+  // El guard de sesión convierte la segunda pulsación en un no-op…
+  assert.equal(
+    startsNewAttempt({
+      status: 'retrying',
+      hasSocket: true,
+      scopeKey: 'public:tournament-1',
+      sessionVersion: 0,
+    }),
+    false,
+  );
+  // …y el composable devuelve false antes de fijar el estado manual. La fuente
+  // lo demuestra en orden: connect() → guard `!started` → setStatus('retrying').
+  const body = functionBody(realtimeComposable, 'function retry(): boolean');
+  const noAttempt = body.indexOf('if (!started) return false;');
+  assert.ok(noAttempt >= 0);
+  assert.ok(noAttempt < body.indexOf("setStatus('retrying')"));
+});
+
+test('las tres vistas calculan la etiqueta con la función compartida', () => {
+  for (const view of VIEWS) {
+    assert.match(
+      view.source,
+      /import \{ realtimeStatusLabelKey \} from '~\/utils\/realtimeStatusLabel';/,
+      view.file,
+    );
+    assert.match(
+      view.source,
+      new RegExp(`realtimeStatusLabelKey\\(realtime\\.status\\.value, '${view.namespace}'\\)`),
+      `${view.file} must use its own namespace`,
+    );
+    // Sin cascadas duplicadas ni claves escritas a mano en la vista.
+    assert.doesNotMatch(
+      view.source,
+      /'(public|workspace|match)\.realtime(Connected|Reconnecting|Retrying|Error)'/,
+      `${view.file} must not duplicate the label cascade`,
+    );
+    assert.doesNotMatch(view.source, /Reintentando|Retrying/, view.file);
+  }
+});
+
+test('las tres vistas anuncian el estado manual en un role="status"', () => {
+  for (const view of VIEWS) {
+    const element = statusElement(view.source);
+    assert.match(element, /role="status"/, `${view.file} must announce the state`);
+    assert.match(element, /\{\{\s*realtimeStatusLabel\s*\}\}/, view.file);
+    // El control sigue existiendo solo en error y desaparece mientras se reintenta.
+    assert.match(
+      view.source,
+      /v-if="realtime\.status\.value === 'error'"/,
+      `${view.file} must keep the retry control limited to the error state`,
+    );
+    assert.match(view.source, /realtime\.retry\(\)/, view.file);
+    // El color de aviso se comparte por clase, sin depender solo del color.
+    assert.match(view.source, /\.realtime-retrying/, `${view.file} needs the retrying style`);
+  }
+});
+
+test('el panel del Workspace conserva su fallback cuando no hay nada que anunciar', () => {
+  const workspace = VIEWS.find((view) => view.namespace === 'workspace');
+  assert.ok(workspace);
+  assert.match(workspace.source, /t\('workspace\.activeOperation'\)/);
+  // Las vistas que no pintan etiqueta en `connecting` siguen sin pintarla: el
+  // `v-if` depende de la etiqueta, no del estado.
+  for (const view of VIEWS) {
+    if (view.namespace === 'workspace') continue;
+    assert.match(view.source, /v-if="realtimeStatusLabel"/, view.file);
+  }
+});
+
+test('el estado manual no añade lógica de recarga ni de suscripción', () => {
+  const body = functionBody(realtimeComposable, 'function retry(): boolean');
+  for (const token of ['initialization', 'reconnectJoin', 'reload', 'shouldPollPublicRealtime', 'dedupe']) {
+    assert.doesNotMatch(body, new RegExp(token), `retry() must not touch ${token}`);
+  }
+
+  // Las decisiones que gobiernan las recargas y la doble pulsación no cambian.
+  assert.equal(
+    isReconnection({ hasConnectedOnce: true, previousStatus: 'retrying', nextStatus: 'connected' }),
+    false,
+  );
+  assert.equal(shouldPollPublicRealtime('retrying'), true);
+  assert.equal(shouldForceReconnect('retrying', true), false);
 });

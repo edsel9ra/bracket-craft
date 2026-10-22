@@ -6,6 +6,7 @@ import {
   resyncTrigger,
   type ReloadTrigger,
 } from '~/utils/realtimeReload';
+import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -98,10 +99,8 @@ function connectRealtime() {
 }
 
 const realtimeStatusLabel = computed(() => {
-  if (realtime.status.value === 'connected') return t('workspace.realtimeConnected');
-  if (realtime.status.value === 'reconnecting') return t('workspace.realtimeReconnecting');
-  if (realtime.status.value === 'error') return t('workspace.realtimeError');
-  return t('workspace.activeOperation');
+  const key = realtimeStatusLabelKey(realtime.status.value, 'workspace');
+  return key ? t(key) : t('workspace.activeOperation');
 });
 
 async function createTournament() {
@@ -276,7 +275,7 @@ onBeforeUnmount(() => {
 .hero-line { display: flex; align-items: center; gap: 18px; }
 .live-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .live-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.live-status.realtime-reconnecting span, .live-status.realtime-error span { background: #ffcb7a; box-shadow: 0 0 12px rgba(255, 203, 122, 0.7); }
+.live-status.realtime-reconnecting span, .live-status.realtime-retrying span, .live-status.realtime-error span { background: #ffcb7a; box-shadow: 0 0 12px rgba(255, 203, 122, 0.7); }
 .realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.7rem; text-decoration: underline; }
 .workspace-hero h1 { max-width: 760px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
 .workspace-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }

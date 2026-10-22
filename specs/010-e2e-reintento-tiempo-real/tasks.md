@@ -34,7 +34,7 @@ lockfile. Ninguna otra.
   `realtime-reload.test.ts` siguen pasando sin retirar ninguno**; `cd frontend && pnpm run typecheck`
   pasa.
 
-- [ ] **T2. Producto: estado manual en el composable, i18n y las tres vistas.** RF-001, RF-003, RNF-004, RNF-011
+- [x] **T2. Producto: estado manual en el composable, i18n y las tres vistas.** RF-001, RF-003, RNF-004, RNF-011
 - Hecho cuando: se amplía primero `frontend/tests/realtime-manual-retry.test.ts` con el catálogo y las
   aserciones de fuente (rojo) y después: `frontend/app/composables/useRealtime.ts` hace que `connect()`
   devuelva `boolean` y que `retry()` devuelva `boolean`, fijando `'retrying'` **solo** cuando

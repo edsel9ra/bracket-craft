@@ -74,20 +74,20 @@ export function useRealtime() {
     if (firstLoss && hasConnectedOnce) reconnectJoin.arm();
   }
 
-  function connect(input?: HandlerInput, options?: ConnectionOptions) {
+  function connect(input?: HandlerInput, options?: ConnectionOptions): boolean {
     if (input !== undefined) {
       activeHandlers = handlersFrom(input);
       dispatch = createRealtimeDispatcher({ dedupe, handlers: activeHandlers });
     }
     if (options !== undefined) requestedPublicTournamentId = normalizeUuid(options.tournamentId);
-    if (import.meta.server) return;
+    if (import.meta.server) return false;
 
     const validOrganizationId = normalizeOrganizationId(organizationId.value);
     const validPublicTournamentId = normalizeUuid(requestedPublicTournamentId);
     const usePublicScope = Boolean(validPublicTournamentId);
     if (!usePublicScope && (!auth.userId || !validOrganizationId)) {
       disconnect();
-      return;
+      return false;
     }
     const scopeKey = usePublicScope
       ? `public:${validPublicTournamentId}`
@@ -103,7 +103,8 @@ export function useRealtime() {
         sessionVersion: auth.sessionVersion,
       })
     ) {
-      return;
+      // Sin intento nuevo no se crea socket: la pulsación no debe mostrar nada.
+      return false;
     }
 
     disconnect(false);
@@ -171,6 +172,7 @@ export function useRealtime() {
       }
       dispatch(event, payload);
     });
+    return true;
   }
 
   function disconnect(clearRequestedScope = true) {
@@ -194,12 +196,19 @@ export function useRealtime() {
    * conserva el alcance solicitado y `activeHandlers` sobrevive al cierre, de
    * modo que el socket nuevo se suscribe con los mismos handlers. Con un
    * socket en curso o conectado el guard de `connect()` evita duplicarlo.
+   *
+   * Devuelve `true` solo si el intento se inició de verdad; el estado manual
+   * (`retrying`) se fija **después** de crear el socket y nunca por un clic
+   * sin efecto (RF-001, caso límite 22).
    */
-  function retry() {
+  function retry(): boolean {
     if (shouldForceReconnect(status.value, socket !== null)) {
       disconnect(false);
     }
-    connect(activeHandlers);
+    const started = connect(activeHandlers);
+    if (!started) return false;
+    setStatus('retrying');
+    return true;
   }
 
   const stopSessionWatch = watch(
