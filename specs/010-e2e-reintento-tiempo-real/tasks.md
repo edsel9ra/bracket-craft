@@ -72,7 +72,7 @@ lockfile. Ninguna otra.
   pnpm run typecheck:e2e` pasa; `cd frontend && pnpm exec playwright --version` responde `1.64.1` y
   `cd frontend && pnpm exec playwright test --list` no lista ningún spec de `tests/`.
 
-- [ ] **T4. Datos de la corrida, sesión del Workspace y artefactos saneados.** RF-005, RNF-005, RNF-006, RF-002 (origen de las recargas)
+- [x] **T4. Datos de la corrida, sesión del Workspace y artefactos saneados.** RF-005, RNF-005, RNF-006, RF-002 (origen de las recargas)
 - Hecho cuando: se escribe primero la ampliación de `frontend/tests/e2e-observations.test.ts` con
   `redactLine`/`redactPath` (rojo) y después `frontend/e2e/demo.ts` (descubre el torneo público por
   `GET /tournaments/public` y un partido `scheduled` por `GET /tournaments/public/{id}/matches`; sin

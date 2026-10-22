@@ -25,6 +25,23 @@ import {
   realtimeStatusLabelKey,
   type RealtimeLabelNamespace,
 } from '../app/utils/realtimeStatusLabel.ts';
+import {
+  REDACTED,
+  buildViewArtifact,
+  observeStates,
+  redactLine,
+  redactLog,
+  redactPath,
+  traceConsole,
+  traceLine,
+  traceRequest,
+} from '../e2e/artifacts.ts';
+import {
+  DemoDataError,
+  demoCredentials,
+  selectDemoIdentifiers,
+  type DemoTournamentCandidate,
+} from '../e2e/demo.ts';
 
 const translations = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
@@ -409,5 +426,244 @@ test('package.json fija Playwright como devDependency y expone los comandos del 
   assert.equal(packageJson.dependencies['@playwright/test'], undefined);
   for (const script of ['e2e', 'e2e:test', 'typecheck:e2e']) {
     assert.ok(packageJson.scripts[script], `missing script ${script}`);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Saneado de artefactos (RF-005, RNF-006)                                    */
+/* -------------------------------------------------------------------------- */
+
+test('redactLine elimina cookie y su valor y conserva el resto de la línea', () => {
+  const sanitized = redactLine(
+    'api | GET /api/v1/tournaments 200 Cookie: bc_access_token=abc123; bc_csrf_token=def456',
+  );
+
+  assert.equal(sanitized, `api | GET /api/v1/tournaments 200 ${REDACTED}`);
+  assert.doesNotMatch(sanitized, /cookie|abc123|def456|bc_access_token/i);
+});
+
+test('redactLine elimina Set-Cookie y Authorization enteros', () => {
+  const setCookie = redactLine('web | Set-Cookie: bc_access_token=secret; Path=/; HttpOnly');
+  const authorization = redactLine('api | authorization: Bearer header.payload.signature');
+
+  assert.equal(setCookie, `web | ${REDACTED}`);
+  assert.equal(authorization, `api | ${REDACTED}`);
+  assert.doesNotMatch(setCookie, /secret|set-cookie/i);
+  assert.doesNotMatch(authorization, /header\.payload\.signature|authorization/i);
+});
+
+test('redactLine elimina token, bc_csrf_token y password en consulta, formulario y JSON', () => {
+  const query = redactLine('POST /auth/login?token=abc&redirect=/workspace');
+  const form = redactLine('body bc_csrf_token=csrf-value&password=Demo1234!&email=demo@example.test');
+  const json = redactLine('{"bc_csrf_token":"csrf-value","password":"Demo1234!","email":"demo@example.test"}');
+
+  for (const line of [query, form, json]) {
+    assert.doesNotMatch(line, /token|password|csrf|abc|Demo1234!/i, line);
+    assert.match(line, new RegExp(REDACTED.replace(/[[\]]/g, '\\$&')), line);
+  }
+  assert.match(query, /redirect=\/workspace/, 'the rest of the line stays intact');
+  assert.match(form, /email=demo@example\.test/, 'non-sensitive fields stay intact');
+  assert.match(json, /"email":"demo@example\.test"/, 'non-sensitive JSON fields stay intact');
+});
+
+test('redactLine deja intacta una línea sin datos sensibles', () => {
+  const line = 'worker | heartbeat ok: 10 seconds since the last completed round';
+  assert.equal(redactLine(line), line);
+  assert.equal(redactLog('primera\nsegunda'), 'primera\nsegunda');
+});
+
+test('redactLog sanea todas las líneas y conserva su número', () => {
+  const log = [
+    'api | login 200 Set-Cookie: bc_access_token=secret; Path=/',
+    'web | GET /workspace 200',
+    'api | POST /auth/login?token=abc',
+  ].join('\n');
+  const sanitized = redactLog(log);
+
+  assert.equal(sanitized.split('\n').length, 3);
+  assert.doesNotMatch(sanitized, /secret|abc|cookie|token/i);
+  assert.match(sanitized, /web \| GET \/workspace 200/);
+});
+
+test('redactPath quita consulta y fragmento y deja solo la ruta', () => {
+  assert.equal(redactPath('/api/v1/tournaments/public/t1?token=abc'), '/api/v1/tournaments/public/t1');
+  assert.equal(redactPath('http://localhost:3000/workspace?x=1#top'), '/workspace');
+  assert.equal(redactPath('/workspace'), '/workspace');
+  assert.equal(redactPath(''), '/');
+});
+
+/* -------------------------------------------------------------------------- */
+/* Forma del artefacto por vista (RF-005)                                     */
+/* -------------------------------------------------------------------------- */
+
+function artifactReloads() {
+  return classifyReloads({
+    requests: [
+      { path: '/api/v1/tournaments/public/t1', at: 1_000 },
+      { path: '/api/v1/tournaments', at: 31_000 },
+    ],
+    endpoints: ['/api/v1/tournaments/public/t1', '/api/v1/tournaments'],
+    connectedAt: 0,
+    windowMs: 6_000,
+    pollingIntervalMs: 30_000,
+  });
+}
+
+function artifactStates() {
+  return [
+    { status: 'connected' as const, at: 1_000 },
+    { status: 'error' as const, at: 2_400 },
+    { status: 'retrying' as const, at: 3_600 },
+    { status: 'error' as const, at: 4_400 },
+    { status: 'connected' as const, at: 7_800 },
+  ];
+}
+
+test('observeStates sitúa cada estado respecto a la pulsación y al inicio del intento', () => {
+  const observed = observeStates(artifactStates(), validMarks().cycles);
+
+  assert.equal(observed[0]?.cycle, null, 'a state before the first click has no cycle');
+  assert.equal(observed[0]?.relativeToClickMs, null);
+  assert.equal(observed[1]?.relativeToClickMs, null);
+
+  assert.equal(observed[2]?.status, 'retrying');
+  assert.equal(observed[2]?.cycle, 0);
+  assert.equal(observed[2]?.relativeToClickMs, 600);
+  assert.equal(observed[2]?.relativeToAttemptMs, 500);
+
+  assert.equal(observed[3]?.cycle, 0);
+  assert.equal(observed[3]?.relativeToClickMs, 1_400);
+
+  assert.equal(observed[4]?.cycle, 1, 'the last cycle owns the final connected state');
+  assert.equal(observed[4]?.relativeToClickMs, 2_800);
+});
+
+test('buildViewArtifact publica estados, recargas por origen, sesión informativa y veredicto', () => {
+  const artifact = buildViewArtifact({
+    view: 'operation',
+    verdict: 'passed',
+    durationMs: 9_000,
+    marks: validMarks(),
+    states: artifactStates(),
+    connections: expectedConnectionCount({ cycles: 2 }),
+    attempts: 2,
+    reloads: artifactReloads(),
+    sessionId: 'sid-abc',
+  });
+
+  assert.equal(artifact.schemaVersion, 1);
+  assert.equal(artifact.view, 'operation');
+  assert.equal(artifact.verdict, 'passed');
+  assert.equal(artifact.cause, null);
+  assert.equal(artifact.durationMs, 9_000);
+  assert.equal(artifact.states.length, 5);
+  assert.deepEqual(artifact.connections, { established: 2, establishedDuringBlock: 0 });
+  assert.equal(artifact.reloads.attributable, 1);
+  assert.equal(artifact.reloads.documentReloads, 0);
+  assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments/public/t1']?.origin, 'reconnect');
+  assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments']?.origin, 'polling');
+  assert.equal(artifact.reloads.byEndpoint['/api/v1/tournaments']?.polling, 1);
+  assert.deepEqual(artifact.sessionId, { value: 'sid-abc', conclusive: false });
+});
+
+test('buildViewArtifact sanea la causa y declara el veredicto sin sesión', () => {
+  const artifact = buildViewArtifact({
+    view: 'public',
+    verdict: 'behavioral',
+    cause: 'el estado manual no apareció (Cookie: bc_access_token=secret)',
+    durationMs: 12_000,
+    marks: validMarks(),
+    states: artifactStates(),
+    connections: expectedConnectionCount({ cycles: 2 }),
+    attempts: 2,
+    reloads: artifactReloads(),
+  });
+
+  assert.equal(artifact.verdict, 'behavioral');
+  assert.equal(artifact.sessionId, null);
+  assert.match(artifact.cause ?? '', /no apareció/);
+  assert.doesNotMatch(artifact.cause ?? '', /secret|cookie/i);
+});
+
+test('traceRequest no guarda cabeceras ni consulta, y traceLine sanea la consola', () => {
+  const request = traceRequest({
+    at: 1_500,
+    method: 'get',
+    url: 'http://localhost:8000/api/v1/tournaments?token=abc',
+    status: 200,
+  });
+  const line = traceLine(request);
+
+  assert.equal(request.type, 'request');
+  assert.equal(request.method, 'GET');
+  assert.equal(request.path, '/api/v1/tournaments');
+  assert.doesNotMatch(line, /headers|cookie|authorization|token=abc|localhost/);
+  assert.doesNotMatch(line, /abc/);
+
+  const consoleLine = traceLine(traceConsole({ at: 2_000, level: 'error', text: 'Cookie: a=b' }));
+  assert.doesNotMatch(consoleLine, /a=b/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Datos de la corrida (RF-003, caso límite 16)                               */
+/* -------------------------------------------------------------------------- */
+
+function candidate(
+  id: string,
+  status: string,
+  matches: DemoTournamentCandidate['matches'],
+): DemoTournamentCandidate {
+  return { tournament: { id, name: `Torneo ${id}`, status }, matches };
+}
+
+test('selectDemoIdentifiers elige un torneo publicado con eventos y un partido abierto con equipos', () => {
+  const selected = selectDemoIdentifiers([
+    candidate('sin-partidos', 'live', []),
+    candidate('solo-cerrados', 'live', [
+      { id: 'm1', status: 'finished', home_team_id: 'a', away_team_id: 'b' },
+    ]),
+    candidate('final-sin-equipos', 'live', [
+      { id: 'm2', status: 'finished', home_team_id: 'a', away_team_id: 'b' },
+      { id: 'm3', status: 'scheduled', home_team_id: null, away_team_id: null },
+    ]),
+    candidate('demo-live', 'live', [
+      { id: 'q1', status: 'finished', home_team_id: 'a', away_team_id: 'b' },
+      { id: 'sf1', status: 'scheduled', home_team_id: 'a', away_team_id: 'c' },
+      { id: 'final', status: 'scheduled', home_team_id: null, away_team_id: null },
+    ]),
+  ]);
+
+  assert.deepEqual(selected, { tournamentId: 'demo-live', matchId: 'sf1' });
+});
+
+test('selectDemoIdentifiers falla como datos cuando no hay un partido abierto', () => {
+  assert.equal(
+    selectDemoIdentifiers([
+      candidate('demo-live', 'live', [
+        { id: 'q1', status: 'finished', home_team_id: 'a', away_team_id: 'b' },
+      ]),
+    ]),
+    null,
+  );
+});
+
+test('DemoDataError se declara de infraestructura y las credenciales son las de desarrollo', () => {
+  assert.equal(new DemoDataError('sin datos').kind, 'infrastructure');
+  assert.deepEqual(demoCredentials({}), {
+    email: 'demo.owner@bracketcraft.dev',
+    password: 'Demo1234!',
+  });
+  assert.deepEqual(demoCredentials({ E2E_EMAIL: 'otro@example.test', E2E_PASSWORD: 'otra' }), {
+    email: 'otro@example.test',
+    password: 'otra',
+  });
+});
+
+test('artifacts.ts y demo.ts no leen el reloj', () => {
+  for (const source of [
+    readFileSync(new URL('../e2e/artifacts.ts', import.meta.url), 'utf8'),
+    readFileSync(new URL('../e2e/demo.ts', import.meta.url), 'utf8'),
+  ]) {
+    assert.doesNotMatch(source, /\bDate\.now\b|\bperformance\.now\b/);
   }
 });
