@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Sin specs abiertas.** Última cerrada: **011** (2026-10-22). **§6 aprobada** para 004, 005, 008, 009 y 010; **pendiente la de 011**.
+- **Sin specs abiertas.** Última cerrada: **011** (2026-10-22). **§6 aprobada** para 004, 005, 008, 009, 010 y 011.
 - **Constitución 1.4.0** (job `e2e` en la §4). **`main` protegida:** cinco *required checks*, *strict*, sin force push; los administradores pueden saltar la regla.
 
 ## Spec 011 — Cierre de huecos de verificación (cerrada 2026-10-22)
@@ -31,6 +31,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`). Tras reiniciar el servidor, si Docker Desktop pierde la integración WSL, los contenedores antiguos montan `/app` vacío: `docker compose up -d --force-recreate`.
 
 ## Pendiente
-- **§6 de la 011:** revisión humana pendiente.
 - **Despliegue en servidor:** paquete en `docs/runbook-despliegue-019-023.md` (ventana recomendada → 019…023 → código → smoke). En local ya está en 023.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).
