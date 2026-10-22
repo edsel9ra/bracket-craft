@@ -17,7 +17,7 @@ Ante cualquier duda, consulta en este orden:
 9. `backend/app/main.py`: registro de routers y punto de entrada de la API.
 10. `backend/app/modules/`: límites de cada funcionalidad del backend.
 11. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
-12. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (se ejecuta en cada `push` y `pull_request`, con permisos `contents: read`).
+12. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (cinco jobs con permisos `contents: read`: `backend`, `frontend`, `infrastructure` y `security` en cada `push` y `pull_request`, y `e2e` en cada `pull_request` y solo en `push` a `main`).
 13. Documentación interactiva de la API en `http://localhost:8000/docs`.
 
 Si este archivo contradice a la constitución, gana la constitución. Si contradice al código o a la CI, gana el código/CI. Actualiza este archivo en el mismo cambio.
@@ -27,7 +27,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
 - **Procesamiento:** Redis y worker asíncrono de outbox.
-- **Tiempo real:** Socket.IO.
+- **Tiempo real:** Socket.IO. El estado visible de la conexión sale de una sola fuente (`status`): `connected`, `reconnecting`, `error` y el estado **manual** `retrying` («Reintentando…»/«Retrying…»), que solo activa la pulsación de «Reintentar» cuando inicia un intento nuevo; `idle` y `connecting` no muestran etiqueta.
 - **Almacenamiento de archivos:** SeaweedFS con API S3 (fotos de jugadores). Antes: MinIO (repositorio archivado el 2026-04-25).
 - **Infraestructura:** Docker Compose.
 
@@ -44,6 +44,8 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Invitación vencida:** leer y previsualizar calculan `expired` sin escribir; crear sobre una vencida responde **201** y materializa la anterior, crear sobre una vigente **409**, crear con solo una revocada del mismo correo **201** (la unicidad solo cubre pendientes), revocar una vencida **409** sin reescribirla, reenviar la vencida la reutiliza con token y fecha nuevos, reenviar una **revocada** da **409** `INVITATION_REVOKED_RESEND` (C-1), reabrir una revocada da **200** con token y fecha nuevos sobre la misma fila (el enlace anterior deja de resolver) y aceptarla da **410**. La reapertura es la **tercera ruta de materialización** (C-2): si el mismo correo tiene otra pendiente ya vencida, se materializa y después se reabre, en una transacción; una pendiente **vigente** del mismo correo bloquea con **409** sin materializarse. Se mantiene la unicidad de pendientes por organización y correo.
 - **Contratos que cambian:** la aceptación de invitación no devuelve token en el cuerpo (solo cookie, sin transición); el rol mostrado sigue la precedencia dueño → administrador → operador → árbitro → observador sin alterar la autorización aditiva; el servidor devuelve las organizaciones en orden estable (nombre y, en empate, id) y el cliente (008C) restaura la última usada solo si está en la lista; el reenvío de una invitación responde **409** sin escribir ni enviar correo si ya hay **otra** pendiente vigente del mismo correo (reenviar la propia sigue siendo **200** y la renueva); **009:** reenviar una **revocada** pasa de **200** a **409** (**C-1**, `INVITATION_REVOKED_RESEND`) y la reapertura (`POST /organizations/invitations/{id}/reopen`, **200**) es la **tercera ruta de materialización** del vencimiento (**C-2**); los 409 de **crear, reenviar y reabrir** añaden el campo aditivo `code` (`INVITATION_NOT_REVOKED`, `INVITATION_OTHER_PENDING`, `INVITATION_ALREADY_ACCEPTED`, `INVITATION_REVOKED_RESEND`) y `detail` sigue siendo cadena, mientras que el 409 de **revocar una vencida** no lleva `code`; la versión del producto se declara solo en `backend/pyproject.toml` y `/docs` la lee (no es `engine_version` 2026.1).
 - **Relay sin filtro de rol (riesgo aceptado):** todo miembro conectado de la organización recibe los eventos de la sala `organization:{id}`, sin filtrar por evento ni por rol. La mitigación es la revalidación de sesión, membresía y permisos cada 30 s, que desconecta el socket si cambian; el filtrado por rol exige una spec propia.
+- **Estado manual de reintento (producto, no instrumentación):** `retrying` («Reintentando…»/«Retrying…») es un valor más de `RealtimeConnectionStatus`, se anuncia con `role="status"` en las tres vistas y no añade variables globales, contadores ni atributos de prueba (RNF-010). Solo lo fija la pulsación de «Reintentar» cuando `connect()` inicia un intento nuevo; cualquier transición del motor lo sustituye.
+- **Arnés E2E fuera de la suite:** `frontend/e2e/` (Playwright + Chromium headless) queda fuera de `pnpm test`, que globa solo `frontend/tests/*.test.ts`, y del `typecheck` de Nuxt; se verifica con `pnpm run e2e`, `pnpm run e2e:test` y `pnpm run typecheck:e2e`. Sus artefactos van a `frontend/e2e-report/` (ignorado) y `frontend/.auth/state.json` nunca se publica.
 - **Acciones auditadas:** guardar planilla, publicar/despublicar formación, asignar/retirar oficial y reabrir una invitación revocada escriben una entrada en `administrative_audit_logs` solo ante un cambio efectivo, en la misma transacción y sin datos personales (la reapertura guarda `REOPEN_INVITATION`, sin correo ni token). Crear, reenviar y revocar invitaciones no auditan; la aceptación conserva `ACCEPT_INVITATION`. Las lecturas no auditan y no hay endpoint de consulta.
 - La formación táctica solo es pública después de publicarse explícitamente desde el Workspace.
 - Las versiones de torneo son inmutables una vez publicadas.
@@ -288,6 +290,8 @@ cd frontend && pnpm install --frozen-lockfile
 cd frontend && pnpm test
 cd frontend && pnpm run typecheck
 cd frontend && pnpm run build
+cd frontend && pnpm run typecheck:e2e
+cd frontend && pnpm run e2e
 sh -n infra/postgres/migrate.sh
 # Runner de MIGRATION_TARGET (requiere PostgreSQL local; misma prueba que CI)
 docker run --rm --network host -v "$PWD/infra:/infra:ro" \
@@ -306,6 +310,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDI
 ```
 
 La auditoría del frontend se ejecuta desde la raíz con el bloque anterior: `infra/scripts/audit_frontend.py` falla ante cualquier hallazgo `high` o `critical` con corrección publicada, muestra los no accionables (incluidos los que no tienen parche) para su revisión y no persiste exclusiones. No uses listas de GHSA ni flags que persistan exclusiones, como `--ignore-unfixable`, `audit.ignore` o `auditConfig.ignoreGhsas`.
+
+El E2E del reintento del tiempo real vive en `frontend/e2e/` y **no** entra en `pnpm test`. `pnpm run e2e` arranca la pila con `docker compose up -d --build --wait --wait-timeout 300` (≤5 min, informado aparte), ejecuta el seed demo, corre Playwright con un solo motor Chromium headless y `retries: 0`, y baja la pila que arrancó. `pnpm run e2e:test` es el mismo escenario con `--no-stack` contra una pila ya levantada y sembrada (`docker compose up -d --wait` + `python -m scripts.seed_demo`) y es lo que ejecuta CI. Requisitos: Docker operativo, `.env` (`cp .env.example .env`) y Chromium (`cd frontend && pnpm exec playwright install --with-deps chromium`). Códigos de salida: **0** verde (las tres vistas `passed`), **1** fallo de comportamiento, **2** fallo de infraestructura (pila, datos demo o navegador) y **3** corrida inválida (vista omitida/ausente o escenario no concluyente); solo **0** abre el gate. Los artefactos quedan en `frontend/e2e-report/`, ignorado por git.
 
 La validación de producción exige **Docker Compose 2.24.4 o superior**, porque el overlay usa `!reset`/`!override` y la comparación de versiones incluye el parche. Con variables dummy (nunca secretos reales) se valida el merge real de despliegue (desarrollo y luego producción):
 
@@ -445,12 +451,13 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 
 ## Testing
 
-La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que corresponda a tu cambio:
+La CI (`ci.yml`) tiene **cinco** jobs independientes; reproduce localmente el que corresponda a tu cambio. La §4 de `docs/constitution.md` (versión 1.3.0) todavía nombra solo `backend`, `frontend`, `infrastructure` y `security`: su enmienda menor (**1.4.0**) se tramita en un **cambio propio** según §5.2 y no forma parte de esta entrega. Marcar `e2e` como *required check* es configuración del repositorio en GitHub (protección de rama), no un cambio de código ni de `ci.yml`.
 
 - **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis. El job también ejecuta `infra/scripts/test_migrate_target.sh` contra PostgreSQL 17 y la suite con base (`RUN_DATABASE_TESTS=1`).
 - **`frontend` (Frontend checks):** `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm run typecheck` y `pnpm run build` desde `frontend/`.
 - **`infrastructure` (Infrastructure checks):** `python3 infra/scripts/verify_version_sources.py --exclude-constitution`, `sh -n infra/postgres/migrate.sh`, versión de Compose ≥2.24.4, `docker compose config -q` para desarrollo y para el merge dev+prod con variables dummy, y las aserciones de `infra/scripts/assert_production_compose.py` sobre el JSON renderizado.
 - **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt`, la auditoría del frontend desde la raíz con `infra/scripts/audit_frontend.py` (bloque de Verificación) y el escaneo Trivy descrito en Comandos.
+- **`e2e` (Realtime retry end-to-end):** el **quinto** job, con `timeout-minutes: 25`, se ejecuta en **cada `pull_request`** y **solo** en `push` a `main` (un `push` a otra rama no lo ejecuta y no se declara verde). Instala pnpm 12.12.1 y Node 24 con caché por `frontend/pnpm-lock.yaml`, cachea `~/.cache/ms-playwright` por lockfile, instala **solo Chromium** (`pnpm exec playwright install --with-deps chromium`), ejecuta `pnpm run typecheck:e2e`, `cp .env.example .env`, `docker compose up -d --build --wait --wait-timeout 300`, el seed demo y `pnpm run e2e:test` como veredicto **0/1/2/3** sin reintentos (`retries: 0`); en `if: always()` vuelca `docker compose logs` saneado y publica `frontend/e2e-report` como artefacto `e2e-realtime-<run_id>` (retención 7 días) y baja la pila con `docker compose down -v`. Presupuesto: corrida ≤15 min y vista ≤4 min, con el arranque informado aparte. `typecheck:e2e` es imprescindible porque el `typecheck` de `frontend` no cubre `e2e/`.
 - **Pruebas de integración de invitaciones (opt-in):** requieren PostgreSQL en ejecución con la cuenta y organización demo. Cubren crear, reenviar, revocar, aceptar y reabrir: reabrir una revocada (**200**, misma fila y enlace anterior sin resolver), sus 409 `INVITATION_NOT_REVOKED`/`INVITATION_OTHER_PENDING`, reenviar una revocada **409** `INVITATION_REVOKED_RESEND` (C-1), la materialización previa de otra pendiente vencida (C-2) y la entrada `REOPEN_INVITATION`.
 
   ```sh

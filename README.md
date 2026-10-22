@@ -445,6 +445,7 @@ El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un 
 - **Arranque y reconexión:** un proceso nuevo del relay resuelve la posición en el último id y **no reemite el histórico**. Si se pierde la conexión con Redis con el proceso vivo, conserva la posición y **reanuda** desde ahí, por lo que puede repetir entradas retenidas.
 - **`RESYNC`:** evento de control `{event_id, reason}` con `reason` entre `JOIN`, `RELAY_START`, `STREAM_TRIMMED` y `REDIS_RESET`. No lleva datos de negocio, no se persiste y no se escribe en el stream. `JOIN` va solo al socket que entra en su sala; los huecos se emiten a las salas con clientes conectados; sin clientes no se emite nada.
 - **Cliente:** deduplica por `event_id` en una ventana FIFO de 200 entregas y separa `RESYNC` de los eventos de dominio. El Workspace y la operación de partido recargan al reconectar; la página pública mantiene su polling de 30 s mientras el socket no está conectado y, ante un `RESYNC` de hueco, recarga y reinicia la paginación.
+- **Estado visible del reintento manual:** además de `connecting`, `connected`, `reconnecting`, `error` e `idle`, el estado de conexión tiene un valor propio `retrying` («Reintentando…» / «Retrying…»), anunciado con `role="status"` y con color de aviso compartido con `reconnecting`/`error` (no depende solo del color). **Solo** aparece al pulsar «Reintentar» con el estado en error y **solo si esa pulsación inicia un intento de conexión nuevo**: un clic sin efecto no muestra nada y nunca aparece por reconexión automática ni sin pulsación. Desaparece al conectar o al volver a error; no altera la lógica de reconexión, las recargas ni el sondeo, y no añade instrumentación de pruebas al producto.
 - **Alcance por organización, sin filtro de rol (riesgo aceptado, R32f):** el relay emite cada evento a la sala `organization:{id}`, así que **todo miembro conectado** de la organización lo recibe con independencia de su rol o permisos, y el payload no se filtra por evento. *Mitigación vigente:* cada 30 s se revalidan la sesión, la membresía y la huella de permisos; si cambian, el socket se desconecta y deja de recibir eventos. Un filtrado por evento y por rol exige una spec propia y no forma parte de la spec 008.
 
 | Tramo | Garantía | Consecuencia |
@@ -511,6 +512,22 @@ docker compose config --format json | python3 infra/scripts/assert_production_co
 docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
   | python3 infra/scripts/assert_production_compose.py -
 ```
+
+### E2E del reintento del tiempo real
+
+El arnés vive en `frontend/e2e/` (Playwright con un solo motor **Chromium headless**, `workers: 1` y `retries: 0`) y comprueba la secuencia completa en las tres vistas —pública `/tournaments/{id}`, panel `/workspace` y operación `/workspace/matches/{id}`—: conexión estable, caída real del transporte con el canal bloqueado solo para `/socket.io/`, estado de error, pulsación de «Reintentar» con el canal aún bloqueado, estado manual «Reintentando…», fallo del intento, desbloqueo y reconexión, con como máximo una recarga de datos por consumidor y ninguna del documento. También verifica dos ciclos de pulsación y que no quedan intentos ni conexiones de más.
+
+```sh
+cd frontend && pnpm exec playwright install --with-deps chromium   # una vez por máquina
+cd frontend && pnpm run e2e        # arranca la pila, siembra, ejecuta y baja
+cd frontend && pnpm run e2e:test   # solo el escenario, con la pila ya levantada y sembrada
+```
+
+`pnpm run e2e` requiere Docker, `cp .env.example .env` y Chromium instalado; arranca con `docker compose up -d --build --wait --wait-timeout 300` (≤5 min, informado aparte), ejecuta el seed demo, corre el escenario y baja la pila que arrancó. `pnpm run e2e:test` es el comando del job de integración continua. Códigos de salida: **0** verde (las tres vistas sin omisiones), **1** fallo de comportamiento, **2** fallo de infraestructura (pila, datos demo o navegador) y **3** corrida inválida (vista omitida/ausente o escenario no concluyente); la invalidez no acusa al producto pero no abre el gate.
+
+Los artefactos quedan en `frontend/e2e-report/` (ignorado por git y sin cookies ni tokens): `summary.json` con la tabla de las tres vistas, un `view-<vista>.json` por vista con marcas y recuentos, `trace.jsonl` propio con peticiones sin cabeceras, capturas en `screenshots/` y, en CI, `server.log` saneado. El estado de sesión en `frontend/.auth/state.json` nunca se publica.
+
+**No cubre:** la entrega duplicada del transporte (queda en las pruebas unitarias de deduplicación) ni el conteo de sesiones del servidor; si el handshake expone un identificador, el artefacto lo adjunta como dato informativo no concluyente.
 
 ## Seguridad
 

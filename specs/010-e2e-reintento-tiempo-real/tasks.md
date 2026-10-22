@@ -146,7 +146,7 @@ lockfile. Ninguna otra.
   siguen sin exclusiones nuevas; el job no ejecuta ningún motor distinto de `chromium` ni ningún
   reintento del escenario; el flujo de trabajo conserva `permissions: contents: read`.
 
-- [ ] **T9. Documentación de producto, operación y agentes.** RF-004, RF-006, RNF-011
+- [x] **T9. Documentación de producto, operación y agentes.** RF-004, RF-006, RNF-011
 - Hecho cuando: `README.md` documenta en «Tiempo real y outbox» el estado visible de **reintento manual**
   («Reintentando…»/«Retrying…», `role="status"`, aparece solo tras pulsar «Reintentar» en error y solo
   si se inicia un intento nuevo, desaparece al conectar o al volver a error, no altera la lógica ni las
