@@ -88,7 +88,7 @@ lockfile. Ninguna otra.
   en `frontend/.auth/state.json` (ignorado y fuera de `e2e-report/`) y `grep -R "Cookie" frontend/e2e-
   report` no devuelve nada.
 
-- [ ] **T5. Interceptor del canal con retención y escenario de la vista pública.** RF-001, RF-002, RF-006, RNF-001
+- [x] **T5. Interceptor del canal con retención y escenario de la vista pública.** RF-001, RF-002, RF-006, RNF-001
 - Hecho cuando: se escribe primero `frontend/e2e/realtime-public.spec.ts` (rojo: sin escenario, el spec
   falla en la primera condición) y después
   `frontend/e2e/channel.ts` (`page.routeWebSocket` para la elevación y `page.route` para el sondeo, modos
