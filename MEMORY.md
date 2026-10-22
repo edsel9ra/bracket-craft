@@ -37,5 +37,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Desplegar migraciones en orden: **019 → 020** (006, código nuevo primero), **021** (007, antes del código) y **022 → 023 → backend → frontend** (008).
 - Cerrar **005** en `main`: ya cumplió CI, falta la revisión humana de la §6. Revisión humana de la §6 también para **008**.
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.
-- TypeScript **7.0.2**: `vue-tsc` 3.3.13 no soporta su API (rompe `typecheck`); reintentar cuando lo soporte.
+- TypeScript fijado en **`~6.0.3`** (instalado 6.0.3) con `vue-tsc` 3.3.13 y `vue` 3.5.44; **no subir a 7.x** (`vue-tsc` rompe `typecheck`). El `~` evita que un bot abra el rango.
 - Decisiones posteriores sin spec: UI de «Reenviar» para vencidas/revocadas, reapertura de revocadas, E2E de navegador del reintento y transición real del worker a insano por bucle detenido.
