@@ -30,5 +30,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Pendiente
 - Marcar el job `e2e` como ***required check*** en la protección de rama (configuración del repositorio; la §4 ya lo exige desde la 1.4.0).
-- **Despliegue en servidor:** 019 → 020 → 021 → 022 → 023 y el código, por ese orden; en local ya está hecho.
+- **Despliegue en servidor:** paquete en `docs/runbook-despliegue-019-023.md` (ventana recomendada → 019…023 → código → smoke). En local ya está en 023.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).

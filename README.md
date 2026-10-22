@@ -133,6 +133,8 @@ Requisitos y comportamiento:
 
 La CI valida el merge real con variables dummy y las aserciones de `infra/scripts/assert_production_compose.py`; el comando exacto está en `AGENTS.md`.
 
+Para un servidor que sigue en el esquema **018** con el código antiguo, el paquete acumulado hasta **023** (estrategias con y sin ventana, backups, pre-chequeos, orden de aplicación, smoke y post-chequeos) está en [`docs/runbook-despliegue-019-023.md`](docs/runbook-despliegue-019-023.md).
+
 ## Cifrado de la fecha de nacimiento y runbook de despliegue
 
 La fecha de nacimiento de los jugadores se almacena cifrada con `PLAYER_DATA_KEY` en `players.birth_date_encrypted`. El rol de aplicación puede insertarla, pero no leer el texto cifrado ni, desde la migración 017, la fecha en claro. La edad (`age_at_reference` y `age_reference_year`) se materializa por jugador y se ajusta con el año de inicio del torneo; la fecha completa no se expone en la API, el Workspace, las proyecciones públicas, los errores ni los logs.

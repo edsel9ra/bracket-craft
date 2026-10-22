@@ -376,6 +376,7 @@ MEMORY.md                    Estado y decisiones del trabajo SDD
 docs/
   constitution.md            Constitución del proyecto
   contrato-reglas.md         Contrato interno: GF1/GF2 y formaciones (engine_version 2026.1)
+  runbook-despliegue-019-023.md  Despliegue acumulado 018 → 023 (ventana, pre/post-chequeos)
 specs/
   NNN-nombre/                spec.md, plan.md y tasks.md por funcionalidad
 .agents/
