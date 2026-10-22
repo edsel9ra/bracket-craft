@@ -543,8 +543,13 @@ async def _invitation_api(
     *,
     member_id: UUID | None = None,
     user_id: UUID | None = None,
+    raise_app_exceptions: bool = True,
 ):
-    """Run the real invitation endpoints on the rolled-back test transaction."""
+    """Run the real invitation endpoints on the rolled-back test transaction.
+
+    ``raise_app_exceptions=False`` convierte una excepción no controlada del
+    endpoint en la respuesta HTTP 500 que vería un cliente real.
+    """
 
     class _RequestSession:
         def begin(self):
@@ -571,7 +576,10 @@ async def _invitation_api(
     monkeypatch.setattr(invitations_router, "send_invitation_email", skip_email)
     try:
         async with AsyncClient(
-            transport=ASGITransport(app=api), base_url="http://test"
+            transport=ASGITransport(
+                app=api, raise_app_exceptions=raise_app_exceptions
+            ),
+            base_url="http://test",
         ) as client:
             yield client
     finally:
@@ -1451,6 +1459,129 @@ async def test_reopening_materializes_another_expired_pending_in_the_same_transa
     entries = await _invitation_audit_entries(db_session, tenant)
     assert len(entries) == 1
     assert str(entries[0]["entity_id"]) == str(revoked["id"])
+
+
+@pytest.mark.asyncio
+async def test_reopen_failure_after_materializing_rolls_back_both_writes(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    """RF-001: un fallo tras materializar y reabrir revierte las dos escrituras.
+
+    El doble de ``record_invitation_audit`` se ejecuta dentro de la transacción
+    de la petición, después de ``_materialize_expired_pending`` y del ``UPDATE``
+    que reabre la revocada, y antes del cierre: lee ambas filas y el recuento de
+    auditoría, y después lanza. El caso límite 5 exige una respuesta HTTP 500,
+    no una excepción propagada (``raise_app_exceptions=False``).
+    """
+
+    tenant = await tenant_factory("Invitation Reopen Atomicity")
+    email = f"reopen-atomic-{uuid4().hex}@example.com"
+    revoked_token = f"reopen-atomic-old-{uuid4().hex}"
+    revoked = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=revoked_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, revoked["id"])
+    stale = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-atomic-stale-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+
+    before = {
+        row["id"]: row
+        for row in await _stored_invitation_details(db_session, tenant, email)
+    }
+    assert set(before) == {revoked["id"], stale["id"]}
+    assert before[revoked["id"]]["status"] == "revoked"
+    assert before[stale["id"]]["status"] == "pending"
+    revoked_token_hash = before[revoked["id"]]["token_hash"]
+
+    observed: dict[str, object] = {}
+
+    async def failing_audit(
+        db,
+        *,
+        organization_id,
+        member_id,
+        invitation_id,
+        action,
+        payload,
+    ):
+        # Dentro de la transacción de la petición: las dos escrituras ya
+        # ocurrieron, pero todavía no hay commit.
+        materialized = await db.execute(
+            text("SELECT status FROM organization_invitations WHERE id = :id"),
+            {"id": str(stale["id"])},
+        )
+        observed["materialized_status"] = materialized.scalar_one()
+        reopened = await db.execute(
+            text("""
+                SELECT status, token_hash
+                FROM organization_invitations
+                WHERE id = :id
+            """),
+            {"id": str(revoked["id"])},
+        )
+        reopened_row = reopened.mappings().one()
+        observed["reopened_status"] = reopened_row["status"]
+        observed["reopened_token_hash"] = reopened_row["token_hash"]
+        audit_rows = await db.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM administrative_audit_logs
+                WHERE entity_id = :entity_id
+            """),
+            {"entity_id": str(invitation_id)},
+        )
+        observed["audit_rows"] = audit_rows.scalar_one()
+        observed["action"] = action
+        raise RuntimeError("fallo inducido: después de materializar y antes del commit")
+
+    monkeypatch.setattr(invitations_router, "record_invitation_audit", failing_audit)
+
+    sent: list[dict] = []
+
+    async def recording_email(*args, **kwargs):
+        sent.append({"args": args, "kwargs": kwargs})
+
+    async with _invitation_api(
+        db_session, tenant, monkeypatch, raise_app_exceptions=False
+    ) as client:
+        # Después del que instala `_invitation_api`: el envío se registra, no se omite.
+        monkeypatch.setattr(invitations_router, "send_invitation_email", recording_email)
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
+        )
+
+    assert response.status_code == 500, describe_response(
+        "reopen with an induced failure after materializing returns 500", response
+    )
+    # El cuerpo es exactamente el 500 saneado de Starlette: no lleva invite_url
+    # (ni nada más) y el token revocado no aparece.
+    assert response.text == "Internal Server Error"
+    assert revoked_token not in response.text
+
+    # El fallo ocurrió en el punto declarado: las dos escrituras eran visibles.
+    assert observed, "el doble de auditoría debe ejecutarse dentro de la petición"
+    assert observed["action"] == "REOPEN_INVITATION"
+    assert observed["materialized_status"] == "expired"
+    assert observed["reopened_status"] == "pending"
+    assert observed["reopened_token_hash"] != revoked_token_hash
+    assert observed["audit_rows"] == 0
+
+    after = {
+        row["id"]: row
+        for row in await _stored_invitation_details(db_session, tenant, email)
+    }
+    assert after == before
+    assert await _invitation_audit_entries(db_session, tenant) == []
+    assert sent == []
 
 
 @pytest.mark.asyncio
