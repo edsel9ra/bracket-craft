@@ -37,6 +37,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Pendiente
 - **Despliegue en servidor** pendiente: **019 → 020** (006, código nuevo primero), **021** (007, antes del código) y **022 → 023 → backend → frontend** (008). En local ya está en **023** con smoke OK.
-- Cerrar **005** en `main`: ya cumplió CI, falta la revisión humana de la §6. Revisión humana de la §6 también para **008**.
+- **§6 cumplida:** revisión humana aprobada por el usuario (2026-10-21) para **005** y **008**; CI en verde y opt-in con base real.
 - TypeScript fijado en **`~6.0.3`** (instalado 6.0.3) con `vue-tsc` 3.3.13 y `vue` 3.5.44; **no subir a 7.x** (`vue-tsc` rompe `typecheck`). El `~` evita que un bot abra el rango.
 - Decisiones posteriores sin spec: UI de «Reenviar» para vencidas/revocadas, reapertura de revocadas, E2E de navegador del reintento y transición real del worker a insano por bucle detenido.
