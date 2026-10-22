@@ -13,7 +13,13 @@
  */
 
 import { redactLine, redactLog, type ArtifactVerdict, type ViewArtifact } from './artifacts.ts';
-import { EXPECTED_VIEWS, MAX_MS, type ViewId } from './observations.ts';
+import {
+  EXPECTED_VIEWS,
+  MAX_MS,
+  countSamples,
+  countTransitions,
+  type ViewId,
+} from './observations.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Argumentos                                                                 */
@@ -108,8 +114,13 @@ export interface ViewSummary {
   readonly verdict: ViewVerdict;
   readonly cause: string | null;
   readonly durationMs: number;
-  /** Recuento de estados visibles observados (retrying, connected, error…). */
+  /** Recuento de **muestras** por estado visible (retrying, connected, error…). */
   readonly states: Readonly<Record<string, number>>;
+  /**
+   * Número de cambios de estado consecutivos distintos; `null` si la vista no
+   * dejó artefacto. Campo aditivo y opcional: `schemaVersion` sigue en 1.
+   */
+  readonly transitions: number | null;
   /** Recargas observadas por consumidor: 0 o 1 atribuible, nunca el documento. */
   readonly reloads: {
     readonly attributable: number;
@@ -148,15 +159,6 @@ export interface RunSummaryInput {
 
 const DEFAULT_LIMITS: RunLimits = { viewMs: MAX_MS.view, runMs: MAX_MS.run };
 
-function countStates(artifact: ViewArtifact | undefined): Readonly<Record<string, number>> {
-  if (!artifact) return {};
-  const counts: Record<string, number> = {};
-  for (const state of artifact.states) {
-    counts[state.status] = (counts[state.status] ?? 0) + 1;
-  }
-  return counts;
-}
-
 function sanitizeCause(cause: string | null | undefined): string | null {
   if (cause === null || cause === undefined || cause.trim().length === 0) return null;
   return redactLine(cause.trim());
@@ -183,7 +185,8 @@ function evaluateView(input: {
 }): ViewSummary {
   const { view, artifact, project, limits } = input;
   const baseDuration = project?.durationMs ?? artifact?.durationMs ?? 0;
-  const states = countStates(artifact);
+  const states = artifact ? countSamples(artifact.states) : {};
+  const transitions = artifact ? countTransitions(artifact.states) : null;
   const reloads = artifact
     ? {
         attributable: artifact.reloads.attributable,
@@ -202,6 +205,7 @@ function evaluateView(input: {
     cause: sanitizeCause(cause),
     durationMs,
     states,
+    transitions,
     reloads,
   });
 
@@ -324,7 +328,7 @@ export interface ServerLogCommandResult {
 }
 
 export interface ServerLogCapture {
-  /** `true` solo si `docker compose logs` respondió con código 0. */
+  /** `true` solo si el artefacto compuesto contiene evidencia utilizable. */
   readonly available: boolean;
   /** Contenido final del artefacto, saneado y con la cabecera. */
   readonly content: string;
@@ -332,7 +336,24 @@ export interface ServerLogCapture {
   readonly note: string | null;
 }
 
-const SERVER_LOG_HEADER = '# server.log — docker compose logs --no-color api worker web';
+/** Entrada del fallback de integración continua (RF-008). */
+export interface ServerLogFallbackInput {
+  /** Contenido actual de `server.log`, o `null` si el arnés no lo dejó. */
+  readonly existing: string | null;
+  /** Salida cruda de `docker compose logs` en este proceso. */
+  readonly rawOutput: string;
+}
+
+/** Decisión del fallback: conservar el artefacto o escribir uno nuevo. */
+export interface ServerLogFallback {
+  /** `true` solo si hay que escribir `content`. */
+  readonly write: boolean;
+  /** Contenido a escribir; `null` cuando se conserva el existente. */
+  readonly content: string | null;
+}
+
+/** Cabecera exacta del artefacto, escrita por el arnés y por el fallback de CI. */
+export const SERVER_LOG_HEADER = '# server.log — docker compose logs --no-color api worker web';
 
 function serverLogBody(lines: readonly string[]): string {
   return `${[SERVER_LOG_HEADER, ...lines].join('\n')}\n`;
@@ -340,6 +361,46 @@ function serverLogBody(lines: readonly string[]): string {
 
 function withoutTrailingBlankLines(text: string): string {
   return text.replace(/\n+$/, '');
+}
+
+/**
+ * Decide si un `server.log` **ya contiene evidencia utilizable** (RF-008): la
+ * cabecera exacta más al menos una línea de contenido distinta de las
+ * declaraciones `# no disponible:`. Ausente, vacío o solo con cabecera no
+ * cuenta; la decisión se toma sobre el fichero y nunca sobre el flag ni el
+ * código de salida del comando.
+ */
+export function serverLogIsAvailable(content: string | null | undefined): boolean {
+  if (content === null || content === undefined || content.trim().length === 0) return false;
+
+  const [header = '', ...rest] = content.split(/\r?\n/);
+  if (header.trimEnd() !== SERVER_LOG_HEADER) return false;
+  if (rest.some((line) => line.trimStart().startsWith('# no disponible:'))) return false;
+
+  return rest.some((line) => line.trim().length > 0);
+}
+
+function composeServerLogContent(rawOutput: string): string {
+  const body = withoutTrailingBlankLines(redactLog(rawOutput));
+  return body.trim().length === 0 ? `${SERVER_LOG_HEADER}\n` : `${SERVER_LOG_HEADER}\n${body}\n`;
+}
+
+/**
+ * Compone el `server.log` del fallback de CI (RF-008).
+ *
+ * - Con la salida cruda devuelve el artefacto saneado y encabezado.
+ * - Con `{ existing, rawOutput }` decide si hay que escribir: un artefacto ya
+ *   disponible se conserva (`write: false`) y solo se reescribe cuando falta o
+ *   declara no estar disponible.
+ */
+export function composeServerLog(rawOutput: string): string;
+export function composeServerLog(input: ServerLogFallbackInput): ServerLogFallback;
+export function composeServerLog(
+  input: string | ServerLogFallbackInput,
+): string | ServerLogFallback {
+  if (typeof input === 'string') return composeServerLogContent(input);
+  if (serverLogIsAvailable(input.existing)) return { write: false, content: null };
+  return { write: true, content: composeServerLogContent(input.rawOutput) };
 }
 
 /**
@@ -376,11 +437,13 @@ export function buildServerLog(input: {
     };
   }
 
-  return {
-    available: true,
-    content: serverLogBody([withoutTrailingBlankLines(redactLog(command.output))]),
-    note: null,
-  };
+  const output = withoutTrailingBlankLines(redactLog(command.output));
+  const empty = output.trim().length === 0;
+  const note = empty ? 'no disponible: docker compose logs sin salida' : null;
+  const content = serverLogBody([note === null ? output : `# ${note}`]);
+  const available = serverLogIsAvailable(content);
+
+  return { available, content, note: available ? null : note };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -399,10 +462,14 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-function formatStates(states: Readonly<Record<string, number>>): string {
+function formatSamples(states: Readonly<Record<string, number>>): string {
   const entries = Object.entries(states);
   if (entries.length === 0) return '-';
   return entries.map(([status, count]) => `${status}=${count}`).join(' ');
+}
+
+function formatTransitions(transitions: number | null): string {
+  return transitions === null ? '-' : String(transitions);
 }
 
 function formatReloads(reloads: ViewSummary['reloads']): string {
@@ -411,16 +478,18 @@ function formatReloads(reloads: ViewSummary['reloads']): string {
 }
 
 /**
- * Tabla legible para la salida del runner: vista, veredicto, duración, estados
- * observados y recargas. La causa de cada vista no verde va debajo.
+ * Tabla legible para la salida del runner: vista, veredicto, duración,
+ * **muestras**, **transiciones** y recargas. La causa de cada vista no verde va
+ * debajo. Las cabeceras separan explícitamente ambas cifras (RF-006).
  */
 export function formatSummaryTable(summary: RunSummary): readonly string[] {
-  const header = ['VISTA', 'RESULTADO', 'DURACIÓN', 'ESTADOS', 'RECARGAS'];
+  const header = ['VISTA', 'RESULTADO', 'DURACIÓN', 'MUESTRAS', 'TRANSICIONES', 'RECARGAS'];
   const rows = summary.views.map((view) => [
     view.view,
     view.verdict,
     formatDuration(view.durationMs),
-    formatStates(view.states),
+    formatSamples(view.states),
+    formatTransitions(view.transitions),
     formatReloads(view.reloads),
   ]);
 

@@ -228,7 +228,7 @@ jobs:
             ${{ runner.os }}-ms-playwright-
       - name: Install Chromium only
         working-directory: frontend
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: pnpm exec playwright install --with-deps chromium
       - name: Typecheck the end-to-end harness
         working-directory: frontend
@@ -251,20 +251,34 @@ jobs:
         run: pnpm run e2e:test
       # El volcado es diagnóstico: si el saneado fallara se omite el fichero,
       # nunca se publica el registro en crudo ni se convierte en el veredicto.
+      # RF-008: con un server.log ya disponible no se vuelve a capturar ni se
+      # reescribe; solo se ejecuta docker compose logs cuando falta o declara
+      # no estar disponible.
       - name: Collect sanitized server logs
         if: always()
         continue-on-error: true
         timeout-minutes: 2
         run: |
           mkdir -p frontend/e2e-report
+          server_log_state=$(node --input-type=module -e "
+            import { existsSync, readFileSync } from 'node:fs';
+            import { serverLogIsAvailable } from './frontend/e2e/runModel.ts';
+            const destino = 'frontend/e2e-report/server.log';
+            const existing = existsSync(destino) ? readFileSync(destino, 'utf8') : null;
+            console.log(serverLogIsAvailable(existing) ? 'available' : 'missing');
+          ")
+          if [ "$server_log_state" = available ]; then
+            echo '[ci] server.log del arnés conservado'
+            exit 0
+          fi
           docker compose logs --no-color api worker web > "$RUNNER_TEMP/e2e-server.log" 2>&1 || true
           node --input-type=module -e "
             import { readFileSync, writeFileSync } from 'node:fs';
-            import { redactLog } from './frontend/e2e/artifacts.ts';
-            writeFileSync(
-              'frontend/e2e-report/server.log',
-              redactLog(readFileSync(process.env.RUNNER_TEMP + '/e2e-server.log', 'utf8')),
-            );
+            import { composeServerLog } from './frontend/e2e/runModel.ts';
+            const destino = 'frontend/e2e-report/server.log';
+            const fallback = composeServerLog(readFileSync(process.env.RUNNER_TEMP + '/e2e-server.log', 'utf8'));
+            writeFileSync(destino, fallback);
+            console.log('[ci] server.log reescrito: el arnés no lo dejó disponible');
           "
       # Solo el informe saneado del arnés: nada de trace.zip (cabeceras con
       # cookies), de .auth/state.json ni de logs sin sanear.

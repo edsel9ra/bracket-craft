@@ -12,15 +12,22 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import type { ArtifactVerdict, ViewArtifact } from '../e2e/artifacts.ts';
-import type { ScenarioMarks, ViewId } from '../e2e/observations.ts';
+import {
+  shouldCaptureScreenshot,
+  type ScenarioMarks,
+  type ViewId,
+} from '../e2e/observations.ts';
 import {
   EXIT_CODES,
+  SERVER_LOG_HEADER,
   SERVER_LOG_UNAVAILABLE,
   buildRunSummary,
   buildServerLog,
+  composeServerLog,
   formatDuration,
   formatSummaryTable,
   parseRunnerArgs,
+  serverLogIsAvailable,
   type PlaywrightProjectOutcome,
   type RunSummaryInput,
 } from '../e2e/runModel.ts';
@@ -149,12 +156,66 @@ test('agrega las tres vistas y sus duraciones en una corrida verde', () => {
   assert.deepEqual(summary.stack, { mode: 'started', durationMs: 30_000 });
 
   const table = formatSummaryTable(summary).join('\n');
+  assert.match(table, /MUESTRAS\s+TRANSICIONES/);
   assert.match(table, /public\s+passed/);
   assert.match(table, /workspace\s+passed/);
   assert.match(table, /operation\s+passed/);
   assert.match(table, /10\.0 s/);
   assert.match(table, /retrying=1/);
   assert.match(table, /total/i);
+});
+
+test('transitions cuenta cambios distintos y states sigue siendo muestras', () => {
+  const summary = buildRunSummary(
+    runInput({
+      artifacts: [
+        artifact('public', 'passed', { retrying: 3 }),
+        artifact('workspace', 'passed'),
+        artifact('operation', 'passed'),
+      ],
+    }),
+  );
+
+  const publicView = summary.views[0];
+  assert.ok(publicView);
+  // connected, error y tres muestras retrying: states cuenta las cinco muestras.
+  assert.equal(publicView.states.connected, 1);
+  assert.equal(publicView.states.retrying, 3);
+  assert.equal(publicView.states.error, 1);
+  // Solo connected→error y error→retrying son transiciones.
+  assert.equal(publicView.transitions, 2);
+  assert.equal(summary.schemaVersion, 1);
+  assert.equal(summary.exitCode, EXIT_CODES.green);
+});
+
+test('un artefacto ausente publica transitions null sin inventar cifras', () => {
+  const summary = buildRunSummary(
+    runInput({
+      artifacts: [artifact('public', 'passed'), artifact('workspace', 'passed')],
+      projects: [project('setup'), project('public'), project('workspace'), project('operation')],
+    }),
+  );
+
+  const operation = summary.views[2];
+  assert.ok(operation);
+  assert.equal(operation.verdict, 'infrastructure');
+  assert.equal(operation.transitions, null);
+  assert.deepEqual(operation.states, {});
+
+  const table = formatSummaryTable(summary).join('\n');
+  const row = table.split('\n').find((line) => line.startsWith('operation'));
+  assert.ok(row, 'la fila de la vista debe existir');
+  assert.match(row, /\s-\s+-\s/, 'MUESTRAS y TRANSICIONES se muestran como guion cuando faltan');
+});
+
+test('una corrida verde no activa ninguna captura', () => {
+  const summary = buildRunSummary(runInput());
+
+  assert.equal(summary.status, 'green');
+  assert.deepEqual(
+    summary.views.filter((view) => shouldCaptureScreenshot(view.verdict)).map((view) => view.view),
+    [],
+  );
 });
 
 test('un fallo de comportamiento sale con 1 y conserva la causa de la vista', () => {
@@ -432,6 +493,79 @@ test('un fallo de docker compose logs se declara con su código y su salida sane
   });
   assert.equal(timedOut.available, false);
   assert.match(timedOut.note ?? '', /tiempo agotado/);
+});
+
+test('la disponibilidad del server.log se decide sobre el contenido, no sobre el flag', () => {
+  assert.equal(serverLogIsAvailable(`${SERVER_LOG_HEADER}\napi-1  | GET /health 200\n`), true);
+  assert.equal(serverLogIsAvailable(`${SERVER_LOG_HEADER}\r\napi-1  | ok\r\n`), true);
+
+  assert.equal(serverLogIsAvailable(null), false);
+  assert.equal(serverLogIsAvailable(''), false);
+  assert.equal(serverLogIsAvailable('api-1  | sin cabecera\n'), false);
+  assert.equal(serverLogIsAvailable(`${SERVER_LOG_HEADER}\n`), false);
+  assert.equal(serverLogIsAvailable(`${SERVER_LOG_HEADER}\n\n   \n`), false);
+
+  assert.equal(
+    serverLogIsAvailable(`${SERVER_LOG_HEADER}\n# no disponible: docker CLI ausente\n`),
+    false,
+  );
+  assert.equal(
+    serverLogIsAvailable(
+      `${SERVER_LOG_HEADER}\n# no disponible: docker compose logs código 1\nno such service: api\n`,
+    ),
+    false,
+  );
+});
+
+test('el volcado de CI sanea y encabeza el registro, y no se declara disponible si está vacío', () => {
+  const content = composeServerLog(
+    'api-1  | Cookie: bc_access_token=secret\nweb-1  | GET /health.txt 200\n\n',
+  );
+
+  assert.deepEqual(content.split('\n')[0], SERVER_LOG_HEADER);
+  assert.match(content, /GET \/health\.txt 200/);
+  assert.match(content, /\[REDACTED\]/);
+  assert.doesNotMatch(content, /secret|Cookie/);
+  assert.ok(content.endsWith('\n'));
+  assert.equal(serverLogIsAvailable(content), true);
+
+  assert.equal(serverLogIsAvailable(composeServerLog('')), false);
+  assert.equal(serverLogIsAvailable(composeServerLog('\n  \n')), false);
+});
+
+test('el fallback de CI conserva un server.log disponible y solo escribe si falta o no está disponible', () => {
+  const raw = 'api-1  | GET /health.txt 200\n';
+  const available = `${SERVER_LOG_HEADER}\napi-1  | GET /health.txt 200\n`;
+  const unavailable = `${SERVER_LOG_HEADER}\n# no disponible: docker CLI ausente\n`;
+
+  const kept = composeServerLog({ existing: available, rawOutput: raw });
+  assert.deepEqual(kept, { write: false, content: null });
+
+  const missing = composeServerLog({ existing: null, rawOutput: raw });
+  assert.equal(missing.write, true);
+  assert.deepEqual(missing.content, composeServerLog(raw));
+  assert.equal(serverLogIsAvailable(missing.content), true);
+
+  const replaced = composeServerLog({ existing: unavailable, rawOutput: raw });
+  assert.equal(replaced.write, true);
+  assert.deepEqual(replaced.content, composeServerLog(raw));
+  assert.doesNotMatch(replaced.content ?? '', /no disponible/);
+
+  const headerOnly = composeServerLog({ existing: `${SERVER_LOG_HEADER}\n`, rawOutput: raw });
+  assert.equal(headerOnly.write, true);
+  assert.equal(serverLogIsAvailable(headerOnly.content), true);
+});
+
+test('un docker compose logs con código 0 y salida vacía no se declara disponible', () => {
+  const capture = buildServerLog({
+    dockerAvailable: true,
+    command: { code: 0, timedOut: false, output: '\n\n' },
+  });
+
+  assert.equal(capture.available, false);
+  assert.match(capture.note ?? '', /sin salida/);
+  assert.equal(serverLogIsAvailable(capture.content), false);
+  assert.match(capture.content, /# no disponible:/);
 });
 
 test('formatea duraciones en milisegundos y segundos', () => {

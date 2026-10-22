@@ -17,7 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.core.config import get_settings
 from app.core.database import get_db, set_rls_context
 from app.core.permissions import require_permission
-from app.core.security import decode_access_token, get_optional_current_user_id
+from app.core.security import (
+    decode_access_token,
+    get_current_user_id,
+    get_optional_current_user_id,
+)
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.invitations import router as invitations_router
@@ -33,6 +37,7 @@ from app.modules.invitations.router import (
     list_invitations,
     resend_invitation,
 )
+from assertion_messages import describe_response
 from db_helpers import TenantContext, create_test_organization
 
 
@@ -235,7 +240,9 @@ async def test_acceptance_response_has_no_tokens_and_sets_the_session_cookie():
             json={"password": "Secret1234!", "full_name": "Nuevo Invitado"},
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "acceptance returns the session contract", response
+    )
     body = response.json()
     assert "access_token" not in body
     assert "token_type" not in body
@@ -278,7 +285,9 @@ async def test_acceptance_with_an_existing_session_returns_no_credentials():
             json={},
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "acceptance with an existing session returns no credentials", response
+    )
     assert "access_token" not in response.text
     assert "token_type" not in response.text
     assert _auth_cookies(response) == []
@@ -538,8 +547,13 @@ async def _invitation_api(
     *,
     member_id: UUID | None = None,
     user_id: UUID | None = None,
+    raise_app_exceptions: bool = True,
 ):
-    """Run the real invitation endpoints on the rolled-back test transaction."""
+    """Run the real invitation endpoints on the rolled-back test transaction.
+
+    ``raise_app_exceptions=False`` convierte una excepción no controlada del
+    endpoint en la respuesta HTTP 500 que vería un cliente real.
+    """
 
     class _RequestSession:
         def begin(self):
@@ -566,7 +580,10 @@ async def _invitation_api(
     monkeypatch.setattr(invitations_router, "send_invitation_email", skip_email)
     try:
         async with AsyncClient(
-            transport=ASGITransport(app=api), base_url="http://test"
+            transport=ASGITransport(
+                app=api, raise_app_exceptions=raise_app_exceptions
+            ),
+            base_url="http://test",
         ) as client:
             yield client
     finally:
@@ -593,8 +610,8 @@ async def test_listing_invitations_reports_the_effective_status_without_writing(
         first = await client.get("/api/v1/organizations/invitations")
         second = await client.get("/api/v1/organizations/invitations")
 
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
+    assert first.status_code == 200, describe_response("listing invitations (first read)", first)
+    assert second.status_code == 200, describe_response("listing invitations (second read)", second)
     assert first.json() == second.json()
     assert [row["status"] for row in first.json()] == ["expired"]
 
@@ -623,7 +640,9 @@ async def test_creating_over_an_expired_invitation_returns_201_and_leaves_one_pe
             json={"email": email, "role_code": "operator"},
         )
 
-    assert response.status_code == 201, response.text
+    assert response.status_code == 201, describe_response(
+        "create over an expired invitation returns 201", response
+    )
     assert response.json()["status"] == "pending"
 
     stored = await _stored_invitations(db_session, tenant, email)
@@ -653,7 +672,9 @@ async def test_creating_over_a_live_pending_invitation_returns_409(
             json={"email": email, "role_code": "operator"},
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "create over a live pending invitation returns 409", response
+    )
     assert response.json()["code"] == INVITATION_OTHER_PENDING
     stored = await _stored_invitations(db_session, tenant, email)
     assert [row["status"] for row in stored] == ["pending"]
@@ -678,7 +699,9 @@ async def test_revoking_an_expired_invitation_returns_409_without_rewriting(
             f"/api/v1/organizations/invitations/{invitation['id']}"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "revoke an expired invitation returns 409", response
+    )
     stored = await _stored_invitations(db_session, tenant, email)
     assert stored[0]["status"] == "pending"
     assert stored[0]["revoked_at"] is None
@@ -706,7 +729,9 @@ async def test_accepting_an_expired_invitation_returns_410(
             json={},
         )
 
-    assert response.status_code == 410, response.text
+    assert response.status_code == 410, describe_response(
+        "accept an expired invitation returns 410", response
+    )
     stored = await _stored_invitations(db_session, tenant, email)
     assert [row["status"] for row in stored] == ["pending"]
 
@@ -731,7 +756,9 @@ async def test_resending_reuses_an_expired_invitation_without_creating_a_new_one
             f"/api/v1/organizations/invitations/{invitation['id']}/resend"
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "resend an expired invitation returns 200", response
+    )
     assert response.json()["status"] == "pending"
     assert "code" not in response.json()
     stored = await _stored_invitations(db_session, tenant, email)
@@ -761,7 +788,9 @@ async def test_resending_an_expired_invitation_with_another_live_pending_returns
             "/api/v1/organizations/invitations",
             json={"email": email, "role_code": "operator"},
         )
-    assert created.status_code == 201, created.text
+    assert created.status_code == 201, describe_response(
+        "create before the resend conflict returns 201", created
+    )
 
     before = await _stored_invitations(db_session, tenant, email)
 
@@ -770,7 +799,9 @@ async def test_resending_an_expired_invitation_with_another_live_pending_returns
             f"/api/v1/organizations/invitations/{expired['id']}/resend"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "resend with another live pending returns 409", response
+    )
     assert response.json()["code"] == INVITATION_OTHER_PENDING
     assert "pendiente" in response.json()["detail"].lower()
     after = await _stored_invitations(db_session, tenant, email)
@@ -821,7 +852,9 @@ async def test_resending_a_revoked_invitation_returns_409_without_writing_or_sen
             f"/api/v1/organizations/invitations/{invitation['id']}/resend"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "resend a revoked invitation returns 409", response
+    )
     body = response.json()
     assert body["code"] == INVITATION_REVOKED_RESEND
     assert isinstance(body["detail"], str)
@@ -857,7 +890,9 @@ async def test_resending_an_accepted_invitation_returns_409_with_its_code(
             f"/api/v1/invitations/{token}/accept",
             json={"password": "Secret1234!", "full_name": "Invitado Reenvío"},
         )
-    assert accepted.status_code == 200, accepted.text
+    assert accepted.status_code == 200, describe_response(
+        "accept before the resend accepted returns 200", accepted
+    )
 
     before = await _stored_invitation_details(db_session, tenant, email)
     assert [row["status"] for row in before] == ["accepted"]
@@ -867,7 +902,9 @@ async def test_resending_an_accepted_invitation_returns_409_with_its_code(
             f"/api/v1/organizations/invitations/{before[0]['id']}/resend"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "resend an accepted invitation returns 409", response
+    )
     assert response.json()["code"] == INVITATION_ALREADY_ACCEPTED
     after = await _stored_invitation_details(db_session, tenant, email)
     assert after == before
@@ -893,12 +930,16 @@ async def test_resending_a_revoked_invitation_with_another_live_pending_returns_
         revoked_response = await client.delete(
             f"/api/v1/organizations/invitations/{revoked['id']}"
         )
-        assert revoked_response.status_code == 204, revoked_response.text
+        assert revoked_response.status_code == 204, describe_response(
+            "revoke before the reopen conflict returns 204", revoked_response
+        )
         created = await client.post(
             "/api/v1/organizations/invitations",
             json={"email": email, "role_code": "operator"},
         )
-    assert created.status_code == 201, created.text
+    assert created.status_code == 201, describe_response(
+        "create before the reopen conflict returns 201", created
+    )
 
     before = await _stored_invitations(db_session, tenant, email)
 
@@ -907,7 +948,9 @@ async def test_resending_a_revoked_invitation_with_another_live_pending_returns_
             f"/api/v1/organizations/invitations/{revoked['id']}/resend"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "resend a revoked invitation with another live pending returns 409", response
+    )
     assert response.json()["code"] == INVITATION_REVOKED_RESEND
     after = await _stored_invitations(db_session, tenant, email)
     assert after == before
@@ -937,7 +980,9 @@ async def test_accepting_an_invitation_sets_only_the_session_cookie(
             json={"password": "Secret1234!", "full_name": "Contrato Invitado"},
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "acceptance sets only the session cookie returns 200", response
+    )
     body = response.json()
     assert "access_token" not in body
     assert "token_type" not in body
@@ -1085,15 +1130,17 @@ async def test_role_precedence_is_consistent_in_listing_access_and_role_change(
             json={"role_code": "viewer"},
         )
 
-    assert listing.status_code == 200, listing.text
+    assert listing.status_code == 200, describe_response("list members returns 200", listing)
     roles = {row["email"]: row["role_code"] for row in listing.json()}
     assert roles[owner_email] == "owner"
     assert roles[operator_email] == "operator"
     assert roles[viewer_email] == "viewer"
 
-    assert status.status_code == 200, status.text
+    assert status.status_code == 200, describe_response("update member status returns 200", status)
     assert status.json()["role_code"] == "operator"
-    assert owner_reassignment.status_code == 409, owner_reassignment.text
+    assert owner_reassignment.status_code == 409, describe_response(
+        "reassign the owner role returns 409", owner_reassignment
+    )
 
     async with _invitation_api(db_session, tenant, monkeypatch) as client:
         owner_access = await client.get("/api/v1/organizations/current/access")
@@ -1114,11 +1161,17 @@ async def test_role_precedence_is_consistent_in_listing_access_and_role_change(
     ) as client:
         viewer_access = await client.get("/api/v1/organizations/current/access")
 
-    assert owner_access.status_code == 200, owner_access.text
+    assert owner_access.status_code == 200, describe_response(
+        "owner access returns 200", owner_access
+    )
     assert owner_access.json()["role_code"] == "owner"
-    assert operator_access.status_code == 200, operator_access.text
+    assert operator_access.status_code == 200, describe_response(
+        "operator access returns 200", operator_access
+    )
     assert operator_access.json()["role_code"] == "operator"
-    assert viewer_access.status_code == 200, viewer_access.text
+    assert viewer_access.status_code == 200, describe_response(
+        "viewer access returns 200", viewer_access
+    )
     assert viewer_access.json()["role_code"] == "viewer"
     assert viewer_access.json()["permissions"] == []
 
@@ -1196,7 +1249,9 @@ async def _revoke_through_api(
         response = await client.delete(
             f"/api/v1/organizations/invitations/{invitation_id}"
         )
-    assert response.status_code == 204, response.text
+    assert response.status_code == 204, describe_response(
+        "revoke through the api returns 204", response
+    )
 
 
 @pytest.mark.asyncio
@@ -1241,7 +1296,9 @@ async def test_reopening_a_revoked_invitation_reuses_the_row_and_rotates_the_lin
         new_token = _token_from_invite_url(response.json().get("invite_url"))
         new_preview = await client.get(f"/api/v1/invitations/{new_token}")
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "reopen a revoked invitation returns 200", response
+    )
     body = response.json()
     assert body["id"] == str(invitation["id"])
     assert body["email"] == email
@@ -1252,8 +1309,12 @@ async def test_reopening_a_revoked_invitation_reuses_the_row_and_rotates_the_lin
     assert _as_datetime(body["expires_at"]) > before[0]["expires_at"]
     assert _as_datetime(body["updated_at"]) > past
 
-    assert old_preview.status_code == 404, old_preview.text
-    assert new_preview.status_code == 200, new_preview.text
+    assert old_preview.status_code == 404, describe_response(
+        "old link preview returns 404", old_preview
+    )
+    assert new_preview.status_code == 200, describe_response(
+        "new link preview returns 200", new_preview
+    )
     assert new_preview.json()["invitation_id"] == str(invitation["id"])
     assert new_preview.json()["status"] == "pending"
 
@@ -1288,7 +1349,9 @@ async def test_reopening_an_invitation_that_is_not_revoked_returns_409_without_w
                 f"/api/v1/invitations/{token}/accept",
                 json={"password": "Secret1234!", "full_name": "Reopen Accepted"},
             )
-        assert accepted.status_code == 200, accepted.text
+        assert accepted.status_code == 200, describe_response(
+            "accept before reopen not revoked returns 200", accepted
+        )
 
     before = await _stored_invitation_details(db_session, tenant, email)
 
@@ -1297,7 +1360,9 @@ async def test_reopening_an_invitation_that_is_not_revoked_returns_409_without_w
             f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "reopen a not revoked invitation returns 409", response
+    )
     body = response.json()
     assert body["code"] == "INVITATION_NOT_REVOKED"
     assert isinstance(body["detail"], str) and body["detail"]
@@ -1340,7 +1405,9 @@ async def test_reopening_with_another_live_pending_invitation_returns_409_withou
             f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == 409, describe_response(
+        "reopen with another live pending returns 409", response
+    )
     assert response.json()["code"] == "INVITATION_OTHER_PENDING"
 
     after = await _stored_invitation_details(db_session, tenant, email)
@@ -1382,7 +1449,9 @@ async def test_reopening_materializes_another_expired_pending_in_the_same_transa
             f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, describe_response(
+        "reopen materializing an expired pending returns 200", response
+    )
     assert response.json()["id"] == str(revoked["id"])
     assert response.json()["status"] == "pending"
 
@@ -1394,6 +1463,129 @@ async def test_reopening_materializes_another_expired_pending_in_the_same_transa
     entries = await _invitation_audit_entries(db_session, tenant)
     assert len(entries) == 1
     assert str(entries[0]["entity_id"]) == str(revoked["id"])
+
+
+@pytest.mark.asyncio
+async def test_reopen_failure_after_materializing_rolls_back_both_writes(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    """RF-001: un fallo tras materializar y reabrir revierte las dos escrituras.
+
+    El doble de ``record_invitation_audit`` se ejecuta dentro de la transacción
+    de la petición, después de ``_materialize_expired_pending`` y del ``UPDATE``
+    que reabre la revocada, y antes del cierre: lee ambas filas y el recuento de
+    auditoría, y después lanza. El caso límite 5 exige una respuesta HTTP 500,
+    no una excepción propagada (``raise_app_exceptions=False``).
+    """
+
+    tenant = await tenant_factory("Invitation Reopen Atomicity")
+    email = f"reopen-atomic-{uuid4().hex}@example.com"
+    revoked_token = f"reopen-atomic-old-{uuid4().hex}"
+    revoked = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=revoked_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, revoked["id"])
+    stale = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-atomic-stale-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+
+    before = {
+        row["id"]: row
+        for row in await _stored_invitation_details(db_session, tenant, email)
+    }
+    assert set(before) == {revoked["id"], stale["id"]}
+    assert before[revoked["id"]]["status"] == "revoked"
+    assert before[stale["id"]]["status"] == "pending"
+    revoked_token_hash = before[revoked["id"]]["token_hash"]
+
+    observed: dict[str, object] = {}
+
+    async def failing_audit(
+        db,
+        *,
+        organization_id,
+        member_id,
+        invitation_id,
+        action,
+        payload,
+    ):
+        # Dentro de la transacción de la petición: las dos escrituras ya
+        # ocurrieron, pero todavía no hay commit.
+        materialized = await db.execute(
+            text("SELECT status FROM organization_invitations WHERE id = :id"),
+            {"id": str(stale["id"])},
+        )
+        observed["materialized_status"] = materialized.scalar_one()
+        reopened = await db.execute(
+            text("""
+                SELECT status, token_hash
+                FROM organization_invitations
+                WHERE id = :id
+            """),
+            {"id": str(revoked["id"])},
+        )
+        reopened_row = reopened.mappings().one()
+        observed["reopened_status"] = reopened_row["status"]
+        observed["reopened_token_hash"] = reopened_row["token_hash"]
+        audit_rows = await db.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM administrative_audit_logs
+                WHERE entity_id = :entity_id
+            """),
+            {"entity_id": str(invitation_id)},
+        )
+        observed["audit_rows"] = audit_rows.scalar_one()
+        observed["action"] = action
+        raise RuntimeError("fallo inducido: después de materializar y antes del commit")
+
+    monkeypatch.setattr(invitations_router, "record_invitation_audit", failing_audit)
+
+    sent: list[dict] = []
+
+    async def recording_email(*args, **kwargs):
+        sent.append({"args": args, "kwargs": kwargs})
+
+    async with _invitation_api(
+        db_session, tenant, monkeypatch, raise_app_exceptions=False
+    ) as client:
+        # Después del que instala `_invitation_api`: el envío se registra, no se omite.
+        monkeypatch.setattr(invitations_router, "send_invitation_email", recording_email)
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
+        )
+
+    assert response.status_code == 500, describe_response(
+        "reopen with an induced failure after materializing returns 500", response
+    )
+    # El cuerpo es exactamente el 500 saneado de Starlette: no lleva invite_url
+    # (ni nada más) y el token revocado no aparece.
+    assert response.text == "Internal Server Error"
+    assert revoked_token not in response.text
+
+    # El fallo ocurrió en el punto declarado: las dos escrituras eran visibles.
+    assert observed, "el doble de auditoría debe ejecutarse dentro de la petición"
+    assert observed["action"] == "REOPEN_INVITATION"
+    assert observed["materialized_status"] == "expired"
+    assert observed["reopened_status"] == "pending"
+    assert observed["reopened_token_hash"] != revoked_token_hash
+    assert observed["audit_rows"] == 0
+
+    after = {
+        row["id"]: row
+        for row in await _stored_invitation_details(db_session, tenant, email)
+    }
+    assert after == before
+    assert await _invitation_audit_entries(db_session, tenant) == []
+    assert sent == []
 
 
 @pytest.mark.asyncio
@@ -1427,7 +1619,9 @@ async def test_reopening_without_member_management_permission_returns_403_withou
             f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
         )
 
-    assert response.status_code == 403, response.text
+    assert response.status_code == 403, describe_response(
+        "reopen without member management permission returns 403", response
+    )
     assert "invite_url" not in response.text
 
     after = await _stored_invitation_details(db_session, tenant, email)
@@ -1458,7 +1652,9 @@ async def test_reopening_an_invitation_from_another_organization_returns_404(
             f"/api/v1/organizations/invitations/{invitation_b['id']}/reopen"
         )
 
-    assert response.status_code == 404, response.text
+    assert response.status_code == 404, describe_response(
+        "reopen a foreign invitation returns 404", response
+    )
 
     after = await _stored_invitation_details(db_session, tenant_b, email)
     assert after == before
@@ -1484,7 +1680,9 @@ async def test_reopening_records_exactly_one_audit_entry_and_conflicts_record_no
         success = await client.post(
             f"/api/v1/organizations/invitations/{reopened['id']}/reopen"
         )
-    assert success.status_code == 200, success.text
+    assert success.status_code == 200, describe_response(
+        "reopen audit success returns 200", success
+    )
 
     live_token = f"reopen-audit-live-{uuid4().hex}"
     live_email = f"reopen-audit-live-{uuid4().hex}@example.com"
@@ -1499,7 +1697,9 @@ async def test_reopening_records_exactly_one_audit_entry_and_conflicts_record_no
         conflict = await client.post(
             f"/api/v1/organizations/invitations/{live['id']}/reopen"
         )
-    assert conflict.status_code == 409, conflict.text
+    assert conflict.status_code == 409, describe_response(
+        "reopen live audit conflict returns 409", conflict
+    )
     assert conflict.json()["code"] == "INVITATION_NOT_REVOKED"
 
     entries = await _invitation_audit_entries(db_session, tenant)
@@ -1541,10 +1741,338 @@ async def test_reopening_with_a_failing_email_returns_502_and_keeps_the_row_pend
             f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
         )
 
-    assert response.status_code == 502, response.text
+    assert response.status_code == 502, describe_response(
+        "reopen with a failing email returns 502", response
+    )
 
     after = await _stored_invitation_details(db_session, tenant, email)
     assert len(after) == 1
     assert after[0]["status"] == "pending"
     assert after[0]["revoked_at"] is None
     assert after[0]["token_hash"] != before[0]["token_hash"]
+
+
+# --- 011 / RF-002: el miembro sin rol no obtiene contexto --------------------
+
+
+async def _demo_tenant(session: AsyncSession) -> TenantContext:
+    """Resuelve la organización demo con el rol de aplicación.
+
+    ``users`` solo concede ``SELECT`` por columna al rol de aplicación y
+    ``organizations`` no concede ninguno, así que la organización se resuelve
+    por su clave de negocio con ``list_user_organizations()`` después de fijar
+    ``app.current_user_id``. Sin ``scripts.seed_demo`` la prueba se omite.
+    """
+
+    owner = await session.execute(
+        text("SELECT id FROM users WHERE LOWER(email) = 'demo.owner@bracketcraft.dev'")
+    )
+    owner_user_id = owner.scalar_one_or_none()
+    if owner_user_id is None:
+        pytest.skip("La base no contiene demo.owner: falta scripts.seed_demo")
+    await set_rls_context(session, None, owner_user_id)
+    result = await session.execute(
+        text("""
+            SELECT id, slug, organization_user_id
+            FROM list_user_organizations()
+        """)
+    )
+    demo_row = next(
+        (
+            dict(row)
+            for row in result.mappings().all()
+            if row["slug"] == "demo-federation"
+        ),
+        None,
+    )
+    if demo_row is None:
+        pytest.skip("La base no contiene demo-federation: falta scripts.seed_demo")
+    await set_rls_context(session, demo_row["id"], owner_user_id)
+    return TenantContext(
+        organization_id=demo_row["id"],
+        user_id=owner_user_id,
+        member_id=demo_row["organization_user_id"],
+    )
+
+
+class _RequestScopedSession:
+    """Sesión de la petición: cada ``begin()`` abre un savepoint revertible."""
+
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    def begin(self):
+        return self._session.begin_nested()
+
+    def __getattr__(self, name: str):
+        return getattr(self._session, name)
+
+
+@asynccontextmanager
+async def _invitation_api_as_user(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    organization_id: UUID,
+):
+    """Cliente auténtico: solo sustituye la sesión y la identidad de la prueba.
+
+    La dependencia que resuelve la organización y el rol del usuario se ejecuta
+    de verdad contra PostgreSQL con el header ``X-Organization-ID``; un miembro
+    activo sin ninguna fila de rol la ve rechazar antes de que el handler se
+    ejecute. Las acciones protegidas usan el mismo cliente para demostrar que
+    ninguna llega a su handler.
+    """
+
+    async def database():
+        yield _RequestScopedSession(session)
+
+    async def current_user():
+        return user_id
+
+    api.dependency_overrides[get_db] = database
+    api.dependency_overrides[get_current_user_id] = current_user
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api),
+            base_url="http://test",
+            headers={"X-Organization-ID": str(organization_id)},
+        ) as client:
+            yield client
+    finally:
+        api.dependency_overrides.pop(get_db, None)
+        api.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.mark.asyncio
+async def test_member_without_role_is_rejected_before_the_handler(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    """RF-002: sin rol no hay contexto; el 403 se emite antes del handler.
+
+    El sujeto es un miembro activo de la organización demo **sin ninguna fila
+    de rol**. El cliente solo sustituye la sesión y la identidad de la prueba:
+    la dependencia que resuelve la organización y el rol se ejecuta de verdad
+    contra PostgreSQL, de modo que ninguna acción protegida llega al handler,
+    no lee ni modifica invitaciones, no emite enlace, no envía correo y no
+    escribe auditoría.
+    """
+
+    rejection = {"detail": "Membresía o rol activo no válido"}
+    demo = await _demo_tenant(db_session)
+
+    subject_user_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (:email, 'integration-test-hash', 'Member Without Role')
+                RETURNING id
+            """),
+            {"email": f"no-role-{uuid4().hex}@example.test"},
+        )
+    ).scalar_one()
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    subject_member_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO organization_users (organization_id, user_id)
+                VALUES (:organization_id, :user_id)
+                RETURNING id
+            """),
+            {
+                "organization_id": str(demo.organization_id),
+                "user_id": str(subject_user_id),
+            },
+        )
+    ).scalar_one()
+    assigned_roles = (
+        await db_session.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM organization_user_roles
+                WHERE organization_user_id = :member_id
+            """),
+            {"member_id": str(subject_member_id)},
+        )
+    ).scalar_one()
+    assert assigned_roles == 0
+
+    own_email = f"no-role-own-{uuid4().hex}@example.test"
+    own_token = f"no-role-own-{uuid4().hex}"
+    own_invitation = await _insert_tenant_invitation(
+        db_session,
+        demo,
+        email=own_email,
+        token=own_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    # CURRENT_TIMESTAMP es el inicio de la transacción de la prueba: se retrasa
+    # updated_at para que cualquier reescritura sea observable dentro de ella.
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    await db_session.execute(
+        text("UPDATE organization_invitations SET updated_at = :past WHERE id = :id"),
+        {
+            "past": datetime(2020, 1, 1, tzinfo=timezone.utc),
+            "id": str(own_invitation["id"]),
+        },
+    )
+    own_before = await _stored_invitation_details(db_session, demo, own_email)
+    audit_before = await _invitation_audit_entries(db_session, demo)
+
+    foreign = await tenant_factory("No Role Foreign")
+    foreign_email = f"no-role-foreign-{uuid4().hex}@example.test"
+    foreign_token = f"no-role-foreign-{uuid4().hex}"
+    foreign_invitation = await _insert_tenant_invitation(
+        db_session,
+        foreign,
+        email=foreign_email,
+        token=foreign_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    foreign_before = await _stored_invitation_details(db_session, foreign, foreign_email)
+
+    create_email = f"no-role-create-{uuid4().hex}@example.test"
+    sent: list[dict] = []
+
+    async def recording_email(*args, **kwargs):
+        sent.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr(invitations_router, "send_invitation_email", recording_email)
+
+    async with _invitation_api_as_user(
+        db_session,
+        user_id=subject_user_id,
+        organization_id=demo.organization_id,
+    ) as client:
+        access_first = await client.get("/api/v1/organizations/current/access")
+        access_second = await client.get("/api/v1/organizations/current/access")
+        members = await client.get("/api/v1/organizations/members")
+        role_change = await client.patch(
+            f"/api/v1/organizations/members/{demo.member_id}/role",
+            json={"role_code": "viewer"},
+        )
+        status_change = await client.patch(
+            f"/api/v1/organizations/members/{demo.member_id}/status",
+            json={"is_active": True},
+        )
+        created = await client.post(
+            "/api/v1/organizations/invitations",
+            json={"email": create_email, "role_code": "operator"},
+        )
+        resent = await client.post(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}/resend"
+        )
+        reopened = await client.post(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}/reopen"
+        )
+        revoked = await client.delete(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}"
+        )
+        missing = await client.delete(
+            f"/api/v1/organizations/invitations/{uuid4()}"
+        )
+        foreign_revoked = await client.delete(
+            f"/api/v1/organizations/invitations/{foreign_invitation['id']}"
+        )
+
+    responses = {
+        "access (first read)": access_first,
+        "access (second read)": access_second,
+        "list members": members,
+        "change member role": role_change,
+        "change member status": status_change,
+        "create invitation": created,
+        "resend invitation": resent,
+        "reopen invitation": reopened,
+        "revoke own invitation": revoked,
+        "revoke a missing invitation": missing,
+        "revoke a foreign invitation": foreign_revoked,
+    }
+    for label, response in responses.items():
+        # Un único mensaje por respuesta: el estado y, si existe, el `code`.
+        message = describe_response(label, response)
+        assert response.status_code == 403, message
+        # El detalle es el de la dependencia de contexto: el handler de la
+        # consulta de acceso responde «Rol activo no encontrado», así que este
+        # cuerpo demuestra que nunca llegó a ejecutarse.
+        assert response.json() == rejection, message
+        assert own_token not in response.text
+    assert access_first.json() == access_second.json()
+
+    assert await _stored_invitation_details(db_session, demo, own_email) == own_before
+    assert own_before[0]["status"] == "pending"
+    assert await _stored_invitation_details(db_session, demo, create_email) == []
+    assert await _stored_invitation_details(db_session, foreign, foreign_email) == foreign_before
+    assert await _invitation_audit_entries(db_session, demo) == audit_before
+    assert sent == []
+
+    # Guarda siempre activa: el helper nunca sustituye el contexto real.
+    helper_source = getsource(_invitation_api_as_user)
+    assert "get_auth_context" not in helper_source
+    assert "get_current_user_id" in helper_source
+
+
+@pytest.mark.asyncio
+async def test_member_with_viewer_role_resolves_access_through_the_real_dependency(
+    db_session: AsyncSession,
+):
+    """RF-002: con rol ``viewer`` asignado el contexto sí se resuelve.
+
+    Es el contraste explícito con el miembro sin rol: la membresía tiene una
+    fila real en ``organization_user_roles`` con el rol ``viewer``, que no
+    concede permisos, y la consulta de acceso responde 200.
+    """
+
+    demo = await _demo_tenant(db_session)
+    viewer_user_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (:email, 'integration-test-hash', 'Member With Viewer Role')
+                RETURNING id
+            """),
+            {"email": f"viewer-role-{uuid4().hex}@example.test"},
+        )
+    ).scalar_one()
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    viewer_member_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO organization_users (organization_id, user_id)
+                VALUES (:organization_id, :user_id)
+                RETURNING id
+            """),
+            {
+                "organization_id": str(demo.organization_id),
+                "user_id": str(viewer_user_id),
+            },
+        )
+    ).scalar_one()
+    await _grant_role(db_session, demo, viewer_member_id, "viewer")
+    assigned_roles = (
+        await db_session.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM organization_user_roles
+                WHERE organization_user_id = :member_id
+            """),
+            {"member_id": str(viewer_member_id)},
+        )
+    ).scalar_one()
+    assert assigned_roles == 1
+
+    async with _invitation_api_as_user(
+        db_session,
+        user_id=viewer_user_id,
+        organization_id=demo.organization_id,
+    ) as client:
+        access = await client.get("/api/v1/organizations/current/access")
+
+    assert access.status_code == 200, describe_response(
+        "a member with the viewer role keeps access to the organization", access
+    )
+    body = access.json()
+    assert body["role_code"] == "viewer"
+    assert body["permissions"] == []
+    assert body["organization_user_id"] == str(viewer_member_id)
+    assert body["organization_id"] == str(demo.organization_id)
