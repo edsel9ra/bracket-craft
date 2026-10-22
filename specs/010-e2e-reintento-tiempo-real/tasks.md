@@ -120,7 +120,7 @@ lockfile. Ninguna otra.
   devuelve nada); si se retira temporalmente el control de una vista, **su** spec falla y los otros dos
   siguen informando; `cd frontend && pnpm run typecheck:e2e` pasa.
 
-- [ ] **T7. Runner local, veredicto y gate de las tres vistas.** RF-004 (local), RF-005, RF-006
+- [x] **T7. Runner local, veredicto y gate de las tres vistas.** RF-004 (local), RF-005, RF-006
 - Hecho cuando: existe `frontend/e2e/run.ts` con `--no-stack`, reenvío de argumentos tras `--`, arranque
   acotado (`docker compose up -d --build --wait --wait-timeout 300`, ≤5 min, informado aparte), seed,
   ejecución de Playwright con `retries: 0`, agregación de `summary.json` y traducción a códigos de

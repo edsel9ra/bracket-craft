@@ -26,7 +26,7 @@ export default defineConfig({
   retries: 0,
   timeout: 240_000,
   expect: { timeout: 10_000 },
-  reporter: [['list']],
+  reporter: [['list'], ['./e2e/reporter.ts']],
   use: {
     baseURL,
     browserName: 'chromium',
