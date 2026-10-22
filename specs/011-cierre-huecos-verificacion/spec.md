@@ -1,6 +1,6 @@
 # Spec 011 — Cierre de los huecos de verificación de las specs 009 y 010
 
-Estado: aprobada (2026-10-22)
+Estado: implementada, validada por @reviewer y cerrada (2026-10-22).
 
 ## Contexto y objetivo
 

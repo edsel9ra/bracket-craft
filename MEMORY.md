@@ -2,35 +2,34 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Spec 011 en curso** (`specs/011-cierre-huecos-verificacion/`): T1–T7 implementadas; **T8/T9 bloqueadas** porque tras el reinicio del servidor la integración WSL de Docker Desktop no expone el demonio.
-- **§6 aprobada** para 004, 005, 008, 009 y 010. **Constitución 1.4.0** (job `e2e` en la §4). La 010 está cerrada.
-- **`main` protegida:** los cinco jobs son *required checks*, rama al día obligatoria (*strict*), sin force push ni borrado; los administradores pueden saltarse la regla. Estados de 001/004/005 reconciliados con la realidad.
+- **Sin specs abiertas.** Última cerrada: **011** (2026-10-22). **§6 aprobada** para 004, 005, 008, 009 y 010; **pendiente la de 011**.
+- **Constitución 1.4.0** (job `e2e` en la §4). **`main` protegida:** cinco *required checks*, *strict*, sin force push; los administradores pueden saltar la regla.
 
-## Spec 010 — E2E del reintento del tiempo real (cerrada 2026-10-22)
-- **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#6** (`0e735e1`); CI en verde, incluido el job `e2e` (**3m10s** en la PR, omitido en push de rama). **Sin migraciones.** **§6 aprobada por el usuario (2026-10-22).**
-- **Producto:** estado `retrying` («Reintentando…»/«Retrying…»), distinto del automático, `role="status"` en las tres vistas; **solo** lo fija el clic si `connect()` inicia un intento nuevo (un no-op no lo pinta y el E2E se pone rojo).
-- **Arnés:** `frontend/e2e/` (Playwright 1.64.1, Chromium headless, `retries: 0`), interceptor `pass/hold/abort` + `routeWebSocket`, escenario bloquear → error → clic → estado manual → error → desbloquear → conectado; ≤1 recarga por consumidor y 0 del documento; sin conteo de sesiones ni identificador en el artefacto.
-- **Artefactos saneados:** `summary.json`, `view-<vista>.json`, `trace-<vista>.jsonl`, `server.log`; sin cookies/tokens/`trace.zip`. `frontend/.auth/` y `e2e-report/` ignorados.
-- **Runner:** `pnpm run e2e` / `e2e:test`, códigos 0/1/2/3 (verde, comportamiento, infraestructura, inválida). Evidencia: frontend **236 tests**, typecheck/typecheck:e2e/build; **11 corridas verdes**; backend 793 passed/206 skipped (sin tocar backend).
-- **Observador determinista** (`statusObserver.ts`): registra el estado manual tras cada clic; corrigió un falso rojo intermitente.
+## Spec 011 — Cierre de huecos de verificación (cerrada 2026-10-22)
+- PR **#7** (`6fa19c3`); CI en verde incluido `e2e` (2m31s). **Sin migraciones ni cambios de producto.**
+- **C-2 atómica:** fallo inducido tras materializar → 500, ambas escrituras revertidas, sin auditoría ni correo.
+- **Miembro sin rol:** contrato real **403** probado contra el endpoint auténtico; el 200/`viewer`/`[]` exige el rol `viewer` asignado.
+- **Sonda de outbox:** `scripts.outbox_probe` + paso 7 del script del worker; solo desarrollo/local, RLS, marcador, presupuesto 120 s y limpieza; sin datos demo → **2** sin escribir.
+- **Mensajes de fallo:** 37 migrados a `describe_response` (lista blanca de `code`); las 3 comprobaciones de contenido intactas.
+- **Artefactos E2E:** `transitions` aditivo (`schemaVersion` 1), captura solo en fallo, `server.log` disponible con cabecera **y** contenido, fallback de CI que no reescribe.
+- Evidencia: backend **1074 passed** con base 023; frontend **247 tests**, typecheck/typecheck:e2e/build; E2E verde con `server.log` de 236 líneas y sin capturas.
 
-## Spec 009 — Invitaciones y salud del worker (cerrada 2026-10-21)
-- PR **#5** (`3535b98`); C-1 reenviar revocada → 409; C-2 reapertura materializa vencidas; «Reabrir» 200 con token nuevo; solo la reapertura audita; `code` aditivo en los 409 de crear/reenviar/reabrir. **§6 aprobada por el usuario.**
-- Salud: 90 s/10 s sin cambio funcional; `verify_worker_loop_health.sh` verifica `healthy → unhealthy → healthy` con SIGSTOP.
+## Spec 010 — E2E del reintento (cerrada 2026-10-22)
+- PR #6 (`0e735e1`); estado `retrying` («Reintentando…»/«Retrying…») solo si el clic inicia un intento; Playwright en `frontend/e2e/`, job `e2e` en PR y push a `main`; artefactos saneados. **§6 aprobada.**
 
-## Spec 008 — Higiene P2 (cerrada 2026-10-21)
-- PR #3 (`393f9fb`); RF R18–R32; migraciones aditivas **022/023**; riesgos R20, R22, R24, R26, R32f. **§6 aprobada.**
+## Specs 008 y 009 (cerradas 2026-10-21)
+- **008:** PR #3 (`393f9fb`); RF R18–R32; migraciones aditivas **022/023**. **009:** PR #5 (`3535b98`); C-1 reenviar revocada 409, C-2 materialización al reabrir, «Reabrir» 200, `code` aditivo; salud 90 s/10 s. Ambas con **§6 aprobada**.
 
 ## Specs anteriores
-- 001–004 cerradas; 005 cerrada (§6 aprobada; riesgo residual de sorteos Swiss en frío); 006 PR #1 (`7284756`); 007 PR #2 (`dc86270`), migración 021 antes del código.
+- 001–004 cerradas; 005 cerrada con §6 (riesgo residual de sorteos Swiss en frío); 006 PR #1 (`7284756`); 007 PR #2 (`dc86270`), migración 021 antes del código.
 - Dependencias: `braces` 3.0.3 y `node-forge` 1.4.0 con altos sin parche upstream.
 
 ## Entorno local
-- Backend: `python:3.14-slim` con repo montado + `pip install -r backend/requirements*.txt`; frontend en `node:24-alpine` (pnpm 12.12.1) y E2E en `mcr.microsoft.com/playwright:v1.64.1-noble` con red host. Sin venv ni PostgreSQL local.
+- Backend: `python:3.14-slim` con repo montado + `pip install -r backend/requirements*.txt`; frontend en `node:24-alpine`; E2E en `mcr.microsoft.com/playwright:v1.64.1-noble` con red host y socket de Docker (`COMPOSE_PROJECT_NAME=bracket-craft`).
 - Base local en **023** con smoke OK. Si el volumen se creó con otra `BRACKET_DB_PASSWORD`, `bracket_app` conserva la clave vieja: `127.0.0.1` es `trust` y la red usa `scram` → **28P01**; alinear con `ALTER ROLE`.
-- `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`). Docker 29.9.1; Trivy con `aquasec/trivy` y caché local si falla la descarga.
+- `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`). Tras reiniciar el servidor, si Docker Desktop pierde la integración WSL, los contenedores antiguos montan `/app` vacío: `docker compose up -d --force-recreate`.
 
 ## Pendiente
-- **Reactivar Docker Desktop/WSL:** habilitar la integración con la distro Ubuntu (Settings → Resources → WSL Integration) y volver a levantar la pila; después reanudar **T8** (`pnpm run e2e` real con `server.log`) y **T9** (validación completa).
+- **§6 de la 011:** revisión humana pendiente.
 - **Despliegue en servidor:** paquete en `docs/runbook-despliegue-019-023.md` (ventana recomendada → 019…023 → código → smoke). En local ya está en 023.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).

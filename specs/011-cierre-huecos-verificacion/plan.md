@@ -1,7 +1,7 @@
 # Plan 011 — Cierre de los huecos de verificación de las specs 009 y 010
 
 Spec: `specs/011-cierre-huecos-verificacion/spec.md` (**aprobada 2026-10-22**).
-Estado del plan: propuesto (fase 3 cerrada a la espera de aprobación).
+Estado del plan: aprobado e implementado; validación cerrada el 2026-10-22; corrección de la ronda 1 (códigos del worker, RF-007/AGENTS, contrato del README, fallback de CI) y ajuste del timeout de CI.
 
 ## Objetivo y alcance técnico
 
