@@ -16,6 +16,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Spec 010 — E2E del reintento (cerrada 2026-10-22)
 - PR #6 (`0e735e1`); estado `retrying` («Reintentando…»/«Retrying…») solo si el clic inicia un intento; Playwright en `frontend/e2e/`, job `e2e` en PR y push a `main`; artefactos saneados. **§6 aprobada.**
+- El job `e2e` ejecuta el escenario **dentro del contenedor oficial de Playwright** (`--network host`), sin `apt` ni caché de navegadores: el `install --with-deps` agotaba el timeout por el espejo de `apt` del runner.
 
 ## Specs 008 y 009 (cerradas 2026-10-21)
 - **008:** PR #3 (`393f9fb`); RF R18–R32; migraciones aditivas **022/023**. **009:** PR #5 (`3535b98`); C-1 reenviar revocada 409, C-2 materialización al reabrir, «Reabrir» 200, `code` aditivo; salud 90 s/10 s. Ambas con **§6 aprobada**.

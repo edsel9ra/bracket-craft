@@ -219,17 +219,6 @@ jobs:
         working-directory: frontend
         timeout-minutes: 5
         run: pnpm install --frozen-lockfile
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-ms-playwright-
-      - name: Install Chromium only
-        working-directory: frontend
-        timeout-minutes: 10
-        run: pnpm exec playwright install --with-deps chromium
       - name: Typecheck the end-to-end harness
         working-directory: frontend
         timeout-minutes: 5
@@ -245,10 +234,18 @@ jobs:
         run: docker compose exec -T api python -m scripts.seed_demo
       # Veredicto propio 0/1/2/3 (verde, comportamiento, infraestructura,
       # corrida inválida). Sin reintentos: playwright.config.ts fija retries: 0.
+      # El escenario corre dentro del contenedor oficial de Playwright, que ya
+      # trae Chromium y sus dependencias de sistema: nada de apt en el runner.
       - name: Run the realtime retry end-to-end scenario
-        working-directory: frontend
         timeout-minutes: 16
-        run: pnpm run e2e:test
+        run: |
+          docker run --rm --network host \
+            -v "$GITHUB_WORKSPACE:/repo" \
+            -w /repo/frontend \
+            -e BASE_URL=http://localhost:3000 \
+            -e E2E_API_BASE=http://localhost:8000/api/v1 \
+            mcr.microsoft.com/playwright:v1.64.1-noble \
+            sh -lc 'corepack enable && corepack prepare pnpm@12.12.1 --activate >/dev/null 2>&1 && pnpm run e2e:test'
       # El volcado es diagnóstico: si el saneado fallara se omite el fichero,
       # nunca se publica el registro en crudo ni se convierte en el veredicto.
       # RF-008: con un server.log ya disponible no se vuelve a capturar ni se
