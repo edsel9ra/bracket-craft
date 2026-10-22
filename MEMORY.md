@@ -30,6 +30,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Entorno local
 - Backend: tests en contenedor `python:3.14-slim` (raíz montada + `pip install -r backend/requirements*.txt`); frontend en `node:24-alpine` con pnpm 12.12.1 vía corepack. Sin venv ni PostgreSQL local.
 - `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`), no a `postgres`.
+- Base local **en 023** (022/023 aplicadas y smoke OK). Si el volumen se creó con otra `BRACKET_DB_PASSWORD`, el rol `bracket_app` conserva la clave vieja: `127.0.0.1` es `trust` (una prueba con psql ahí no valida nada) y la red usa `scram`, así que api/worker fallan con **28P01**; alinear con `ALTER ROLE bracket_app PASSWORD ...`.
 - Docker disponible (engine 29.9.1): Compose y contenedores sí; Trivy con la imagen `aquasec/trivy`. `pip-audit -r` falla por `ensurepip` ausente.
 - Constitución en CRLF: `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
 
