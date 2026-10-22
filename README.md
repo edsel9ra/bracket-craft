@@ -24,7 +24,15 @@ El servicio `web` de desarrollo se ejecuta como `root` (`user: "0:0"` en `docker
 
 La API de desarrollo se publica solo en `127.0.0.1:8000`: el navegador la alcanza por esa interfaz local y el renderizado en servidor por la red interna. El servicio `web` conserva `3000:3000` porque es el punto de entrada del desarrollador y el flujo en Windows/WSL depende de esa publicación.
 
-Cada servicio declara su propia verificación de salud. La API comprueba `/health/ready` (base de datos y Redis); el web responde por HTTP con el recurso estático `/health.txt`, sin depender de la API ni de la base de datos una vez arrancado; el worker publica un latido de fichero cada 10 s y se considera caducado a los 90 s. El web espera una sola vez a que la API esté sana al arrancar. Con la base de datos detenida la API queda `unhealthy` (insana), el web sigue `healthy` y el worker sigue `healthy` mientras su bucle avance y reintente. El latido se escribe en `/tmp/bracket-craft-worker-heartbeat` y la ruta se configura con `WORKER_HEARTBEAT_PATH` en el proceso y en el healthcheck.
+Cada servicio declara su propia verificación de salud. La API comprueba `/health/ready` (base de datos y Redis); el web responde por HTTP con el recurso estático `/health.txt`, sin depender de la API ni de la base de datos una vez arrancado; el worker publica un latido de fichero cada **10 s** (`HEARTBEAT_INTERVAL_SECONDS`) y se declara **no sano** cuando su bucle no completa una vuelta en **90 s** (`HEARTBEAT_MAX_AGE_SECONDS`, la única fuente del umbral), haya o no eventos que procesar. Una **vuelta completada** es una iteración que termina, con o sin trabajo y con o sin error de la dependencia; un fallo de base de datos o Redis con el bucle girando y reintentando **no** cuenta como bucle detenido. El web espera una sola vez a que la API esté sana al arrancar. Con la base de datos detenida la API queda `unhealthy` (insana), el web sigue `healthy` y el worker sigue `healthy` mientras su bucle avance y reintente. El latido se escribe en `/tmp/bracket-craft-worker-heartbeat` y la ruta se configura con `WORKER_HEARTBEAT_PATH` en el proceso y en el healthcheck.
+
+La transición real se comprueba con un comando de operación reproducible:
+
+```sh
+sh infra/scripts/verify_worker_loop_health.sh [servicio|contenedor]
+```
+
+Congela solo el bucle de un worker vivo (`SIGSTOP` al PID 1 dentro del contenedor), observa el paso a `unhealthy` y lo reanuda (`SIGCONT`) hasta `healthy`, sin reiniciar el contenedor. Sale **0** si observa la transición, **1** si algún paso falla y **2** si no hay Docker o contenedor: en ese caso la verificación queda **no ejecutada** y no se sustituye por una prueba simulada. No forma parte de la suite que corre sin contenedores.
 
 ## Configuración y contrato de entorno
 
@@ -69,21 +77,37 @@ pnpm dev
 
 ## Contratos de invitación, presentación y versión
 
-Cambios de contrato de la spec 008 (higiene P2). Cliente y servidor se despliegan juntos; no hay periodo de transición ni parámetro que reactive el comportamiento anterior.
+Contratos de la spec 008 y cambios declarados de la spec 009 (C-1 y C-2). Cliente y servidor se despliegan juntos; no hay periodo de transición ni parámetro que reactive el comportamiento anterior.
 
-- **Invitación vencida.** Una invitación `pending` cuya fecha de vencimiento ya pasó se presenta como `expired` **sin reescribir la fila**; la lectura y la vista previa no escriben. El registro se materializa como vencido solo al **crear** y al **reenviar**.
+- **Invitación vencida.** Una invitación `pending` cuya fecha de vencimiento ya pasó se presenta como `expired` **sin reescribir la fila**; la lectura y la vista previa no escriben. El registro se materializa como vencido al **crear**, al **reenviar** y, desde la spec 009, al **reabrir** una revocada cuando el mismo correo tiene otra pendiente ya vencida (**tercera ruta**, cambio **C-2**). La materialización y la reapertura ocurren en la misma transacción y en ese orden; una pendiente **vigente** del mismo correo bloquea la reapertura con **409** y no se materializa.
 
   | Acción | Respuesta |
   |---|---|
   | `GET /organizations/invitations` | `expired` calculado por fila; no cambia el estado almacenado ni `updated_at` |
   | `POST /organizations/invitations` con una pendiente vencida del mismo correo | `201`: la anterior queda vencida y se crea la nueva |
-  | `POST /organizations/invitations` con una pendiente vigente | `409` (ya existe una invitación pendiente) |
+  | `POST /organizations/invitations` con una pendiente vigente | `409` `code: INVITATION_OTHER_PENDING` (ya existe una invitación pendiente), sin escribir |
+  | `POST /organizations/invitations` con solo una revocada del mismo correo | `201`: crea otra fila; la unicidad solo cubre las pendientes |
   | `DELETE /organizations/invitations/{id}` sobre una vencida | `409` («ya no está pendiente»), sin marcarla revocada ni reescribirla |
   | `POST /organizations/invitations/{id}/resend` sobre una vencida | `200`: reutiliza la fila y la deja `pending` con token y fecha nuevos |
-  | `POST /organizations/invitations/{id}/resend` con **otra** pendiente vigente del mismo correo | `409` (ya existe una invitación pendiente), sin escribir ni enviar correo |
+  | `POST /organizations/invitations/{id}/resend` sobre una **revocada** | `409` `code: INVITATION_REVOKED_RESEND` (cambio **C-1**): debe reabrirse; la fila queda intacta y no se envía correo |
+  | `POST /organizations/invitations/{id}/resend` sobre una aceptada | `409` `code: INVITATION_ALREADY_ACCEPTED`, sin escribir |
+  | `POST /organizations/invitations/{id}/resend` con **otra** pendiente vigente del mismo correo | `409` `code: INVITATION_OTHER_PENDING`, sin escribir ni enviar correo |
+  | `POST /organizations/invitations/{id}/reopen` sobre una revocada | `200`: misma fila `pending`, token y fecha nuevos, `revoked_at: null` e `invite_url` nuevo; el enlace anterior deja de resolver |
+  | `POST /organizations/invitations/{id}/reopen` sobre una revocada con **otra** pendiente **vencida** del mismo correo | `200`: materializa la otra como `expired` y después reabre (**C-2**); al final queda exactamente una pendiente |
+  | `POST /organizations/invitations/{id}/reopen` sobre una pendiente, una vencida o una aceptada | `409` `code: INVITATION_NOT_REVOKED`, sin renovar token ni fecha |
+  | `POST /organizations/invitations/{id}/reopen` con **otra** pendiente **vigente** del mismo correo | `409` `code: INVITATION_OTHER_PENDING`, sin escribir ni materializar |
+  | `POST /organizations/invitations/{id}/reopen` sin `MANAGE_MEMBERS` o con membresía de organización inválida | `403`, sin leer ni escribir la invitación |
+  | `POST /organizations/invitations/{id}/reopen` inexistente o de otra organización | `404`, sin revelar que existe |
   | `POST /invitations/{token}/accept` de una vencida | `410`, sin consumirla |
 
-  Se mantiene la unicidad de invitaciones pendientes por organización y correo.
+  Se mantiene la unicidad de invitaciones pendientes por organización y correo. La reapertura y el reenvío exigen `MANAGE_MEMBERS` y solo actúan sobre la organización activa; responden **502** si el correo falla después de escribir (la fila ya quedó pendiente) y no devuelven token como campo aparte ni datos de otra invitación.
+
+- **Reapertura y reenvío.** Revocar es definitivo hasta que se reabra: `POST /organizations/invitations/{id}/reopen` reutiliza la fila revocada, le asigna token y fecha de vencimiento nuevos y la deja pendiente, sin crear otra invitación; el enlace revocado nunca revive y solo el nuevo permite previsualizar y aceptar. Reenviar una revocada ya no la resucita: responde **409** y remite a reabrir (cambio **C-1**). La reapertura escribe **una** entrada `REOPEN_INVITATION` en `administrative_audit_logs` con la acción, la invitación y el miembro que la ejecuta, en la misma transacción y solo si hubo cambio efectivo; la entrada no contiene correo ni token. Crear, reenviar y revocar no auditan; la aceptación conserva `ACCEPT_INVITATION`.
+
+- **Identificador estable del 409.** Los 409 de **crear, reenviar y reabrir** añaden un campo aditivo `code` junto a `detail`, que sigue siendo una cadena y no cambia: `INVITATION_NOT_REVOKED`, `INVITATION_OTHER_PENDING`, `INVITATION_ALREADY_ACCEPTED` e `INVITATION_REVOKED_RESEND`. El 409 de **revocar una invitación vencida** conserva solo `detail`, sin `code`. El cliente traduce `code` al idioma activo y usa `detail` como respaldo; el servidor no negocia idioma. Los 409 no incluyen token, enlace ni correo, y los demás errores (403, 404, 410, 502) no cambian.
+
+- **Pantalla de miembros.** En `/workspace/members`, cada invitación ofrece solo la acción de su estado: «Reenviar» en pendientes y vencidas, «Reabrir» en revocadas, «Revocar» solo en pendientes vigentes y ninguna en aceptadas. Reabrir pide confirmación (el enlace anterior dejará de funcionar y se enviará un correo nuevo), los controles se deshabilitan mientras hay una operación de invitaciones en curso y, tras el éxito, la fila muestra el estado real, la fecha nueva y el **último** enlace emitido por el servidor, listo para copiar. Un 409 se explica en el idioma activo con la acción que corresponde usar, sin presentar la invitación como modificada.
+
 - **Aceptación sin token.** `POST /invitations/{token}/accept` ya no devuelve `access_token` ni `token_type` en el cuerpo: la sesión se entrega solo con la cookie de sesión. No hay versión, cabecera ni parámetro que reactive el token en el cuerpo; un consumidor externo que lo leyera debe usar la cookie.
 - **Rol por precedencia.** El rol mostrado de un miembro con varios roles sigue el orden **dueño → administrador → operador → árbitro → observador**, de forma consistente en el listado de miembros, la respuesta de cambio de rol y los datos de acceso de la sesión. Es una regla de **presentación**: la autorización sigue siendo aditiva por permisos y por `match_officials`, y el rol mostrado no concede permiso.
 - **Organización activa.** El servidor devuelve solo las organizaciones de la persona, activas y con membresía activa, en **orden estable** por nombre y, en empate, por identificador. El cliente (entrega 008C de la spec 008) restaura la última organización usada solo si su identificador aparece en esa lista; si no hay historial válido, activa la primera del orden estable. El servidor no guarda historial por navegador y revalida la membresía en cada petición.
@@ -431,7 +455,9 @@ El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un 
 
 ## Auditoría organizacional de la operación
 
-Guardar la planilla de un partido, publicar o despublicar la formación de un equipo y asignar o retirar un oficial dejan **una** entrada en `administrative_audit_logs` con la acción, el partido, el miembro que la ejecuta y un resumen (formaciones, conteos y un digest de contenido; nunca nombres, correos, documentos ni el contenido de la planilla).
+Guardar la planilla de un partido, publicar o despublicar la formación de un equipo, asignar o retirar un oficial y reabrir una invitación revocada dejan **una** entrada en `administrative_audit_logs` con la acción, el sujeto afectado, el miembro que la ejecuta y, en las acciones de partido, un resumen (formaciones, conteos y un digest de contenido; nunca nombres, correos, documentos ni el contenido de la planilla).
+
+- La reapertura de una invitación escribe `REOPEN_INVITATION` con la invitación y el miembro que la ejecuta, sin correo ni token; crear, reenviar y revocar invitaciones no añaden entradas y la aceptación conserva `ACCEPT_INVITATION`.
 
 - La entrada depende del **cambio efectivo**: repetir la misma publicación o el mismo guardado no añade nada aunque la petición actualice marcas de tiempo, y las lecturas no generan entradas.
 - La inserción ocurre en la misma transacción: una operación fallida o revertida no deja rastro, y no se duplica el registro del cierre de acta ni el de la interrupción de segmento.

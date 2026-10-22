@@ -34,6 +34,7 @@ from app.core.database import (
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
 from app.modules.identity.router import router as identity_router
+from app.modules.invitations.errors import InvitationConflict, conflict_body
 from app.modules.invitations.router import router as invitations_router
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.router import router as organizations_router
@@ -653,7 +654,22 @@ async def _pool_timeout_exception_handler(
     )
 
 
+async def _invitation_conflict_exception_handler(
+    _request: Request, exc: InvitationConflict
+) -> JSONResponse:
+    """Answer an invitation 409 with the stable ``code`` next to ``detail``.
+
+    The handler is registered once for the ``InvitationConflict`` subclass;
+    every route keeps raising the domain exception. ``detail`` stays a string
+    so existing clients and ``errorMessage`` keep working, and ``code`` is the
+    additive identifier the frontend translates.
+    """
+
+    return JSONResponse(status_code=exc.status_code, content=conflict_body(exc))
+
+
 api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
+api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
 api.add_exception_handler(PoolTimeoutError, _pool_timeout_exception_handler)
 

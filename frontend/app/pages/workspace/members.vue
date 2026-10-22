@@ -1,5 +1,17 @@
 <script setup lang="ts">
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import {
+  beginInvitationOperation,
+  invitationActionAriaKey,
+  invitationActionConfirmKey,
+  invitationActionErrorKey,
+  invitationActionLabelKey,
+  invitationActionsFor,
+  invitationControlsDisabled,
+  type InvitationAction,
+  type InvitationOperation,
+} from '~/utils/invitationActions';
+import { invitationConflictCode, invitationConflictMessageKey } from '~/utils/invitationErrors';
 import { invitationStatusLabelKey, memberStatusLabelKey, roleLabelKey } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
 
@@ -35,11 +47,24 @@ const members = ref<Member[]>([]);
 const invitations = ref<Invitation[]>([]);
 const loading = ref(true);
 const saving = ref(false);
+const invitationOperation = ref<InvitationOperation>('idle');
 const pageError = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const generatedLink = ref<string | null>(null);
 const inviteForm = reactive<{ email: string; role_code: MemberRole }>({ email: '', role_code: 'viewer' });
 const roles: MemberRole[] = ['administrator', 'operator', 'referee', 'viewer'];
+
+/** Estado de operación de invitaciones por acción; `saving` solo gobierna el directorio. */
+const OPERATION_BY_ACTION: Record<InvitationAction, InvitationOperation> = {
+  resend: 'resending',
+  reopen: 'reopening',
+  revoke: 'revoking',
+};
+
+/** Revocar conserva su confirmación de siempre; reabrir añade la suya (RF-006). */
+const REVOKE_CONFIRM_KEY = 'members.confirmRevoke';
+
+const isCreatingInvitation = computed(() => invitationOperation.value === 'creating');
 
 function isEditableRole(code: string): boolean {
   return roles.some((role) => role === code);
@@ -67,15 +92,19 @@ async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
   return false;
 }
 
+async function fetchLists(): Promise<[Member[], Invitation[]]> {
+  await auth.loadAccess();
+  return Promise.all([
+    request<Member[]>('/organizations/members'),
+    request<Invitation[]>('/organizations/invitations'),
+  ]);
+}
+
 async function loadData() {
   loading.value = true;
   pageError.value = null;
   try {
-    await auth.loadAccess();
-    const [memberRows, invitationRows] = await Promise.all([
-      request<Member[]>('/organizations/members'),
-      request<Invitation[]>('/organizations/invitations'),
-    ]);
+    const [memberRows, invitationRows] = await fetchLists();
     members.value = memberRows;
     invitations.value = invitationRows;
   } catch (cause) {
@@ -85,8 +114,33 @@ async function loadData() {
   }
 }
 
+/**
+ * Recarga las listas tras una petición de invitación fallida: el servidor pudo escribir
+ * antes de fallar (un 502 al enviar el correo llega **después** del commit) y la lista debe
+ * reflejar el estado real (RF-007). No toca `loading`, `pageError`, `actionError` ni
+ * `generatedLink`: si la recarga falla se conserva lo mostrado, el mensaje y el enlace.
+ */
+async function refreshInvitationLists() {
+  try {
+    const [memberRows, invitationRows] = await fetchLists();
+    members.value = memberRows;
+    invitations.value = invitationRows;
+  } catch (cause) {
+    await redirectOnSessionFailure(cause);
+  }
+}
+
+/** El 409 trae un `code` estable; el catálogo del idioma activo lo traduce (RF-007). */
+function invitationErrorMessage(cause: unknown, fallbackKey: string): string {
+  const key = invitationConflictMessageKey(invitationConflictCode(cause));
+  if (key) return t(key);
+  return errorMessage(cause, t(fallbackKey));
+}
+
 async function inviteMember() {
-  saving.value = true;
+  const operation = beginInvitationOperation(invitationOperation.value, 'creating');
+  if (operation === null) return;
+  invitationOperation.value = operation;
   actionError.value = null;
   generatedLink.value = null;
   try {
@@ -98,38 +152,51 @@ async function inviteMember() {
     inviteForm.email = '';
     await loadData();
   } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = errorMessage(cause, t('members.noInvite'));
+    if (!(await redirectOnSessionFailure(cause))) {
+      actionError.value = invitationErrorMessage(cause, 'members.noInvite');
+      await refreshInvitationLists();
+    }
   } finally {
-    saving.value = false;
+    invitationOperation.value = 'idle';
   }
 }
 
-async function resendInvitation(invitation: Invitation) {
-  saving.value = true;
+/** Un solo punto de entrada por activación: la compuerta evita la doble petición (RF-006). */
+async function runInvitationAction(action: InvitationAction, invitation: Invitation) {
+  const confirmKey = invitationActionConfirmKey(action) ?? (action === 'revoke' ? REVOKE_CONFIRM_KEY : null);
+  if (confirmKey && import.meta.client && !window.confirm(t(confirmKey))) return;
+  const operation = beginInvitationOperation(invitationOperation.value, OPERATION_BY_ACTION[action]);
+  if (operation === null) return;
+  invitationOperation.value = operation;
   actionError.value = null;
   try {
-    const updated = await request<Invitation>(`/organizations/invitations/${invitation.id}/resend`, { method: 'POST' });
-    generatedLink.value = updated.invite_url || null;
+    if (action === 'revoke') {
+      await request(`/organizations/invitations/${invitation.id}`, { method: 'DELETE' });
+    } else {
+      const path = action === 'reopen'
+        ? `/organizations/invitations/${invitation.id}/reopen`
+        : `/organizations/invitations/${invitation.id}/resend`;
+      const updated = await request<Invitation>(path, { method: 'POST' });
+      Object.assign(invitation, updated);
+      generatedLink.value = updated.invite_url || null;
+    }
     await loadData();
   } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = errorMessage(cause, t('members.noResend'));
+    if (!(await redirectOnSessionFailure(cause))) {
+      actionError.value = invitationErrorMessage(cause, invitationActionErrorKey(action));
+      await refreshInvitationLists();
+    }
   } finally {
-    saving.value = false;
+    invitationOperation.value = 'idle';
   }
 }
 
-async function revokeInvitation(invitation: Invitation) {
-  if (import.meta.client && !window.confirm(t('members.confirmRevoke'))) return;
-  saving.value = true;
-  actionError.value = null;
-  try {
-    await request(`/organizations/invitations/${invitation.id}`, { method: 'DELETE' });
-    await loadData();
-  } catch (cause) {
-    if (!(await redirectOnSessionFailure(cause))) actionError.value = errorMessage(cause, t('members.noRevoke'));
-  } finally {
-    saving.value = false;
-  }
+/** Etiqueta accesible con rol y fecha de vencimiento: nunca el correo completo (RF-005). */
+function invitationAria(action: InvitationAction, invitation: Invitation): string {
+  return t(invitationActionAriaKey(action), {
+    role: t(roleLabelKey(invitation.role_code)),
+    date: formatDate(invitation.expires_at),
+  });
 }
 
 async function changeRole(member: Member, event: Event) {
@@ -189,7 +256,7 @@ await loadData();
         <div v-else-if="pageError" class="form-error" role="alert">{{ pageError }}</div>
         <template v-else>
           <div class="members-grid">
-            <form class="panel" :aria-busy="saving" @submit.prevent="inviteMember">
+            <form class="panel" :aria-busy="invitationControlsDisabled(invitationOperation)" @submit.prevent="inviteMember">
               <div>
                 <p class="eyebrow">{{ t('members.inviteEyebrow') }}</p>
                 <h2>{{ t('members.inviteTitle') }}</h2>
@@ -197,7 +264,7 @@ await loadData();
               <label>{{ t('members.email') }}<input v-model="inviteForm.email" type="email" autocomplete="email" required /></label>
               <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in roles" :key="role" :value="role">{{ t(roleLabelKey(role)) }}</option></select></label>
               <p class="field-hint">{{ t('members.expiryHint') }}</p>
-              <button class="button-primary" type="submit" :disabled="saving">{{ saving ? t('common.processing') : t('members.invite') }}</button>
+              <button class="button-primary" type="submit" :disabled="invitationControlsDisabled(invitationOperation)">{{ isCreatingInvitation ? t('common.processing') : t('members.invite') }}</button>
               <div v-if="generatedLink" class="generated-link" role="status">
                 <strong>{{ t('members.generatedLink') }}</strong>
                 <input :value="generatedLink" readonly :aria-label="t('members.generatedLinkAria')" />
@@ -211,8 +278,7 @@ await loadData();
                 <li v-for="invitation in invitations" :key="invitation.id">
                   <div><strong>{{ invitation.email }}</strong><small>{{ t(roleLabelKey(invitation.role_code)) }} · {{ t(invitationStatusLabelKey(invitation.status)) }} · {{ formatDate(invitation.expires_at) }}</small></div>
                   <div class="row-actions">
-                    <button v-if="invitation.status !== 'accepted'" class="text-button" type="button" :disabled="saving" @click="resendInvitation(invitation)">{{ t('members.resend') }}</button>
-                    <button v-if="invitation.status === 'pending'" class="text-button danger" type="button" :disabled="saving" @click="revokeInvitation(invitation)">{{ t('members.revoke') }}</button>
+                    <button v-for="action in invitationActionsFor(invitation.status)" :key="action" class="text-button" :class="{ danger: action === 'revoke' }" type="button" :disabled="invitationControlsDisabled(invitationOperation)" :aria-label="invitationAria(action, invitation)" @click="runInvitationAction(action, invitation)">{{ t(invitationActionLabelKey(action)) }}</button>
                   </div>
                 </li>
               </ul>

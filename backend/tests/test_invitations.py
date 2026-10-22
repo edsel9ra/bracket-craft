@@ -1,9 +1,11 @@
+import json
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from inspect import getsource
+from urllib.parse import unquote
 from uuid import UUID, uuid4
 
 import pytest
@@ -19,11 +21,17 @@ from app.core.security import decode_access_token, get_optional_current_user_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.invitations import router as invitations_router
+from app.modules.invitations.errors import (
+    INVITATION_ALREADY_ACCEPTED,
+    INVITATION_OTHER_PENDING,
+    INVITATION_REVOKED_RESEND,
+)
 from app.modules.invitations.lifecycle import effective_invitation_status
 from app.modules.invitations.router import (
     _invitation_payload,
     _token_hash,
     list_invitations,
+    resend_invitation,
 )
 from db_helpers import TenantContext, create_test_organization
 
@@ -457,6 +465,18 @@ def test_invitation_listing_does_not_write():
     assert "EFFECTIVE_INVITATION_STATUS" in getsource(_invitation_payload).upper()
 
 
+def test_resending_a_revoked_invitation_checks_the_conflict_before_writing():
+    """RF-003: el 409 se decide antes de materializar y de reescribir la fila."""
+
+    source = getsource(resend_invitation).upper()
+
+    assert "RESEND_CONFLICT" in source
+    assert source.index("RESEND_CONFLICT") < source.index("_MATERIALIZE_EXPIRED_PENDING")
+    assert source.index("_MATERIALIZE_EXPIRED_PENDING") < source.index(
+        "UPDATE ORGANIZATION_INVITATIONS"
+    )
+
+
 async def _insert_tenant_invitation(
     session: AsyncSession,
     tenant: TenantContext,
@@ -634,6 +654,7 @@ async def test_creating_over_a_live_pending_invitation_returns_409(
         )
 
     assert response.status_code == 409, response.text
+    assert response.json()["code"] == INVITATION_OTHER_PENDING
     stored = await _stored_invitations(db_session, tenant, email)
     assert [row["status"] for row in stored] == ["pending"]
 
@@ -703,6 +724,7 @@ async def test_resending_reuses_an_expired_invitation_without_creating_a_new_one
         token=f"resend-{uuid4().hex}",
         expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
+    before = await _stored_invitation_details(db_session, tenant, email)
 
     async with _invitation_api(db_session, tenant, monkeypatch) as client:
         response = await client.post(
@@ -711,10 +733,13 @@ async def test_resending_reuses_an_expired_invitation_without_creating_a_new_one
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "pending"
+    assert "code" not in response.json()
     stored = await _stored_invitations(db_session, tenant, email)
     assert len(stored) == 1
     assert stored[0]["status"] == "pending"
     assert stored[0]["expires_at"] > invitation["expires_at"]
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert after[0]["token_hash"] != before[0]["token_hash"]
 
 
 @pytest.mark.asyncio
@@ -746,8 +771,105 @@ async def test_resending_an_expired_invitation_with_another_live_pending_returns
         )
 
     assert response.status_code == 409, response.text
+    assert response.json()["code"] == INVITATION_OTHER_PENDING
     assert "pendiente" in response.json()["detail"].lower()
     after = await _stored_invitations(db_session, tenant, email)
+    assert after == before
+
+
+@pytest.mark.asyncio
+async def test_resending_a_revoked_invitation_returns_409_without_writing_or_sending(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    """RF-003 (C-1): una revocada ya no se resucita por reenvío."""
+
+    tenant = await tenant_factory("Invitation Resend Revoked")
+    email = f"resend-revoked-{uuid4().hex}@example.com"
+    invitation = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"resend-revoked-old-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, invitation["id"])
+
+    # CURRENT_TIMESTAMP es el inicio de la transacción de la prueba: se retrasa
+    # updated_at para que cualquier reescritura sea observable dentro de la misma.
+    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    await set_rls_context(db_session, tenant.organization_id, tenant.user_id)
+    await db_session.execute(
+        text("""
+            UPDATE organization_invitations
+            SET updated_at = :past
+            WHERE id = :invitation_id
+        """),
+        {"past": past, "invitation_id": str(invitation["id"])},
+    )
+    before = await _stored_invitation_details(db_session, tenant, email)
+    assert before[0]["status"] == "revoked"
+    assert before[0]["revoked_at"] is not None
+
+    sent: list[tuple] = []
+
+    async def recording_email(*args, **kwargs):
+        sent.append(args)
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        monkeypatch.setattr(invitations_router, "send_invitation_email", recording_email)
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation['id']}/resend"
+        )
+
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["code"] == INVITATION_REVOKED_RESEND
+    assert isinstance(body["detail"], str)
+    assert body["detail"]
+    assert "invite_url" not in body
+    assert "token" not in json.dumps(body)
+    assert sent == []
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert after == before
+    assert after[0]["status"] == "revoked"
+    assert after[0]["revoked_at"] is not None
+    assert await _invitation_audit_entries(db_session, tenant) == []
+
+
+@pytest.mark.asyncio
+async def test_resending_an_accepted_invitation_returns_409_with_its_code(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Resend Accepted")
+    email = f"resend-accepted-{uuid4().hex}@example.com"
+    token = f"resend-accepted-{uuid4().hex}"
+    await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        accepted = await client.post(
+            f"/api/v1/invitations/{token}/accept",
+            json={"password": "Secret1234!", "full_name": "Invitado Reenvío"},
+        )
+    assert accepted.status_code == 200, accepted.text
+
+    before = await _stored_invitation_details(db_session, tenant, email)
+    assert [row["status"] for row in before] == ["accepted"]
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{before[0]['id']}/resend"
+        )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == INVITATION_ALREADY_ACCEPTED
+    after = await _stored_invitation_details(db_session, tenant, email)
     assert after == before
 
 
@@ -755,6 +877,8 @@ async def test_resending_an_expired_invitation_with_another_live_pending_returns
 async def test_resending_a_revoked_invitation_with_another_live_pending_returns_409(
     db_session: AsyncSession, tenant_factory, monkeypatch
 ):
+    """C-1 se evalúa antes que la otra pendiente: el motivo es el de la revocada."""
+
     tenant = await tenant_factory("Invitation Resend Revoked Conflict")
     email = f"resend-revoked-conflict-{uuid4().hex}@example.com"
     revoked = await _insert_tenant_invitation(
@@ -784,7 +908,7 @@ async def test_resending_a_revoked_invitation_with_another_live_pending_returns_
         )
 
     assert response.status_code == 409, response.text
-    assert "pendiente" in response.json()["detail"].lower()
+    assert response.json()["code"] == INVITATION_REVOKED_RESEND
     after = await _stored_invitations(db_session, tenant, email)
     assert after == before
 
@@ -1008,3 +1132,419 @@ async def test_role_precedence_is_consistent_in_listing_access_and_role_change(
     await require_permission(
         db_session, operator_context, "CLOSE_MATCH_REPORT", match_id=uuid4()
     )
+
+
+# --- 009 / RF-001, RF-002 y RF-004: reapertura de una invitación revocada -----
+
+
+def _as_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _token_from_invite_url(invite_url: str | None) -> str:
+    assert invite_url, "la respuesta debe incluir el enlace nuevo"
+    return unquote(invite_url.rsplit("/", 1)[-1])
+
+
+async def _stored_invitation_details(
+    session: AsyncSession,
+    tenant: TenantContext,
+    email: str,
+) -> list[dict]:
+    await set_rls_context(session, tenant.organization_id, tenant.user_id)
+    result = await session.execute(
+        text("""
+            SELECT id, status, expires_at, updated_at, revoked_at, token_hash
+            FROM organization_invitations
+            WHERE organization_id = :organization_id
+              AND email = :email
+            ORDER BY created_at, id
+        """),
+        {"organization_id": str(tenant.organization_id), "email": email},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def _invitation_audit_entries(
+    session: AsyncSession,
+    tenant: TenantContext,
+) -> list[dict]:
+    await set_rls_context(session, tenant.organization_id, tenant.user_id)
+    result = await session.execute(
+        text("""
+            SELECT entity_type, entity_id, action, payload, performed_by_member_id
+            FROM administrative_audit_logs
+            WHERE organization_id = :organization_id
+            ORDER BY performed_at, id
+        """),
+        {"organization_id": str(tenant.organization_id)},
+    )
+    entries = [dict(row) for row in result.mappings().all()]
+    for entry in entries:
+        if isinstance(entry["payload"], str):
+            entry["payload"] = json.loads(entry["payload"])
+    return entries
+
+
+async def _revoke_through_api(
+    session: AsyncSession,
+    tenant: TenantContext,
+    monkeypatch,
+    invitation_id: UUID,
+) -> None:
+    async with _invitation_api(session, tenant, monkeypatch) as client:
+        response = await client.delete(
+            f"/api/v1/organizations/invitations/{invitation_id}"
+        )
+    assert response.status_code == 204, response.text
+
+
+@pytest.mark.asyncio
+async def test_reopening_a_revoked_invitation_reuses_the_row_and_rotates_the_link(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen")
+    email = f"reopen-{uuid4().hex}@example.com"
+    old_token = f"reopen-old-{uuid4().hex}"
+    invitation = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=old_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, invitation["id"])
+
+    # CURRENT_TIMESTAMP es el inicio de la transacción de la prueba: se retrasa
+    # updated_at para que la reescritura sea observable dentro de la misma.
+    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    await set_rls_context(db_session, tenant.organization_id, tenant.user_id)
+    await db_session.execute(
+        text("""
+            UPDATE organization_invitations
+            SET updated_at = :past
+            WHERE id = :invitation_id
+        """),
+        {"past": past, "invitation_id": str(invitation["id"])},
+    )
+    before = await _stored_invitation_details(db_session, tenant, email)
+    assert len(before) == 1
+    assert before[0]["status"] == "revoked"
+    assert before[0]["revoked_at"] is not None
+    old_token_hash = before[0]["token_hash"]
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
+        )
+        old_preview = await client.get(f"/api/v1/invitations/{old_token}")
+        new_token = _token_from_invite_url(response.json().get("invite_url"))
+        new_preview = await client.get(f"/api/v1/invitations/{new_token}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == str(invitation["id"])
+    assert body["email"] == email
+    assert body["role_code"] == "operator"
+    assert body["status"] == "pending"
+    assert body["revoked_at"] is None
+    assert new_token != old_token
+    assert _as_datetime(body["expires_at"]) > before[0]["expires_at"]
+    assert _as_datetime(body["updated_at"]) > past
+
+    assert old_preview.status_code == 404, old_preview.text
+    assert new_preview.status_code == 200, new_preview.text
+    assert new_preview.json()["invitation_id"] == str(invitation["id"])
+    assert new_preview.json()["status"] == "pending"
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert len(after) == 1
+    assert after[0]["id"] == invitation["id"]
+    assert after[0]["status"] == "pending"
+    assert after[0]["revoked_at"] is None
+    assert after[0]["token_hash"] != old_token_hash
+    assert after[0]["expires_at"] > before[0]["expires_at"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_state", ["pending", "expired", "accepted"])
+async def test_reopening_an_invitation_that_is_not_revoked_returns_409_without_writing(
+    db_session: AsyncSession, tenant_factory, monkeypatch, stored_state
+):
+    tenant = await tenant_factory(f"Invitation Reopen {stored_state}")
+    email = f"reopen-not-revoked-{uuid4().hex}@example.com"
+    token = f"reopen-not-revoked-{uuid4().hex}"
+    expires_at = (
+        datetime.now(timezone.utc) - timedelta(minutes=5)
+        if stored_state == "expired"
+        else datetime.now(timezone.utc) + timedelta(hours=1)
+    )
+    invitation = await _insert_tenant_invitation(
+        db_session, tenant, email=email, token=token, expires_at=expires_at
+    )
+    if stored_state == "accepted":
+        async with _invitation_api(db_session, tenant, monkeypatch) as client:
+            accepted = await client.post(
+                f"/api/v1/invitations/{token}/accept",
+                json={"password": "Secret1234!", "full_name": "Reopen Accepted"},
+            )
+        assert accepted.status_code == 200, accepted.text
+
+    before = await _stored_invitation_details(db_session, tenant, email)
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
+        )
+
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["code"] == "INVITATION_NOT_REVOKED"
+    assert isinstance(body["detail"], str) and body["detail"]
+    assert "invite_url" not in body
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert after == before
+    # La aceptación conserva su entrada; un 409 no añade ninguna de reapertura.
+    entries = await _invitation_audit_entries(db_session, tenant)
+    assert [entry for entry in entries if entry["action"] == "REOPEN_INVITATION"] == []
+
+
+@pytest.mark.asyncio
+async def test_reopening_with_another_live_pending_invitation_returns_409_without_writing(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen Conflict")
+    email = f"reopen-other-pending-{uuid4().hex}@example.com"
+    revoked = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-other-pending-old-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, revoked["id"])
+    live = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-other-pending-live-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+
+    before = await _stored_invitation_details(db_session, tenant, email)
+    assert sorted(row["status"] for row in before) == ["pending", "revoked"]
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
+        )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INVITATION_OTHER_PENDING"
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert after == before
+    assert {row["id"]: row["status"] for row in after}[live["id"]] == "pending"
+    assert await _invitation_audit_entries(db_session, tenant) == []
+
+
+@pytest.mark.asyncio
+async def test_reopening_materializes_another_expired_pending_in_the_same_transaction(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen Materialization")
+    email = f"reopen-materialize-{uuid4().hex}@example.com"
+    revoked = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-materialize-old-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, revoked["id"])
+    stale = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-materialize-stale-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+
+    before = await _stored_invitation_details(db_session, tenant, email)
+    assert {row["id"]: row["status"] for row in before} == {
+        revoked["id"]: "revoked",
+        stale["id"]: "pending",
+    }
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{revoked['id']}/reopen"
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == str(revoked["id"])
+    assert response.json()["status"] == "pending"
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    statuses = {row["id"]: row["status"] for row in after}
+    assert statuses == {revoked["id"]: "pending", stale["id"]: "expired"}
+    assert list(statuses.values()).count("pending") == 1
+
+    entries = await _invitation_audit_entries(db_session, tenant)
+    assert len(entries) == 1
+    assert str(entries[0]["entity_id"]) == str(revoked["id"])
+
+
+@pytest.mark.asyncio
+async def test_reopening_without_member_management_permission_returns_403_without_writing(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen Forbidden")
+    email = f"reopen-forbidden-{uuid4().hex}@example.com"
+    invitation = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-forbidden-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, invitation["id"])
+    viewer_user_id, viewer_member_id, _ = await _create_organization_member(
+        db_session, tenant, full_name="Reopen Viewer"
+    )
+
+    before = await _stored_invitation_details(db_session, tenant, email)
+
+    async with _invitation_api(
+        db_session,
+        tenant,
+        monkeypatch,
+        member_id=viewer_member_id,
+        user_id=viewer_user_id,
+    ) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
+        )
+
+    assert response.status_code == 403, response.text
+    assert "invite_url" not in response.text
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert after == before
+    assert await _invitation_audit_entries(db_session, tenant) == []
+
+
+@pytest.mark.asyncio
+async def test_reopening_an_invitation_from_another_organization_returns_404(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant_a = await tenant_factory("Invitation Reopen Foreign A")
+    tenant_b = await tenant_factory("Invitation Reopen Foreign B")
+    email = f"reopen-foreign-{uuid4().hex}@example.com"
+    invitation_b = await _insert_tenant_invitation(
+        db_session,
+        tenant_b,
+        email=email,
+        token=f"reopen-foreign-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant_b, monkeypatch, invitation_b["id"])
+
+    before = await _stored_invitation_details(db_session, tenant_b, email)
+
+    async with _invitation_api(db_session, tenant_a, monkeypatch) as client:
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation_b['id']}/reopen"
+        )
+
+    assert response.status_code == 404, response.text
+
+    after = await _stored_invitation_details(db_session, tenant_b, email)
+    assert after == before
+    assert await _invitation_audit_entries(db_session, tenant_b) == []
+
+
+@pytest.mark.asyncio
+async def test_reopening_records_exactly_one_audit_entry_and_conflicts_record_none(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen Audit")
+    reopened_email = f"reopen-audit-{uuid4().hex}@example.com"
+    reopened = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=reopened_email,
+        token=f"reopen-audit-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, reopened["id"])
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        success = await client.post(
+            f"/api/v1/organizations/invitations/{reopened['id']}/reopen"
+        )
+    assert success.status_code == 200, success.text
+
+    live_token = f"reopen-audit-live-{uuid4().hex}"
+    live_email = f"reopen-audit-live-{uuid4().hex}@example.com"
+    live = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=live_email,
+        token=live_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        conflict = await client.post(
+            f"/api/v1/organizations/invitations/{live['id']}/reopen"
+        )
+    assert conflict.status_code == 409, conflict.text
+    assert conflict.json()["code"] == "INVITATION_NOT_REVOKED"
+
+    entries = await _invitation_audit_entries(db_session, tenant)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["entity_type"] == "organization_invitations"
+    assert entry["action"] == "REOPEN_INVITATION"
+    assert str(entry["entity_id"]) == str(reopened["id"])
+    assert str(entry["performed_by_member_id"]) == str(tenant.member_id)
+    assert entry["payload"] == {"previous_status": "revoked", "role_code": "operator"}
+    serialized_payload = json.dumps(entry["payload"])
+    assert reopened_email not in serialized_payload
+    assert live_email not in serialized_payload
+    assert "token" not in serialized_payload
+
+
+@pytest.mark.asyncio
+async def test_reopening_with_a_failing_email_returns_502_and_keeps_the_row_pending(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    tenant = await tenant_factory("Invitation Reopen Mail Failure")
+    email = f"reopen-mail-failure-{uuid4().hex}@example.com"
+    invitation = await _insert_tenant_invitation(
+        db_session,
+        tenant,
+        email=email,
+        token=f"reopen-mail-failure-{uuid4().hex}",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    await _revoke_through_api(db_session, tenant, monkeypatch, invitation["id"])
+    before = await _stored_invitation_details(db_session, tenant, email)
+
+    async def failing_email(*args, **kwargs):
+        raise OSError("el servidor SMTP no está disponible")
+
+    async with _invitation_api(db_session, tenant, monkeypatch) as client:
+        monkeypatch.setattr(invitations_router, "send_invitation_email", failing_email)
+        response = await client.post(
+            f"/api/v1/organizations/invitations/{invitation['id']}/reopen"
+        )
+
+    assert response.status_code == 502, response.text
+
+    after = await _stored_invitation_details(db_session, tenant, email)
+    assert len(after) == 1
+    assert after[0]["status"] == "pending"
+    assert after[0]["revoked_at"] is None
+    assert after[0]["token_hash"] != before[0]["token_hash"]
