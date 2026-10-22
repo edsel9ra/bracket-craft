@@ -50,7 +50,7 @@ lockfile. Ninguna otra.
   literal «Reintentando»/«Retrying»; `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run
   build` pasan.
 
-- [ ] **T3. Andamiaje del arnés, funciones puras de observación y etiquetas de los localizadores.** RNF-001, RNF-005, RF-002 (parte pura)
+- [x] **T3. Andamiaje del arnés, funciones puras de observación y etiquetas de los localizadores.** RNF-001, RNF-005, RF-002 (parte pura)
 - Hecho cuando: se escribe primero `frontend/tests/e2e-observations.test.ts` (rojo) y después
   `frontend/e2e/observations.ts` (`classifyReloads`, `assertScenarioOrder`, `expectedConnectionCount`,
   `isDuplicateReload`, `EXPECTED_VIEWS`, sin dependencias de Playwright y con todos los instantes y
