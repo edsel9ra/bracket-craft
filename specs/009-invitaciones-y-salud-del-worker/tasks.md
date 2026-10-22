@@ -9,7 +9,7 @@
 
 **Sin migraciones:** ninguna tarea toca `infra/postgres/migrations/` ni `init/` (RNF-002).
 
-- [ ] **T1. Contrato de error estable y guardas puras de invitación.** RF-002, RF-003, RF-004 (parte pura)
+- [x] **T1. Contrato de error estable y guardas puras de invitación.** RF-002, RF-003, RF-004 (parte pura)
 - Hecho cuando: se escribe primero `backend/tests/test_invitation_reopen_rules.py` (rojo) y luego `backend/app/modules/invitations/errors.py` con los códigos `INVITATION_NOT_REVOKED`, `INVITATION_OTHER_PENDING`, `INVITATION_ALREADY_ACCEPTED`, `INVITATION_REVOKED_RESEND`, la excepción `InvitationConflict(HTTPException)` (409, atributo `code`) y `conflict_body()`, `backend/app/modules/invitations/lifecycle.py` con `reopen_conflict(stored_status, has_live_pending)` y `resend_conflict(stored_status)` (puras, sin reloj ni BD), `backend/app/modules/invitations/audit.py` con `reopen_audit_payload()` (puro, sin correo, token ni nombre) y `record_invitation_audit()`, y el manejador de `InvitationConflict` registrado en `backend/app/main.py` que responde `{"detail": "<cadena>", "code": "<estable>"}`; `cd backend && pytest -q tests/test_invitation_reopen_rules.py` pasa y demuestra: revocada sin otra pendiente → `None`; pendiente, vencida y aceptada → `INVITATION_NOT_REVOKED`; revocada con otra pendiente vigente → `INVITATION_OTHER_PENDING`; reenviar aceptada y revocada → su código; el cuerpo del 409 conserva `detail` como cadena y añade `code`; el payload de auditoría solo contiene `previous_status` y `role_code`; `cd backend && pytest -q` sigue en verde y `cd backend && python -m compileall -q app` pasa.
 
 - [ ] **T2. Endpoint de reapertura con materialización previa y auditoría.** RF-001, RF-002, RF-004
