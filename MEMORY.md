@@ -5,7 +5,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Spec 009 cerrada** (2026-10-21). **Spec 010** (E2E navegador del reintento) en borrador con 3 dudas por resolver antes de planificar.
 
 ## Spec 009 — Invitaciones y salud del worker (cerrada 2026-10-21)
-- **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#5** (`3535b98`); commits `fc45cb8`…`94f9a3f`; CI en verde. **Sin migraciones.**
+- **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#5** (`3535b98`); commits `fc45cb8`…`94f9a3f`; CI en verde. **Sin migraciones.** **§6 aprobada por el usuario (2026-10-21).**
 - **C-1:** reenviar una revocada → **409** `INVITATION_REVOKED_RESEND`. **C-2:** la reapertura materializa las pendientes vencidas del correo (tercera ruta), en la misma transacción.
 - «Reabrir» (`POST /organizations/invitations/{id}/reopen`) → **200**, misma fila con token/fecha nuevos y `revoked_at` limpio; pendiente/aceptada u otra pendiente vigente → **409** sin escribir. Solo la reapertura audita (`REOPEN_INVITATION`); la aceptación conserva `ACCEPT_INVITATION`.
 - 409 con campo aditivo `code` en crear, reenviar y reabrir (revocar una vencida no lo lleva); `detail` sigue siendo cadena y el cliente traduce.
@@ -33,6 +33,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Pendiente
 - **Spec 010:** resolver las 3 dudas (frecuencia del job, navegadores, cómo simular la caída del tiempo real) y planificar.
-- **§6 de la 009:** revisión humana pendiente (la de 005 y 008 ya está aprobada).
 - **Despliegue en servidor:** 019 → 020 → 021 → 022 → 023 y el código, por ese orden; en local ya está hecho.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).
