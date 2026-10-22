@@ -22,6 +22,10 @@
 # ``APP_ENV`` (``python -m scripts.outbox_probe guard``): la sonda escribe en la
 # cola, así que fuera de desarrollo/local la verificación es NO EJECUTABLE
 # (código 2) y no toca el worker. La utilidad repite el guard en cada comando.
+# La sonda usa la organización y el propietario demo ya sembrados; si faltan o el
+# propietario no es miembro activo, la utilidad responde 2 sin escribir y la
+# verificación también es NO EJECUTABLE (código 2), tanto al insertar como si el
+# caso aparece al consultar el estado.
 #
 # Uso:
 #   sh infra/scripts/verify_worker_loop_health.sh [servicio|contenedor]
@@ -43,8 +47,10 @@
 #   1  fallo de comportamiento: algún paso falló (se indica cuál), incluida la
 #      sonda (failed, desaparecida o presupuesto agotado) y su borrado
 #   2  no ejecutable: falta Docker, falta el contenedor, los argumentos o las
-#      variables son inválidos, o el worker no está en desarrollo/local (no se
-#      escribe nada). La verificación queda declarada como NO EJECUTADA.
+#      variables son inválidos, faltan los datos demo (organización y
+#      propietario demo, o su membresía activa) o el worker no está en
+#      desarrollo/local (no se escribe nada). La verificación queda declarada
+#      como NO EJECUTADA.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -247,9 +253,19 @@ cleanup() {
             printf '   %s\n' "$delete_output" >&2
             PROBE_ID=""
         else
+            delete_status=$?
             printf 'FAIL: no se pudo borrar la sonda id=%s marcador=%s: %s\n' \
                 "$PROBE_ID" "$PROBE_MARKER" "$delete_output" >&2
-            status=1
+            if [ "$delete_status" -eq 2 ]; then
+                # El borrado tampoco es ejecutable (sin datos demo o fuera de
+                # desarrollo/local): la verificación no se puede ejecutar. Si ya
+                # había un fallo de comportamiento (1), ese veredicto prevalece.
+                if [ "$status" -eq 0 ]; then
+                    status=2
+                fi
+            else
+                status=1
+            fi
         fi
     fi
     exit "$status"
@@ -374,7 +390,18 @@ fi
 info "Paso 7: sonda de outbox procesada por el worker (máximo ${WORKER_PROBE_TIMEOUT}s)"
 PROBE_MARKER="worker-probe-$(date +%s)-$$-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \r\n')"
 probe_started=$(now_seconds)
-if ! insert_output=$(worker_exec python -m scripts.outbox_probe insert --marker "$PROBE_MARKER" 2>&1); then
+if insert_output=$(worker_exec python -m scripts.outbox_probe insert --marker "$PROBE_MARKER" 2>&1); then
+    insert_status=0
+else
+    insert_status=$?
+fi
+if [ "$insert_status" -eq 2 ]; then
+    # Sin datos demo (usuario/organización demo ausentes o propietario sin
+    # membresía activa) la sonda no se escribe: no es un fallo de comportamiento.
+    printf '   %s\n' "$insert_output" >&2
+    not_executable "datos demo ausentes en el worker (organización y propietario demo, o su membresía activa); la sonda no se escribió (paso 7)"
+fi
+if [ "$insert_status" -ne 0 ]; then
     fail "no se pudo insertar la sonda (paso 7): $insert_output"
 fi
 PROBE_ID=$(printf '%s' "$insert_output" | awk '{print $1}')
@@ -407,6 +434,12 @@ while :; do
             fail "la sonda desapareció de la cola (paso 7): id=$PROBE_ID marcador=$PROBE_MARKER"
             ;;
         *)
+            if [ "$probe_status" -eq 2 ]; then
+                # La utilidad dejó de poder ejecutarse a mitad de la verificación
+                # (por ejemplo, desaparecieron los datos demo): NO EJECUTABLE.
+                printf '   %s\n' "$probe_output" >&2
+                not_executable "la sonda dejó de ser ejecutable durante la verificación (paso 7)"
+            fi
             fail "la sonda devolvió una salida inesperada (código $probe_status; paso 7): $probe_output"
             ;;
     esac
