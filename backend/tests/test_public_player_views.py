@@ -1,5 +1,12 @@
 """Public player projections: definition, ownership and anonymous access (RF-005).
 
+The last blocks close RF-019: the public API responses (tournament players are
+only exposed through the published lineups) carry no age, document or birth
+date, and ``v_public_tournament_players`` stays an **internal** projection that
+no endpoint consumes. The projection keeps computing the derived age for the
+application role; «público» means an API response, not the application role's
+read access.
+
 These tests run as ``bracket_app`` (no superuser, no ``BYPASSRLS``) against a
 PostgreSQL instance migrated with 015. Every test builds its own organization,
 published tournament version, teams, players, rosters, match, segment and
@@ -16,13 +23,19 @@ feeds the wrapper stays inaccessible to the application role.
 from __future__ import annotations
 
 import re
+from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
+from app.main import api
 from db_helpers import clear_rls_context, insert_player, set_tenant_context
 
 TOURNAMENT_PLAYERS_VIEW = "v_public_tournament_players"
@@ -35,6 +48,35 @@ SENSITIVE_COLUMNS = (
     "national_id_hmac",
     "birth_date",
 )
+#: Derived or identifying player data that never belongs to a public response.
+FORBIDDEN_PUBLIC_KEYS = frozenset(
+    {
+        "age",
+        "public_age",
+        "birth_date",
+        "birth_date_encrypted",
+        "national_id",
+        "national_id_encrypted",
+        "national_id_hmac",
+        "document_type",
+    }
+)
+#: The player contract of ``GET /tournaments/public/{id}/matches``: no more keys.
+PUBLIC_LINEUP_PLAYER_KEYS = frozenset(
+    {
+        "player_id",
+        "first_name",
+        "last_name",
+        "dorsal_number",
+        "role",
+        "position_slot",
+        "photo_url",
+    }
+)
+FORBIDDEN_PUBLIC_VIEW_COLUMNS = frozenset(
+    {"age", "public_age", *SENSITIVE_COLUMNS}
+)
+BACKEND_APP_DIR = Path(__file__).resolve().parents[1] / "app"
 
 
 async def _create_tournament(
@@ -894,3 +936,224 @@ def _players_join_conditions(definition: str) -> list[str]:
         condition = segment.split(" ON ", 1)[1]
         conditions.append(re.split(r" (?:JOIN|LEFT|WHERE|GROUP|ORDER|UNION)\b", condition)[0])
     return conditions
+
+
+@asynccontextmanager
+async def _public_api(session):
+    """Run the real public endpoints against the test transaction.
+
+    The endpoints open their own ``db.begin()``, so every request gets a fresh
+    API session joined to the fixture's connection: it reads the rows the test
+    just created without committing them.
+    """
+
+    connection = await session.connection()
+
+    async def database():
+        request_session = AsyncSession(bind=connection, expire_on_commit=False)
+        try:
+            yield request_session
+        finally:
+            await request_session.close()
+
+    api.dependency_overrides[get_db] = database
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api), base_url="http://test"
+        ) as client:
+            yield client
+    finally:
+        api.dependency_overrides.pop(get_db, None)
+
+
+def _json_keys(value) -> set[str]:
+    """Collect every object key of a JSON document, at any depth."""
+
+    keys: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            keys.add(str(key))
+            keys |= _json_keys(item)
+    elif isinstance(value, list):
+        for item in value:
+            keys |= _json_keys(item)
+    return keys
+
+
+def test_no_backend_endpoint_consumes_the_internal_tournament_players_projection():
+    """RF-019: the projection is internal; no endpoint query references it.
+
+    A static scan of the backend application package is the contract check: a
+    new endpoint that reads it has to add the view name and fails here.
+    """
+
+    offenders = sorted(
+        str(path.relative_to(BACKEND_APP_DIR))
+        for path in BACKEND_APP_DIR.rglob("*.py")
+        if TOURNAMENT_PLAYERS_VIEW in path.read_text(encoding="utf-8")
+    )
+    assert offenders == [], (
+        "ningún endpoint debe consumir la proyección interna "
+        f"{TOURNAMENT_PLAYERS_VIEW}; referencias en: {offenders}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_public_view_sql_never_reads_documents_or_birth_dates(db_session):
+    """RF-019: the SQL behind the public views exposes no sensitive source.
+
+    Checking the JSON keys is not enough: the definitions must not even select
+    or decrypt the document or the birth date.
+    """
+
+    definitions = {
+        row["relname"]: " ".join(row["definition"].split()).lower()
+        for row in (
+            await db_session.execute(
+                text("""
+                    SELECT c.relname, pg_get_viewdef(c.oid, true) AS definition
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND c.relname = ANY(:views)
+                """),
+                {"views": list(PUBLIC_VIEWS)},
+            )
+        ).mappings().all()
+    }
+    assert set(definitions) == set(PUBLIC_VIEWS)
+
+    for view, definition in definitions.items():
+        for forbidden in ("birth_date", "national_id", "pgp_sym_decrypt"):
+            assert forbidden not in definition, f"{view} lee {forbidden}"
+
+
+@pytest.mark.asyncio
+async def test_tournament_players_projection_is_internal_and_keeps_the_derived_age(db_session):
+    """RF-019: the projection still computes ``public_age`` for ``bracket_app``.
+
+    «Público» means an API response: the tournament players projection keeps
+    the derived age for the application role, is never returned by an endpoint
+    and is not part of the published lineup contract.
+    """
+
+    rows = (
+        await db_session.execute(
+            text("""
+                SELECT c.relname AS view_name, a.attname AS column_name
+                FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relname = ANY(:views)
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
+            """),
+            {"views": list(PUBLIC_VIEWS)},
+        )
+    ).mappings().all()
+
+    columns: dict[str, set[str]] = {}
+    for row in rows:
+        columns.setdefault(row["view_name"], set()).add(row["column_name"])
+    assert set(columns) == set(PUBLIC_VIEWS)
+
+    # Internal projection: the derived age is available to the application role.
+    assert "public_age" in columns[TOURNAMENT_PLAYERS_VIEW]
+    # Neither the published lineup nor its raw definition exposes it.
+    for view in (MATCH_LINEUPS_VIEW, RAW_LINEUPS_VIEW):
+        assert columns[view].isdisjoint(FORBIDDEN_PUBLIC_VIEW_COLUMNS), (
+            f"{view} no puede exponer edad, documento ni fecha de nacimiento"
+        )
+
+
+@pytest.mark.asyncio
+async def test_public_api_responses_never_expose_age_document_or_birth_date(
+    db_session, tenant_factory
+):
+    """RF-019: the real public endpoints keep the minimal player contract."""
+
+    owner = await tenant_factory("Public Contract Owner")
+    await set_tenant_context(db_session, owner)
+    tournament_id, version_id, stage_id = await _create_tournament(
+        db_session, owner, label="contract"
+    )
+    home_team_id = await _register_team(
+        db_session, owner, tournament_id, version_id, stage_id, label="home"
+    )
+    away_team_id = await _register_team(
+        db_session, owner, tournament_id, version_id, stage_id, label="away"
+    )
+
+    # The players carry real documents and birth dates: they are stored
+    # encrypted or derived and must not reach any public response.
+    home_player = await insert_player(
+        db_session,
+        owner.organization_id,
+        first_name="Contract",
+        last_name="Home",
+        national_id_hmac="hmac-contract-home",
+        birth_date="2001-04-12",
+        reference_year=2026,
+    )
+    away_player = await insert_player(
+        db_session,
+        owner.organization_id,
+        first_name="Contract",
+        last_name="Away",
+        national_id_hmac="hmac-contract-away",
+        birth_date="1999-09-30",
+        reference_year=2026,
+    )
+    await _insert_roster(
+        db_session, owner, tournament_id, home_team_id, home_player, dorsal_number=6
+    )
+    await _insert_roster(
+        db_session, owner, tournament_id, away_team_id, away_player, dorsal_number=2
+    )
+
+    match_id = await _create_match(
+        db_session, owner, tournament_id, version_id, stage_id, home_team_id, away_team_id
+    )
+    segment_id = await _create_segment(db_session, owner, match_id)
+    await _publish_lineup(
+        db_session, owner, match_id, segment_id, home_team_id, [home_player], is_public=True
+    )
+    await _publish_tournament(db_session, tournament_id, version_id)
+
+    await clear_rls_context(db_session)
+
+    async with _public_api(db_session) as client:
+        responses = {
+            "listado": await client.get("/api/v1/tournaments/public"),
+            "torneo": await client.get(f"/api/v1/tournaments/public/{tournament_id}"),
+            "clasificación": await client.get(
+                f"/api/v1/tournaments/public/{tournament_id}/standings"
+            ),
+            "partidos": await client.get(
+                f"/api/v1/tournaments/public/{tournament_id}/matches"
+            ),
+        }
+
+    for name, response in responses.items():
+        assert response.status_code == 200, f"{name}: {response.text}"
+        exposed = _json_keys(response.json())
+        assert exposed.isdisjoint(FORBIDDEN_PUBLIC_KEYS), (
+            f"{name} expone claves no públicas: {sorted(exposed & FORBIDDEN_PUBLIC_KEYS)}"
+        )
+        # The internal projection is not part of any public payload.
+        assert "public_age" not in response.text
+        assert TOURNAMENT_PLAYERS_VIEW not in response.text
+
+    players = [
+        player
+        for match in responses["partidos"].json()
+        for lineup in (match.get("lineup") or {}).values()
+        if lineup
+        for player in lineup["starters"] + lineup["substitutes"]
+    ]
+    assert players, "la formación publicada debe devolver jugadores"
+    for player in players:
+        assert set(player) == set(PUBLIC_LINEUP_PLAYER_KEYS), (
+            f"el contrato público del jugador cambió: {sorted(player)}"
+        )

@@ -2,13 +2,32 @@ import { defineStore } from 'pinia';
 
 import { useTournamentsStore } from './tournaments';
 import { isNotFound, isUnauthorized } from '~/utils/api';
+import { organizationHistoryEntry, selectActiveOrganization } from '~/utils/organizationSelection';
 import { normalizeOrganizationId } from '~/utils/validation';
 
 interface AuthResponse {
-  access_token?: string | null;
-  token_type: string;
   user_id: string;
   organization_id: string | null;
+}
+
+const ORGANIZATION_HISTORY_KEY = 'bc_last_organization_id';
+
+function readRememberedOrganization(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return normalizeOrganizationId(window.localStorage.getItem(ORGANIZATION_HISTORY_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function writeRememberedOrganization(organizationId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ORGANIZATION_HISTORY_KEY, organizationId);
+  } catch {
+    // Sin almacenamiento local no hay historial: el orden estable sigue decidiendo.
+  }
 }
 
 export interface OrganizationSummary {
@@ -58,12 +77,28 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const sessionVersion = ref(0);
+  const rememberedOrganizationId = ref<string | null>(readRememberedOrganization());
 
   const isAuthenticated = computed(() => Boolean(userId.value && organizationId.value));
+
+  /**
+   * El historial del navegador solo guarda una organización que la persona
+   * puede activar en este momento. Se escribe al cambiar de organización en el
+   * Workspace y al fijarse una activa cuando todavía no había historial.
+   */
+  function rememberActiveOrganization(candidate: string | null) {
+    const entry = organizationHistoryEntry(organizations.value, candidate);
+    if (!entry || entry === rememberedOrganizationId.value) return;
+    rememberedOrganizationId.value = entry;
+    writeRememberedOrganization(entry);
+  }
+
+  watch(organizationId, (next) => rememberActiveOrganization(next), { flush: 'sync' });
 
   function saveSession(response: AuthResponse) {
     useTournamentsStore().clear();
     sessionVersion.value += 1;
+    organizations.value = [];
     userId.value = response.user_id;
     organizationId.value = normalizeOrganizationId(response.organization_id);
     access.value = null;
@@ -71,7 +106,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function adoptSession(response: AuthResponse) {
     saveSession(response);
-    await loadOrganizations();
+    // Aceptar una invitación es elegir esa organización de forma explícita: si
+    // sigue siendo accesible, prevalece sobre el historial del navegador.
+    await loadOrganizations({ preferredOrganizationId: response.organization_id });
   }
 
   function clearSession() {
@@ -83,12 +120,14 @@ export const useAuthStore = defineStore('auth', () => {
     useTournamentsStore().clear();
   }
 
-  async function loadOrganizations() {
+  async function loadOrganizations(options: { preferredOrganizationId?: string | null } = {}) {
     const result = await request<OrganizationSummary[]>('/organizations');
     organizations.value = result;
-    if (!organizationId.value && result.length) {
-      organizationId.value = result[0]?.id ?? null;
-    }
+    const preferred = normalizeOrganizationId(options.preferredOrganizationId);
+    const remembered = preferred ?? rememberedOrganizationId.value ?? readRememberedOrganization();
+    const selected = selectActiveOrganization(result, remembered);
+    organizationId.value = selected?.id ?? null;
+    if (selected) rememberActiveOrganization(selected.id);
     if (organizationId.value) await loadAccess();
     return result;
   }

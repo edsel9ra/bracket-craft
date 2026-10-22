@@ -21,6 +21,7 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.identity.schemas import GoogleLoginRequest, LoginRequest, RegisterRequest, TokenResponse
+from app.modules.organizations.ordering import ordered_organizations
 
 
 router = APIRouter(prefix="/auth", tags=["identity"])
@@ -116,12 +117,12 @@ async def login(
         await set_rls_context(db, None, user["id"])
         organizations = await db.execute(
             text("""
-                SELECT id
+                SELECT id, name
                 FROM list_user_organizations()
-                LIMIT 1
             """),
         )
-        organization_id = organizations.scalar_one_or_none()
+        ordered = ordered_organizations(organizations.mappings().all())
+        organization_id = ordered[0]["id"] if ordered else None
         access_token = await create_user_session(db, user["id"])
 
     set_auth_cookie(response, access_token)
@@ -210,13 +211,14 @@ async def google_login(
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La cuenta o organización ya existe") from exc
         else:
             await set_rls_context(db, None, user_id)
-            organization_id = (await db.execute(
+            organizations = await db.execute(
                 text("""
-                    SELECT id
+                    SELECT id, name
                     FROM list_user_organizations()
-                    LIMIT 1
                 """),
-            )).scalar_one_or_none()
+            )
+            ordered = ordered_organizations(organizations.mappings().all())
+            organization_id = ordered[0]["id"] if ordered else None
 
         access_token = await create_user_session(db, user_id)
 

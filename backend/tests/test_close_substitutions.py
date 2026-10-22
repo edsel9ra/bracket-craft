@@ -950,7 +950,9 @@ async def test_post_segments_creates_state_rows_for_the_present_teams(monkeypatc
     }
     session = RecordingSession()
 
-    async def fake_load(db, context_, match_id, require_operation_permission=True):
+    async def fake_load(
+        db, context_, match_id, require_operation_permission=True, lock=True
+    ):
         return match
 
     monkeypatch.setattr(matches_router, "_load_operation_match", fake_load)
@@ -1035,7 +1037,9 @@ async def _call_operation(monkeypatch, session, lineup: list[dict]):
         "rules_config": rules_config(max_per_team=4, max_windows=2),
     }
 
-    async def fake_load(db, context_, match_id, require_operation_permission=True):
+    async def fake_load(
+        db, context_, match_id, require_operation_permission=True, lock=True
+    ):
         return match
 
     async def fake_lineup(db, organization_id, match_id):

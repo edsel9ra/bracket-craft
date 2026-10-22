@@ -11,6 +11,17 @@ from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_matches
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.matches.audit import (
+    ASSIGN_MATCH_OFFICIAL,
+    REMOVE_MATCH_OFFICIAL,
+    LineupEntry,
+    lineup_audit_action,
+    lineup_content_summary,
+    lineup_signature,
+    publication_audit_action,
+    record_match_audit,
+)
+from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
     CreateMatchSegmentRequest,
@@ -26,7 +37,6 @@ from app.modules.matches.schemas import (
     PublishMatchLineupRequest,
     SaveMatchLineupRequest,
 )
-from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.service import (
     NO_LIMITS_NOTICE,
     CloseMatchReportService,
@@ -53,9 +63,20 @@ async def _load_operation_match(
     context: AuthContext,
     match_id: UUID,
     require_operation_permission: bool = True,
+    lock: bool = True,
 ) -> dict[str, Any]:
+    """Load the match scope of an operation.
+
+    The write routes keep ``FOR UPDATE OF m`` (``lock=True``, the default) and
+    therefore their order. The operation ``GET`` passes ``lock=False``: it is a
+    consistent read that never waits for a close or for any other write on the
+    match (R23).
+    """
+
+    row_lock = "FOR UPDATE OF m" if lock else ""
     result = await db.execute(
-        text("""
+        text(
+            """
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id, m.group_id,
                    m.matchday, m.match_date, m.status, m.result_confirmed,
                    m.home_team_id, ht.name AS home_team_name, ht.short_code AS home_team_short_code,
@@ -86,8 +107,9 @@ async def _load_operation_match(
             LEFT JOIN teams at
               ON at.id = m.away_team_id AND at.organization_id = m.organization_id
              WHERE m.id = :match_id AND m.organization_id = :organization_id
-             FOR UPDATE OF m
-         """),
+            """
+            + row_lock
+        ),
         {"match_id": str(match_id), "organization_id": str(context.organization_id)},
     )
     match = result.mappings().one_or_none()
@@ -170,6 +192,67 @@ async def _load_match_tactical_lineups(
         {"match_id": str(match_id), "organization_id": str(organization_id)},
     )
     return [dict(row) for row in result.mappings().all()]
+
+
+async def _load_segment_lineup_state(
+    db: AsyncSession,
+    organization_id: UUID,
+    match_id: UUID,
+    segment_id: UUID,
+) -> tuple[list[tuple[UUID, str]], list[LineupEntry]]:
+    """Persisted formations and entries of one segment, for the audit signature."""
+
+    formation_result = await db.execute(
+        text("""
+            SELECT team_id, formation_code
+            FROM match_team_lineups
+            WHERE match_id = :match_id
+              AND segment_id = :segment_id
+              AND organization_id = :organization_id
+        """),
+        {
+            "match_id": str(match_id),
+            "segment_id": str(segment_id),
+            "organization_id": str(organization_id),
+        },
+    )
+    entry_result = await db.execute(
+        text("""
+            SELECT ls.team_id, mr.roster_id, ls.player_id, mr.role,
+                   ls.position_slot, mr.entered_minute, mr.left_minute
+            FROM match_lineup_snapshots ls
+            JOIN match_rosters mr
+              ON mr.match_id = ls.match_id
+             AND mr.team_id = ls.team_id
+             AND mr.player_id = ls.player_id
+             AND mr.organization_id = ls.organization_id
+            WHERE ls.match_id = :match_id
+              AND ls.segment_id = :segment_id
+              AND ls.organization_id = :organization_id
+        """),
+        {
+            "match_id": str(match_id),
+            "segment_id": str(segment_id),
+            "organization_id": str(organization_id),
+        },
+    )
+    formations = [
+        (row["team_id"], row["formation_code"])
+        for row in formation_result.mappings().all()
+    ]
+    entries: list[LineupEntry] = [
+        (
+            row["team_id"],
+            row["roster_id"],
+            row["player_id"],
+            row["role"],
+            row["position_slot"],
+            row["entered_minute"],
+            row["left_minute"],
+        )
+        for row in entry_result.mappings().all()
+    ]
+    return formations, entries
 
 
 def _build_operation_limits(match: dict[str, Any]) -> dict[str, Any]:
@@ -282,7 +365,9 @@ async def get_match_operation(
 ) -> MatchOperationResponse:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
-        match = await _load_operation_match(db, context, match_id, require_operation_permission=False)
+        match = await _load_operation_match(
+            db, context, match_id, require_operation_permission=False, lock=False
+        )
         segment_result = await db.execute(
             text("""
                 SELECT id, segment_number, minute_start, minute_end, status
@@ -703,6 +788,28 @@ async def save_match_lineup(
             if len(set(positions)) != len(positions) or set(positions) != expected_slots:
                 raise HTTPException(status_code=422, detail="Las posiciones no corresponden con la formación seleccionada")
 
+        # The audit entry follows the content, not the request: the signature of
+        # the persisted lineup is compared with the one the payload will leave.
+        before_formations, before_entries = await _load_segment_lineup_state(
+            db, context.organization_id, match_id, payload.segment_id
+        )
+        before_signature = lineup_signature(before_formations, before_entries)
+        payload_formations = [
+            (config.team_id, config.formation_code) for config in payload.team_lineups
+        ]
+        payload_entries: list[LineupEntry] = [
+            (
+                roster_by_id[str(entry.roster_id)]["team_id"],
+                entry.roster_id,
+                roster_by_id[str(entry.roster_id)]["player_id"],
+                entry.role,
+                entry.position_slot,
+                entry.entered_minute,
+                entry.left_minute,
+            )
+            for entry in payload.entries
+        ]
+
         await db.execute(
             text("""
                 DELETE FROM match_team_lineups
@@ -790,6 +897,22 @@ async def save_match_lineup(
                 )
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="La planilla contiene jugadores o dorsales incompatibles") from exc
+
+        audit_action = lineup_audit_action(
+            before_signature, lineup_signature(payload_formations, payload_entries)
+        )
+        if audit_action is not None:
+            await record_match_audit(
+                db,
+                organization_id=context.organization_id,
+                member_id=context.organization_user_id,
+                match_id=match_id,
+                action=audit_action,
+                payload={
+                    "segment_id": str(payload.segment_id),
+                    **lineup_content_summary(payload_formations, payload_entries),
+                },
+            )
         return await _load_match_lineup(db, context.organization_id, match_id)
 
 
@@ -808,7 +931,7 @@ async def publish_match_lineup(
 
         lineup_result = await db.execute(
             text("""
-                SELECT id, segment_id, team_id, formation_code
+                SELECT id, segment_id, team_id, formation_code, is_public
                 FROM match_team_lineups
                 WHERE match_id = :match_id
                   AND segment_id = :segment_id
@@ -868,7 +991,27 @@ async def publish_match_lineup(
                 "is_public": payload.is_public,
             },
         )
-        return dict(result.mappings().one())
+        published = dict(result.mappings().one())
+        # The timestamp is always refreshed; the audit entry only follows the
+        # publication transition, so repeating the same request adds nothing.
+        audit_action = publication_audit_action(
+            bool(lineup["is_public"]), payload.is_public
+        )
+        if audit_action is not None:
+            await record_match_audit(
+                db,
+                organization_id=context.organization_id,
+                member_id=context.organization_user_id,
+                match_id=match_id,
+                action=audit_action,
+                payload={
+                    "segment_id": str(published["segment_id"]),
+                    "team_id": str(published["team_id"]),
+                    "is_public": bool(published["is_public"]),
+                    "formation_code": published["formation_code"],
+                },
+            )
+        return published
 
 
 @router.get("/{match_id}/officials", response_model=list[MatchOfficialSummaryResponse])
@@ -993,6 +1136,19 @@ async def assign_match_official(
                     "official_role": payload.official_role,
                 },
             )).scalar_one()
+        else:
+            # ``ON CONFLICT DO NOTHING`` returned a row: the official is new.
+            await record_match_audit(
+                db,
+                organization_id=context.organization_id,
+                member_id=context.organization_user_id,
+                match_id=match_id,
+                action=ASSIGN_MATCH_OFFICIAL,
+                payload={
+                    "organization_user_id": str(payload.organization_user_id),
+                    "official_role": payload.official_role,
+                },
+            )
 
     return {
         "id": str(assignment_id),
@@ -1038,3 +1194,14 @@ async def remove_match_official(
         )
         if result.rowcount != 1:
             raise HTTPException(status_code=404, detail="Asignación de oficial no encontrada")
+        await record_match_audit(
+            db,
+            organization_id=context.organization_id,
+            member_id=context.organization_user_id,
+            match_id=match_id,
+            action=REMOVE_MATCH_OFFICIAL,
+            payload={
+                "organization_user_id": str(organization_user_id),
+                "official_role": official_role,
+            },
+        )

@@ -40,11 +40,17 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - `scripts.encrypt_birth_dates` es un comando operativo de despliegue, no un seed: requiere `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY` y se ejecuta como servicio one-off entre las migraciones 017 y 018.
 - La fecha de nacimiento de los jugadores se almacena solo cifrada (`players.birth_date_encrypted`) y es *write-only* para el rol de aplicación; la edad y el año de referencia son los datos derivados legibles.
 - Las proyecciones públicas **nunca** exponen documentos de identidad ni fechas de nacimiento. `photo_url` solo se devuelve si el roster tiene consentimiento de imagen.
+- `v_public_tournament_players` es una **proyección interna**: ningún endpoint la consume y no se retira; calcula `public_age` solo para el rol de aplicación. «Público» significa respuesta de la API y el contrato público de jugadores (edad, documento y fecha de nacimiento excluidos) se verifica en `backend/tests/test_public_player_views.py`. Consumirla o retirarla exige una spec propia.
+- **Invitación vencida:** leer y previsualizar calculan `expired` sin escribir; crear sobre una vencida responde **201** y materializa la anterior, crear sobre una vigente **409**, revocar una vencida **409** sin reescribirla, reenviar la reutiliza con token y fecha nuevos y aceptarla da **410**. Se mantiene la unicidad de pendientes por organización y correo.
+- **Contratos que cambian:** la aceptación de invitación no devuelve token en el cuerpo (solo cookie, sin transición); el rol mostrado sigue la precedencia dueño → administrador → operador → árbitro → observador sin alterar la autorización aditiva; el servidor devuelve las organizaciones en orden estable (nombre y, en empate, id) y el cliente (008C) restaura la última usada solo si está en la lista; el reenvío de una invitación responde **409** sin escribir ni enviar correo si ya hay **otra** pendiente vigente del mismo correo (reenviar la propia sigue siendo **200** y la renueva); la versión del producto se declara solo en `backend/pyproject.toml` y `/docs` la lee (no es `engine_version` 2026.1).
+- **Relay sin filtro de rol (riesgo aceptado):** todo miembro conectado de la organización recibe los eventos de la sala `organization:{id}`, sin filtrar por evento ni por rol. La mitigación es la revalidación de sesión, membresía y permisos cada 30 s, que desconecta el socket si cambian; el filtrado por rol exige una spec propia.
+- **Acciones auditadas:** guardar planilla, publicar/despublicar formación y asignar/retirar oficial escriben una entrada en `administrative_audit_logs` solo ante un cambio efectivo, en la misma transacción y sin datos personales. Las lecturas no auditan y no hay endpoint de consulta.
 - La formación táctica solo es pública después de publicarse explícitamente desde el Workspace.
 - Las versiones de torneo son inmutables una vez publicadas.
 - La autorización es **RBAC por organización** (roles/permisos de la membresía) más **`match_officials` por partido**. No hay roles por torneo; `tournament_user_roles` fue retirada por la migración 019.
 - El avance entre fases es **manual** y solo en versiones en borrador: `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams`. El sembrado automático por `stage_rank` no está soportado y el calendario no se regenera al asignar o quitar equipos.
 - La migración **019** es destructiva y no tiene rollback: se despliega el código nuevo primero y la 019 después; cualquier corrección posterior es una migración nueva (*forward-fix*).
+- La migración **013** está aplicada y **no se edita**: reescribió por coincidencia de texto cinco funciones de plataforma (`platform_set_user_active`, `platform_set_organization_active`, `platform_set_membership_active`, `platform_create_membership`, `requeue_outbox_events`) y la vista `v_public_match_lineups_unpublished`, y **falla en silencio** si el texto no coincide. El estado final se verifica con `backend/tests/test_migration_013_hardening.py` (opt-in con PostgreSQL) y cualquier corrección es una migración nueva (*forward-fix*).
 - La migración **021** es aditiva y se aplica **antes** del código que escribe `player_out_id`/`player_in_id`; no elimina `match_segment_team_state` ni toca `init/01`.
 - Las sustituciones se validan y aplican al **cerrar el acta** (`max_per_team`/`max_windows`/`allow_reentry`), con límites por equipo y partido. No hay API incremental de eventos ni de anulación (R11 fuera de alcance): los eventos de un acta confirmada son inmutables.
 - Al desplegar, una versión **`3.2.0` ya publicada** empieza a aplicar sus límites de sustitución (la configuración efectiva sale de la versión publicada y no se reescribe); las actas cerradas no se revalidan y un partido abierto puede rechazar sustituciones antes aceptadas.
@@ -62,6 +68,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Contrato interno:** `docs/contrato-reglas.md` (`engine_version` 2026.1) fija `GF1`/`GF2` y las cuatro formaciones; no se configura desde el editor.
 - **Outbox + worker + Redis:** los eventos se procesan de forma asíncrona y alimentan el tiempo real con Socket.IO. El stream es transporte de mejor esfuerzo con un tope fijo de 10 000 entradas aproximado; no es duradero ni la fuente de verdad.
 - **Autenticación y autorización:** email/password; Google OAuth preparado mediante `auth_identities`. RBAC por organización: los permisos se resuelven por la membresía y sus roles; no hay ámbito por torneo ni roles por torneo. La única delegación menor es por partido con `match_officials`.
+- **Origen de las escrituras:** toda escritura valida `Origin` y `Referer` por separado (`backend/app/core/csrf.py`). Sin ninguna de las dos se admite; si cualquiera está presente y no es un origen permitido, **403**, aunque la otra sí lo esté. Un `Referer` vacío o no parseable se rechaza; un proxy que lo reescriba a un host interno debe permitir ese origen o retirar la cabecera.
 - **Avance manual entre fases:** `GET`/`POST`/`DELETE /tournaments/{id}/stages/{stage_id}/teams` en versiones en borrador. `POST` es atómico (1..64 equipos, sin duplicados); 201 si hay altas, 200 si todos ya estaban, 204 en la retirada idempotente; 403/404/409/422 según el contrato. No regenera el calendario ni resuelve `phase_slots` entre fases.
 - **Estructura publicada:** los triggers impiden modificar la estructura de una versión publicada o archivada. El trigger de estructura lanza el SQLSTATE **`ZZ409`**; la API lo mapea a **409** por código, sin comparar el texto.
 - **Bloqueo y rendimiento:** fase → versión → partido(s) → segmentos → jugadores. El cierre serializa por fase; es una garantía de corrección, no se midió throughput ni latencia (RNF-003).
@@ -81,7 +88,7 @@ docker compose up --build
 ```
 
 - Frontend: `http://localhost:3000`
-- API / documentación: `http://localhost:8000/docs`
+- API / documentación: `http://localhost:8000/docs`; la API se publica solo en `127.0.0.1:8000` y el web conserva `3000:3000` porque es el punto de entrada del desarrollador y el flujo en Windows/WSL depende de esa publicación.
 - Almacenamiento (SeaweedFS): `http://localhost:9001` (UI de archivos); API S3 en `http://localhost:9000`
 
 ### Datos demo (solo desarrollo)
@@ -251,11 +258,30 @@ Orden obligatorio: **migración 021 → código**. El código nuevo contra el es
 
 **Si algo falla después:** la 021 no se desaplica. Al ser aditiva, cualquier defecto se corrige con una migración nueva (*forward-fix*); no hay rollback de datos ni de esquema. Restaurar `$HOME/backup-pre021.dump` solo si se acepta perder los cambios posteriores. El volumen limpio (`init/00-03` → 001-021) termina con el mismo esquema que una base migrada.
 
+### Migración 022 (topes de minuto en eventos)
+
+La **022** es **aditiva** y compatible con el código actual: añade a `public.match_events` los `CHECK` `chk_match_event_minute_range` (`minute BETWEEN 0 AND 180`) y `chk_match_event_added_minute_range` (`added_minute BETWEEN 0 AND 30`). No añade columnas, no modifica datos ni `init/01` y no cambia RLS. Un pre-chequeo en la misma transacción aborta con ambos conteos si hay filas fuera de rango y **no recorta** datos; si pasa, las restricciones se añaden **validadas** (no `NOT VALID`), con un bloqueo breve sobre la tabla. Son topes estructurales: la regla deportiva de la fase sigue en la API (180/30 son el máximo de forma).
+
+```sh
+MIGRATION_TARGET=022 $COMPOSE run --rm db-migrate
+```
+
+Va **antes** de la 023. No hay rollback: cualquier defecto se corrige con una migración nueva (*forward-fix*). El volumen limpio (`init/00-03` → 001-022) termina con el mismo esquema que una base migrada.
+
+### Migración 023 (vueltas de fase persistidas)
+
+La **023** es **aditiva**: añade a `public.stages` la columna `schedule_legs SMALLINT NOT NULL DEFAULT 1` con `CHECK (schedule_legs IN (1, 2))` (`chk_stages_schedule_legs`). No reescribe filas ni toca `init/01` ni RLS. El sorteo de liga y de grupos escribe las vueltas recibidas (`legs`), `_load_draft_stage_context` las lee en el borrador y el clonado de versiones copia el valor; eliminatorias y Swiss conservan el default. Los triggers de estructura existentes impiden reescribir el formato en una versión publicada o archivada.
+
+```sh
+MIGRATION_TARGET=023 $COMPOSE run --rm db-migrate
+```
+
+Va **después** de la 022 y **antes** del backend que lee `schedule_legs`. Sin *backfill*: una liga histórica de dos vueltas queda en una hasta que se regenere su calendario, de modo que el límite de enfrentamientos manuales por pareja es uno mientras no se regenere (las versiones publicadas no admiten altas manuales). No hay rollback: cualquier defecto se corrige con una migración nueva (*forward-fix*). El volumen limpio (`init/00-03` → 001-023) termina con el mismo esquema que una base migrada.
 
 ### Verificación (mismos checks que CI)
 
 ```sh
-python -m pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 cd backend && pytest -q
 cd backend && python -m compileall -q app
 cd frontend && pnpm install --frozen-lockfile
@@ -269,7 +295,10 @@ docker run --rm --network host -v "$PWD/infra:/infra:ro" \
   -e PGPASSWORD=postgres_test_password \
   postgres:17-alpine sh /infra/scripts/test_migrate_target.sh
 docker compose config -q
-pip-audit -r backend/requirements.txt
+docker compose config --format json | python3 infra/scripts/check_env_contract.py -
+python3 infra/scripts/check_env_contract.py --self-test
+docker compose config --format json | python3 infra/scripts/assert_production_compose.py --profile development -
+pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt
 AUDIT_JSON="/tmp/pnpm-audit.json"
 trap 'rm -f "$AUDIT_JSON"' EXIT
 if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
@@ -299,6 +328,8 @@ export POSTGRES_PASSWORD=dummy BRACKET_DB_PASSWORD=dummy PLATFORM_ADMIN_EMAIL=du
 
 docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
 docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
+  | python3 infra/scripts/check_env_contract.py --profile production -
+docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
   | python3 infra/scripts/assert_production_compose.py -
 ```
 
@@ -319,7 +350,13 @@ trivy fs . --skip-dirs frontend/node_modules,frontend/.pnpm-store,.venv --ignore
 - **Migración 019:** retira `tournament_user_roles` y `stage_edges`, estrecha el `CHECK` de `phase_slots.source_type` y recrea el trigger con `ZZ409`; es destructiva y sin rollback. Se aplica después del código nuevo con `MIGRATION_TARGET=019 $COMPOSE run --rm db-migrate`, tras backup verificado y pre-chequeo de catálogo.
 - **Migración 020:** *forward-fix* no destructivo que concede `INSERT (id)` sobre `rosters` a `bracket_app` para el `id` pre-generado de la importación N-2; `init/01` incluye el mismo grant y se aplica después de la 019 (`MIGRATION_TARGET=020`).
 - **Migración 021:** aditiva; añade `player_out_id`/`player_in_id`, FKs compuestas y `chk_match_event_substitution_pair` (`NOT VALID`) a `match_events`; se aplica **antes** del código con `MIGRATION_TARGET=021` y no elimina `match_segment_team_state` ni tiene rollback (*forward-fix*).
+- **Migración 022:** aditiva; añade los `CHECK` `chk_match_event_minute_range` (`minute` 0..180) y `chk_match_event_added_minute_range` (`added_minute` 0..30), validados tras un pre-chequeo que aborta sin recortar datos; es compatible con el código actual y sin rollback (*forward-fix*).
+- **Migración 023:** aditiva; añade `stages.schedule_legs` (`SMALLINT NOT NULL DEFAULT 1`, `CHECK (1,2)`), escrito por el sorteo de liga/grupos con las vueltas recibidas, leído por `_load_draft_stage_context` y copiado al clonar versiones. Sin *backfill*: una liga histórica de dos vueltas queda en una hasta regenerarse (las publicadas no admiten altas manuales); sin rollback (*forward-fix*).
 - **Producción:** `APP_ENV=production` con `docker-compose.production.yml`, que no publica ningún puerto, elimina los montajes de código de `api`, `worker` y `web` con `!reset`, desactiva `--reload`, construye el frontend estático y exige secretos y URLs de producción. El backend rechaza los defaults conocidos.
+- **Healthchecks:** la API se declara sana cuando `/health/ready` confirma base de datos y Redis; el web, cuando responde por HTTP con `/health.txt` (estático, no mide la API ni la base de datos tras arrancar); el worker, mientras su latido de fichero tenga menos de 90 s. El worker publica cada 10 s en `/tmp/bracket-craft-worker-heartbeat` (configurable con `WORKER_HEARTBEAT_PATH`, que debe coincidir en el proceso y en el healthcheck) también sin eventos que procesar. El web espera una sola vez a la API con `depends_on.condition: service_healthy`; con la base de datos detenida la API queda `unhealthy` (insana), el web sigue `healthy` y el worker sigue `healthy` mientras su bucle avance y reintente.
+- **Contrato de entorno:** `.env.example` es la fuente de documentación y el mapa variable→servicio vive en `infra/scripts/check_env_contract.py`. La API recibe la configuración de la aplicación; el worker `DATABASE_URL`, `REDIS_URL` y `APP_ENV` (más `JWT_SECRET` y `PLAYER_DATA_KEY` fuera de desarrollo); el web `NUXT_*` y `CI`/`NODE_ENV`; `db` las credenciales de PostgreSQL; `db-migrate` `POSTGRES_*`, `PGPASSWORD`, `MIGRATION_TARGET` y `PLATFORM_ADMIN_EMAIL`; el one-off de cifrado `DATABASE_ADMIN_URL` y `PLAYER_DATA_KEY` con `-e`, nunca la API. Excepciones: `PGPASSWORD`, `DATABASE_URL`, `DATABASE_ADMIN_URL`, `CI`, `NODE_ENV` y valores de pruebas o entornos locales. El comando está en «Verificación»; falla por variable documentada sin efecto, declarada sin documentar o mal atribuida.
+- **Dependencias de prueba:** `backend/requirements-dev.txt` se instala solo en local y CI (`python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt`); la imagen de producción instala únicamente `backend/requirements.txt` y `pip-audit` audita ambos archivos.
+- **Web no-root solo en producción:** la etapa de ejecución de `frontend/Dockerfile` declara `USER node` y el overlay de producción fija `web.user: "node"`. `docker-compose.yml` fija `web.user: "0:0"` como excepción de desarrollo, porque el servidor escribe caché en el árbol montado `./frontend` y el propietario del montaje difiere entre Linux y Windows/WSL; producción no hereda esa excepción. Condición de retiro: cuando el flujo de desarrollo deje de necesitar escritura en el montaje. El arranque no-root se validó localmente con Docker (uid 1000, `.output` no escribible, HTTP 200) y la salvaguarda automatizada en CI es `infra/scripts/assert_production_compose.py` (perfil de producción), porque la CI no construye la imagen.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web` se une además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
 - **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
 - **Pool por proceso:** cada worker de la API y el worker del outbox tienen su propio engine y pool (hasta 20 conexiones). Con `API_WORKERS=2` y un worker son 2 × 20 + 20 = 60 conexiones teóricas frente a las 100 por defecto de PostgreSQL; subir workers o bajar `max_connections` exige revisar el agregado. Las constantes efectivas (15 s / 30 s, 10 + 10, espera 10 s) las registra la API al arrancar.
@@ -391,7 +428,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 
 - **Trivy en CI:** mantén `aquasecurity/trivy-action@v0.36.0`. La referencia `v0.28.0` falla por su dependencia faltante `setup-trivy@v0.2.1`. El escaneo falla (`exit-code: 1`) ante vulnerabilidades CRITICAL o HIGH con corrección disponible (`ignore-unfixed`), y omite `frontend/node_modules`, `frontend/.pnpm-store` y `.venv`.
 - **Versiones fijadas en CI:** Python 3.14, Node 24 y pnpm 12.12.1 (`pnpm/action-setup@v4`). Si cambias alguna, actualiza `ci.yml`, este archivo y el README.
-- **Caché de CI:** pip se cachea con `backend/requirements.txt` y pnpm con `frontend/pnpm-lock.yaml`; mantén `frontend/pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
+- **Caché de CI:** pip se cachea con `backend/requirements.txt` y `backend/requirements-dev.txt`, y pnpm con `frontend/pnpm-lock.yaml`; mantén `frontend/pnpm-lock.yaml` versionado, porque la instalación usa `--frozen-lockfile`.
 - **Compose y secuencias:** `ports: []` y `volumes: []` **no** anulan las secuencias heredadas de desarrollo; el merge las concatena. El overlay de producción usa `!reset []`/`!override` (Compose ≥2.24.4) y la CI valida el JSON renderizado con `infra/scripts/assert_production_compose.py`. No vuelvas a `[]`.
 - **Stream del outbox:** no es duradero ni se debe reemitir al arrancar (el relay empieza en el último id). El tope fijo de 10 000 entradas aproximado se dimensiona con P-1 (unos 3 eventos por cierre; varios días con unos pocos MB). Garantías por tramo: outbox→stream *at-least-once*, stream→cliente *best-effort* con huecos y duplicados; la API HTTP es la fuente de verdad. `event_id` es aditivo y `id` se conserva como legado durante la transición; el cliente deduplica 200 entregas. `RESYNC` es una notificación de control (`event_id`/`reason`), no un evento persistido.
 - **Cifrado de la fecha (017/018):** la 017 revoca `SELECT`/`INSERT` de `birth_date` y la 018 falla de forma cerrada si el backfill dejó pendientes. En una base con datos no uses el flujo por defecto: sigue el runbook y ejecuta el one-off con `--no-deps`. Tras la 018 no hay reversión de código, solo *forward-fix*.
@@ -413,7 +450,7 @@ La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que c
 - **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis. El job también ejecuta `infra/scripts/test_migrate_target.sh` contra PostgreSQL 17 y la suite con base (`RUN_DATABASE_TESTS=1`).
 - **`frontend` (Frontend checks):** `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm run typecheck` y `pnpm run build` desde `frontend/`.
 - **`infrastructure` (Infrastructure checks):** `python3 infra/scripts/verify_version_sources.py --exclude-constitution`, `sh -n infra/postgres/migrate.sh`, versión de Compose ≥2.24.4, `docker compose config -q` para desarrollo y para el merge dev+prod con variables dummy, y las aserciones de `infra/scripts/assert_production_compose.py` sobre el JSON renderizado.
-- **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt`, la auditoría del frontend desde la raíz con `infra/scripts/audit_frontend.py` (bloque de Verificación) y el escaneo Trivy descrito en Comandos.
+- **`security` (Dependency and filesystem scan):** `pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt`, la auditoría del frontend desde la raíz con `infra/scripts/audit_frontend.py` (bloque de Verificación) y el escaneo Trivy descrito en Comandos.
 - **Pruebas de integración de invitaciones (opt-in):** requieren PostgreSQL en ejecución con la cuenta y organización demo.
 
   ```sh
@@ -432,6 +469,13 @@ La CI (`ci.yml`) tiene cuatro jobs independientes; reproduce localmente el que c
   ```sh
   cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
     pytest -q tests/test_migration_021.py tests/test_substitutions.py tests/test_roster_lock.py
+  ```
+
+- **Proyección interna y contrato público de jugadores (opt-in):** requieren PostgreSQL; comprueban que las respuestas públicas no incluyen edad, documento ni fecha de nacimiento y que ningún endpoint consume `v_public_tournament_players`.
+
+  ```sh
+  cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL="$DATABASE_ADMIN_URL" \
+    pytest -q tests/test_public_player_views.py
   ```
 
 - Ejecuta todas las verificaciones relevantes antes de dar una tarea por terminada y reporta cuáles no pudiste correr.

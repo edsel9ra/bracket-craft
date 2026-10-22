@@ -31,9 +31,11 @@ jobs:
         with:
           python-version: '3.14'
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
       - name: Install dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
       - name: Run unit tests without database
         working-directory: backend
         run: pytest -q
@@ -124,6 +126,10 @@ jobs:
           python3 infra/scripts/assert_production_compose.py --compose-version "${compose_version}"
       - name: Validate Compose configuration (development)
         run: docker compose config -q
+      - name: Check environment contract (development)
+        run: docker compose config --format json | python3 infra/scripts/check_env_contract.py -
+      - name: Assert development Compose structure
+        run: docker compose config --format json | python3 infra/scripts/assert_production_compose.py --profile development -
       - name: Validate Compose configuration (development + production)
         env:
           POSTGRES_PASSWORD: dummy-postgres-password
@@ -148,6 +154,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
             | python3 infra/scripts/assert_production_compose.py -
+          docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
+            | python3 infra/scripts/check_env_contract.py -
 
   security:
     name: Dependency and filesystem scan
@@ -160,7 +168,7 @@ jobs:
       - name: Install pip-audit
         run: python -m pip install pip-audit
       - name: Audit Python dependencies
-        run: pip-audit -r backend/requirements.txt
+        run: pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt
       - uses: pnpm/action-setup@v4
         with:
           version: 12.12.1

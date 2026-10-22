@@ -1,11 +1,14 @@
+from inspect import getsource
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import get_db
+from app.core.roles import ROLE_PRECEDENCE, ROLE_PRECEDENCE_SQL, role_precedence_index
 from app.core.security import get_current_user_id
 from app.main import api, app
+from app.modules.invitations import router as invitations_router
 
 
 @pytest.fixture
@@ -170,6 +173,51 @@ async def test_http_api_is_reachable_through_socketio_asgi_app(socketio_client):
     response = await socketio_client.get("/health")
 
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("owner", 0),
+        ("administrator", 1),
+        ("operator", 2),
+        ("referee", 3),
+        ("viewer", 4),
+        (None, 4),
+        ("unknown-role", 4),
+    ],
+)
+def test_role_precedence_index_orders_owner_to_viewer(code, expected):
+    assert role_precedence_index(code) == expected
+
+
+def test_role_precedence_index_is_strictly_ordered():
+    indexes = [role_precedence_index(code) for code in ROLE_PRECEDENCE]
+
+    assert indexes == list(range(len(ROLE_PRECEDENCE)))
+
+
+def test_role_precedence_sql_uses_the_same_declared_order():
+    expression = ROLE_PRECEDENCE_SQL.format(column="rd.code")
+    positions = [
+        expression.index(f"WHEN '{code}' THEN {index}")
+        for index, code in enumerate(ROLE_PRECEDENCE)
+    ]
+
+    assert positions == sorted(positions)
+    assert f"ELSE {role_precedence_index(None)} END" in expression
+
+
+def test_member_role_queries_use_the_declared_precedence_not_the_alphabet():
+    for function in (
+        invitations_router.list_members,
+        invitations_router._load_member,
+        invitations_router.current_access,
+    ):
+        source = getsource(function)
+
+        assert "MIN(rd.code)" not in source
+        assert "ROLE_PRECEDENCE_SQL" in source
 
 
 @pytest.mark.asyncio

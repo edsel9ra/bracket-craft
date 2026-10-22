@@ -70,6 +70,7 @@ services:
       - internal
 
   web:
+    user: "node"
     environment:
       NODE_ENV: production
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:?NUXT_PUBLIC_API_BASE must be set}

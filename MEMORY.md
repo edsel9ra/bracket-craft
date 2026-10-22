@@ -1,38 +1,36 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
+## Spec 008 — Higiene P2 (implementada y validada 2026-10-21)
+- **008A/008B/008C completas (22 tareas).** Evidencia: backend **764 passed/194 skipped** sin base y **958 passed/0 skipped** con base; frontend **133 tests**, typecheck y build en Node 24; Compose dev/prod, contrato de entorno, `assert_production_compose`, `pip-audit`, auditoría de frontend y Trivy en verde; migraciones 022/023 en cadena limpia y migrada. Cubre **R18-R32**; **R11 fuera**.
+- Decisiones cerradas: **Q1** anti-duplicado solo en altas manuales (1 por pareja y 2 en ida y vuelta); **Q2** restaurar la última organización con orden estable de reserva; **Q3** `public_age` interna y sin consumo; **Q4** aceptar invitación sin `access_token` en el cuerpo; **Q5** solo la API a loopback en dev; **Q6** al crear se materializa la vencida (201), revocar vencida 409, reenviar la reutiliza.
+- Correcciones de la ronda 2: RF-004 valida `Origin` y `Referer` **por separado** (403 si cualquiera no está permitido; `Referer` vacío o no parseable se rechaza); reenvío con **409 de dominio** en vez de 500; `NON_SERVICE_CONSUMERS` (one-off de cifrado y navegador) en el contrato de entorno; prueba de las 7 variables.
+- Contratos: sin `access_token` al aceptar invitación; revocar vencida → 409; rol mostrado por precedencia (no `MIN(role_code)`); organizaciones en orden estable.
+- Migraciones **aditivas**: 022 topes de minuto, 023 `schedule_legs`. Despliegue: **022 → 023 → backend → frontend** de la misma versión; sin rollback, solo *forward-fix*.
+- **Riesgos residuales aceptados:** R32f relay sin filtro de rol; R24 013 silenciosa (verificada); R22 unicidad de pendientes con vencimiento diferido; R26 ligas históricas de dos vueltas sin *backfill*; R20 deriva del mapa de configuración.
+- **Decisiones posteriores:** UI de «Reenviar» para vencidas/revocadas; reapertura de revocadas; E2E de navegador del reintento; transición real del worker a insano por bucle detenido; revisión humana (§6) y CI real.
+
 ## Spec 007 — Reglas declaradas y constantes (cerrada 2026-10-21)
-- **Implementada, validada por @reviewer y cerrada. PR #2 mergeado (`dc86270`); CI en `main` en verde.** Solo queda el despliegue de la **021 antes** del código.
-- Evidencia: backend **616 passed/152 skipped**; suite con base **764 passed/2 skipped**; frontend **110 passed**, typecheck y build OK; runner de migraciones y Compose OK; `pip-audit --local` sin hallazgos; Trivy no disponible.
-- Migración **021 aditiva antes del código**: `player_out_id`/`player_in_id`, FKs compuestas y `CHECK ... NOT VALID`; no elimina `match_segment_team_state` ni toca `init/01`; sin rollback (*forward-fix*).
-- Sustituciones aplicadas **al cerrar el acta** (`max_per_team`/`max_windows`/`allow_reentry`, defaults 5/3/`false`); orden canónico `(minute, added_minute, índice)` e intervalos con reentrada; límites por equipo y partido; `match_segment_team_state` es proyección (el `GET /operation` calcula sin escribir).
-- `roster_lock_matchday` de primer nivel con valor efectivo de la **versión publicada**; jornada = `matchday` de la primera fase por `stage_order`; alta/importación → 409 sin escribir.
-- Minutos `regular_time_minutes`/`extra_time_minutes` desde `stage_defaults` + overrides (defaults 90/120); pareja efectiva validada; el cierre usa el máximo efectivo. Contrato interno en `docs/contrato-reglas.md` (`engine_version` 2026.1: `GF1`/`GF2` y cuatro formaciones).
-- Enmienda constitucional **1.3.0** (§3.2: retira «transferencias» y añade «sustituciones» y «ventana de inscripción») debe ir en un **commit separado** del cambio funcional.
-- Cierre serializado por fase (dos cierres simultáneos → 409); sin API incremental ni anulación (R11 fuera); eventos de acta confirmada inmutables; `is_voided` es legado.
-
-## Spec 006 — Scoping de torneo y avance manual (cerrada)
-- **Implementada y validada por @reviewer; PR #1 mergeado (`7284756`).** Solo queda desplegar las migraciones 019 y 020.
-- Autorización real: RBAC por organización + `match_officials` por partido; `tournament_user_roles` retirada. Avance manual solo en borradores (1..64, atómico, 204 idempotente); el calendario no se regenera.
-- La 019 es destructiva y sin rollback: código nuevo primero, luego 019 y 020; después solo *forward-fix*. Trigger de estructura con `ZZ409` → API 409 por código.
-
-## Riesgo residual
-- Dos sorteos Swiss simultáneos en frío (ronda 1 sin filas) podrían duplicar calendarios; aceptado en la spec 005.
-- `braces` 3.0.3 y `node-forge` 1.4.0: altos y sin parche upstream; revisar en cada actualización.
+- **Implementada, validada por @reviewer y cerrada. PR #2 mergeado (`dc86270`); CI en `main` en verde.** Solo queda desplegar la **021 antes** del código.
+- Evidencia: backend **616/152**; con base **764/2**; frontend **110**; runner de migraciones y Compose OK; `pip-audit --local` sin hallazgos.
+- Migración **021 aditiva antes del código** (`player_out_id`/`player_in_id`, FKs compuestas, `CHECK ... NOT VALID`); no elimina `match_segment_team_state` ni toca `init/01`.
+- Sustituciones **al cerrar el acta** (5/3/`false`); orden `(minute, added_minute, índice)` con intervalos y reentrada; límites por equipo y partido; `match_segment_team_state` es proyección (el `GET` calcula sin escribir).
+- `roster_lock_matchday` de primer nivel con valor de la **versión publicada**; jornada = `matchday` de la primera fase; alta/importación → 409 sin escribir. Minutos desde `stage_defaults` + overrides (90/120); cierre serializado por fase.
+- Enmienda constitucional **1.3.0** (§3.2) va en **commit separado** del cambio funcional.
 
 ## Specs anteriores
-- 001 (correctivos P0), 002 (cifrado 017/018, backfill y `MIGRATION_TARGET`) y 003 (deuda de dependencias): cerradas.
-- 004 (outbox y tiempo real): aprobada; stream de mejor esfuerzo, `event_id` aditivo, `RESYNC` y deduplicación 200.
+- 001 (P0), 002 (cifrado 017/018 y `MIGRATION_TARGET`), 003 (dependencias) y 004 (outbox/tiempo real): cerradas.
 - 005 (firmas, Swiss y conexión): implementada y validada; pendiente CI en `main` y revisión humana.
+- 006 (scoping de torneo y avance manual): cerrada; PR #1 (`7284756`). Autorización = RBAC por organización + `match_officials`; `tournament_user_roles` retirada.
+- **Riesgo residual 005:** dos sorteos Swiss simultáneos en frío podrían duplicar calendarios. `braces` 3.0.3 y `node-forge` 1.4.0: altos sin parche upstream.
 
 ## Entorno local
-- Backend con venv `/tmp/opencode/bc-t007-venv`; frontend con Node 24.11 y pnpm 12.12.1 en `/tmp/opencode`; PostgreSQL 18 local en `/tmp/opencode/pgdata` (127.0.0.1:5432).
-- `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`), no a `postgres`: los tests de seed/fotos hacen `SET LOCAL ROLE bracket_app` sobre ella.
-- Docker daemon no disponible: `docker compose config` funciona (cliente) pero no se ejecutan contenedores ni Trivy. `pip-audit -r` falla por `ensurepip` ausente; `pip-audit --local` sí audita el venv.
-- Constitución en CRLF: usar `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
+- Backend: tests en contenedor `python:3.14-slim` (raíz montada + `pip install -r backend/requirements*.txt`); frontend en `node:24-alpine` con pnpm 12.12.1 vía corepack. Sin venv ni PostgreSQL local.
+- `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`), no a `postgres`.
+- Docker disponible (engine 29.9.1): Compose y contenedores sí; Trivy con la imagen `aquasec/trivy`. `pip-audit -r` falla por `ensurepip` ausente.
+- Constitución en CRLF: `git -c core.whitespace=cr-at-eol diff --check`. `trivy-action@v0.36.0`.
 
 ## Pendiente
-- Spec 007: desplegar la **021 antes** del código (backup verificado, pre-chequeos, smoke).
-- Spec 006: desplegar las migraciones **019** y **020** (código nuevo primero).
-- Cerrar 005 en `main` (CI + revisión humana).
+- Desplegar **022 → 023** y el código de la 008; **021** antes del código (007); **019** y **020** (006, código nuevo primero).
+- Cerrar 005 en `main` (CI + revisión humana). TypeScript: la última es **7.0.2**, pero `vue-tsc` 3.3.13 no soporta su API (rompe `typecheck`); reintentar cuando lo soporte.
 - Ejecutar la opt-in con el rol de aplicación cuando haya credenciales válidas.

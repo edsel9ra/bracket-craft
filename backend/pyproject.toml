@@ -1,3 +1,9 @@
+[project]
+name = "bracket-craft-api"
+version = "0.1.0"
+description = "API de Bracket Craft: plataforma multi-tenant de torneos de fútbol."
+requires-python = ">=3.14"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"

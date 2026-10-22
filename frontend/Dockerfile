@@ -19,6 +19,11 @@ RUN corepack enable
 
 COPY --from=build /app/.output ./.output
 
+# Los artefactos se copian del build con permisos de lectura para todos, así que
+# `node` puede leerlos sin ser su propietario. La imagen no concede escritura
+# sobre `/app/.output`: el proceso sin privilegios solo escribe en rutas temporales.
+USER node
+
 EXPOSE 3000
 
 CMD ["node", ".output/server/index.mjs"]

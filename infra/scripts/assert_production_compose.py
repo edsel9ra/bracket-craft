@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
-"""Aserciones estructurales sobre la configuración combinada de producción.
+"""Aserciones estructurales sobre la configuración renderizada de Compose.
 
 La función :func:`validate_production_config` recibe la salida de
 ``docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json``
-y devuelve una lista de errores. No ejecuta Docker ni lee el entorno: es pura y
-se puede probar sin Docker.
+y devuelve una lista de errores. :func:`validate_development_config` hace lo
+propio con la salida de ``docker compose config --format json`` (perfil de
+desarrollo). Ninguna ejecuta Docker ni lee el entorno: son puras y se pueden
+probar sin Docker.
 
 Uso en CI/local::
 
+    # Producción (perfil por defecto): merge dev+producción.
     docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
         | python infra/scripts/assert_production_compose.py -
 
+    # Desarrollo: puerto de API en loopback, web publicado como hoy y healthchecks.
+    docker compose config --format json \
+        | python infra/scripts/assert_production_compose.py --profile development -
+
     python infra/scripts/assert_production_compose.py --compose-version "$(docker compose version --short)"
 
-El script falla (código de salida 1) si algún servicio publica puertos, si
-``api``/``worker``/``web`` montan código del host, si ``db``/``db-migrate``
-montan algo distinto de ``./infra/postgres`` en solo lectura, si las redes no
-son las esperadas, si la red externa del proxy no está declarada como externa o
-si los comandos no son de producción.
+El script falla (código de salida 1) si algún servicio publica puertos fuera de
+lo esperado, si ``api``/``worker``/``web`` montan código del host, si
+``db``/``db-migrate`` montan algo distinto de ``./infra/postgres`` en solo
+lectura, si las redes no son las esperadas, si la red externa del proxy no está
+declarada como externa, si los comandos no son de producción, si falta la
+verificación de salud de ``api``/``worker``/``web``, si ``web`` no espera a que
+la API esté sana o si ``web`` se ejecuta como raíz en producción. En desarrollo
+exige además el puerto de la API en la interfaz local y la publicación intacta
+del servicio web.
 
 Requiere Docker Compose 2.24.4 o superior (``!reset``/``!override`` y
 comparación de parche) cuando se usa ``--compose-version``.
@@ -54,6 +65,24 @@ CODE_ROOTS = ("backend", "frontend", "infra")
 INFRA_POSTGRES_ROOT = "infra/postgres"
 
 WEB_PRODUCTION_COMMAND = ["node", ".output/server/index.mjs"]
+
+#: Perfiles de configuración validables.
+PROFILE_DEVELOPMENT = "development"
+PROFILE_PRODUCTION = "production"
+PROFILES = (PROFILE_DEVELOPMENT, PROFILE_PRODUCTION)
+
+#: Servicios con verificación de salud propia (RF-014).
+HEALTHCHECK_SERVICES = ("api", "worker", "web")
+
+#: Interfaces que cuentan como acceso local.
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+#: Puerto del servicio web en desarrollo: punto de entrada del desarrollador.
+WEB_DEVELOPMENT_PORT = 3000
+#: Puerto de la API en desarrollo (solo interfaz local, RF-013).
+API_DEVELOPMENT_PORT = 8000
+#: Servicios de datos que en desarrollo publican solo en la interfaz local.
+DEVELOPMENT_DATA_SERVICES = ("db", "redis", "storage")
 
 
 def parse_semver(version: str) -> tuple[int, int, int]:
@@ -200,11 +229,205 @@ def _validate_volumes(
                 )
 
 
+def _port_entries(service: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Devuelve los mapeos de puerto renderizados (ignora formas no válidas)."""
+
+    ports = service.get("ports")
+    if not isinstance(ports, Sequence) or isinstance(ports, (str, bytes)):
+        return []
+    return [port for port in ports if isinstance(port, Mapping)]
+
+
+def _port_label(port: Mapping[str, Any]) -> str:
+    return f"{port.get('published') or '?'}->{port.get('target') or '?'}"
+
+
+def _validate_healthchecks(
+    services: Mapping[str, Any], errors: list[str]
+) -> None:
+    for name in HEALTHCHECK_SERVICES:
+        service = services.get(name)
+        if not isinstance(service, Mapping):
+            errors.append(f"{name}: no está declarado en la configuración (RF-014)")
+            continue
+        healthcheck = service.get("healthcheck")
+        if not isinstance(healthcheck, Mapping):
+            errors.append(
+                f"{name}: falta la verificación de salud (healthcheck) (RF-014)"
+            )
+            continue
+        test = healthcheck.get("test")
+        empty = test is None or not str(test).strip()
+        if isinstance(test, Sequence) and not isinstance(test, (str, bytes)):
+            empty = len(test) == 0
+        if empty:
+            errors.append(
+                f"{name}: la verificación de salud no declara un comando de "
+                "prueba (healthcheck.test) (RF-014)"
+            )
+
+
+def _validate_web_waits_for_api(
+    services: Mapping[str, Any], errors: list[str]
+) -> None:
+    web = services.get("web")
+    depends_on = web.get("depends_on") if isinstance(web, Mapping) else None
+    api = depends_on.get("api") if isinstance(depends_on, Mapping) else None
+    condition = api.get("condition") if isinstance(api, Mapping) else None
+    if condition != "service_healthy":
+        errors.append(
+            "web: debe esperar a que la API esté sana al arrancar "
+            "(depends_on.api.condition: service_healthy) (RF-014)"
+        )
+
+
+def _is_root_user(user: Any) -> bool:
+    text = str(user).strip()
+    if not text:
+        return True
+    uid = text.split(":", 1)[0].strip()
+    return uid in {"", "0", "root"}
+
+
+def _validate_web_user(services: Mapping[str, Any], errors: list[str]) -> None:
+    web = services.get("web")
+    if not isinstance(web, Mapping):
+        errors.append(
+            "web: no está declarado en la configuración de producción (RF-002)"
+        )
+        return
+    user = web.get("user")
+    if user is None or not str(user).strip():
+        errors.append(
+            "web: no declara un usuario no-root en producción (user ausente) "
+            "(RF-002)"
+        )
+        return
+    if _is_root_user(user):
+        errors.append(
+            f"web: se ejecuta como raíz en producción (user: {user}) (RF-002)"
+        )
+
+
+def _validate_development_ports(
+    services: Mapping[str, Any], errors: list[str]
+) -> None:
+    api = services.get("api")
+    if not isinstance(api, Mapping):
+        errors.append(
+            "api: no está declarado en la configuración de desarrollo (RF-013)"
+        )
+    else:
+        matching = [
+            port
+            for port in _port_entries(api)
+            if str(port.get("target")) == str(API_DEVELOPMENT_PORT)
+        ]
+        if not matching:
+            errors.append(
+                f"api: no publica el puerto {API_DEVELOPMENT_PORT} en la "
+                "interfaz local (RF-013)"
+            )
+        else:
+            for port in matching:
+                host_ip = str(port.get("host_ip") or "")
+                if host_ip not in LOOPBACK_HOSTS:
+                    errors.append(
+                        f"api: publica el puerto {API_DEVELOPMENT_PORT} fuera "
+                        "de la interfaz local (host_ip: "
+                        f"{host_ip or 'todas las interfaces'}) (RF-013)"
+                    )
+                elif str(port.get("published")) != str(API_DEVELOPMENT_PORT):
+                    errors.append(
+                        "api: el puerto publicado debe ser "
+                        f"{API_DEVELOPMENT_PORT} en la interfaz local "
+                        f"(recibido: {_port_label(port)}) (RF-013)"
+                    )
+
+    web = services.get("web")
+    if not isinstance(web, Mapping):
+        errors.append(
+            "web: no está declarado en la configuración de desarrollo (RF-013)"
+        )
+    else:
+        matching = [
+            port
+            for port in _port_entries(web)
+            if str(port.get("target")) == str(WEB_DEVELOPMENT_PORT)
+        ]
+        if not matching:
+            errors.append(
+                f"web: no publica el puerto {WEB_DEVELOPMENT_PORT} (punto de "
+                "entrada del desarrollador) (RF-013)"
+            )
+        else:
+            for port in matching:
+                host_ip = str(port.get("host_ip") or "")
+                if host_ip in LOOPBACK_HOSTS:
+                    errors.append(
+                        "web: la publicación de desarrollo debe conservar "
+                        f"{WEB_DEVELOPMENT_PORT}:{WEB_DEVELOPMENT_PORT} "
+                        "accesible fuera del loopback (recibido: "
+                        f"{_port_label(port)} en {host_ip}) (RF-013)"
+                    )
+                elif str(port.get("published")) != str(WEB_DEVELOPMENT_PORT):
+                    errors.append(
+                        "web: el puerto publicado en desarrollo debe ser "
+                        f"{WEB_DEVELOPMENT_PORT} (recibido: "
+                        f"{_port_label(port)}) (RF-013)"
+                    )
+
+    for name in DEVELOPMENT_DATA_SERVICES:
+        service = services.get(name)
+        if not isinstance(service, Mapping):
+            errors.append(
+                f"{name}: no está declarado en la configuración de desarrollo "
+                "(RF-013)"
+            )
+            continue
+        entries = _port_entries(service)
+        if not entries:
+            errors.append(
+                f"{name}: no publica su puerto en la interfaz local (RF-013)"
+            )
+            continue
+        for port in entries:
+            host_ip = str(port.get("host_ip") or "")
+            if host_ip not in LOOPBACK_HOSTS:
+                errors.append(
+                    f"{name}: publica el puerto {port.get('target') or '?'} "
+                    "fuera de la interfaz local (host_ip: "
+                    f"{host_ip or 'todas las interfaces'}) (RF-013)"
+                )
+                break
+
+
+def validate_development_config(config: Mapping[str, Any]) -> list[str]:
+    """Devuelve los errores de la configuración renderizada de desarrollo.
+
+    Una lista vacía significa que la API solo se publica en la interfaz local,
+    el servicio web conserva su publicación y ``api``/``worker``/``web``
+    declaran verificación de salud (RF-013, RF-014). La función no ejecuta
+    Docker ni depende del entorno.
+    """
+
+    services = config.get("services")
+    if not isinstance(services, Mapping) or not services:
+        return ["La configuración no declara servicios"]
+
+    errors: list[str] = []
+    _validate_development_ports(services, errors)
+    _validate_healthchecks(services, errors)
+    _validate_web_waits_for_api(services, errors)
+    return errors
+
+
 def validate_production_config(config: Mapping[str, Any]) -> list[str]:
     """Devuelve los errores de la configuración combinada de producción.
 
-    Una lista vacía significa que la configuración cumple RF-006, RF-007 y
-    RF-009. La función no ejecuta Docker ni depende del entorno.
+    Una lista vacía significa que la configuración cumple RF-002, RF-006,
+    RF-007, RF-009 y RF-014. La función no ejecuta Docker ni depende del
+    entorno.
     """
 
     errors: list[str] = []
@@ -238,6 +461,10 @@ def validate_production_config(config: Mapping[str, Any]) -> list[str]:
             f"{' '.join(WEB_PRODUCTION_COMMAND)!r} (recibido: "
             f"{' '.join(web_command) or 'ninguno'!r})"
         )
+
+    _validate_healthchecks(services, errors)
+    _validate_web_user(services, errors)
+    _validate_web_waits_for_api(services, errors)
 
     networks = config.get("networks")
     networks = networks if isinstance(networks, Mapping) else {}
@@ -297,8 +524,9 @@ def _load_config(path: str) -> Mapping[str, Any]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Valida la configuración combinada dev+producción de Docker Compose "
-            "y la versión mínima de Compose (2.24.4)."
+            "Valida la configuración renderizada de Docker Compose (desarrollo "
+            "o merge dev+producción), sus verificaciones de salud y la versión "
+            "mínima de Compose (2.24.4). Por defecto valida producción."
         )
     )
     parser.add_argument(
@@ -306,6 +534,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         nargs="?",
         default=None,
         help="JSON renderizado por 'docker compose config --format json'; usa - para stdin",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=PROFILES,
+        default=PROFILE_PRODUCTION,
+        help=(
+            "Perfil a validar. 'production' (por defecto) exige el merge "
+            "dev+producción: sin puertos publicados, sin código del host, web "
+            "no-root y healthchecks en api/worker/web. 'development' exige la "
+            "API en 127.0.0.1, el web publicado como hoy (3000:3000), los "
+            "servicios de datos en la interfaz local y los mismos healthchecks."
+        ),
     )
     parser.add_argument(
         "--compose-version",
@@ -354,10 +594,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"ERROR: no se pudo leer la configuración: {error}", file=sys.stderr)
             return 1
 
-        errors = validate_production_config(config)
+        if args.profile == PROFILE_DEVELOPMENT:
+            errors = validate_development_config(config)
+        else:
+            errors = validate_production_config(config)
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
-        if errors:
+        if args.profile == PROFILE_DEVELOPMENT:
+            if errors:
+                print(
+                    "ERROR: la configuración de desarrollo tiene "
+                    f"{len(errors)} incumplimiento(s)",
+                    file=sys.stderr,
+                )
+                exit_code = 1
+            else:
+                print(
+                    "OK: la configuración de desarrollo publica la API solo en "
+                    "la interfaz local, conserva la publicación del web y "
+                    "declara las verificaciones de salud"
+                )
+        elif errors:
             print(
                 f"ERROR: la configuración combinada de producción tiene "
                 f"{len(errors)} incumplimiento(s)",
@@ -367,7 +624,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(
                 "OK: la configuración combinada de producción no publica puertos, "
-                "no monta código del host y usa las redes esperadas"
+                "no monta código del host, usa las redes esperadas, ejecuta el "
+                "web sin privilegios y declara las verificaciones de salud"
             )
 
     return exit_code

@@ -44,6 +44,7 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       APP_ENV: ${APP_ENV:-development}
       JWT_SECRET: ${JWT_SECRET:-replace-this-development-secret-with-at-least-32-characters}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
       JWT_ISSUER: ${JWT_ISSUER:-bracket-craft-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bracket-craft-web}
@@ -51,10 +52,14 @@ services:
       INVITATION_TOKEN_KEY: ${INVITATION_TOKEN_KEY:-replace-this-development-invitation-key-with-at-least-32-characters}
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-bc_csrf_token}
+      CSRF_TOKEN_TTL_SECONDS: ${CSRF_TOKEN_TTL_SECONDS:-3600}
       AUTH_LOGIN_RATE_LIMIT: ${AUTH_LOGIN_RATE_LIMIT:-10}
       AUTH_REGISTER_RATE_LIMIT: ${AUTH_REGISTER_RATE_LIMIT:-5}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_AUDIENCE: ${GOOGLE_AUDIENCE:-}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-33554432}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       INVITATION_EXPIRE_HOURS: ${INVITATION_EXPIRE_HOURS:-48}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -68,9 +73,12 @@ services:
       STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-http://storage:9000}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-bracket-craft-media}
+      # Solo desarrollo: credenciales del almacenamiento local; producción las exige propias.
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
       STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:9000/bracket-craft-media}
+      STORAGE_SIGNING_ENDPOINT_URL: ${STORAGE_SIGNING_ENDPOINT_URL:-}
+      STORAGE_PRESIGN_SECONDS: ${STORAGE_PRESIGN_SECONDS:-300}
       STORAGE_MAX_IMAGE_BYTES: ${STORAGE_MAX_IMAGE_BYTES:-5242880}
       STORAGE_MAX_ARCHIVE_BYTES: ${STORAGE_MAX_ARCHIVE_BYTES:-26214400}
       STORAGE_MAX_ARCHIVE_FILES: ${STORAGE_MAX_ARCHIVE_FILES:-200}
@@ -82,7 +90,23 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      # Solo en la interfaz local: ni el navegador ni el SSR necesitan la API
+      # expuesta a la red (RF-013). El SSR la alcanza por la red interna.
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      # Disponibilidad real: la API confirma base de datos y Redis (RF-014).
+      # No depende del servicio web.
+      test: |
+        python -c "import sys, urllib.request
+        try:
+            ok = urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status == 200
+        except Exception:
+            ok = False
+        sys.exit(0 if ok else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
@@ -103,6 +127,16 @@ services:
       db-migrate:
         condition: service_completed_successfully
     command: python -m app.workers.outbox
+    healthcheck:
+      # Vitalidad del bucle: el fichero de latido se actualiza cada 10 s y se
+      # considera caducado a los 90 s (RF-014). Sigue sano con la BD caída
+      # mientras el bucle avance y reintente.
+      test: |
+        python -c "import sys; from app.workers.heartbeat import HEARTBEAT_MAX_AGE_SECONDS, heartbeat_is_fresh_at_path; sys.exit(0 if heartbeat_is_fresh_at_path(max_age=HEARTBEAT_MAX_AGE_SECONDS) else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     volumes:
       - ./backend:/app
 
@@ -137,15 +171,32 @@ services:
   web:
     build:
       context: ./frontend
+    # Excepción solo de desarrollo: el servidor de desarrollo escribe caché en
+    # ./frontend y el identificador del contenedor puede no coincidir con el
+    # dueño del host (Linux frente a Windows/WSL). Producción fija user: "node".
+    user: "0:0"
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
       NUXT_PUBLIC_SOCKET_BASE: ${NUXT_PUBLIC_SOCKET_BASE:-http://localhost:8000}
       NUXT_API_INTERNAL_BASE: ${NUXT_API_INTERNAL_BASE:-http://api:8000/api/v1}
       CI: "true"
     depends_on:
-      - api
+      api:
+        # Espera una sola vez a que la API esté disponible al arrancar; después
+        # la salud del web solo mide que sirve HTTP (RF-014).
+        condition: service_healthy
     ports:
       - "3000:3000"
+    healthcheck:
+      # Sirve HTTP en su propio puerto: un recurso estático, sin renderizado
+      # de servidor, así que no depende de la base de datos ni de la API una
+      # vez arrancado (RF-014).
+      test: |
+        node -e "fetch('http://127.0.0.1:3000/health.txt').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     command: pnpm run dev
     volumes:
       - ./frontend:/app
