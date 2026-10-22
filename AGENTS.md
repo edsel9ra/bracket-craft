@@ -451,7 +451,7 @@ Las skills del proyecto viven en `.agents/skills/<nombre>/SKILL.md`.
 
 ## Testing
 
-La CI (`ci.yml`) tiene **cinco** jobs independientes; reproduce localmente el que corresponda a tu cambio. La §4 de `docs/constitution.md` (versión 1.3.0) todavía nombra solo `backend`, `frontend`, `infrastructure` y `security`: su enmienda menor (**1.4.0**) se tramita en un **cambio propio** según §5.2 y no forma parte de esta entrega. Marcar `e2e` como *required check* es configuración del repositorio en GitHub (protección de rama), no un cambio de código ni de `ci.yml`.
+La CI (`ci.yml`) tiene **cinco** jobs independientes; reproduce localmente el que corresponda a tu cambio. La §4 de `docs/constitution.md` (versión **1.4.0**) incluye el job `e2e` junto a `backend`, `frontend`, `infrastructure` y `security`; la enmienda se tramitó en un cambio propio según §5.2. Marcar `e2e` como *required check* es configuración del repositorio en GitHub (protección de rama), no un cambio de código ni de `ci.yml`.
 
 - **`backend` (Backend tests):** `cd backend && pytest -q`, más `python -m compileall -q app` para detectar errores de sintaxis. El job también ejecuta `infra/scripts/test_migrate_target.sh` contra PostgreSQL 17 y la suite con base (`RUN_DATABASE_TESTS=1`).
 - **`frontend` (Frontend checks):** `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm run typecheck` y `pnpm run build` desde `frontend/`.

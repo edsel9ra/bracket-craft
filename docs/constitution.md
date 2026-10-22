@@ -1,8 +1,8 @@
 # Constitución de Bracket Craft
 
 **Ruta:** `docs/constitution.md`
-**Versión:** 1.3.0
-**Última actualización:** 2026-10-20
+**Versión:** 1.4.0
+**Última actualización:** 2026-10-22
 **Ámbito:** Este documento define los principios y reglas que gobiernan el desarrollo de Bracket Craft. Tiene precedencia sobre cualquier otra guía del repositorio. `README.md` describe el producto, `AGENTS.md` describe cómo trabajar en el repositorio y `ci.yml` automatiza la verificación; ninguno puede contradecir esta constitución.
 
 ## 1. Propósito
@@ -84,7 +84,7 @@ Ningún cambio se fusiona sin cumplir todo lo siguiente que le aplique.
 
 **Para todos los cambios**
 
-- [ ] Pasa el job de CI correspondiente (`backend`, `frontend`, `infrastructure` y `security`).
+- [ ] Pasa el job de CI correspondiente (`backend`, `frontend`, `infrastructure`, `security` y `e2e`; `e2e` se ejecuta en cada `pull_request` y solo en `push` a `main`).
 - [ ] No introduce secretos, credenciales ni datos personales en el repositorio.
 - [ ] Si altera el comportamiento observable, actualiza la documentación afectada (`README.md`, `AGENTS.md` o esta constitución).
 - [ ] Tiene pruebas para el comportamiento nuevo o corregido, o documenta por qué no son posibles.
@@ -166,3 +166,4 @@ Los incumplimientos detectados después de fusionar se corrigen con prioridad. S
 | 1.1.0 | 2026-10-19 | **Reglas afectadas:** §3.5 (Infraestructura y CI). Regulariza el cambio que ya estaba presente en el repositorio, donde §3.5 declaraba Python 3.14, Node 24 y la versión 12.12.2 de pnpm sin haber subido la versión de la constitución, y lo corrige a pnpm 12.12.1 (la 12.12.2 no existe en el registro npm; las publicadas cercanas son 12.12.0, 12.12.1, 12.13.0 y 12.14.0). **Motivo:** cerrar la deriva documental de versiones de referencia (R04 de la auditoría técnica del 2026-10-19) y dejar cabecera, §3.5 e historial coherentes. **Incremento menor** porque cambia el contenido de una regla de implementación, no una simple aclaración; no corresponde un parche. | No altera principios ni criterios. Fija una única combinación de versiones de referencia —Python 3.14, Node 24 y pnpm 12.12.1— que debe mantenerse alineada en `ci.yml`, los Dockerfiles, el `packageManager` del frontend, `AGENTS.md`, el README y esta §3.5 en el mismo cambio. La alineación técnica de esas fuentes se tramita en un commit separado de esta enmienda. Sin impacto funcional en el código existente. |
 | 1.2.0 | 2026-10-19 | **Reglas afectadas:** §3.4 (Seguridad y configuración). Sustituye la exigencia literal de `pnpm audit --prod --audit-level high` por el comando efectivo —desde la raíz, `pnpm --dir frontend`, estado de pnpm capturado y pasado con `--pnpm-status`, filtro determinista `infra/scripts/audit_frontend.py` y archivo temporal limpiado con `trap`— y hace explícita la política sobre hallazgos sin corrección. **Motivo:** retirar la deuda de dependencias del frontend y hacer explícita la política de no accionables, sustituyendo el comando literal por el efectivo (spec 003, RF-009). **Incremento menor** porque cambia el contenido de una regla de implementación, no una aclaración; no corresponde un parche. | CI (paso `security`) y documentación (`AGENTS.md`, README); sin impacto funcional ni de esquema. El filtro conserva el fallo ante hallazgos accionables (≥ high con corrección publicada) y no persiste exclusiones. |
 | 1.3.0 | 2026-10-20 | **Reglas afectadas:** §3.2 (Backend). Retira «transferencias» de la lista de reglas deportivas configurables y añade «sustituciones» y «ventana de inscripción»; declara que las transferencias no son configuración porque el producto no soporta traspasos entre equipos. **Motivo:** R09 de la auditoría del 2026-10-19 y spec 007 (Q1/Q2): `substitutions` pasa a aplicarse y `transfers` no tenía operación que la produjera ni consumidor. **Incremento menor** porque cambia el contenido de una regla de implementación. | Sin impacto de datos: `transfers` desaparece de las configuraciones nuevas; `substitutions` y `roster_lock_matchday` quedan como claves aplicadas. No hay cambio de esquema por esta enmienda. |
+| 1.4.0 | 2026-10-22 | **Reglas afectadas:** §4 (Criterios obligatorios), primer criterio de «Para todos los cambios». Añade el job `e2e` a la lista de jobs cuyo resultado condiciona la fusión y precisa su disparador: en cada `pull_request` y solo en `push` a `main`. **Motivo:** la spec 010 introduce un quinto job independiente que verifica de extremo a extremo el reintento del tiempo real; la §4 enumeraba cuatro y quedaba desactualizada. **Incremento menor** porque añade un criterio de cambio, no una aclaración. | Sin impacto funcional ni de esquema ni migraciones. El job `e2e` forma parte del cumplimiento en cada PR y en `main`; para bloquear la fusión debe marcarse además como *required check* en la protección de rama, que es configuración del repositorio. Se refleja en `AGENTS.md`. |
