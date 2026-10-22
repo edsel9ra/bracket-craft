@@ -24,6 +24,12 @@ const translations = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',
 );
+const membersPage = readFileSync(
+  new URL('../app/pages/workspace/members.vue', import.meta.url),
+  'utf8',
+);
+const membersScript = membersPage.slice(0, membersPage.indexOf('</script>'));
+const membersTemplate = membersPage.slice(membersPage.indexOf('<template>'));
 
 function catalogSlices(): { spanish: string; english: string } {
   const englishStart = translations.indexOf('\n  en: {');
@@ -164,4 +170,83 @@ test('every new key exists in both catalogs (RF-005, RF-006, RF-007)', () => {
     assert.ok(hasKey(spanish, key), `missing Spanish key ${key}`);
     assert.ok(hasKey(english, key), `missing English key ${key}`);
   }
+});
+
+test('the invitation row renders the actions decided by invitationActionsFor (RF-005)', () => {
+  assert.match(
+    membersTemplate,
+    /v-for="action in invitationActionsFor\(invitation\.status\)"/,
+    'each row must render exactly the actions the pure helper returns',
+  );
+  assert.match(membersTemplate, /\{\{\s*t\(invitationActionLabelKey\(action\)\)\s*\}\}/);
+  assert.doesNotMatch(
+    membersPage,
+    /status !== 'accepted'/,
+    'resend must not be re-decided in the template: the helper owns the per-status choice',
+  );
+  assert.doesNotMatch(membersTemplate, /invitation\.status === 'revoked'/);
+  assert.doesNotMatch(membersTemplate, /invitation\.status === 'expired'/);
+  assert.doesNotMatch(
+    membersTemplate,
+    /Reabrir|Reopen/,
+    'the reopen label must come from the active catalog, never a fixed literal',
+  );
+});
+
+test('reopening asks for confirmation before the request and a second activation sends nothing (RF-006)', () => {
+  assert.match(membersScript, /invitationActionConfirmKey\(action\)/);
+  assert.match(membersScript, /window\.confirm\(t\(confirmKey\)\)/);
+  assert.match(membersScript, /beginInvitationOperation\(invitationOperation\.value,/);
+  assert.match(membersScript, /if \(operation === null\) return;/);
+  assert.match(membersTemplate, /:disabled="invitationControlsDisabled\(invitationOperation\)"/);
+
+  const confirmIndex = membersScript.indexOf('window.confirm(t(confirmKey))');
+  const reopenRequestIndex = membersScript.indexOf('/organizations/invitations/${invitation.id}/reopen');
+  assert.ok(confirmIndex > 0, 'reopening must ask for confirmation');
+  assert.ok(reopenRequestIndex > 0, 'reopening must call the reopen endpoint');
+  assert.ok(confirmIndex < reopenRequestIndex, 'the confirmation must run before the request');
+});
+
+test('reopening and resending go through useApi and show the link emitted by the server (RF-007)', () => {
+  assert.match(membersScript, /const \{ request \} = useApi\(\)/);
+  assert.doesNotMatch(membersScript, /\$fetch\s*\(/);
+  assert.doesNotMatch(membersScript, /window\.fetch\s*\(/);
+  assert.match(membersScript, /\/organizations\/invitations\/\$\{invitation\.id\}\/reopen/);
+  assert.match(membersScript, /\/organizations\/invitations\/\$\{invitation\.id\}\/resend/);
+  assert.match(
+    membersScript,
+    /generatedLink\.value = updated\.invite_url \|\| null;/,
+    'the shown link must be the one returned by the operation',
+  );
+  assert.match(membersScript, /Object\.assign\(invitation, updated\)/);
+});
+
+test('the 409 is translated from its stable code with an error fallback (RF-007)', () => {
+  assert.match(membersScript, /invitationConflictMessageKey\(invitationConflictCode\(cause\)\)/);
+  assert.match(membersScript, /return t\(key\);/);
+  assert.match(membersScript, /errorMessage\(cause, t\(fallbackKey\)\)/);
+});
+
+test('the invitation operation and the member directory keep separate busy states', () => {
+  assert.match(membersScript, /const invitationOperation = ref<InvitationOperation>\('idle'\)/);
+  assert.match(membersScript, /const saving = ref\(false\)/);
+
+  const invitePanelStart = membersTemplate.indexOf("members.inviteEyebrow");
+  const directoryPanelStart = membersTemplate.indexOf("members.directoryEyebrow");
+  assert.ok(invitePanelStart > 0 && directoryPanelStart > invitePanelStart);
+  const invitationPanels = membersTemplate.slice(invitePanelStart, directoryPanelStart);
+  assert.doesNotMatch(
+    invitationPanels,
+    /saving/,
+    'the invitation form and rows must be governed by invitationOperation, not by saving',
+  );
+  assert.match(invitationPanels, /invitationControlsDisabled\(invitationOperation\)/);
+});
+
+test('each invitation control names its role and expiry date, never the email (RF-005)', () => {
+  assert.match(membersTemplate, /:aria-label="invitationAria\(action, invitation\)"/);
+  assert.match(membersScript, /invitationActionAriaKey\(action\)/);
+  assert.match(membersScript, /role: t\(roleLabelKey\(invitation\.role_code\)\)/);
+  assert.match(membersScript, /date: formatDate\(invitation\.expires_at\)/);
+  assert.doesNotMatch(membersPage, /aria-label[^\n]*invitation\.email/);
 });
