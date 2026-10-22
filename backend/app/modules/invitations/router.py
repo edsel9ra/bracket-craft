@@ -31,6 +31,7 @@ from app.modules.invitations.errors import INVITATION_OTHER_PENDING, InvitationC
 from app.modules.invitations.lifecycle import (
     effective_invitation_status,
     reopen_conflict,
+    resend_conflict,
 )
 from app.modules.invitations.schemas import (
     AcceptInvitationRequest,
@@ -200,8 +201,10 @@ async def create_invitation(
                 },
             )
         except IntegrityError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+            # Mismo motivo que el 409 de reenvío; el detalle histórico de crear
+            # se conserva literal y solo se añade el ``code`` estable.
+            raise InvitationConflict(
+                INVITATION_OTHER_PENDING,
                 detail="Ya existe una invitación pendiente para ese email",
             ) from exc
         invitation = dict(result.mappings().one())
@@ -248,6 +251,17 @@ async def resend_invitation(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> InvitationResponse:
+    """Reenvía una invitación pendiente o almacenada como vencida.
+
+    RF-003 (C-1): una invitación revocada **no** se reenvía; responde 409 con
+    ``code: INVITATION_REVOKED_RESEND`` y debe reabrirse con
+    ``POST …/{id}/reopen``. Una aceptada responde 409
+    ``INVITATION_ALREADY_ACCEPTED`` y otra pendiente vigente del mismo correo
+    409 ``INVITATION_OTHER_PENDING``. Los tres se evalúan antes de escribir:
+    un 409 no cambia estado, token, fecha, ``revoked_at`` ni ``updated_at``,
+    no materializa el vencimiento, no envía correo y no devuelve enlace.
+    """
+
     settings = get_settings()
     raw_token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
@@ -258,8 +272,11 @@ async def resend_invitation(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         invitation = await _load_invitation_for_email(db, context, invitation_id)
-        if invitation["status"] == "accepted":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Una invitación aceptada no se puede reenviar")
+        # RF-003 (C-1): el conflicto de estado se decide antes de materializar y
+        # de escribir; la revocada se distingue de la aceptada por su código.
+        reason = resend_conflict(invitation["status"])
+        if reason is not None:
+            raise InvitationConflict(reason)
         # R22: materializar las pendientes vencidas del correo antes de
         # reutilizar la fila evita que la unicidad de pendientes convierta el
         # reenvío en un error 500.
@@ -281,10 +298,7 @@ async def resend_invitation(
             },
         )
         if other_pending.scalar_one_or_none() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe una invitación pendiente para ese correo",
-            )
+            raise InvitationConflict(INVITATION_OTHER_PENDING)
         # R22: reenviar reutiliza la misma fila (también si estaba vencida) y la
         # deja pendiente con token y fecha nuevos, sin crear otra invitación.
         try:
@@ -313,10 +327,7 @@ async def resend_invitation(
         except IntegrityError as exc:
             # Carrera con otra escritura: la unicidad de pendientes sigue siendo
             # la garantía final y el cliente recibe un 409 de dominio.
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe una invitación pendiente para ese correo",
-            ) from exc
+            raise InvitationConflict(INVITATION_OTHER_PENDING) from exc
         updated = dict(result.mappings().one())
         organization_result = await db.execute(text("SELECT name FROM get_current_organization()"))
         organization_name = organization_result.scalar_one_or_none()
