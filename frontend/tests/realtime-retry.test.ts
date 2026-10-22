@@ -32,6 +32,30 @@ test('un intento en curso con socket no se reinicia ni acumula intentos', () => 
   assert.equal(shouldForceReconnect('reconnecting', true), false);
 });
 
+test('un reintento manual en curso con socket vivo no inicia otro intento', () => {
+  // `retrying` es el estado visible del intento que abrió la pulsación: una
+  // segunda pulsación no puede derribar ese socket ni acumular un intento
+  // (caso límite 3, decisión 7 del plan).
+  assert.equal(shouldForceReconnect('retrying', true), false);
+
+  // Sin socket no hay intento que conservar: la pulsación puede reintentar.
+  assert.equal(shouldForceReconnect('retrying', false), true);
+
+  // El guard de sesión convierte la doble pulsación en un no-op con socket,
+  // mismo alcance y misma versión de sesión.
+  assert.equal(
+    needsNewSocketSession({
+      hasSocket: true,
+      previousScopeKey: 'public:tournament-1',
+      nextScopeKey: 'public:tournament-1',
+      publicScope: true,
+      previousSessionVersion: 0,
+      sessionVersion: 0,
+    }),
+    false,
+  );
+});
+
 test('sin socket, cualquier estado no conectado admite un intento nuevo', () => {
   assert.equal(shouldForceReconnect('idle', false), true);
   assert.equal(shouldForceReconnect('connecting', false), true);

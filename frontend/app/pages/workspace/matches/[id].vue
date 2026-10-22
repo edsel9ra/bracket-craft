@@ -3,6 +3,7 @@ import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constan
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
+import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import {
   DEFAULT_MATCH_LIMITS,
   SUBSTITUTION_EVENT_TYPE,
@@ -973,10 +974,8 @@ loading.value = false;
 if (operation.value) loadPersistedDraft();
 
 const realtimeStatusLabel = computed(() => {
-  if (realtime.status.value === 'connected') return t('match.realtimeConnected');
-  if (realtime.status.value === 'reconnecting') return t('match.realtimeReconnecting');
-  if (realtime.status.value === 'error') return t('match.realtimeError');
-  return '';
+  const key = realtimeStatusLabelKey(realtime.status.value, 'match');
+  return key ? t(key) : '';
 });
 
 onMounted(() => {
@@ -1212,7 +1211,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .operation-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.09), transparent 30rem), #0c0f0c; }
 .realtime-status { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.realtime-error, .realtime-reconnecting { color: #ffcb7a; }
+.realtime-error, .realtime-reconnecting, .realtime-retrying { color: #ffcb7a; }
 .realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.68rem; text-decoration: underline; }
 .operation-hero { padding: 4vh 0 3vh; animation: rise-in 700ms var(--ease-out) both; }
 .hero-line, .panel-heading, .team-heading, .close-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

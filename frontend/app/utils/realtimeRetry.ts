@@ -14,9 +14,11 @@ export type RealtimeRetryStatus = RealtimeConnectionStatus | 'disconnected';
  * - `error` o `disconnected`: siempre, aunque exista un objeto de socket
  *   (zombi): esa conexión no se puede reutilizar y el guard de sesión
  *   devolvería temprano sin intentar nada (R18).
- * - `idle`, `connecting` o `reconnecting`: solo si no hay socket. Con un
- *   socket en curso, Socket.IO ya reintenta solo y pulsar otra vez no debe
- *   acumular conexiones ni duplicar suscripciones (RF-001).
+ * - `idle`, `connecting`, `reconnecting` o `retrying`: solo si no hay socket.
+ *   Con un socket en curso, Socket.IO ya reintenta solo y pulsar otra vez no
+ *   debe acumular conexiones ni duplicar suscripciones (RF-001). En
+ *   `retrying` el socket vivo es justamente el intento que abrió la primera
+ *   pulsación, así que la segunda es un no-op (caso límite 3).
  */
 export function shouldForceReconnect(status: RealtimeRetryStatus, hasSocket: boolean): boolean {
   if (status === 'connected') return false;

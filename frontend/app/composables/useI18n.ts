@@ -128,6 +128,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'workspace.confirmPublish': 'Publicar esta versión hará que el torneo sea visible e inmutable. ¿Confirmas?',
     'workspace.realtimeConnected': 'Actualización en vivo conectada',
     'workspace.realtimeReconnecting': 'Reconectando actualización en vivo',
+    'workspace.realtimeRetrying': 'Reintentando…',
     'workspace.realtimeError': 'La actualización en vivo no está disponible',
 
     'members.title': 'Miembros',
@@ -275,6 +276,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'public.loadMoreMatches': 'Cargar más partidos',
     'public.realtimeConnected': 'Actualización en vivo conectada',
     'public.realtimeReconnecting': 'Reconectando actualización en vivo',
+    'public.realtimeRetrying': 'Reintentando…',
     'public.realtimeError': 'La actualización en vivo no está disponible',
 
     'setup.tournamentSetup': 'Configuración del torneo',
@@ -661,6 +663,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'match.confirmClosePrompt': 'El cierre del acta es irreversible y publicará el resultado. ¿Confirmas?',
     'match.realtimeConnected': 'Actualización del partido conectada',
     'match.realtimeReconnecting': 'Reconectando actualización del partido',
+    'match.realtimeRetrying': 'Reintentando…',
     'match.realtimeError': 'La actualización del partido no está disponible',
     'match.mainReferee': 'Árbitro principal',
     'match.assistantOne': 'Asistente 1',
@@ -805,6 +808,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'workspace.confirmPublish': 'Publishing this version will make the tournament visible and immutable. Confirm?',
     'workspace.realtimeConnected': 'Live updates connected',
     'workspace.realtimeReconnecting': 'Reconnecting live updates',
+    'workspace.realtimeRetrying': 'Retrying…',
     'workspace.realtimeError': 'Live updates are unavailable',
 
     'members.title': 'Members',
@@ -952,6 +956,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'public.loadMoreMatches': 'Load more matches',
     'public.realtimeConnected': 'Live updates connected',
     'public.realtimeReconnecting': 'Reconnecting live updates',
+    'public.realtimeRetrying': 'Retrying…',
     'public.realtimeError': 'Live updates are unavailable',
 
     'setup.tournamentSetup': 'Tournament setup',
@@ -1338,6 +1343,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'match.confirmClosePrompt': 'Closing the report is irreversible and will publish the result. Confirm?',
     'match.realtimeConnected': 'Match live updates connected',
     'match.realtimeReconnecting': 'Reconnecting match live updates',
+    'match.realtimeRetrying': 'Retrying…',
     'match.realtimeError': 'Match live updates are unavailable',
     'match.mainReferee': 'Main referee',
     'match.assistantOne': 'Assistant 1',

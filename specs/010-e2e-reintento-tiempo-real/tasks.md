@@ -17,7 +17,7 @@ lockfile. Ninguna otra.
 
 ---
 
-- [ ] **T1. Guardas y etiqueta puras del estado manual de reintento.** RF-001, RNF-009, RNF-011
+- [x] **T1. Guardas y etiqueta puras del estado manual de reintento.** RF-001, RNF-009, RNF-011
 - Hecho cuando: se escriben primero `frontend/tests/realtime-manual-retry.test.ts` (rojo) y las
   ampliaciones de `frontend/tests/realtime-retry.test.ts` y `frontend/tests/realtime-reload.test.ts`
   (rojo), y después `frontend/app/utils/realtimeConnection.ts` añade `'retrying'` a
@@ -34,7 +34,7 @@ lockfile. Ninguna otra.
   `realtime-reload.test.ts` siguen pasando sin retirar ninguno**; `cd frontend && pnpm run typecheck`
   pasa.
 
-- [ ] **T2. Producto: estado manual en el composable, i18n y las tres vistas.** RF-001, RF-003, RNF-004, RNF-011
+- [x] **T2. Producto: estado manual en el composable, i18n y las tres vistas.** RF-001, RF-003, RNF-004, RNF-011
 - Hecho cuando: se amplía primero `frontend/tests/realtime-manual-retry.test.ts` con el catálogo y las
   aserciones de fuente (rojo) y después: `frontend/app/composables/useRealtime.ts` hace que `connect()`
   devuelva `boolean` y que `retry()` devuelva `boolean`, fijando `'retrying'` **solo** cuando
@@ -50,7 +50,7 @@ lockfile. Ninguna otra.
   literal «Reintentando»/«Retrying»; `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run
   build` pasan.
 
-- [ ] **T3. Andamiaje del arnés, funciones puras de observación y etiquetas de los localizadores.** RNF-001, RNF-005, RF-002 (parte pura)
+- [x] **T3. Andamiaje del arnés, funciones puras de observación y etiquetas de los localizadores.** RNF-001, RNF-005, RF-002 (parte pura)
 - Hecho cuando: se escribe primero `frontend/tests/e2e-observations.test.ts` (rojo) y después
   `frontend/e2e/observations.ts` (`classifyReloads`, `assertScenarioOrder`, `expectedConnectionCount`,
   `isDuplicateReload`, `EXPECTED_VIEWS`, sin dependencias de Playwright y con todos los instantes y
@@ -72,7 +72,7 @@ lockfile. Ninguna otra.
   pnpm run typecheck:e2e` pasa; `cd frontend && pnpm exec playwright --version` responde `1.64.1` y
   `cd frontend && pnpm exec playwright test --list` no lista ningún spec de `tests/`.
 
-- [ ] **T4. Datos de la corrida, sesión del Workspace y artefactos saneados.** RF-005, RNF-005, RNF-006, RF-002 (origen de las recargas)
+- [x] **T4. Datos de la corrida, sesión del Workspace y artefactos saneados.** RF-005, RNF-005, RNF-006, RF-002 (origen de las recargas)
 - Hecho cuando: se escribe primero la ampliación de `frontend/tests/e2e-observations.test.ts` con
   `redactLine`/`redactPath` (rojo) y después `frontend/e2e/demo.ts` (descubre el torneo público por
   `GET /tournaments/public` y un partido `scheduled` por `GET /tournaments/public/{id}/matches`; sin
@@ -80,7 +80,7 @@ lockfile. Ninguna otra.
   `frontend/e2e/session.setup.ts` (fija `bc_locale=es`, inicia sesión **por la interfaz** con la cuenta
   demo, verifica `/workspace` y guarda `storageState` en `frontend/.auth/state.json`, que se reutiliza y
   sirve para reautenticar de forma declarada, caso límite 13) y `frontend/e2e/artifacts.ts`
-  (`summary.json`, `view-<vista>.json`, `trace.jsonl` sin cabeceras, capturas PNG y lectura saneada de
+  (`summary.json`, `view-<vista>.json`, `trace-<vista>.jsonl` sin cabeceras, capturas PNG y lectura saneada de
   `docker compose logs`); `cd frontend && pnpm test` pasa y demuestra que `redactLine` elimina los
   valores de `Cookie`, `Set-Cookie`, `Authorization`, `token` y `bc_csrf_token` y deja el resto de la
   línea intacto; `cd frontend && pnpm run typecheck:e2e` pasa; con la pila levantada y sembrada, `cd
@@ -88,7 +88,7 @@ lockfile. Ninguna otra.
   en `frontend/.auth/state.json` (ignorado y fuera de `e2e-report/`) y `grep -R "Cookie" frontend/e2e-
   report` no devuelve nada.
 
-- [ ] **T5. Interceptor del canal con retención y escenario de la vista pública.** RF-001, RF-002, RF-006, RNF-001
+- [x] **T5. Interceptor del canal con retención y escenario de la vista pública.** RF-001, RF-002, RF-006, RNF-001
 - Hecho cuando: se escribe primero `frontend/e2e/realtime-public.spec.ts` (rojo: sin escenario, el spec
   falla en la primera condición) y después
   `frontend/e2e/channel.ts` (`page.routeWebSocket` para la elevación y `page.route` para el sondeo, modos
@@ -101,26 +101,26 @@ lockfile. Ninguna otra.
   e2e/realtime-public.spec.ts`) sale **0** y deja `e2e-report/view-public.json` con: `blockedAt` <
   `errorVisibleAt` < `clickedAt` < `attemptStartedAt` < `manualVisibleAt` < `manualGoneAt` <
   `unblockedAt` < `connectedAt` < `settledAt` en los dos ciclos, `retryingVisibleAt` posterior al inicio
-  del intento y anterior al desbloqueo, **0** conexiones establecidas durante el bloqueo, **2**
+  del intento y anterior al desbloqueo, **2**
   establecidas en total, **0** navegaciones del frame principal, ≤1 recarga atribuible del consumidor
   público con su número observado declarado y `assertScenarioOrder` sin violaciones; el texto manual
   observado es «Reintentando…» y **no** aparece sin pulsación; `cd frontend && pnpm run typecheck:e2e`
   pasa y `cd frontend && pnpm test` sigue en verde.
 
-- [ ] **T6. Vistas del Workspace y de la operación del partido.** RF-002, RF-003
+- [x] **T6. Vistas del Workspace y de la operación del partido.** RF-002, RF-003
 - Hecho cuando: se escriben `frontend/e2e/realtime-workspace.spec.ts` y
   `frontend/e2e/realtime-operation.spec.ts` reutilizando `realtimeScenario.ts` (sin duplicar el
   escenario ni el bloqueo) y, con la pila levantada y sembrada, `cd frontend && pnpm exec playwright test
   e2e/realtime-workspace.spec.ts e2e/realtime-operation.spec.ts` sale **0** y deja
   `e2e-report/view-workspace.json` y `e2e-report/view-operation.json` con las mismas invariantes que la
-  vista pública (orden, 2 conexiones establecidas, 0 durante el bloqueo, 0 recargas del documento, ≤1
+  vista pública (orden, 2 conexiones establecidas, ninguna recuperación durante el bloqueo, 0 recargas del documento, ≤1
   recarga atribuible por consumidor —`/api/v1/tournaments` y `/api/v1/matches/{id}/operation`
   respectivamente—, estado manual en ambos ciclos y ausencia de estado manual sin pulsación); ninguna de
   las dos usa `test.skip` ni `test.fixme` (`grep -n 'test\.\(skip\|fixme\)' frontend/e2e/*.ts` no
   devuelve nada); si se retira temporalmente el control de una vista, **su** spec falla y los otros dos
   siguen informando; `cd frontend && pnpm run typecheck:e2e` pasa.
 
-- [ ] **T7. Runner local, veredicto y gate de las tres vistas.** RF-004 (local), RF-005, RF-006
+- [x] **T7. Runner local, veredicto y gate de las tres vistas.** RF-004 (local), RF-005, RF-006
 - Hecho cuando: existe `frontend/e2e/run.ts` con `--no-stack`, reenvío de argumentos tras `--`, arranque
   acotado (`docker compose up -d --build --wait --wait-timeout 300`, ≤5 min, informado aparte), seed,
   ejecución de Playwright con `retries: 0`, agregación de `summary.json` y traducción a códigos de
@@ -131,7 +131,7 @@ lockfile. Ninguna otra.
   run e2e:test` sale **2** y se declara como fallo de infraestructura; `cd frontend && pnpm run
   typecheck:e2e` pasa y `grep -n 'retries' frontend/playwright.config.ts` muestra `retries: 0`.
 
-- [ ] **T8. Job `e2e` en la integración continua.** RF-004, RNF-002, RNF-003, RNF-008
+- [x] **T8. Job `e2e` en la integración continua.** RF-004, RNF-002, RNF-003, RNF-008
 - Hecho cuando: `.github/workflows/ci.yml` gana un quinto job `e2e` **sin tocar los cuatro existentes**,
   con `if` que lo ejecuta en cada `pull_request` y solo en `push` a `main`, `timeout-minutes: 25`,
   pasos de pnpm 12.12.1 y Node 24 con caché por `frontend/pnpm-lock.yaml`, caché de
@@ -146,7 +146,7 @@ lockfile. Ninguna otra.
   siguen sin exclusiones nuevas; el job no ejecuta ningún motor distinto de `chromium` ni ningún
   reintento del escenario; el flujo de trabajo conserva `permissions: contents: read`.
 
-- [ ] **T9. Documentación de producto, operación y agentes.** RF-004, RF-006, RNF-011
+- [x] **T9. Documentación de producto, operación y agentes.** RF-004, RF-006, RNF-011
 - Hecho cuando: `README.md` documenta en «Tiempo real y outbox» el estado visible de **reintento manual**
   («Reintentando…»/«Retrying…», `role="status"`, aparece solo tras pulsar «Reintentar» en error y solo
   si se inicia un intento nuevo, desaparece al conectar o al volver a error, no altera la lógica ni las
@@ -160,7 +160,7 @@ lockfile. Ninguna otra.
   -c core.whitespace=cr-at-eol diff --check` no reporta errores; no se edita `docs/constitution.md`,
   `MEMORY.md`, `backend/`, `infra/` ni otras specs.
 
-- [ ] **T10. Validación completa de la entrega.** Todos los RF (criterios 1 a 10)
+- [x] **T10. Validación completa de la entrega.** Todos los RF (criterios 1 a 10)
 - Hecho cuando: `cd frontend && pnpm install --frozen-lockfile`, `cd frontend && pnpm test`, `cd
   frontend && pnpm run typecheck`, `cd frontend && pnpm run build` y `cd frontend && pnpm run
   typecheck:e2e` pasan; **se ejecuta de verdad el E2E**: `docker compose up -d --build --wait` +
@@ -179,3 +179,34 @@ lockfile. Ninguna otra.
   las ejecuta; se confirma que **no hay migraciones** ni cambios en `init/`, `backend/`, la API ni los
   contratos, y que la única deuda declarada es la enmienda menor de la §4 de la constitución (§5.2) para
   nombrar el quinto job.
+
+## Correcciones surgidas de la validación (ronda 1 de 2)
+
+- [x] **C1. Corrección B1: muestreo del estado manual sin falsos rojos.** RF-001, RNF-001
+- Hecho cuando: `frontend/e2e/statusObserver.ts` es el modelo puro del observador (`sample` registra solo
+  cambios; `observe` registra siempre, con el instante real), `waitFor` lo usa y las marcas observadas
+  dejan de pasar por `stampAfter`; `frontend/tests/e2e-status-observer.test.ts` demuestra cambio de
+  estado, repetición del mismo estado tras un clic, estado intermedio más corto que el intervalo de
+  muestreo y ausencia de instantes inventados (rojo antes del código: el módulo no existía);
+  `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck:e2e` pasan; cinco corridas de
+  `cd frontend && pnpm run e2e:test` no producen falsos rojos.
+
+- [x] **C2. Corrección B2: una traza por vista.** RF-005, RNF-006
+- Hecho cuando: `writeTrace` recibe el nombre y el escenario usa `traceFileName(view)`; la corrida deja
+  `trace-public.jsonl`, `trace-workspace.jsonl` y `trace-operation.jsonl` (la consola del navegador
+  viaja en el JSONL de su vista), de modo que el fallo conserva la traza de **su** vista; la prueba
+  unitaria comprueba que dos vistas no comparten fichero y que el escenario no vuelve a `trace.jsonl`;
+  el `path` del artefacto del job (`frontend/e2e-report`) no cambia.
+
+- [x] **C3. Corrección B3: registro del servidor en local.** RF-005, RF-006
+- Hecho cuando: `frontend/e2e/run.ts` recoge `docker compose logs --no-color api worker web` tras la
+  corrida, lo sanea con `redactLog` y lo escribe como `server.log` antes de bajar la pila; sin Docker
+  escribe `no disponible: docker CLI ausente` y lo declara en consola; `buildServerLog` se prueba con
+  Docker disponible, ausente y con el comando fallando; `README.md` lo documenta.
+
+- [x] **C4. Retirada de comprobaciones vacuas.** RF-001, RF-005
+- Hecho cuando: `establishedDuringBlock` desaparece del interceptor, del artefacto, del recuento
+  esperado y de las aserciones (la evidencia de que no hubo transporte durante el bloqueo es la
+  ausencia de estado conectado entre `closedAt` y `unblockedAt`); `sessionId` desaparece del artefacto
+  (siempre era `null`) y el plan deja de publicarlo; `cd frontend && pnpm test`, `pnpm run
+  typecheck:e2e` y las tres vistas del escenario siguen en verde.

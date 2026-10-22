@@ -469,9 +469,16 @@ test('the grace closes the public initialization and a later JOIN reloads once',
 test('public polling runs only while the socket is not connected', () => {
   assert.equal(shouldPollPublicRealtime('connected'), false);
 
-  for (const status of ['idle', 'connecting', 'reconnecting', 'error']) {
+  for (const status of ['idle', 'connecting', 'reconnecting', 'retrying', 'error']) {
     assert.equal(shouldPollPublicRealtime(status), true, status);
   }
+});
+
+test('the manual retry keeps the public polling while the attempt is in progress', () => {
+  // Mientras dura el estado manual la vista sigue actualizándose por HTTP como
+  // en error (RF-002): el estado manual no congela los datos ni duplica el
+  // refresco. La reconexión posterior usa la política ya cubierta arriba.
+  assert.equal(shouldPollPublicRealtime('retrying'), true);
 });
 
 test('a reconnection JOIN cancels the fallback and reloads exactly once', () => {

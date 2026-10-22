@@ -21,6 +21,7 @@ import {
   type PublicTournament,
   type PublicStagePresentation,
 } from '~/utils/publicTournament';
+import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 
 const route = useRoute();
 const { request } = useApi();
@@ -217,10 +218,8 @@ async function loadMore(kind: 'standings' | 'matches') {
 }
 
 const realtimeStatusLabel = computed(() => {
-  if (realtime.status.value === 'connected') return t('public.realtimeConnected');
-  if (realtime.status.value === 'reconnecting') return t('public.realtimeReconnecting');
-  if (realtime.status.value === 'error') return t('public.realtimeError');
-  return '';
+  const key = realtimeStatusLabelKey(realtime.status.value, 'public');
+  return key ? t(key) : '';
 });
 
 function onRealtimeEvent(event: string, payload: unknown) {
@@ -485,7 +484,7 @@ onBeforeUnmount(() => {
 .detail-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
 .detail-actions { display: flex; align-items: center; gap: 12px; }
 .realtime-status { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.realtime-error, .realtime-reconnecting { color: #ffcb7a; }
+.realtime-error, .realtime-reconnecting, .realtime-retrying { color: #ffcb7a; }
 .realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.68rem; text-decoration: underline; }
 .brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
 .brand-mark:hover { color: var(--accent); }

@@ -13,3 +13,7 @@ coverage.xml
 htmlcov/
 postgres_data/
 frontend/.pnpm-store
+frontend/.auth/
+frontend/e2e-report/
+frontend/test-results/
+frontend/playwright-report/
