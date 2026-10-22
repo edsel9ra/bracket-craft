@@ -228,7 +228,7 @@ jobs:
             ${{ runner.os }}-ms-playwright-
       - name: Install Chromium only
         working-directory: frontend
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: pnpm exec playwright install --with-deps chromium
       - name: Typecheck the end-to-end harness
         working-directory: frontend
