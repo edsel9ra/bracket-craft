@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Spec 009 cerrada** (2026-10-21). **Spec 010** (E2E navegador del reintento) en borrador con 3 dudas por resolver antes de planificar.
+- **Spec 009 cerrada** (2026-10-21). **Spec 010 aprobada** (2026-10-22): `plan.md` y `tasks.md` (10 tareas) esperando aprobación del usuario.
 
 ## Spec 009 — Invitaciones y salud del worker (cerrada 2026-10-21)
 - **Implementada, validada por @reviewer (APROBADO) y cerrada.** PR **#5** (`3535b98`); commits `fc45cb8`…`94f9a3f`; CI en verde. **Sin migraciones.** **§6 aprobada por el usuario (2026-10-21).**
@@ -32,6 +32,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Constitución en CRLF: `git -c core.whitespace=cr-at-eol diff --check`.
 
 ## Pendiente
-- **Spec 010:** resolver las 3 dudas (frecuencia del job, navegadores, cómo simular la caída del tiempo real) y planificar.
+- **Aprobar `plan.md` y `tasks.md` de la 010** y después implementar T1–T10 (incluye el estado visible «Reintentando…» y el job de Playwright).
 - **Despliegue en servidor:** 019 → 020 → 021 → 022 → 023 y el código, por ese orden; en local ya está hecho.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).
