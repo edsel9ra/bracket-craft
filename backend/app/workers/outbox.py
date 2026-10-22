@@ -114,8 +114,10 @@ async def main():
         await validate_application_role()
     last_heartbeat: float | None = None
     while True:
-        # El latido mide que el bucle avanza: se publica también cuando la base
-        # de datos falla y ``process_once`` reintenta.
+        # El bucle se considera detenido cuando no completa una vuelta en 90 s,
+        # haya o no eventos; un fallo de dependencia con el bucle girando no
+        # cuenta como detenido. Por eso el latido se publica al principio de
+        # cada vuelta, también cuando ``process_once`` falla y reintenta.
         now = time.monotonic()
         if heartbeat_is_due(last_heartbeat, now, HEARTBEAT_INTERVAL_SECONDS):
             try:

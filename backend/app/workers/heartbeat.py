@@ -1,7 +1,10 @@
-"""Latido del worker del outbox (spec 008, RF-014).
+"""Latido del worker del outbox (spec 008, RF-014; spec 009, RF-008 a RF-010).
 
-El worker escribe un fichero de latido cada pocos segundos. Su healthcheck
-comprueba la frescura de ese fichero: mide que el bucle avanza, no que haya
+El bucle se considera detenido cuando no completa una vuelta en 90 s, haya o
+no eventos, y un fallo de dependencia con el bucle girando no cuenta como
+detenido: el worker sigue sano mientras siga completando vueltas y
+reintentando. El worker escribe un fichero de latido cada pocos segundos y su
+healthcheck comprueba su frescura: mide que el bucle avanza, no que haya
 eventos que procesar. Este módulo solo usa la biblioteca estándar para que el
 healthcheck pueda importarlo sin cargar la base de datos ni Redis.
 """
@@ -12,7 +15,8 @@ import time
 
 logger = logging.getLogger(__name__)
 
-#: El healthcheck considera insano un latido de más de 90 s (RF-014).
+#: El healthcheck considera insano un bucle que no completa una vuelta en 90 s
+#: (RF-014, RF-008). Es la única constante del umbral: el healthcheck la importa.
 HEARTBEAT_MAX_AGE_SECONDS = 90
 
 #: Cadencia del latido; muy por debajo del límite de frescura de 90 s.
