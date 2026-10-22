@@ -17,7 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.core.config import get_settings
 from app.core.database import get_db, set_rls_context
 from app.core.permissions import require_permission
-from app.core.security import decode_access_token, get_optional_current_user_id
+from app.core.security import (
+    decode_access_token,
+    get_current_user_id,
+    get_optional_current_user_id,
+)
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.invitations import router as invitations_router
@@ -1746,3 +1750,329 @@ async def test_reopening_with_a_failing_email_returns_502_and_keeps_the_row_pend
     assert after[0]["status"] == "pending"
     assert after[0]["revoked_at"] is None
     assert after[0]["token_hash"] != before[0]["token_hash"]
+
+
+# --- 011 / RF-002: el miembro sin rol no obtiene contexto --------------------
+
+
+async def _demo_tenant(session: AsyncSession) -> TenantContext:
+    """Resuelve la organización demo con el rol de aplicación.
+
+    ``users`` solo concede ``SELECT`` por columna al rol de aplicación y
+    ``organizations`` no concede ninguno, así que la organización se resuelve
+    por su clave de negocio con ``list_user_organizations()`` después de fijar
+    ``app.current_user_id``. Sin ``scripts.seed_demo`` la prueba se omite.
+    """
+
+    owner = await session.execute(
+        text("SELECT id FROM users WHERE LOWER(email) = 'demo.owner@bracketcraft.dev'")
+    )
+    owner_user_id = owner.scalar_one_or_none()
+    if owner_user_id is None:
+        pytest.skip("La base no contiene demo.owner: falta scripts.seed_demo")
+    await set_rls_context(session, None, owner_user_id)
+    result = await session.execute(
+        text("""
+            SELECT id, slug, organization_user_id
+            FROM list_user_organizations()
+        """)
+    )
+    demo_row = next(
+        (
+            dict(row)
+            for row in result.mappings().all()
+            if row["slug"] == "demo-federation"
+        ),
+        None,
+    )
+    if demo_row is None:
+        pytest.skip("La base no contiene demo-federation: falta scripts.seed_demo")
+    await set_rls_context(session, demo_row["id"], owner_user_id)
+    return TenantContext(
+        organization_id=demo_row["id"],
+        user_id=owner_user_id,
+        member_id=demo_row["organization_user_id"],
+    )
+
+
+class _RequestScopedSession:
+    """Sesión de la petición: cada ``begin()`` abre un savepoint revertible."""
+
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    def begin(self):
+        return self._session.begin_nested()
+
+    def __getattr__(self, name: str):
+        return getattr(self._session, name)
+
+
+@asynccontextmanager
+async def _invitation_api_as_user(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    organization_id: UUID,
+):
+    """Cliente auténtico: solo sustituye la sesión y la identidad de la prueba.
+
+    La dependencia que resuelve la organización y el rol del usuario se ejecuta
+    de verdad contra PostgreSQL con el header ``X-Organization-ID``; un miembro
+    activo sin ninguna fila de rol la ve rechazar antes de que el handler se
+    ejecute. Las acciones protegidas usan el mismo cliente para demostrar que
+    ninguna llega a su handler.
+    """
+
+    async def database():
+        yield _RequestScopedSession(session)
+
+    async def current_user():
+        return user_id
+
+    api.dependency_overrides[get_db] = database
+    api.dependency_overrides[get_current_user_id] = current_user
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api),
+            base_url="http://test",
+            headers={"X-Organization-ID": str(organization_id)},
+        ) as client:
+            yield client
+    finally:
+        api.dependency_overrides.pop(get_db, None)
+        api.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.mark.asyncio
+async def test_member_without_role_is_rejected_before_the_handler(
+    db_session: AsyncSession, tenant_factory, monkeypatch
+):
+    """RF-002: sin rol no hay contexto; el 403 se emite antes del handler.
+
+    El sujeto es un miembro activo de la organización demo **sin ninguna fila
+    de rol**. El cliente solo sustituye la sesión y la identidad de la prueba:
+    la dependencia que resuelve la organización y el rol se ejecuta de verdad
+    contra PostgreSQL, de modo que ninguna acción protegida llega al handler,
+    no lee ni modifica invitaciones, no emite enlace, no envía correo y no
+    escribe auditoría.
+    """
+
+    rejection = {"detail": "Membresía o rol activo no válido"}
+    demo = await _demo_tenant(db_session)
+
+    subject_user_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (:email, 'integration-test-hash', 'Member Without Role')
+                RETURNING id
+            """),
+            {"email": f"no-role-{uuid4().hex}@example.test"},
+        )
+    ).scalar_one()
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    subject_member_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO organization_users (organization_id, user_id)
+                VALUES (:organization_id, :user_id)
+                RETURNING id
+            """),
+            {
+                "organization_id": str(demo.organization_id),
+                "user_id": str(subject_user_id),
+            },
+        )
+    ).scalar_one()
+    assigned_roles = (
+        await db_session.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM organization_user_roles
+                WHERE organization_user_id = :member_id
+            """),
+            {"member_id": str(subject_member_id)},
+        )
+    ).scalar_one()
+    assert assigned_roles == 0
+
+    own_email = f"no-role-own-{uuid4().hex}@example.test"
+    own_token = f"no-role-own-{uuid4().hex}"
+    own_invitation = await _insert_tenant_invitation(
+        db_session,
+        demo,
+        email=own_email,
+        token=own_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    # CURRENT_TIMESTAMP es el inicio de la transacción de la prueba: se retrasa
+    # updated_at para que cualquier reescritura sea observable dentro de ella.
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    await db_session.execute(
+        text("UPDATE organization_invitations SET updated_at = :past WHERE id = :id"),
+        {
+            "past": datetime(2020, 1, 1, tzinfo=timezone.utc),
+            "id": str(own_invitation["id"]),
+        },
+    )
+    own_before = await _stored_invitation_details(db_session, demo, own_email)
+    audit_before = await _invitation_audit_entries(db_session, demo)
+
+    foreign = await tenant_factory("No Role Foreign")
+    foreign_email = f"no-role-foreign-{uuid4().hex}@example.test"
+    foreign_token = f"no-role-foreign-{uuid4().hex}"
+    foreign_invitation = await _insert_tenant_invitation(
+        db_session,
+        foreign,
+        email=foreign_email,
+        token=foreign_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    foreign_before = await _stored_invitation_details(db_session, foreign, foreign_email)
+
+    create_email = f"no-role-create-{uuid4().hex}@example.test"
+    sent: list[dict] = []
+
+    async def recording_email(*args, **kwargs):
+        sent.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr(invitations_router, "send_invitation_email", recording_email)
+
+    async with _invitation_api_as_user(
+        db_session,
+        user_id=subject_user_id,
+        organization_id=demo.organization_id,
+    ) as client:
+        access_first = await client.get("/api/v1/organizations/current/access")
+        access_second = await client.get("/api/v1/organizations/current/access")
+        members = await client.get("/api/v1/organizations/members")
+        role_change = await client.patch(
+            f"/api/v1/organizations/members/{demo.member_id}/role",
+            json={"role_code": "viewer"},
+        )
+        status_change = await client.patch(
+            f"/api/v1/organizations/members/{demo.member_id}/status",
+            json={"is_active": True},
+        )
+        created = await client.post(
+            "/api/v1/organizations/invitations",
+            json={"email": create_email, "role_code": "operator"},
+        )
+        resent = await client.post(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}/resend"
+        )
+        reopened = await client.post(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}/reopen"
+        )
+        revoked = await client.delete(
+            f"/api/v1/organizations/invitations/{own_invitation['id']}"
+        )
+        missing = await client.delete(
+            f"/api/v1/organizations/invitations/{uuid4()}"
+        )
+        foreign_revoked = await client.delete(
+            f"/api/v1/organizations/invitations/{foreign_invitation['id']}"
+        )
+
+    responses = {
+        "access (first read)": access_first,
+        "access (second read)": access_second,
+        "list members": members,
+        "change member role": role_change,
+        "change member status": status_change,
+        "create invitation": created,
+        "resend invitation": resent,
+        "reopen invitation": reopened,
+        "revoke own invitation": revoked,
+        "revoke a missing invitation": missing,
+        "revoke a foreign invitation": foreign_revoked,
+    }
+    for label, response in responses.items():
+        # Un único mensaje por respuesta: el estado y, si existe, el `code`.
+        message = describe_response(label, response)
+        assert response.status_code == 403, message
+        # El detalle es el de la dependencia de contexto: el handler de la
+        # consulta de acceso responde «Rol activo no encontrado», así que este
+        # cuerpo demuestra que nunca llegó a ejecutarse.
+        assert response.json() == rejection, message
+        assert own_token not in response.text
+    assert access_first.json() == access_second.json()
+
+    assert await _stored_invitation_details(db_session, demo, own_email) == own_before
+    assert own_before[0]["status"] == "pending"
+    assert await _stored_invitation_details(db_session, demo, create_email) == []
+    assert await _stored_invitation_details(db_session, foreign, foreign_email) == foreign_before
+    assert await _invitation_audit_entries(db_session, demo) == audit_before
+    assert sent == []
+
+    # Guarda siempre activa: el helper nunca sustituye el contexto real.
+    helper_source = getsource(_invitation_api_as_user)
+    assert "get_auth_context" not in helper_source
+    assert "get_current_user_id" in helper_source
+
+
+@pytest.mark.asyncio
+async def test_member_with_viewer_role_resolves_access_through_the_real_dependency(
+    db_session: AsyncSession,
+):
+    """RF-002: con rol ``viewer`` asignado el contexto sí se resuelve.
+
+    Es el contraste explícito con el miembro sin rol: la membresía tiene una
+    fila real en ``organization_user_roles`` con el rol ``viewer``, que no
+    concede permisos, y la consulta de acceso responde 200.
+    """
+
+    demo = await _demo_tenant(db_session)
+    viewer_user_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO users (email, password_hash, full_name)
+                VALUES (:email, 'integration-test-hash', 'Member With Viewer Role')
+                RETURNING id
+            """),
+            {"email": f"viewer-role-{uuid4().hex}@example.test"},
+        )
+    ).scalar_one()
+    await set_rls_context(db_session, demo.organization_id, demo.user_id)
+    viewer_member_id = (
+        await db_session.execute(
+            text("""
+                INSERT INTO organization_users (organization_id, user_id)
+                VALUES (:organization_id, :user_id)
+                RETURNING id
+            """),
+            {
+                "organization_id": str(demo.organization_id),
+                "user_id": str(viewer_user_id),
+            },
+        )
+    ).scalar_one()
+    await _grant_role(db_session, demo, viewer_member_id, "viewer")
+    assigned_roles = (
+        await db_session.execute(
+            text("""
+                SELECT count(*) AS total
+                FROM organization_user_roles
+                WHERE organization_user_id = :member_id
+            """),
+            {"member_id": str(viewer_member_id)},
+        )
+    ).scalar_one()
+    assert assigned_roles == 1
+
+    async with _invitation_api_as_user(
+        db_session,
+        user_id=viewer_user_id,
+        organization_id=demo.organization_id,
+    ) as client:
+        access = await client.get("/api/v1/organizations/current/access")
+
+    assert access.status_code == 200, describe_response(
+        "a member with the viewer role keeps access to the organization", access
+    )
+    body = access.json()
+    assert body["role_code"] == "viewer"
+    assert body["permissions"] == []
+    assert body["organization_user_id"] == str(viewer_member_id)
+    assert body["organization_id"] == str(demo.organization_id)
