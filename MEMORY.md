@@ -2,7 +2,8 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Sin specs abiertas.** Última cerrada: **010** (2026-10-22). **§6 aprobada** para 004, 005, 008, 009 y 010. **Constitución 1.4.0** (job `e2e` en la §4).
+- **Spec 011 en curso** (`specs/011-cierre-huecos-verificacion/`): T1–T7 implementadas; **T8/T9 bloqueadas** porque tras el reinicio del servidor la integración WSL de Docker Desktop no expone el demonio.
+- **§6 aprobada** para 004, 005, 008, 009 y 010. **Constitución 1.4.0** (job `e2e` en la §4). La 010 está cerrada.
 - **`main` protegida:** los cinco jobs son *required checks*, rama al día obligatoria (*strict*), sin force push ni borrado; los administradores pueden saltarse la regla. Estados de 001/004/005 reconciliados con la realidad.
 
 ## Spec 010 — E2E del reintento del tiempo real (cerrada 2026-10-22)
@@ -30,5 +31,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `DATABASE_ADMIN_URL` debe apuntar a una base con esquema (`bracket_craft`). Docker 29.9.1; Trivy con `aquasec/trivy` y caché local si falla la descarga.
 
 ## Pendiente
+- **Reactivar Docker Desktop/WSL:** habilitar la integración con la distro Ubuntu (Settings → Resources → WSL Integration) y volver a levantar la pila; después reanudar **T8** (`pnpm run e2e` real con `server.log`) y **T9** (validación completa).
 - **Despliegue en servidor:** paquete en `docs/runbook-despliegue-019-023.md` (ventana recomendada → 019…023 → código → smoke). En local ya está en 023.
 - TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).

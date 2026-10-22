@@ -17,3 +17,6 @@ frontend/.auth/
 frontend/e2e-report/
 frontend/test-results/
 frontend/playwright-report/
+
+# pnpm store local en la raíz del repo
+/.pnpm-store/
