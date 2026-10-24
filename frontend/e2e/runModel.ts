@@ -20,6 +20,11 @@ import {
   countTransitions,
   type ViewId,
 } from './observations.ts';
+import {
+  OPERATION_FLOW_VIEW,
+  countFlowSamples,
+  type OperationFlowArtifact,
+} from './operationFlowModel.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Argumentos                                                                 */
@@ -129,6 +134,21 @@ export interface ViewSummary {
   } | null;
 }
 
+/**
+ * Resumen del escenario adicional de operación y cierre (H4-T10). Es aditivo y
+ * no sustituye ni reinterpreta las tres vistas del reintento.
+ */
+export interface OperationFlowSummary {
+  readonly scenario: typeof OPERATION_FLOW_VIEW;
+  readonly verdict: ViewVerdict;
+  readonly cause: string | null;
+  readonly durationMs: number;
+  /** Muestras por hito verificado (misma semántica que `states`). */
+  readonly states: Readonly<Record<string, number>>;
+  /** Cambios consecutivos distintos; `null` cuando no hay artefacto. */
+  readonly transitions: number | null;
+}
+
 export interface RunSummary {
   readonly schemaVersion: 1;
   readonly status: RunStatus;
@@ -141,6 +161,8 @@ export interface RunSummary {
   readonly limits: RunLimits;
   readonly views: readonly ViewSummary[];
   readonly missing: readonly ViewId[];
+  /** Escenario de operación y cierre; `null` cuando el runner no lo informa. */
+  readonly operationFlow: OperationFlowSummary | null;
 }
 
 export interface RunSummaryInput {
@@ -155,6 +177,10 @@ export interface RunSummaryInput {
   readonly infrastructureCause?: string | null | undefined;
   readonly limits?: RunLimits | undefined;
   readonly expectedViews?: readonly ViewId[] | undefined;
+  /** Artefacto del escenario de operación y cierre (`view-operation-flow.json`). */
+  readonly operationFlowArtifact?: OperationFlowArtifact | null | undefined;
+  /** Proyecto de Playwright que ejecuta el escenario de operación y cierre. */
+  readonly operationFlowProject?: PlaywrightProjectOutcome | undefined;
 }
 
 const DEFAULT_LIMITS: RunLimits = { viewMs: MAX_MS.view, runMs: MAX_MS.run };
@@ -233,6 +259,59 @@ function evaluateView(input: {
   return result;
 }
 
+/**
+ * Decide el resultado del escenario de operación y cierre con las mismas reglas
+ * que una vista del reintento: el artefacto explica el porqué, el estado del
+ * test impide declarar verde un spec que falló y un artefacto ausente no es una
+ * corrida válida. Devuelve `null` cuando el runner no recibió ni proyecto ni
+ * artefacto (compatibilidad con quien no ejecuta el escenario nuevo).
+ */
+function evaluateOperationFlow(input: {
+  readonly artifact: OperationFlowArtifact | null | undefined;
+  readonly project: PlaywrightProjectOutcome | undefined;
+  readonly limits: RunLimits;
+}): OperationFlowSummary | null {
+  const { artifact, project } = input;
+  if (project === undefined && (artifact === null || artifact === undefined)) return null;
+
+  const baseDuration = project?.durationMs ?? artifact?.durationMs ?? 0;
+  const states = artifact ? countFlowSamples(artifact.states) : {};
+  const transitions = artifact ? artifact.transitions : null;
+
+  const summary = (
+    verdict: ViewVerdict,
+    cause: string | null,
+    durationMs = baseDuration,
+  ): OperationFlowSummary => ({
+    scenario: OPERATION_FLOW_VIEW,
+    verdict,
+    cause: sanitizeCause(cause),
+    durationMs,
+    states,
+    transitions,
+  });
+
+  if (!project) return summary('missing', 'omitted-view');
+  if (project.status === 'missing' || project.status === 'skipped') {
+    return summary('missing', `omitted-view:${project.status}`);
+  }
+  if (project.status === 'interrupted') return summary('missing', 'omitted-view:interrupted');
+  if (project.status === 'timedOut') return summary('behavioral', 'view-timeout');
+
+  if (project.status === 'failed') {
+    if (!artifact) return summary('infrastructure', 'view-failed-without-artifact');
+    if (artifact.verdict === 'passed') return summary('behavioral', 'view-assertion-failed');
+    return summary(artifact.verdict, artifact.cause ?? `view-${artifact.verdict}`);
+  }
+
+  if (!artifact) return summary('infrastructure', 'view-artifact-missing');
+  const result = summary(artifact.verdict, artifact.cause);
+  if (artifact.verdict === 'passed' && result.durationMs > input.limits.viewMs) {
+    return summary('behavioral', 'view-time-exceeded');
+  }
+  return result;
+}
+
 function setupFailure(
   projects: readonly PlaywrightProjectOutcome[],
   infrastructureCause: string | null,
@@ -254,6 +333,10 @@ function setupFailure(
  * - `1` comportamiento: clic sin efecto, estado manual ausente, recargas
  *   duplicadas, documento recargado, tiempo máximo superado.
  * - `0` verde: las tres vistas presentes, ejecutadas y `passed`.
+ *
+ * El escenario de operación y cierre se agrega como campo aditivo y se evalúa
+ * **después** de las tres vistas: con el reintento en verde, su veredicto usa
+ * los mismos cuatro códigos; el veredicto del reintento no se reinterpreta.
  */
 export function buildRunSummary(input: RunSummaryInput): RunSummary {
   const expectedViews = input.expectedViews ?? EXPECTED_VIEWS;
@@ -271,6 +354,11 @@ export function buildRunSummary(input: RunSummaryInput): RunSummary {
       limits,
     }),
   );
+  const operationFlow = evaluateOperationFlow({
+    artifact: input.operationFlowArtifact,
+    project: input.operationFlowProject,
+    limits,
+  });
 
   for (const view of views) {
     // Con un fallo de arranque o de preparación, las vistas ni siquiera se
@@ -278,6 +366,9 @@ export function buildRunSummary(input: RunSummaryInput): RunSummary {
     if (!infrastructure && view.verdict !== 'passed' && view.cause) {
       reasons.push(`${view.view}: ${view.cause}`);
     }
+  }
+  if (!infrastructure && operationFlow && operationFlow.verdict !== 'passed' && operationFlow.cause) {
+    reasons.push(`${OPERATION_FLOW_VIEW}: ${operationFlow.cause}`);
   }
 
   const missing = views.filter((view) => view.verdict === 'missing').map((view) => view.view);
@@ -288,6 +379,12 @@ export function buildRunSummary(input: RunSummaryInput): RunSummary {
   else if (views.some((view) => view.verdict === 'invalid')) status = 'invalid';
   else if (views.some((view) => view.verdict === 'infrastructure')) status = 'infrastructure';
   else if (views.some((view) => view.verdict === 'behavioral')) status = 'behavioral';
+  // El escenario nuevo se evalúa después de las tres vistas: su presencia no
+  // reinterpreta ni adelanta el veredicto del reintento.
+  else if (operationFlow?.verdict === 'invalid' || operationFlow?.verdict === 'missing') {
+    status = 'invalid';
+  } else if (operationFlow?.verdict === 'infrastructure') status = 'infrastructure';
+  else if (operationFlow?.verdict === 'behavioral') status = 'behavioral';
   else if (input.totalDurationMs > limits.runMs) {
     status = 'behavioral';
     reasons.push('run-time-exceeded');
@@ -306,6 +403,7 @@ export function buildRunSummary(input: RunSummaryInput): RunSummary {
     limits,
     views,
     missing,
+    operationFlow,
   };
 }
 
@@ -484,7 +582,7 @@ function formatReloads(reloads: ViewSummary['reloads']): string {
  */
 export function formatSummaryTable(summary: RunSummary): readonly string[] {
   const header = ['VISTA', 'RESULTADO', 'DURACIÓN', 'MUESTRAS', 'TRANSICIONES', 'RECARGAS'];
-  const rows = summary.views.map((view) => [
+  const rows: string[][] = summary.views.map((view) => [
     view.view,
     view.verdict,
     formatDuration(view.durationMs),
@@ -492,6 +590,16 @@ export function formatSummaryTable(summary: RunSummary): readonly string[] {
     formatTransitions(view.transitions),
     formatReloads(view.reloads),
   ]);
+  if (summary.operationFlow) {
+    rows.push([
+      summary.operationFlow.scenario,
+      summary.operationFlow.verdict,
+      formatDuration(summary.operationFlow.durationMs),
+      formatSamples(summary.operationFlow.states),
+      formatTransitions(summary.operationFlow.transitions),
+      '-',
+    ]);
+  }
 
   const widths = header.map((title, column) =>
     Math.max(title.length, ...rows.map((row) => row[column]?.length ?? 0)),

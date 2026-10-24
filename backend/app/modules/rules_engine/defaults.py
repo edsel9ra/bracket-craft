@@ -4,6 +4,14 @@ DEFAULT_SUBSTITUTIONS = {
     "allow_reentry": False,
 }
 
+# RF-042: closed game format catalog; 11v11 preserves compatibility.
+GAME_FORMAT_CATALOG = ("5v5", "7v7", "9v9", "11v11")
+DEFAULT_GAME_FORMAT = "11v11"
+
+# RF-044: 0 (or an absent key) means "no limit".
+DEFAULT_MIN_PLAYERS_PER_TEAM = 0
+DEFAULT_MAX_PLAYERS_PER_TEAM = 0
+
 DEFAULT_REGULAR_TIME_MINUTES = 90
 DEFAULT_EXTRA_TIME_MINUTES = 120
 
@@ -18,6 +26,9 @@ DEFAULT_STAGE_RULES = {
 DEFAULT_RULES_CONFIG = {
     "schema_version": "3.3.0",
     "engine_version": "2026.1",
+    "game_format": DEFAULT_GAME_FORMAT,
+    "min_players_per_team": DEFAULT_MIN_PLAYERS_PER_TEAM,
+    "max_players_per_team": DEFAULT_MAX_PLAYERS_PER_TEAM,
     "points_system": {"win": 3, "draw": 1, "loss": 0},
     "ranking_pipeline": [
         {"step": 1, "criterion": "points", "params": {}},

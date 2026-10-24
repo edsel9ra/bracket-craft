@@ -36,9 +36,11 @@ from app.core.security import decode_access_token_claims
 from app.modules.identity.router import router as identity_router
 from app.modules.invitations.errors import InvitationConflict, conflict_body
 from app.modules.invitations.router import router as invitations_router
+from app.modules.matches.errors import ResolutionNotEnabled
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.router import router as organizations_router
 from app.modules.platform.router import router as platform_router
+from app.modules.tournaments.roster_status import RosterSizeOutOfRange
 from app.modules.tournaments.router import router as tournaments_router
 
 
@@ -668,8 +670,27 @@ async def _invitation_conflict_exception_handler(
     return JSONResponse(status_code=exc.status_code, content=conflict_body(exc))
 
 
+async def _coded_conflict_exception_handler(
+    _request: Request, exc: HTTPException
+) -> JSONResponse:
+    """Answer a domain 409 with the stable ``code`` next to ``detail``.
+
+    One handler serves every coded conflict —a resolution the stage does not
+    enable and a roster size out of range—: ``detail`` stays a string so
+    clients that ignore ``code`` keep working, and ``code`` is the additive
+    identifier the frontend translates.
+    """
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc.detail), "code": exc.code},
+    )
+
+
 api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
 api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_handler)
+api.add_exception_handler(ResolutionNotEnabled, _coded_conflict_exception_handler)
+api.add_exception_handler(RosterSizeOutOfRange, _coded_conflict_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
 api.add_exception_handler(PoolTimeoutError, _pool_timeout_exception_handler)
 

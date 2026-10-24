@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -56,6 +57,7 @@ from app.modules.tournaments.schemas import (
     RosterPlayerListResponse,
     RosterPlayerResponse,
     UpdatePhotoConsentRequest,
+    UpdateRosterStatusRequest,
     VersionDetailResponse,
     VersionSummaryResponse,
 )
@@ -76,6 +78,14 @@ from app.modules.tournaments.roster_import import (
     extract_zip_photos,
     parse_roster_csv,
     validate_photo_content,
+)
+from app.modules.tournaments.roster_status import (
+    RosterLimits,
+    RosterSizeOutOfRange,
+    count_active_roster_players_by_team,
+    describe_roster_violations,
+    effective_roster_limits,
+    roster_rows_for_new_teams,
 )
 
 
@@ -117,6 +127,15 @@ async def _ensure_tournament(db: AsyncSession, organization_id: UUID, tournament
 ROSTER_LOCK_DETAIL = (
     "La plantilla está cerrada desde la jornada {matchday}: "
     "no se pueden inscribir jugadores nuevos"
+)
+
+# The 409 detail the API already uses for a duplicated roster row (RF-051,
+# RC-1); reactivating with another active row of the same player answers it.
+ROSTER_DUPLICATE_DETAIL = (
+    "El documento, dorsal o jugador ya está registrado en el torneo"
+)
+ROSTER_DORSAL_TAKEN_DETAIL = (
+    "El dorsal {dorsal_number} ya está ocupado por otro jugador activo del equipo"
 )
 
 
@@ -217,6 +236,95 @@ async def _enforce_roster_lock(
             status_code=status.HTTP_409_CONFLICT,
             detail=ROSTER_LOCK_DETAIL.format(matchday=matchday),
         )
+
+
+async def _version_roster_limits(
+    db: AsyncSession,
+    organization_id: UUID,
+    tournament_id: UUID,
+    version_id: UUID,
+) -> RosterLimits:
+    """Read the effective roster limits of the stage's version (RF-045).
+
+    The limits are a top-level key of ``rules_config``, so the version of the
+    stage —the published one when it applies— is the only source. A stored
+    configuration written before the keys existed resolves to "no limit".
+    """
+
+    result = await db.execute(
+        text("""
+            SELECT rules_config
+            FROM tournament_versions
+            WHERE id = :version_id
+              AND tournament_id = :tournament_id
+              AND organization_id = :organization_id
+        """),
+        {
+            "version_id": str(version_id),
+            "tournament_id": str(tournament_id),
+            "organization_id": str(organization_id),
+        },
+    )
+    row = result.mappings().one_or_none()
+    config = row["rules_config"] if row is not None else None
+    if isinstance(config, str):
+        config = json.loads(config)
+    return effective_roster_limits(config or {})
+
+
+async def _enforce_roster_size(
+    db: AsyncSession,
+    organization_id: UUID,
+    tournament_id: UUID,
+    version_id: UUID,
+    team_ids: Sequence[UUID],
+) -> None:
+    """Reject the whole batch when any team's active roster is out of range.
+
+    Every team is counted before a single row is inserted, so the batch stays
+    all-or-nothing (RF-045). Without configured limits no counting query runs
+    and the previous behaviour is kept.
+    """
+
+    limits = await _version_roster_limits(
+        db, organization_id, tournament_id, version_id
+    )
+    if not limits.has_limits:
+        return
+    rows = await count_active_roster_players_by_team(
+        db, organization_id, tournament_id, team_ids
+    )
+    detail = describe_roster_violations(rows, limits)
+    if detail:
+        raise RosterSizeOutOfRange(detail)
+
+
+async def _enforce_new_team_roster_size(
+    db: AsyncSession,
+    organization_id: UUID,
+    tournament_id: UUID,
+    version_id: UUID,
+    teams: Sequence[tuple[UUID, str]],
+) -> None:
+    """Reject creating teams with a target stage when their roster is out of range.
+
+    A new team has an empty roster, so a minimum above zero rejects the create
+    before the first insert: no team, no tournament team and no stage
+    assignment is written (RF-045, BX-1). A maximum alone can never be
+    exceeded, and without limits no check runs, keeping the current
+    behaviour.
+    """
+
+    limits = await _version_roster_limits(
+        db, organization_id, tournament_id, version_id
+    )
+    if not limits.has_limits:
+        return
+    detail = describe_roster_violations(
+        roster_rows_for_new_teams(teams), limits
+    )
+    if detail:
+        raise RosterSizeOutOfRange(detail)
 
 
 async def _load_draft_stage_context(
@@ -1180,6 +1288,17 @@ async def assign_stage_teams(
             existing_ids, payload.team_ids
         )
 
+        # The size check runs before any insert and covers every new team of the
+        # batch: one team out of range rejects the whole lot (RF-045).
+        if assigned:
+            await _enforce_roster_size(
+                db,
+                context.organization_id,
+                tournament_id,
+                version_id,
+                assigned,
+            )
+
         if not assigned:
             response.status_code = status.HTTP_200_OK
         else:
@@ -1458,21 +1577,32 @@ async def create_tournament_team(
             if group_result.scalar_one_or_none() is None:
                 raise HTTPException(status_code=404, detail="Grupo no encontrado en la fase")
 
+        team_id = uuid4()
+        if stage is not None:
+            # Phase -> version -> limits -> insert: the team is enrolled in the
+            # target stage, so the same size block applies (RF-045, BX-1).
+            await _enforce_new_team_roster_size(
+                db,
+                context.organization_id,
+                tournament_id,
+                stage["tournament_version_id"],
+                [(team_id, payload.name)],
+            )
+
         try:
-            team_result = await db.execute(
+            await db.execute(
                 text("""
-                    INSERT INTO teams (organization_id, name, short_code, logo_url)
-                    VALUES (:organization_id, :name, :short_code, :logo_url)
-                    RETURNING id
+                    INSERT INTO teams (id, organization_id, name, short_code, logo_url)
+                    VALUES (:team_id, :organization_id, :name, :short_code, :logo_url)
                 """),
                 {
+                    "team_id": str(team_id),
                     "organization_id": str(context.organization_id),
                     "name": payload.name,
                     "short_code": payload.short_code,
                     "logo_url": payload.logo_url,
                 },
             )
-            team_id = team_result.scalar_one()
             await db.execute(
                 text("""
                     INSERT INTO tournament_teams (organization_id, tournament_id, team_id)
@@ -1593,23 +1723,34 @@ async def create_tournament_teams_bulk(
         elif payload.group_id is not None:
             raise HTTPException(status_code=422, detail="group_id requiere stage_id")
 
+        planned = [(uuid4(), team.name) for team in payload.teams]
+        if stage is not None:
+            # All-or-nothing: every new team is checked before the first insert
+            # (RF-045, BX-1).
+            await _enforce_new_team_roster_size(
+                db,
+                context.organization_id,
+                tournament_id,
+                stage["tournament_version_id"],
+                planned,
+            )
+
         created: list[dict[str, str]] = []
         try:
-            for team in payload.teams:
-                team_result = await db.execute(
+            for (team_id, _), team in zip(planned, payload.teams):
+                await db.execute(
                     text("""
-                        INSERT INTO teams (organization_id, name, short_code, logo_url)
-                        VALUES (:organization_id, :name, :short_code, :logo_url)
-                        RETURNING id
+                        INSERT INTO teams (id, organization_id, name, short_code, logo_url)
+                        VALUES (:team_id, :organization_id, :name, :short_code, :logo_url)
                     """),
                     {
+                        "team_id": str(team_id),
                         "organization_id": str(context.organization_id),
                         "name": team.name,
                         "short_code": team.short_code,
                         "logo_url": team.logo_url,
                     },
                 )
-                team_id = team_result.scalar_one()
                 await db.execute(
                     text("""
                         INSERT INTO tournament_teams (organization_id, tournament_id, team_id)
@@ -2195,6 +2336,245 @@ async def update_roster_photo_consent(
             await storage.delete_key(old_key)
         except StorageError:
             logger.warning("No se pudo eliminar la foto sin consentimiento del roster %s", roster_id, exc_info=True)
+    return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
+
+
+async def _load_roster_list_row(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID, roster_id: UUID
+) -> dict:
+    """Load one roster row with the **list** model, ``age`` included (RF-051).
+
+    Mirrors the projection of ``GET /tournaments/{id}/rosters``: the status
+    endpoint answers with the same shape, so a client can replace the row in
+    place. The row is looked up by tournament and organization too: a roster of
+    another tournament or another organization is not visible here (404).
+    """
+
+    result = await db.execute(
+        text("""
+            SELECT r.id AS roster_id, r.player_id, r.team_id, p.first_name, p.last_name,
+                   r.dorsal_number, r.photo_object_key, r.photo_consent, r.is_active,
+                   (p.age_at_reference
+                    + (EXTRACT(YEAR FROM t.start_date)::INT - p.age_reference_year))::INT AS age
+            FROM rosters r
+            JOIN players p
+              ON p.id = r.player_id
+             AND p.organization_id = r.organization_id
+            JOIN tournaments t
+              ON t.id = r.tournament_id
+             AND t.organization_id = r.organization_id
+            WHERE r.id = :roster_id
+              AND r.tournament_id = :tournament_id
+              AND r.organization_id = :organization_id
+        """),
+        {
+            "roster_id": str(roster_id),
+            "tournament_id": str(tournament_id),
+            "organization_id": str(organization_id),
+        },
+    )
+    row = result.mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="La plantilla no fue encontrada")
+    return dict(row)
+
+
+async def _reject_roster_reactivation_conflicts(
+    db: AsyncSession,
+    context: AuthContext,
+    tournament_id: UUID,
+    roster: dict,
+) -> None:
+    """Reject a reactivation that a unique active index would refuse (RA-1).
+
+    Reactivating behaves like a registration, so the current uniqueness of the
+    active rows applies: one active row per player in the tournament and one
+    active dorsal per team. Both are checked before writing, so the 409 names
+    the cause and no row changes; a concurrent write that slips in between is
+    caught by the ``IntegrityError`` mapping of the caller.
+    """
+
+    duplicate = await db.execute(
+        text("""
+            SELECT 1
+            FROM rosters
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND player_id = :player_id
+              AND is_active = TRUE
+              AND id <> :roster_id
+            LIMIT 1
+        """),
+        {
+            "organization_id": str(context.organization_id),
+            "tournament_id": str(tournament_id),
+            "player_id": str(roster["player_id"]),
+            "roster_id": str(roster["roster_id"]),
+        },
+    )
+    if duplicate.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=ROSTER_DUPLICATE_DETAIL
+        )
+
+    busy_dorsal = await db.execute(
+        text("""
+            SELECT 1
+            FROM rosters
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND team_id = :team_id
+              AND dorsal_number = :dorsal_number
+              AND is_active = TRUE
+              AND id <> :roster_id
+            LIMIT 1
+        """),
+        {
+            "organization_id": str(context.organization_id),
+            "tournament_id": str(tournament_id),
+            "team_id": str(roster["team_id"]),
+            "dorsal_number": roster["dorsal_number"],
+            "roster_id": str(roster["roster_id"]),
+        },
+    )
+    if busy_dorsal.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ROSTER_DORSAL_TAKEN_DETAIL.format(
+                dorsal_number=roster["dorsal_number"]
+            ),
+        )
+
+
+def _integrity_constraint_name(exc: IntegrityError) -> str | None:
+    """Return the violated constraint of a unique/foreign violation, if known."""
+
+    original = exc.orig
+    candidates = (original, getattr(original, "__cause__", None))
+    for candidate in candidates:
+        name = getattr(candidate, "constraint_name", None)
+        if name:
+            return str(name)
+    return None
+
+
+def _roster_status_conflict(exc: IntegrityError, dorsal_number: int) -> HTTPException:
+    """Map the unique active indexes to their 409, without leaking SQL."""
+
+    if _integrity_constraint_name(exc) == "uq_active_roster_dorsal":
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ROSTER_DORSAL_TAKEN_DETAIL.format(dorsal_number=dorsal_number),
+        )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT, detail=ROSTER_DUPLICATE_DETAIL
+    )
+
+
+@router.patch(
+    "/{tournament_id}/rosters/{roster_id}/status",
+    response_model=RosterPlayerListResponse,
+    summary="Retirar o reactivar lógicamente a un jugador de la plantilla",
+    responses={
+        200: {
+            "description": (
+                "Fila actualizada con el modelo de la lista de plantilla "
+                "(`player_id` y `age` incluidos). Repetir el mismo valor es "
+                "idempotente y devuelve 200 sin escribir."
+            )
+        },
+        404: {"description": "El torneo o el roster no existen en la organización activa"},
+        409: {
+            "description": (
+                "Reactivación con el bloqueo por jornada activo, con otra fila "
+                "activa del mismo jugador en el torneo o con el dorsal ya "
+                "ocupado. El retiro está exento del bloqueo por jornada."
+            )
+        },
+        422: {"description": "Cuerpo inválido: `is_active` booleano obligatorio"},
+    },
+)
+async def update_roster_player_status(
+    tournament_id: UUID,
+    roster_id: UUID,
+    payload: UpdateRosterStatusRequest,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> RosterPlayerListResponse:
+    """Retire or reactivate a roster player, without deleting anything (RF-051).
+
+    One endpoint and one model for both directions. The **retirement** is the
+    single exception to the matchday lock (RL-1): it only removes players, so
+    it works while the lock is active, with the team enrolled and with an open
+    match, and it never rewrites the row, the lineups or the events. The
+    **reactivation** adds an active player, so it behaves like a registration
+    (RA-1): the same 409 of the matchday lock and the current uniqueness of the
+    active player and dorsal. The same value is idempotent (200, no write) and
+    the action writes no audit entry, because it is not one of the audited
+    actions. Reads and writes run with ``set_rls_context`` in this transaction,
+    so a roster of another organization is a 404.
+    """
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+        await _require_tournament_management(db, context)
+        current = await db.execute(
+            text("""
+                SELECT r.id AS roster_id, r.is_active, r.player_id, r.team_id,
+                       r.dorsal_number
+                FROM rosters r
+                WHERE r.id = :roster_id
+                  AND r.tournament_id = :tournament_id
+                  AND r.organization_id = :organization_id
+            """),
+            {
+                "roster_id": str(roster_id),
+                "tournament_id": str(tournament_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        roster = current.mappings().one_or_none()
+        if roster is None:
+            raise HTTPException(status_code=404, detail="La plantilla no fue encontrada")
+
+        if bool(roster["is_active"]) != payload.is_active:
+            if payload.is_active:
+                # RA-1: reactivating sums an active player, exactly like a
+                # registration, so the published matchday lock applies.
+                await _enforce_roster_lock(
+                    db, context.organization_id, tournament_id
+                )
+                await _reject_roster_reactivation_conflicts(
+                    db, context, tournament_id, dict(roster)
+                )
+            try:
+                await db.execute(
+                    text("""
+                        UPDATE rosters
+                        SET is_active = :is_active
+                        WHERE id = :roster_id
+                          AND tournament_id = :tournament_id
+                          AND organization_id = :organization_id
+                    """),
+                    {
+                        "is_active": payload.is_active,
+                        "roster_id": str(roster_id),
+                        "tournament_id": str(tournament_id),
+                        "organization_id": str(context.organization_id),
+                    },
+                )
+            except IntegrityError as exc:
+                # Only a concurrent write can reach this: the pre-checks above
+                # already rejected both conflicts. The transaction rolls back,
+                # so no row changes.
+                raise _roster_status_conflict(
+                    exc, roster["dorsal_number"]
+                ) from exc
+
+        row = await _load_roster_list_row(
+            db, context.organization_id, tournament_id, roster_id
+        )
     return (await sign_photo_rows([row], key_field="photo_object_key", policy="error"))[0]
 
 

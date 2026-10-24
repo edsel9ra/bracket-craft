@@ -323,7 +323,7 @@ test('a request that fails after the commit reloads the list and keeps the messa
 test('each invitation control names its role and expiry date, never the email (RF-005)', () => {
   assert.match(membersTemplate, /:aria-label="invitationAria\(action, invitation\)"/);
   assert.match(membersScript, /invitationActionAriaKey\(action\)/);
-  assert.match(membersScript, /role: t\(roleLabelKey\(invitation\.role_code\)\)/);
+  assert.match(membersScript, /role: t\(roleKey\(invitation\.role_code\)\)/);
   assert.match(membersScript, /date: formatDate\(invitation\.expires_at\)/);
   assert.doesNotMatch(membersPage, /aria-label[^\n]*invitation\.email/);
 });

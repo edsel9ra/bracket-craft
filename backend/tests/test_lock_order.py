@@ -149,6 +149,9 @@ class RecordingSession:
             return Result(scalar=1)
         if "FROM roles r" in sql:
             return Result(scalar=1)
+        # Effective roster limits of the stage's version (RF-045): no limits.
+        if "SELECT rules_config" in sql and "FROM tournament_versions" in sql:
+            return Result(rows=[{"rules_config": {}}])
         # Lock helpers.
         if "SELECT id, tournament_version_id" in sql and "FROM stages" in sql:
             return Result(

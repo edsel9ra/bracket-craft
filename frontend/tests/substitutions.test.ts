@@ -366,10 +366,10 @@ test('the match report renders two substitution selectors and preview counters',
   assert.match(matchPageSource, /match\.playerOut/);
   assert.match(matchPageSource, /match\.playerIn/);
   assert.match(matchPageSource, /match\.substitutionPreview/);
-  assert.match(matchPageSource, /limits\?: MatchLimits/);
+  assert.match(matchPageSource, /limits\?: \(MatchLimits & OperationLimits\) \| null/);
   assert.match(matchPageSource, /normalizeMatchLimits\(operation\.value\?\.limits\)/);
-  assert.match(matchPageSource, /:max="matchLimits\.max_minute"/);
-  assert.match(matchPageSource, /:max="matchLimits\.added_minute_max"/);
+  assert.match(matchPageSource, /:max="resolutionLimits\.maxMinute"/);
+  assert.match(matchPageSource, /:max="resolutionLimits\.addedMax"/);
 });
 
 test('keeps the substitution texts in Spanish and English parity', () => {

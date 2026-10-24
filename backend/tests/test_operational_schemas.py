@@ -1,10 +1,18 @@
 from datetime import date, datetime, timedelta
+from copy import deepcopy
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
-from app.modules.matches.schemas import MatchEventPayload, MatchLineupEntry, SaveMatchLineupRequest
+from app.modules.matches.router import _build_operation_limits
+from app.modules.matches.schemas import (
+    MatchEventPayload,
+    MatchLineupEntry,
+    MatchOperationResponse,
+    SaveMatchLineupRequest,
+)
+from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.tournaments.schemas import (
     CreateMatchRequest,
     CreateRosterPlayerRequest,
@@ -12,6 +20,68 @@ from app.modules.tournaments.schemas import (
     PublicStageResponse,
     PublicTournamentResponse,
 )
+
+
+def _operation_response(limits: dict) -> MatchOperationResponse:
+    return MatchOperationResponse(
+        match={},
+        segments=[],
+        interruptions=[],
+        officials=[],
+        eligible_officials=[],
+        rosters=[],
+        lineup=[],
+        tactical_lineups=[],
+        events=[],
+        substitutions={},
+        limits=limits,
+    )
+
+
+def test_operation_limits_add_the_four_fields_and_keep_the_legacy_ones():
+    limits = _build_operation_limits(
+        {"rules_config": deepcopy(DEFAULT_RULES_CONFIG), "stage_id": None}
+    )
+
+    dumped = _operation_response(limits).model_dump()["limits"]
+
+    assert set(dumped) == {
+        "regular_time_minutes",
+        "extra_time_minutes",
+        "max_minute",
+        "added_minute_max",
+        "max_minute_regular",
+        "max_minute_extra",
+        "extra_time_enabled",
+        "penalties_enabled",
+    }
+    assert dumped["max_minute_regular"] == 90
+    assert dumped["max_minute_extra"] is None
+    assert dumped["extra_time_enabled"] is False
+    assert dumped["penalties_enabled"] is False
+
+
+def test_operation_limits_resolve_the_flags_of_the_stage():
+    stage_id = uuid4()
+    config = deepcopy(DEFAULT_RULES_CONFIG)
+    config["stage_overrides"] = {
+        str(stage_id): {
+            "regular_time_minutes": 40,
+            "extra_time_minutes": 100,
+            "extra_time_enabled": True,
+            "penalties_enabled": True,
+        }
+    }
+
+    dumped = _operation_response(
+        _build_operation_limits({"rules_config": config, "stage_id": stage_id})
+    ).model_dump()["limits"]
+
+    assert dumped["max_minute_regular"] == 40
+    assert dumped["max_minute_extra"] == 100
+    assert dumped["extra_time_enabled"] is True
+    assert dumped["penalties_enabled"] is True
+    assert dumped["max_minute"] == 100
 
 
 def test_own_goal_requires_a_different_beneficiary():

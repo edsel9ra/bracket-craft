@@ -82,7 +82,7 @@ await callOnce('public-tournaments', () => tournamentsStore.loadPublic());
           <NuxtLink v-for="tournament in tournamentsStore.publicTournaments" :key="tournament.id" :to="`/tournaments/${tournament.id}`" class="tournament-card">
              <span class="status-tag">{{ statusLabel(tournament.status) }}</span>
             <h3>{{ tournament.name }}</h3>
-            <p>{{ tournament.season }} · inicia {{ tournament.start_date }}</p>
+            <p>{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
             <span class="card-arrow" aria-hidden="true">↗</span>
           </NuxtLink>
          </TransitionGroup>

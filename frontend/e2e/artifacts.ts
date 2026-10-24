@@ -362,7 +362,7 @@ export function writeViewArtifact(artifact: ViewArtifact): Promise<string> {
  * (B2 de la validación). La consola del navegador viaja en este mismo JSONL con
  * `type: 'console'`, así que tampoco se comparte entre vistas.
  */
-export function traceFileName(view: ViewId): string {
+export function traceFileName(view: ViewId | string): string {
   return `trace-${view}.jsonl`;
 }
 
@@ -379,7 +379,7 @@ export function writeTextReport(fileName: string, content: string): Promise<stri
 }
 
 /** Captura de la interfaz (viewport, no la página completa ni herramientas). */
-export async function captureScreenshot(page: Page, view: ViewId): Promise<string> {
+export async function captureScreenshot(page: Page, view: ViewId | string): Promise<string> {
   const file = reportPath('screenshots', `${view}.png`);
   await mkdir(dirname(file), { recursive: true });
   await page.screenshot({ path: file, fullPage: false });

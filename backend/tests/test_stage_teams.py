@@ -18,6 +18,10 @@ from fastapi import HTTPException, Response
 from pydantic import ValidationError
 
 from app.core.tenancy import AuthContext
+from app.modules.tournaments.roster_status import (
+    ROSTER_SIZE_OUT_OF_RANGE,
+    RosterSizeOutOfRange,
+)
 from app.modules.tournaments.router import (
     assign_stage_teams,
     list_stage_teams,
@@ -382,6 +386,8 @@ class AssignmentSession:
         registered_ids=(),
         existing_ids=(),
         fail_on_team: UUID | None = None,
+        rules_config=None,
+        active_counts: dict[UUID, int] | None = None,
     ):
         self.tournament_exists = tournament_exists
         self.stage_exists = stage_exists
@@ -390,6 +396,8 @@ class AssignmentSession:
         self.registered_ids = set(registered_ids)
         self.existing_ids = set(existing_ids)
         self.fail_on_team = fail_on_team
+        self.rules_config = rules_config
+        self.active_counts = dict(active_counts or {})
         self.statements: list[str] = []
         self.calls: list[tuple[str, dict]] = []
         self.writes: list[tuple[str, dict]] = []
@@ -435,6 +443,20 @@ class AssignmentSession:
             )
         if "SELECT status FROM tournament_versions" in sql and "FOR UPDATE" in sql:
             return Result(scalar=self.version_status)
+        if "SELECT rules_config FROM tournament_versions" in sql:
+            return Result(rows=[{"rules_config": self.rules_config}])
+        if "FROM teams t" in sql and "LEFT JOIN rosters r" in sql:
+            requested = [UUID(value) for value in params["team_ids"]]
+            return Result(
+                rows=[
+                    {
+                        "team_id": team_id,
+                        "team_name": f"Equipo {str(team_id)[:8]}",
+                        "active_count": self.active_counts.get(team_id, 0),
+                    }
+                    for team_id in requested
+                ]
+            )
         if "FROM tournament_teams" in sql and "status = 'registered'" in sql:
             requested = [UUID(value) for value in params["team_ids"]]
             return Result(
@@ -700,6 +722,63 @@ async def test_assignment_reads_existing_rows_for_the_stage_version():
     assert "organization_id = :organization_id" in existing_sql
     assert existing_params["version_id"] == str(VERSION_ID)
     assert existing_params["stage_id"] == str(STAGE_ID)
+
+
+# ---------------------------------------------------------------------------
+# Roster size block (RF-045)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_assignment_with_limits_inside_the_range_still_returns_201():
+    session = AssignmentSession(
+        registered_ids=[TEAM_ASSIGNED],
+        rules_config={"min_players_per_team": 11, "max_players_per_team": 20},
+        active_counts={TEAM_ASSIGNED: 12},
+    )
+    response = Response()
+
+    await post_assignment(session, [TEAM_ASSIGNED], response)
+
+    assert response.status_code == 201
+    assert len(session.writes) == 1
+    # The version limits and the count are read before the first insert.
+    assert session.index_of(
+        "SELECT rules_config FROM tournament_versions"
+    ) < session.index_of("INSERT INTO stage_teams")
+    assert session.index_of("LEFT JOIN rosters r") < session.index_of(
+        "INSERT INTO stage_teams"
+    )
+
+
+@pytest.mark.asyncio
+async def test_assignment_without_limits_does_not_count_rosters():
+    session = AssignmentSession(registered_ids=[TEAM_ASSIGNED])
+    response = Response()
+
+    await post_assignment(session, [TEAM_ASSIGNED], response)
+
+    assert response.status_code == 201
+    assert not any("LEFT JOIN rosters r" in sql for sql in session.statements)
+
+
+@pytest.mark.asyncio
+async def test_assignment_with_a_team_out_of_range_is_the_coded_409_without_writes():
+    session = AssignmentSession(
+        registered_ids=[TEAM_ASSIGNED, TEAM_FREE],
+        rules_config={"min_players_per_team": 11, "max_players_per_team": 20},
+        active_counts={TEAM_ASSIGNED: 3, TEAM_FREE: 15},
+    )
+
+    with pytest.raises(RosterSizeOutOfRange) as error:
+        await post_assignment(session, [TEAM_FREE, TEAM_ASSIGNED])
+
+    assert error.value.status_code == 409
+    assert error.value.code == ROSTER_SIZE_OUT_OF_RANGE
+    assert "«" in error.value.detail and "mínimo: 11" in error.value.detail
+    # All-or-nothing: the team inside the range is not enrolled either.
+    assert session.writes == []
+    assert session.transactions[-1].rolled_back is True
 
 
 # ---------------------------------------------------------------------------

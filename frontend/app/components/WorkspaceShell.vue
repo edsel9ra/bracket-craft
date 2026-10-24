@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
-
-export type WorkspaceSection = 'summary' | 'configuration' | 'calendar' | 'teams' | 'rosters' | 'operation';
+import {
+  matchIdFromPath,
+  tournamentSectionForPath,
+  tournamentSectionHref,
+  type TournamentSection,
+} from '~/utils/tournamentNavigation';
 
 export interface WorkspaceBreadcrumb {
   label: string;
@@ -18,11 +22,9 @@ export interface WorkspaceTournament {
 const props = withDefaults(defineProps<{
   breadcrumbs?: WorkspaceBreadcrumb[];
   tournament?: WorkspaceTournament | null;
-  activeSection?: WorkspaceSection;
 }>(), {
   breadcrumbs: () => [],
   tournament: null,
-  activeSection: 'summary',
 });
 
 const route = useRoute();
@@ -40,7 +42,8 @@ const platformAccess = useState<'unknown' | 'allowed' | 'denied'>('workspace-pla
 const isAdminRoute = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'));
 const showAdminLink = computed(() => isAdminRoute.value || platformAccess.value === 'allowed');
 const canManageMembers = computed(() => auth.hasPermission('MANAGE_MEMBERS'));
-const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
+const activeSection = computed<TournamentSection>(() => tournamentSectionForPath(route.path, route.hash));
+const matchId = computed(() => matchIdFromPath(route.path));
 const organizationName = computed(() => {
   const active = auth.organizations.find((organization: { id: string; name: string }) => organization.id === auth.organizationId);
   return active?.name || auth.organizations[0]?.name || t('shell.organization');
@@ -70,22 +73,22 @@ const primaryLinks = computed(() => [
 ]);
 
 const tournamentLinks = computed(() => {
-  if (!props.tournament?.id) return [];
-  const base = `/workspace/tournaments/${props.tournament.id}`;
-  return [
-    { key: 'summary' as WorkspaceSection, label: t('shell.summary'), to: `${base}#resumen` },
-    ...(canManageTournaments.value
-      ? [{ key: 'configuration' as WorkspaceSection, label: t('shell.configuration'), to: `${base}#configuracion` }]
-      : []),
-    { key: 'calendar' as WorkspaceSection, label: t('shell.calendar'), to: `${base}#calendario` },
-    { key: 'teams' as WorkspaceSection, label: t('shell.teams'), to: `${base}#equipos` },
-    { key: 'rosters' as WorkspaceSection, label: t('shell.rosters'), to: `${base}#plantillas` },
-    {
-      key: 'operation' as WorkspaceSection,
-      label: t('shell.operation'),
-      to: route.path.startsWith('/workspace/matches/') ? `${route.path}#operacion` : `${base}#operacion`,
-    },
+  const tournament = props.tournament;
+  if (!tournament?.id) return [];
+  const sections: Array<{ key: TournamentSection; label: string }> = [
+    { key: 'summary', label: t('shell.summary') },
+    { key: 'configuration', label: t('shell.configuration') },
+    { key: 'calendar', label: t('shell.calendar') },
+    { key: 'rosters', label: t('shell.rosters') },
+    { key: 'operation', label: t('shell.operation') },
   ];
+  return sections.flatMap((section) => {
+    const to = tournamentSectionHref(section.key, {
+      tournamentId: tournament.id,
+      matchId: matchId.value,
+    });
+    return to ? [{ ...section, to }] : [];
+  });
 });
 
 async function resolvePlatformAccess() {
@@ -142,7 +145,7 @@ function closeMenus() {
 }
 
 async function navigateTournamentSection(event: Event) {
-  const section = (event.target as HTMLSelectElement).value as WorkspaceSection;
+  const section = (event.target as HTMLSelectElement).value as TournamentSection;
   const link = tournamentLinks.value.find((candidate) => candidate.key === section);
   if (link) await navigateTo(link.to);
 }

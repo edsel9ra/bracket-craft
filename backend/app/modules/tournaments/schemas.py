@@ -111,6 +111,17 @@ class UpdatePhotoConsentRequest(BaseModel):
     photo_consent: bool
 
 
+class UpdateRosterStatusRequest(BaseModel):
+    """Body of ``PATCH /rosters/{roster_id}/status`` (RF-051, RC-1).
+
+    One single field: the retirement and the reactivation share the endpoint
+    and the response. It is a boolean, so a missing or non-boolean value is the
+    current 422 of the request validation.
+    """
+
+    is_active: bool
+
+
 class BulkRosterPlayerResponse(BaseModel):
     count: int
     players: list[RosterPlayerResponse]

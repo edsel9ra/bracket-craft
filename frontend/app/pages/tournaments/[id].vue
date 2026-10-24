@@ -25,7 +25,7 @@ import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 
 const route = useRoute();
 const { request } = useApi();
-const { t, statusLabel, stageTypeLabel, dateLocale, errorMessage } = useI18n();
+const { t, statusLabel, stageTypeLabel, formatDateTime, errorMessage } = useI18n();
 const realtime = useRealtime();
 const tournamentId = String(route.params.id);
 const PAGE_SIZE = 50;
@@ -112,10 +112,7 @@ function formatScore(match: PublicMatch) {
 
 function formatDate(value: string | null) {
   if (!value) return t('public.dateToDefine');
-  return new Intl.DateTimeFormat(dateLocale.value, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 function openLineup(match: PublicMatch, event: MouseEvent) {

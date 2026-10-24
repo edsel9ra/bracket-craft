@@ -1,7 +1,46 @@
 <script setup lang="ts">
 import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constants/formations';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import {
+  matchSelectionKey,
+  readMatchSelection,
+  teamRosterHref,
+  writeMatchSelection,
+} from '~/utils/matchNavigation';
+import {
+  MAXIMUM_SOURCE_LABEL_KEYS,
+  RESOLUTION_LABEL_KEYS,
+  classifyMatchConflict,
+  closeResolutionDecision,
+  enabledResolutions,
+  findDraftMinuteViolations,
+  matchConflictDetail,
+  matchLimitsFor,
+  maximumMinuteFor,
+  maximumMinuteSource,
+  normalizeResolution,
+  resolutionChangeOutcome,
+  resolutionEnabled,
+  resolutionPayload,
+  validateEventMinute,
+  type EventMinuteValidation,
+  type MaximumSource,
+  type OperationLimits,
+  type ResolutionType,
+} from '~/utils/matchResolution';
+import {
+  OPENING_BLOCKED_LABEL_KEYS,
+  describeOpeningBlocked,
+  effectiveRosterLimits,
+  type OpeningBlockedDescription,
+} from '~/utils/rosterLimits';
+import { gameFormatOf } from '~/utils/rulesWizard';
+import {
+  createMatchDraftStore,
+  type MatchDraftStorage,
+} from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
+import { positionLabel } from '~/utils/positions';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import {
@@ -28,7 +67,6 @@ type EventType = 'goal' | 'own_goal' | 'penalty_goal' | 'yellow_card' | 'red_car
 type RedCardType = 'direct_red' | 'double_yellow_red';
 type OfficialRole = 'main_referee' | 'assistant_referee_1' | 'assistant_referee_2' | 'fourth_official' | 'match_commissioner';
 type LineupRole = 'starter' | 'substitute';
-type ResolutionType = 'regular' | 'extra_time' | 'penalties' | 'walkover' | 'administrative';
 type SegmentStatus = 'active' | 'completed' | 'interrupted';
 type InterruptionReason = 'lighting_failure' | 'weather' | 'pitch_invasion' | 'other';
 
@@ -61,6 +99,9 @@ interface MatchRecord {
   winner_team_id: string | null;
   resolution_type: ResolutionType | null;
   rules_config?: {
+    game_format?: string;
+    min_players_per_team?: number | null;
+    max_players_per_team?: number | null;
     stage_defaults?: {
       extra_time_enabled?: boolean;
       penalties_enabled?: boolean;
@@ -174,7 +215,7 @@ interface MatchOperation {
   tactical_lineups: TacticalLineupRow[];
   events: MatchEvent[];
   substitutions?: unknown;
-  limits?: MatchLimits | null;
+  limits?: (MatchLimits & OperationLimits) | null;
 }
 
 type DraftEvent = DraftEventRecord<EventType>;
@@ -182,7 +223,7 @@ type DraftEvent = DraftEventRecord<EventType>;
 const route = useRoute();
 const auth = useAuthStore();
 const { request } = useApi();
-const { t, statusLabel, dateLocale, errorMessage } = useI18n();
+const { t, statusLabel, formatDateTime, errorMessage } = useI18n();
 const realtime = useRealtime();
 const matchId = String(route.params.id);
 
@@ -190,6 +231,7 @@ const operation = ref<MatchOperation | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const actionError = ref<string | null>(null);
+const openingBlocked = ref<OpeningBlockedDescription | null>(null);
 const busyAction = ref<string | null>(null);
 const selectedSegmentId = ref('');
 const lineupRoles = ref<Record<string, LineupRole | ''>>({});
@@ -210,15 +252,6 @@ const interruptionForm = reactive<{ reason: InterruptionReason; minute: number; 
 const officialForm = reactive<{ organization_user_id: string; official_role: OfficialRole }>({
   organization_user_id: '',
   official_role: 'main_referee',
-});
-const rosterForm = reactive({
-  team_id: '',
-  first_name: '',
-  last_name: '',
-  national_id: '',
-  birth_date: '',
-  dorsal_number: 1,
-  photo_consent: false,
 });
 const eventForm = reactive<{
   event_type: EventType;
@@ -243,7 +276,6 @@ const eventForm = reactive<{
 });
 const substitutionError = ref<string | null>(null);
 const closeForm = reactive<{
-  resolution_type: ResolutionType;
   home_score_regular: number;
   away_score_regular: number;
   home_score: number | null;
@@ -253,7 +285,6 @@ const closeForm = reactive<{
   winner_team_id: string;
   reason: string;
 }>({
-  resolution_type: 'regular',
   home_score_regular: 0,
   away_score_regular: 0,
   home_score: null,
@@ -337,6 +368,110 @@ const eventRosterPlayers = computed(() => operation.value?.rosters.filter((entry
 )) || []);
 const substitutionState = computed(() => normalizeSubstitutionsState(operation.value?.substitutions));
 const matchLimits = computed(() => normalizeMatchLimits(operation.value?.limits) ?? DEFAULT_MATCH_LIMITS);
+
+// RF-033/RF-034 (P3): un único valor vigente de resolución prevista, elegido
+// en la operación, mostrado con el máximo que resuelve el servidor y enviado al
+// crear o interrumpir segmentos y al cerrar. Vive solo en la sesión de la
+// pestaña; no se mezcla con el borrador local del partido.
+const operationLimits = computed<OperationLimits | null>(() => operation.value?.limits ?? null);
+const {
+  resolution,
+  planned: plannedResolution,
+  restore: restoreResolution,
+  select: selectResolution,
+  snapshot: snapshotResolution,
+} = useMatchResolution({
+  userId: () => auth.userId,
+  organizationId: () => auth.organizationId,
+  matchId: () => matchId,
+});
+const resolutionFallback = ref(false);
+const resolutionChangeNotice = ref<{ key: string; params: Record<string, string | number> } | null>(null);
+// RF-034/RP-1: la prevista que el cierre compara es la vigente al abrir el
+// panel. La instantánea se toma una sola vez por operación para no confundir un
+// cambio hecho durante el partido con uno hecho al cerrar.
+const closeSnapshotTaken = ref(false);
+function beginClose(): void {
+  if (closeSnapshotTaken.value) return;
+  closeSnapshotTaken.value = true;
+  snapshotResolution();
+}
+const resolutionOptions = computed(() => enabledResolutions(operationLimits.value).map((value) => ({
+  value,
+  labelKey: RESOLUTION_LABEL_KEYS[value],
+})));
+const resolutionLimits = computed(() => matchLimitsFor(operationLimits.value, resolution.value));
+// RF-032: el mismo tope combinado del cierre se aplica al borrador restaurado.
+// Un evento guardado con otro máximo no se descarta en silencio: se avisa y el
+// cierre queda bloqueado hasta que el operador lo corrija o lo retire.
+const draftMinuteViolations = computed(() => findDraftMinuteViolations(
+  draftEvents.value,
+  resolutionLimits.value.maxMinute,
+  resolutionLimits.value.addedMax,
+));
+const draftMinuteMessage = computed(() => {
+  const first = draftMinuteViolations.value[0];
+  return first ? eventMinuteMessage(first.validation) : null;
+});
+const resolutionMaximumSource = computed<MaximumSource>(
+  () => maximumMinuteSource(operationLimits.value, resolution.value),
+);
+
+function resolutionLabel(value: ResolutionType): string {
+  return t(RESOLUTION_LABEL_KEYS[value]);
+}
+
+/**
+ * Mensaje del tope combinado (RF-032): nombra el minuto, el añadido y el
+ * máximo que el cierre aplicará. No vacía el formulario y no añade el evento.
+ */
+function eventMinuteMessage(validation: EventMinuteValidation): string {
+  return t('match.eventMinuteExceedsMaximum', {
+    minute: validation.minute,
+    added: validation.added,
+    max: validation.max,
+  });
+}
+
+/**
+ * Cambio de la resolución prevista (RF-033, P2). Antes de aplicarlo se juzga
+ * contra los segmentos persistidos y los eventos del borrador: con segmentos
+ * fuera del nuevo máximo el cambio no se permite, y con solo eventos del
+ * borrador se pide confirmación y se avisa sin borrar nada. El valor vigente no
+ * se escribe en el servidor ni en el borrador local.
+ */
+function changeResolution(next: ResolutionType): void {
+  resolutionFallback.value = false;
+  const effective = normalizeResolution(operationLimits.value, next);
+  if (effective === resolution.value) {
+    resolutionChangeNotice.value = null;
+    return;
+  }
+  const outcome = resolutionChangeOutcome(
+    operation.value?.segments,
+    draftEvents.value,
+    maximumMinuteFor(operationLimits.value, effective),
+  );
+  if (outcome.outcome === 'blocked') {
+    // P2: no se corrige ningún segmento guardado; se pide resolver primero.
+    resolutionChangeNotice.value = { key: outcome.messageKey, params: outcome.messageParams };
+    actionError.value = t(outcome.messageKey, outcome.messageParams);
+    return;
+  }
+  if (outcome.outcome === 'confirm') {
+    resolutionChangeNotice.value = { key: outcome.messageKey, params: outcome.messageParams };
+    if (import.meta.client && !window.confirm(t(outcome.messageKey, outcome.messageParams))) return;
+  } else {
+    resolutionChangeNotice.value = null;
+  }
+  selectResolution(effective, operationLimits.value);
+}
+
+const selectedResolution = computed<ResolutionType>({
+  get: () => resolution.value,
+  set: (next) => changeResolution(next),
+});
+
 const eventSubstitutionTeam = computed(() => teamSubstitutionState(substitutionState.value, eventForm.team_id));
 const eventSubstitutionAvailability = computed(() => substitutionAvailability(eventSubstitutionTeam.value));
 const eventSubstitutionCounters = computed(() => previewCounters(eventSubstitutionTeam.value, draftEvents.value));
@@ -358,6 +493,18 @@ const teamRosters = computed(() => [
   { key: 'home', team_id: match.value?.home_team_id || '', name: match.value?.home_team_name || t('setup.home'), players: homeRoster.value },
   { key: 'away', team_id: match.value?.away_team_id || '', name: match.value?.away_team_name || t('setup.away'), players: awayRoster.value },
 ]);
+// RF-050: los límites y el recuento local solo sirven para **describir** el 409
+// de apertura que ya devolvió el servidor. No bloquean el intento.
+const openingRosterLimits = computed(() => effectiveRosterLimits(
+  (match.value?.rules_config ?? null) as Record<string, unknown> | null,
+));
+const openingRosterParticipants = computed(() => teamRosters.value
+  .filter((team) => Boolean(team.team_id))
+  .map((team) => ({
+    teamId: team.team_id,
+    teamName: team.name,
+    count: team.players.filter((player) => player.is_active).length,
+  })));
 const lineupEntries = computed(() => Object.entries(lineupRoles.value).filter(([, role]) => role).map(([roster_id, role]) => ({
   roster_id,
   role,
@@ -373,6 +520,9 @@ const hasCompleteLineup = computed(() => {
   return Boolean(homeTeamId && awayTeamId && selectedLineupTeams.value.has(homeTeamId) && selectedLineupTeams.value.has(awayTeamId));
 });
 const rulesDefaults = computed(() => match.value?.rules_config?.stage_defaults || {});
+// RF-043: el formato es informativo; la operación advierte cuando la planilla
+// de once no coincide con la modalidad declarada, sin bloquear nada.
+const matchGameFormat = computed(() => gameFormatOf(match.value?.rules_config ?? null));
 const operationChecklist = computed(() => [
   { label: t('status.published'), valid: match.value?.version_status === 'published' },
   { label: t('match.activeSegment'), valid: Boolean(activeSegment.value) },
@@ -381,7 +531,6 @@ const operationChecklist = computed(() => [
 ]);
 
 const defaultCloseForm = {
-  resolution_type: 'regular' as ResolutionType,
   home_score_regular: 0,
   away_score_regular: 0,
   home_score: null as number | null,
@@ -395,7 +544,26 @@ const defaultCloseForm = {
 const hasUnsavedDraft = computed(() => draftEvents.value.length > 0 || JSON.stringify({
   ...closeForm,
 }) !== JSON.stringify(defaultCloseForm));
-const draftStorageKey = computed(() => `bc_match_draft:${auth.userId || 'anonymous'}:${auth.organizationId || 'anonymous'}:${matchId}`);
+
+// RF-022/RF-034: el borrador local (eventos y formulario de cierre) se lee y
+// se escribe solo a través del saneado de `utils/matchDraft`; la resolución
+// prevista no forma parte de él. El almacenamiento se inyecta como en el resto
+// de utilidades puras.
+function draftStorageOrNull(): MatchDraftStorage | null {
+  if (!import.meta.client) return null;
+  try {
+    return window.localStorage;
+  } catch {
+    // Storage can be unavailable in private browsing.
+    return null;
+  }
+}
+
+const draftStore = computed(() => createMatchDraftStore({
+  userId: auth.userId,
+  organizationId: auth.organizationId,
+  matchId,
+}, draftStorageOrNull()));
 
 function closeFormSnapshot() {
   return { ...closeForm };
@@ -403,46 +571,34 @@ function closeFormSnapshot() {
 
 function removePersistedDraft() {
   if (!import.meta.client) return;
-  try {
-    localStorage.removeItem(draftStorageKey.value);
-  } catch {
-    // Storage can be unavailable in private browsing.
-  }
+  draftStore.value.clear();
 }
 
 function loadPersistedDraft() {
   if (!import.meta.client || !operation.value) return;
-  try {
-    const raw = localStorage.getItem(draftStorageKey.value);
-    if (!raw) return;
-    const saved = JSON.parse(raw) as { match_id?: string; events?: unknown[]; result?: Partial<typeof defaultCloseForm>; saved_at?: string };
-    if (saved.match_id && saved.match_id !== matchId) return;
-    if (isTerminal.value) {
-      removePersistedDraft();
-      return;
-    }
+  const { draft, discard } = draftStore.value.read();
+  if (discard) {
+    removePersistedDraft();
+    return;
+  }
+  if (!draft) return;
+  if (isTerminal.value) {
+    removePersistedDraft();
+    return;
+  }
 
-    hydratingDraft = true;
-    draftEvents.value = Array.isArray(saved.events)
-      ? saved.events
-        .map((event) => readDraftEvent(event, eventTypeValues, matchLimits.value))
-        .filter((event): event is DraftEvent => event !== null)
-      : [];
-    if (saved.result && typeof saved.result === 'object') {
-      const result = saved.result;
-      if (['regular', 'extra_time', 'penalties', 'walkover', 'administrative'].includes(String(result.resolution_type))) {
-        closeForm.resolution_type = result.resolution_type as ResolutionType;
-      }
-      for (const key of ['home_score_regular', 'away_score_regular', 'home_score', 'away_score', 'home_penalties', 'away_penalties'] as const) {
-        const value = result[key];
-        if (value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0)) Object.assign(closeForm, { [key]: value });
-      }
-      if (typeof result.winner_team_id === 'string') closeForm.winner_team_id = result.winner_team_id;
-      if (typeof result.reason === 'string' && result.reason.length <= 1000) closeForm.reason = result.reason;
-    }
+  hydratingDraft = true;
+  try {
+    draftEvents.value = draft.events
+      .map((event) => readDraftEvent(event, eventTypeValues, matchLimits.value))
+      .filter((event): event is DraftEvent => event !== null);
+    // Solo los campos conocidos y válidos del formulario de cierre; un borrador
+    // antiguo con la resolución prevista ya la trae descartada de `read()`.
+    Object.assign(closeForm, draft.result);
     draftRestored.value = hasUnsavedDraft.value;
-    draftSavedAt.value = typeof saved.saved_at === 'string' ? saved.saved_at : null;
+    draftSavedAt.value = draft.saved_at;
   } catch {
+    // Un guardado que no se puede aplicar se descarta como antes de la spec 012.
     removePersistedDraft();
   } finally {
     hydratingDraft = false;
@@ -455,23 +611,15 @@ function persistDraft() {
     removePersistedDraft();
     return;
   }
-  try {
-    if (!hasUnsavedDraft.value) {
-      removePersistedDraft();
-      draftSavedAt.value = null;
-      return;
-    }
-    const savedAt = new Date().toISOString();
-    localStorage.setItem(draftStorageKey.value, JSON.stringify({
-      version: 1,
-      match_id: matchId,
-      events: draftEvents.value,
-      result: closeFormSnapshot(),
-      saved_at: savedAt,
-    }));
+  if (!hasUnsavedDraft.value) {
+    removePersistedDraft();
+    draftSavedAt.value = null;
+    return;
+  }
+  const savedAt = new Date().toISOString();
+  // `save` re-sanea el contenido: ninguna ruta escribe la resolución prevista.
+  if (draftStore.value.save({ events: draftEvents.value, result: closeFormSnapshot(), saved_at: savedAt })) {
     draftSavedAt.value = savedAt;
-  } catch {
-    // Storage can be unavailable in private browsing; the in-memory draft remains usable.
   }
 }
 
@@ -487,6 +635,7 @@ function discardDraft() {
 }
 
 function closeValidationError(): string | null {
+  const resolutionType = resolution.value;
   const homeTeamId = match.value?.home_team_id;
   const awayTeamId = match.value?.away_team_id;
   if (!homeTeamId || !awayTeamId || !selectedSegmentIsActive.value || !hasCompleteLineup.value) {
@@ -496,8 +645,12 @@ function closeValidationError(): string | null {
   if (scoreFields.some((value) => value !== null && (!Number.isInteger(value) || value < 0))) return t('match.closeValidation');
   const participants = new Set([homeTeamId, awayTeamId]);
   if (closeForm.winner_team_id && !participants.has(closeForm.winner_team_id)) return t('match.closeValidation');
+  // RF-032: un evento del borrador (también restaurado) fuera del tope
+  // combinado haría que el servidor rechazara el cierre; se avisa antes.
+  const minuteViolation = draftMinuteViolations.value[0];
+  if (minuteViolation) return eventMinuteMessage(minuteViolation.validation);
 
-  if (closeForm.resolution_type === 'regular') {
+  if (resolutionType === 'regular') {
     const goals = { [homeTeamId]: 0, [awayTeamId]: 0 } as Record<string, number>;
     for (const event of draftEvents.value) {
       if (['goal', 'own_goal', 'penalty_goal'].includes(event.event_type)) {
@@ -509,19 +662,19 @@ function closeValidationError(): string | null {
       return t('match.closeValidation');
     }
   }
-  if (['walkover', 'administrative'].includes(closeForm.resolution_type) && draftEvents.value.length) return t('match.closeValidation');
-  if (closeForm.resolution_type !== 'regular' && closeForm.winner_team_id === '') return t('match.closeValidation');
-  if (closeForm.resolution_type === 'extra_time') {
+  if (['walkover', 'administrative'].includes(resolutionType) && draftEvents.value.length) return t('match.closeValidation');
+  if (resolutionType !== 'regular' && closeForm.winner_team_id === '') return t('match.closeValidation');
+  if (resolutionType === 'extra_time') {
     if (closeForm.home_score === null || closeForm.away_score === null) return t('match.closeValidation');
     if (closeForm.home_score < closeForm.home_score_regular || closeForm.away_score < closeForm.away_score_regular) return t('match.closeValidation');
   }
-  if (closeForm.resolution_type === 'penalties') {
+  if (resolutionType === 'penalties') {
     if (closeForm.home_score === null || closeForm.away_score === null || closeForm.home_score !== closeForm.away_score) return t('match.closeValidation');
     if (closeForm.home_penalties === null || closeForm.away_penalties === null || closeForm.home_penalties === closeForm.away_penalties) return t('match.closeValidation');
   }
-  if (closeForm.resolution_type === 'administrative' && (closeForm.home_score === null || closeForm.away_score === null || closeForm.home_score !== closeForm.home_score_regular || closeForm.away_score !== closeForm.away_score_regular)) return t('match.closeValidation');
-  if (closeForm.resolution_type === 'administrative' && !closeForm.reason.trim()) return t('match.administrativeReasonRequired');
-  if (closeForm.resolution_type !== 'administrative' && closeForm.reason.trim()) return t('match.closeValidation');
+  if (resolutionType === 'administrative' && (closeForm.home_score === null || closeForm.away_score === null || closeForm.home_score !== closeForm.home_score_regular || closeForm.away_score !== closeForm.away_score_regular)) return t('match.closeValidation');
+  if (resolutionType === 'administrative' && !closeForm.reason.trim()) return t('match.administrativeReasonRequired');
+  if (resolutionType !== 'administrative' && closeForm.reason.trim()) return t('match.closeValidation');
   return null;
 }
 
@@ -544,6 +697,9 @@ async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
 
 function applyOperation(value: MatchOperation) {
   operation.value = value;
+  // Si el partido ya tiene segmentos (por ejemplo, abierto en otra pestaña) el
+  // aviso de apertura bloqueada dejó de ser cierto.
+  if (value.segments.length) openingBlocked.value = null;
   const currentSegment = value.segments.find((segment) => segment.id === selectedSegmentId.value);
   const nextActiveSegment = value.segments.find((segment) => segment.status === 'active');
   if (!currentSegment || (currentSegment.status !== 'active' && nextActiveSegment)) {
@@ -551,9 +707,6 @@ function applyOperation(value: MatchOperation) {
   }
   segmentForm.segment_number = Math.max(1, ...value.segments.map((segment) => segment.segment_number + 1));
   if (nextActiveSegment) interruptionForm.minute = nextActiveSegment.minute_start;
-  if (!rosterForm.team_id) {
-    rosterForm.team_id = value.match.home_team_id || value.match.away_team_id || '';
-  }
   if (!eventForm.team_id) {
     eventForm.team_id = value.match.home_team_id || value.match.away_team_id || '';
   }
@@ -599,10 +752,6 @@ function setFormation(teamId: string, event: Event) {
 
 function availablePositions(teamId: string): string[] {
   return formationSlots(lineupFormations.value[teamId] || '');
-}
-
-function positionLabel(position: string): string {
-  return position.replace('_', ' ');
 }
 
 function tacticalRowsForTeam(teamId: string): TacticalLineupRow[] {
@@ -673,25 +822,65 @@ function payloadTargetsMatch(payload: unknown): boolean {
   return value.match_id === undefined || String(value.match_id) === matchId;
 }
 
-async function runAction(action: string, callback: () => Promise<void>) {
+async function runAction(
+  action: string,
+  callback: () => Promise<void>,
+  onError?: (cause: unknown) => boolean,
+) {
   busyAction.value = action;
   actionError.value = null;
   try {
     await callback();
   } catch (cause) {
     if (await redirectOnSessionFailure(cause)) return;
+    if (onError?.(cause)) return;
+    openingBlocked.value = null;
+    // RF-050/RNF-003: el 409 de resolución se distingue por su `code` aditivo.
+    // Un 409 anterior sin `code` conserva el mensaje de `detail`.
+    if (classifyMatchConflict(cause) === 'resolution_not_enabled') {
+      actionError.value = t('match.resolutionNotEnabled');
+      return;
+    }
     actionError.value = failureMessage(cause, t('match.noOperation'));
   } finally {
     busyAction.value = null;
   }
 }
 
+/**
+ * Apertura del partido = primer segmento (RF-050). El servidor es la autoridad
+ * del tamaño de plantilla: la petición se envía siempre. Si responde **409**
+ * `ROSTER_SIZE_OUT_OF_RANGE`, el segmento no se crea en la interfaz, el estado
+ * no se recarga —el partido sigue sin abrir— y se muestra el aviso con los
+ * equipos implicados, el rango, la cantidad y el enlace a su plantilla para
+ * corregir y reintentar.
+ */
+function showOpeningBlocked(cause: unknown): void {
+  actionError.value = null;
+  openingBlocked.value = describeOpeningBlocked({
+    detail: matchConflictDetail(cause),
+    limits: openingRosterLimits.value,
+    participants: openingRosterParticipants.value,
+  }, t);
+}
+
 async function createSegment() {
+  const opening = (operation.value?.segments.length ?? 0) === 0;
   await runAction('segment', async () => {
-    await request(`/matches/${matchId}/segments`, { method: 'POST', body: { ...segmentForm } });
+    await request(`/matches/${matchId}/segments`, {
+      method: 'POST',
+      body: { ...segmentForm, ...resolutionPayload(operationLimits.value, resolution.value) },
+    });
+    openingBlocked.value = null;
     segmentForm.segment_number += 1;
     segmentForm.minute_start = 0;
     await refreshOperation();
+  }, (cause) => {
+    if (opening && classifyMatchConflict(cause) === 'roster_size_out_of_range') {
+      showOpeningBlocked(cause);
+      return true;
+    }
+    return false;
   });
 }
 
@@ -711,6 +900,7 @@ async function interruptSegment() {
         reason: interruptionForm.reason,
         minute: interruptionForm.minute,
         notes: interruptionForm.notes || null,
+        ...resolutionPayload(operationLimits.value, resolution.value),
       },
     });
     segmentForm.minute_start = interruptionForm.minute;
@@ -735,19 +925,48 @@ async function removeOfficial(official: Official) {
   });
 }
 
-async function addRosterPlayer() {
-  if (!rosterForm.team_id) return;
-  await runAction('roster', async () => {
-    await request(`/tournaments/${match.value?.tournament_id}/rosters`, {
-      method: 'POST',
-      body: { ...rosterForm },
-    });
-    rosterForm.first_name = '';
-    rosterForm.last_name = '';
-    rosterForm.national_id = '';
-    rosterForm.dorsal_number = 1;
-    await refreshOperation();
+// RF-021: el alta de jugadores vive solo en la administración de plantillas.
+// RF-022: desde aquí se enlaza a la plantilla del equipo con contexto de
+// retorno; el partido (dirección), el segmento seleccionado y el borrador local
+// se conservan al volver.
+const rostersHref = computed(() => (match.value
+  ? `/workspace/tournaments/${match.value.tournament_id}/rosters`
+  : ''));
+
+function teamRosterLink(teamId: string): string {
+  return teamRosterHref({
+    tournamentId: match.value?.tournament_id || '',
+    teamId,
+    matchId,
   });
+}
+
+const selectedSegmentStorageKey = computed(() => matchSelectionKey({
+  userId: auth.userId || 'anonymous',
+  organizationId: auth.organizationId || 'anonymous',
+  matchId,
+}));
+
+function persistSelectedSegment(segmentId: string) {
+  if (!import.meta.client || !segmentId) return;
+  try {
+    sessionStorage.setItem(selectedSegmentStorageKey.value, writeMatchSelection(segmentId));
+  } catch {
+    // Storage can be unavailable in private browsing; the in-memory selection remains usable.
+  }
+}
+
+function restoreSelectedSegment() {
+  if (!import.meta.client || !operation.value) return;
+  try {
+    const stored = readMatchSelection(
+      sessionStorage.getItem(selectedSegmentStorageKey.value),
+      operation.value.segments.map((segment) => segment.id),
+    );
+    if (stored) selectedSegmentId.value = stored;
+  } catch {
+    // Storage can be unavailable in private browsing; the default selection remains.
+  }
 }
 
 async function saveLineup() {
@@ -770,8 +989,9 @@ async function saveLineup() {
   });
 }
 
-watch(selectedSegmentId, () => {
+watch(selectedSegmentId, (segmentId) => {
   if (operation.value) syncTacticalEditor();
+  persistSelectedSegment(segmentId);
 });
 
 function pushDraftEvent(playerId: string, playerOutId: string, playerInId: string) {
@@ -797,13 +1017,23 @@ function addEvent() {
     actionError.value = t('match.needSegmentEvent');
     return;
   }
-  const limits = matchLimits.value;
-  if (!Number.isInteger(eventForm.minute) || eventForm.minute < 0 || eventForm.minute > limits.max_minute) {
-    actionError.value = t('match.minuteOutOfRange', { max: limits.max_minute });
-    return;
-  }
-  if (!Number.isInteger(eventForm.added_minute) || eventForm.added_minute < 0 || eventForm.added_minute > limits.added_minute_max) {
-    actionError.value = t('match.addedMinuteOutOfRange', { max: limits.added_minute_max });
+  const limits = resolutionLimits.value;
+  // RF-032: la misma regla que el cierre, sobre `minute + added_minute`; el
+  // evento inválido no se añade y lo escrito se conserva para corregirlo.
+  const minuteCheck = validateEventMinute(
+    eventForm.minute,
+    eventForm.added_minute,
+    limits.maxMinute,
+    limits.addedMax,
+  );
+  if (!minuteCheck.ok) {
+    // Los valores que se nombran son los escritos, no una normalización: el
+    // operador ve exactamente qué minuto y qué añadido corregir.
+    actionError.value = t('match.eventMinuteExceedsMaximum', {
+      minute: eventForm.minute,
+      added: eventForm.added_minute,
+      max: limits.maxMinute,
+    });
     return;
   }
   if (eventForm.event_type === SUBSTITUTION_EVENT_TYPE) {
@@ -850,8 +1080,12 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = '';
 }
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave((to) => {
   if (!import.meta.client || !hasUnsavedDraft.value || isTerminal.value) return true;
+  // RF-022: el enlace a la plantilla conserva el segmento y el borrador local y
+  // los restaura al volver, así que avisar de una pérdida que no ocurre sería
+  // falso. Cualquier otro destino mantiene la confirmación.
+  if (to.path === rostersHref.value) return true;
   return window.confirm(t('match.unsavedLeave'));
 });
 
@@ -861,20 +1095,47 @@ async function closeMatch() {
     actionError.value = validationError;
     return;
   }
-  if (import.meta.client && !window.confirm(t('match.confirmClosePrompt'))) return;
+  // RF-034/RP-1: el cierre usa la resolución prevista. Si se elige otra
+  // compatible, hay aviso y confirmación explícita; sin ella no se cierra. Con
+  // segmentos persistidos fuera del máximo no hay confirmación posible (P2).
+  const closeInput = {
+    planned: plannedResolution.value,
+    chosen: resolution.value,
+    limits: operationLimits.value,
+    segments: operation.value?.segments,
+    draftEvents: draftEvents.value,
+    confirmed: false,
+  };
+  const decision = closeResolutionDecision(closeInput);
+  if (decision.outcome === 'blocked') {
+    actionError.value = t(decision.messageKey, decision.messageParams);
+    return;
+  }
+  if (decision.needsConfirmation) {
+    if (!import.meta.client) return;
+    const params = {
+      ...decision.messageParams,
+      resolution: resolutionLabel(resolution.value),
+      planned: resolutionLabel(plannedResolution.value),
+    };
+    if (!window.confirm(t(decision.messageKey, params))) return;
+    if (!closeResolutionDecision({ ...closeInput, confirmed: true }).send) return;
+  } else if (import.meta.client && !window.confirm(t('match.confirmClosePrompt'))) {
+    return;
+  }
   await runAction('close', async () => {
     await request(`/matches/${matchId}/close`, {
       method: 'POST',
       body: {
-        resolution_type: closeForm.resolution_type,
+        ...resolutionPayload(operationLimits.value, resolution.value),
         home_score_regular: closeForm.home_score_regular,
         away_score_regular: closeForm.away_score_regular,
-        home_score: closeForm.resolution_type === 'regular' ? null : closeForm.home_score,
-        away_score: closeForm.resolution_type === 'regular' ? null : closeForm.away_score,
-        home_penalties: closeForm.resolution_type === 'penalties' ? closeForm.home_penalties : null,
-        away_penalties: closeForm.resolution_type === 'penalties' ? closeForm.away_penalties : null,
-        winner_team_id: ['regular'].includes(closeForm.resolution_type) ? null : closeForm.winner_team_id || null,
-        reason: closeForm.resolution_type === 'administrative' ? closeForm.reason.trim() : null,
+        home_score: resolution.value === 'regular' ? null : closeForm.home_score,
+        away_score: resolution.value === 'regular' ? null : closeForm.away_score,
+        home_penalties: resolution.value === 'penalties' ? closeForm.home_penalties : null,
+        away_penalties: resolution.value === 'penalties' ? closeForm.away_penalties : null,
+        winner_team_id: ['regular'].includes(resolution.value) ? null : closeForm.winner_team_id || null,
+        reason: resolution.value === 'administrative' ? closeForm.reason.trim() : null,
         events: draftEvents.value,
       },
     });
@@ -919,7 +1180,7 @@ function officialLabel(role: OfficialRole): string {
 
 function formatDate(value: string | null): string {
   if (!value) return t('public.dateToDefine');
-  return new Intl.DateTimeFormat(dateLocale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 watch(() => eventForm.team_id, () => {
@@ -953,8 +1214,16 @@ watch([eventOutgoingOptions, eventIncomingOptions], () => {
   }
 });
 
-watch(() => closeForm.resolution_type, (resolutionType) => {
+watch(resolution, (resolutionType) => {
   if (resolutionType !== 'administrative') closeForm.reason = '';
+});
+
+// RF-034: si la configuración efectiva deja de habilitar la resolución elegida,
+// se cae a tiempo reglamentario sin romper y se avisa en pantalla.
+watch(operationLimits, (limits) => {
+  if (!operation.value || resolutionEnabled(limits, resolution.value)) return;
+  selectResolution('regular', limits);
+  resolutionFallback.value = true;
 });
 
 const { data: initialOperation, error: initialOperationError } = await useAsyncData<MatchOperation>(
@@ -971,7 +1240,10 @@ if (initialOperationError.value) {
 }
 loading.value = false;
 
-if (operation.value) loadPersistedDraft();
+if (operation.value) {
+  restoreSelectedSegment();
+  loadPersistedDraft();
+}
 
 const realtimeStatusLabel = computed(() => {
   const key = realtimeStatusLabelKey(realtime.status.value, 'match');
@@ -979,6 +1251,10 @@ const realtimeStatusLabel = computed(() => {
 });
 
 onMounted(() => {
+  // RF-034/P3: la resolución prevista se restaura después de montar para no
+  // desajustar la hidratación; solo existe en la sesión de esta pestaña.
+  const restored = restoreResolution(operation.value?.limits ?? null);
+  resolutionFallback.value = restored.fellBack;
   window.addEventListener('beforeunload', handleBeforeUnload);
   realtime.connect({
     onEvent: (event, payload) => {
@@ -1000,7 +1276,6 @@ onBeforeUnmount(() => {
   <WorkspaceShell
     :breadcrumbs="workspaceBreadcrumbs"
     :tournament="tournamentContext"
-    active-section="operation"
   >
    <main id="main-content" class="operation-shell">
     <section class="container operation-hero">
@@ -1022,6 +1297,7 @@ onBeforeUnmount(() => {
           <strong>{{ match.away_score ?? '—' }}</strong>
         </div>
       </div>
+      <FormatWarning :format="matchGameFormat" message-key="format.notice.operation" />
     </section>
 
     <section id="operacion" class="container operation-content">
@@ -1036,6 +1312,43 @@ onBeforeUnmount(() => {
 
         <div v-if="actionError" class="form-error" role="alert">{{ actionError }}</div>
 
+        <section v-if="openingBlocked" class="stage-partial opening-blocked" role="alert" aria-live="assertive">
+          <strong>{{ t(OPENING_BLOCKED_LABEL_KEYS.title) }}</strong>
+          <p>{{ t(OPENING_BLOCKED_LABEL_KEYS.reason) }}</p>
+          <ul>
+            <li v-for="team in openingBlocked.teams" :key="`opening-blocked-${team.teamId}`">{{ team.message }}</li>
+          </ul>
+          <p class="field-hint">{{ t(OPENING_BLOCKED_LABEL_KEYS.retry) }}</p>
+          <ul class="roster-links">
+            <li v-for="team in openingBlocked.teams" :key="`opening-roster-${team.teamId}`">
+              <NuxtLink :to="teamRosterLink(team.teamId)">{{ t(OPENING_BLOCKED_LABEL_KEYS.openRoster, { team: team.teamName }) }}</NuxtLink>
+            </li>
+          </ul>
+          <p class="muted-note">{{ t(OPENING_BLOCKED_LABEL_KEYS.serverDetail, { detail: openingBlocked.detail }) }}</p>
+          <button v-if="canOperateMatch" class="button-secondary" type="button" :disabled="Boolean(busyAction) || isTerminal" @click="createSegment">{{ t(OPENING_BLOCKED_LABEL_KEYS.retryAction) }}</button>
+        </section>
+
+        <section class="panel panel-wide resolution-panel" aria-labelledby="planned-resolution-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">{{ t('match.plannedResolution') }}</p><h2 id="planned-resolution-heading">{{ t('match.resolution') }}</h2></div>
+            <span class="muted-note">{{ t('match.plannedResolutionHint') }}</span>
+          </div>
+          <div class="resolution-summary">
+            <label>{{ t('match.plannedResolution') }}
+              <select v-model="selectedResolution" :disabled="!canOperateMatch || isTerminal">
+                <option v-for="option in resolutionOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
+              </select>
+            </label>
+            <p class="resolution-limits" role="status">
+              <strong>{{ t('match.resolutionMaximum', { max: resolutionLimits.maxMinute }) }}</strong>
+              <span>{{ t('match.resolutionAddedMaximum', { max: resolutionLimits.addedMax }) }}</span>
+              <span>{{ t(MAXIMUM_SOURCE_LABEL_KEYS[resolutionMaximumSource]) }}</span>
+            </p>
+            <p v-if="resolutionFallback" class="segment-warning" role="status">{{ t('match.resolutionFallenBack') }}</p>
+            <p v-if="resolutionChangeNotice" class="segment-warning" role="status">{{ t(resolutionChangeNotice.key, resolutionChangeNotice.params) }}</p>
+          </div>
+        </section>
+
         <div class="operation-grid">
           <section class="panel panel-wide">
             <div class="panel-heading">
@@ -1047,7 +1360,7 @@ onBeforeUnmount(() => {
                 <h3>{{ t('match.gameSegments') }}</h3>
                 <div class="field-row">
                   <label>{{ t('match.segmentNumber') }}<input v-model.number="segmentForm.segment_number" type="number" min="1" required /></label>
-                  <label>{{ t('match.startMinute') }}<input v-model.number="segmentForm.minute_start" type="number" min="0" required /></label>
+                  <label>{{ t('match.startMinute') }}<input v-model.number="segmentForm.minute_start" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
                 </div>
                   <label>{{ t('match.activeSegment') }}
                    <select v-model="selectedSegmentId" required>
@@ -1065,7 +1378,7 @@ onBeforeUnmount(() => {
                    <h3>{{ t('match.interruptSegment') }}</h3>
                    <p class="muted-note">{{ t('match.interruptionHint') }}</p>
                    <label>{{ t('match.interruptReason') }}<select v-model="interruptionForm.reason"><option value="lighting_failure">{{ t('match.reasonLightingFailure') }}</option><option value="weather">{{ t('match.reasonWeather') }}</option><option value="pitch_invasion">{{ t('match.reasonPitchInvasion') }}</option><option value="other">{{ t('match.reasonOther') }}</option></select></label>
-                   <label>{{ t('match.interruptMinute') }}<input v-model.number="interruptionForm.minute" type="number" min="0" required /></label>
+                   <label>{{ t('match.interruptMinute') }}<input v-model.number="interruptionForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
                    <label>{{ t('match.interruptNotes') }}<textarea v-model="interruptionForm.notes" maxlength="1000" :placeholder="t('match.interruptNotesPlaceholder')" /></label>
                    <button class="button-secondary" type="submit" :disabled="Boolean(busyAction) || isTerminal">{{ busyAction === 'interrupt-segment' ? t('common.processing') : t('match.interruptSegment') }}</button>
                  </form>
@@ -1093,14 +1406,12 @@ onBeforeUnmount(() => {
 
           <section class="panel">
             <div class="panel-heading"><div><p class="eyebrow">02 · {{ t('match.roster') }}</p><h2>{{ t('match.roster') }}</h2></div></div>
-            <form v-if="canManageTournaments" class="roster-form" @submit.prevent="addRosterPlayer">
-              <label>{{ t('setup.teams') }}<select v-model="rosterForm.team_id" required><option value="" disabled>{{ t('match.selectTeam') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
-              <div class="field-row"><label>{{ t('match.firstName') }}<input v-model="rosterForm.first_name" required maxlength="100" /></label><label>{{ t('match.lastName') }}<input v-model="rosterForm.last_name" required maxlength="100" /></label></div>
-              <label>{{ t('match.document') }} <span class="field-hint">{{ t('match.encryptedOnServer') }}</span><input v-model="rosterForm.national_id" required maxlength="100" autocomplete="off" /></label>
-              <div class="field-row"><label>{{ t('match.birthDate') }}<input v-model="rosterForm.birth_date" type="date" required /></label><label>{{ t('match.number') }}<input v-model.number="rosterForm.dorsal_number" type="number" min="1" max="999" required /></label></div>
-              <label class="checkbox-label"><input v-model="rosterForm.photo_consent" type="checkbox" /> {{ t('match.imageConsent') }}</label>
-              <button class="button-primary" type="submit" :disabled="Boolean(busyAction) || isTerminal || !rosterForm.team_id">{{ t('match.addPlayer') }}</button>
-            </form>
+            <p class="muted-note">{{ t('match.rosterManagedInRosters') }}</p>
+            <ul class="roster-links">
+              <li v-for="team in teamRosters" :key="`roster-link-${team.key}`">
+                <NuxtLink v-if="team.team_id" :to="teamRosterLink(team.team_id)">{{ t('match.openTeamRoster', { team: team.name }) }}</NuxtLink>
+              </li>
+            </ul>
           </section>
 
            <section class="panel panel-wide">
@@ -1135,7 +1446,7 @@ onBeforeUnmount(() => {
                        <select v-model="lineupRoles[player.roster_id]" :disabled="!canOperateMatch || !player.is_active || isTerminal || !selectedSegmentIsActive" :aria-label="`${t('match.role')} ${playerName(player)}`"><option value="">{{ t('match.notParticipating') }}</option><option value="starter">{{ t('match.starter') }}</option><option value="substitute">{{ t('match.substitute') }}</option></select>
                        <select v-if="lineupRoles[player.roster_id] === 'starter'" v-model="lineupPositions[player.roster_id]" :disabled="!canOperateMatch || !player.is_active || isTerminal || !selectedSegmentIsActive || !lineupFormations[team.team_id]" :aria-label="`${t('match.position')} ${playerName(player)}`">
                         <option value="">{{ t('match.selectPosition') }}</option>
-                        <option v-for="position in availablePositions(team.team_id)" :key="position" :value="position">{{ positionLabel(position) }}</option>
+                        <option v-for="position in availablePositions(team.team_id)" :key="position" :value="position">{{ positionLabel(position, t) }}</option>
                       </select>
                       <span v-else class="position-placeholder">{{ t('match.noTacticalPosition') }}</span>
                    </label>
@@ -1162,8 +1473,8 @@ onBeforeUnmount(() => {
                 </template>
                 <label v-else>{{ t('match.player') }}<select v-model="eventForm.player_id"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select></label>
                <label v-if="eventForm.event_type === 'red_card'">{{ t('match.redCardType') }}<select v-model="eventForm.red_card_type"><option value="direct_red">{{ t('match.directRed') }}</option><option value="double_yellow_red">{{ t('match.doubleYellowRed') }}</option></select></label>
-               <label>{{ t('match.minute') }}<input v-model.number="eventForm.minute" type="number" min="0" :max="matchLimits.max_minute" required /></label>
-              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="matchLimits.added_minute_max" /></label>
+               <label>{{ t('match.minute') }}<input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
+              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" /></label>
               <label v-if="eventForm.event_type === 'own_goal'">{{ t('match.beneficiary') }}<select v-model="eventForm.beneficiary_team_id" required><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive || (eventForm.event_type === 'substitution' && (eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register))" @click="addEvent">{{ t('match.addEvent') }}</button>
                 <div v-if="eventForm.event_type === 'substitution'" class="substitution-preview" role="status">
@@ -1174,6 +1485,7 @@ onBeforeUnmount(() => {
                 </div>
                 <p v-if="substitutionError" class="form-error substitution-error" role="alert">{{ substitutionError }}</p>
             </div>
+              <p v-if="draftMinuteMessage" class="segment-warning" role="alert">{{ draftMinuteMessage }}</p>
               <ul v-if="draftEvents.length" class="event-list">
                 <li v-for="event in draftEvents" :key="event.client_event_id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ teamName(event.team_id) }} · {{ draftEventSummary(event) }}</span><button v-if="canOperateMatch" type="button" class="text-button" @click="removeEvent(event.client_event_id)">{{ t('match.remove') }}</button></li>
              </ul>
@@ -1184,20 +1496,20 @@ onBeforeUnmount(() => {
               <p v-else-if="!draftEvents.length" class="muted-note">{{ t('match.eventsAtomic') }}</p>
           </section>
 
-           <section class="panel close-panel panel-wide">
+           <section class="panel close-panel panel-wide" @focusin="beginClose">
             <div class="panel-heading"><div><p class="eyebrow">05 · {{ t('match.result') }}</p><h2>{{ t('match.closeReport') }}</h2></div><span class="muted-note">{{ rulesDefaults.extra_time_enabled ? t('match.overtimeEnabled') : t('match.noOvertime') }}</span></div>
              <div class="score-form">
-               <label>{{ t('match.resolution') }}<select v-model="closeForm.resolution_type" :disabled="!canOperateMatch || isTerminal"><option value="regular">{{ t('match.regularTime') }}</option><option value="extra_time" :disabled="!rulesDefaults.extra_time_enabled">{{ t('match.overtime') }}</option><option value="penalties" :disabled="!rulesDefaults.penalties_enabled">{{ t('match.penaltyShootout') }}</option><option value="walkover">{{ t('match.walkover') }}</option><option value="administrative">{{ t('match.administrative') }}</option></select></label>
+               <p class="muted-note close-resolution full-width">{{ t('match.closeUsesResolution', { resolution: resolutionLabel(resolution) }) }} · {{ t('match.resolutionMaximum', { max: resolutionLimits.maxMinute }) }}</p>
                <label>{{ match.home_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                <label>{{ match.away_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-              <template v-if="closeForm.resolution_type !== 'regular'">
-                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" :required="closeForm.resolution_type !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label v-if="closeForm.resolution_type === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+              <template v-if="resolution !== 'regular'">
+                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" :required="resolution !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" :required="resolution !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label v-if="resolution === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label v-if="resolution === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                    <label>{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                </template>
-                <label v-if="closeForm.resolution_type === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="!canOperateMatch || isTerminal" /></label>
+                <label v-if="resolution === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="!canOperateMatch || isTerminal" /></label>
              </div>
                 <div class="close-actions"><p class="muted-note">{{ t('match.backendValidation') }}</p><button v-if="canOperateMatch" class="button-primary close-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="closeMatch">{{ busyAction === 'close' ? t('match.closing') : isTerminal ? t('match.closed') : t('match.confirmReport') }}</button></div>
           </section>
@@ -1272,9 +1584,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .substitution-blocked { color: #ffcb7a; }
 .substitution-error { grid-column: 1 / -1; padding: 10px 12px; }
 .official-row { grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr) auto; align-items: end; }
-.roster-form { display: grid; gap: 11px; }
-.checkbox-label { display: flex; align-items: center; gap: 8px; }
-.checkbox-label input { width: auto; accent-color: var(--accent); }
+.roster-links { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.roster-links a { color: var(--accent); font-size: 0.82rem; text-decoration: none; }
+.roster-links a:hover { text-decoration: underline; }
 .compact-button { min-height: 43px; }
 .compact-list, .event-list { display: grid; gap: 8px; margin: 0; padding: 13px 0 0; border-top: 1px solid var(--line); list-style: none; }
 .compact-list li, .event-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); font-size: 0.82rem; }
@@ -1295,6 +1607,12 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
 .position-placeholder { color: var(--muted); font-size: 0.72rem; }
 .close-panel { border-color: rgba(212, 243, 106, 0.3); }
+.resolution-panel { margin-bottom: 16px; border-color: rgba(212, 243, 106, 0.24); }
+.resolution-summary { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; }
+.resolution-summary label { flex: 0 1 280px; }
+.resolution-limits { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; color: var(--muted); font-size: 0.78rem; }
+.resolution-limits strong { color: var(--accent); }
+.close-resolution { grid-column: 1 / -1; margin: 0; }
 .close-button { min-width: 190px; }
 .empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
 .form-error { border-style: solid; border-color: #a45b5b; color: var(--danger); }

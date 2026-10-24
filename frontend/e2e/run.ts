@@ -2,9 +2,11 @@
  * Runner local del E2E del reintento manual (T7, RF-004, RF-005, RF-006).
  *
  * `pnpm run e2e` arranca la pila, siembra los datos demo, ejecuta Playwright
- * (setup + tres vistas, Chromium headless, `workers: 1`, `retries: 0`), agrega
- * los artefactos en `summary.json`, imprime la tabla de las tres vistas y
- * traduce el resultado a los códigos 0/1/2/3:
+ * (setup + tres vistas del reintento + escenario de operación y cierre,
+ * Chromium headless, `workers: 1`, `retries: 0`), agrega los artefactos en
+ * `summary.json`, imprime la tabla y traduce el resultado a los códigos
+ * 0/1/2/3. El escenario adicional tiene su propio artefacto y proyecto; el
+ * veredicto de las tres vistas del reintento no cambia:
  *
  *   0 verde · 1 fallo de comportamiento · 2 fallo de infraestructura ·
  *   3 corrida inválida (vista omitida o escenario inválido).
@@ -35,6 +37,11 @@ import {
   type ViewArtifact,
 } from './artifacts.ts';
 import { EXPECTED_VIEWS, MAX_MS, type ViewId } from './observations.ts';
+import {
+  OPERATION_FLOW_PROJECT,
+  isOperationFlowArtifact,
+  type OperationFlowArtifact,
+} from './operationFlowModel.ts';
 import {
   buildRunSummary,
   buildServerLog,
@@ -210,6 +217,22 @@ async function readArtifacts(): Promise<ViewArtifact[]> {
   return artifacts;
 }
 
+/**
+ * Lee el artefacto del escenario de operación y cierre. Un fichero ausente o
+ * corrupto devuelve `null`: el resultado del proyecto decide si fue un fallo de
+ * infraestructura o una vista omitida.
+ */
+async function readOperationFlowArtifact(): Promise<OperationFlowArtifact | null> {
+  try {
+    const raw = JSON.parse(
+      await readFile(reportPath(`view-${OPERATION_FLOW_PROJECT}.json`), 'utf8'),
+    ) as unknown;
+    return isOperationFlowArtifact(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseProjects(raw: unknown): PlaywrightProjectOutcome[] | null {
   if (!isRecord(raw)) return null;
   const projects = raw['projects'];
@@ -375,12 +398,21 @@ async function main(): Promise<number> {
   });
 
   const artifacts = await readArtifacts();
+  const operationFlowArtifact = await readOperationFlowArtifact();
   const summary = buildRunSummary({
     artifacts,
     projects,
     totalDurationMs,
     stack,
     infrastructureCause,
+    operationFlowArtifact,
+    // Un proyecto ausente del informe no puede pasar por «no ejecutado»: el
+    // escenario nuevo forma parte del gate y su omisión invalida la corrida.
+    operationFlowProject: projects.find((entry) => entry.project === OPERATION_FLOW_PROJECT) ?? {
+      project: OPERATION_FLOW_PROJECT,
+      status: 'missing',
+      durationMs: 0,
+    },
   });
 
   await writeJsonReport('summary.json', summary);

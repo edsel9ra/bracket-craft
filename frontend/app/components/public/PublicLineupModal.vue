@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { positionLabel, type FormationCode } from '~/constants/formations';
+import type { FormationCode } from '~/constants/formations';
+import { positionLabel } from '~/utils/positions';
 
 interface LineupPlayer {
   player_id: string;
@@ -47,7 +48,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
-const { t, dateLocale } = useI18n();
+const { t, formatDateTime } = useI18n();
 const dialog = ref<HTMLDialogElement | null>(null);
 const dialogId = 'public-lineup-dialog';
 const titleId = 'public-lineup-dialog-title';
@@ -120,10 +121,7 @@ function formatScore(match: LineupMatch): string {
 
 function formatDate(value: string | null): string {
   if (!value) return t('public.dateToDefine');
-  return new Intl.DateTimeFormat(dateLocale.value, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  return formatDateTime(value);
 }
 </script>
 
@@ -200,7 +198,7 @@ function formatDate(value: string | null): string {
                       <p v-for="player in team.starters" :key="`starter-${player.player_id}`" class="lineup-modal-player">
                         <b>#{{ player.dorsal_number ?? '—' }}</b>
                         <span class="lineup-modal-player-name">{{ playerName(player) }}</span>
-                        <em v-if="player.position_slot">{{ positionLabel(player.position_slot) }}</em>
+                        <em v-if="player.position_slot">{{ positionLabel(player.position_slot, t) }}</em>
                       </p>
                     </template>
                     <p v-else class="lineup-modal-empty">{{ t('public.noLineup') }}</p>

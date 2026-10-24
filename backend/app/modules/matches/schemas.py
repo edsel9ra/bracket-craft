@@ -18,6 +18,10 @@ OfficialRole = Literal[
 SegmentStatus = Literal["active", "completed", "interrupted"]
 SegmentInterruptionReason = Literal["lighting_failure", "weather", "pitch_invasion", "other"]
 FormationCode = Literal[*FORMATION_CODES]
+# Resolución prevista que el operador anuncia al crear o interrumpir un
+# segmento (SG-1, P5). Es el mismo catálogo que el cierre. El campo es
+# opcional: sin él, el servidor aplica el máximo de la fase (P1).
+ResolutionType = Literal["regular", "extra_time", "penalties", "walkover", "administrative"]
 
 
 class OfficialAssignmentRequest(BaseModel):
@@ -151,12 +155,17 @@ class MatchCloseResponse(BaseModel):
 class CreateMatchSegmentRequest(BaseModel):
     segment_number: int = Field(ge=1)
     minute_start: int = Field(ge=0)
+    # Opcional y aditivo (SG-1): con valor, el máximo es el de esa resolución;
+    # sin él, el máximo de la fase, que es el comportamiento anterior (P1).
+    resolution_type: ResolutionType | None = None
 
 
 class InterruptMatchSegmentRequest(BaseModel):
     reason: SegmentInterruptionReason
     minute: int = Field(ge=0)
     notes: str | None = Field(default=None, max_length=1000)
+    # Misma regla opcional que la creación de segmento para el minuto final.
+    resolution_type: ResolutionType | None = None
 
 
 class MatchLineupEntry(BaseModel):

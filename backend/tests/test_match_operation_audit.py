@@ -53,6 +53,8 @@ from app.modules.matches.schemas import (
     PublishMatchLineupRequest,
     SaveMatchLineupRequest,
 )
+from app.modules.tournaments.router import update_roster_player_status
+from app.modules.tournaments.schemas import UpdateRosterStatusRequest
 from db_helpers import (
     TenantContext,
     application_database_url,
@@ -1015,3 +1017,59 @@ async def _lineup_updated_at(engine, context: AuthContext, match: OperationMatch
                 },
             )
         ).scalar_one()
+
+
+# ---------------------------------------------------------------------------
+# Opt-in: the logical retirement and its reactivation do not audit (RF-051)
+# ---------------------------------------------------------------------------
+
+
+async def _organization_audit_count(session, tenant: TenantContext) -> int:
+    return (
+        await session.execute(
+            text("""
+                SELECT count(*) FROM administrative_audit_logs
+                WHERE organization_id = :organization_id
+            """),
+            {"organization_id": str(tenant.organization_id)},
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_the_roster_retirement_and_reactivation_do_not_audit(
+    db_session, tenant_factory
+):
+    # RC-1: the action is not one of the audited ones, so neither direction
+    # writes an entry (the audited set is closed: lineup, publication and
+    # officials).
+    tenant = await tenant_factory("T14 roster status")
+    match = await _create_operation_match(db_session, tenant)
+    await db_session.commit()
+
+    assert await _organization_audit_count(db_session, tenant) == 0
+
+    api = _NestedSession(db_session)
+    roster_id = match.home_starters[0]
+    retired = await update_roster_player_status(
+        match.tournament_id,
+        roster_id,
+        UpdateRosterStatusRequest(is_active=False),
+        context_for(tenant),
+        api,
+    )
+    reactivated = await update_roster_player_status(
+        match.tournament_id,
+        roster_id,
+        UpdateRosterStatusRequest(is_active=True),
+        context_for(tenant),
+        api,
+    )
+
+    assert retired["is_active"] is False
+    assert reactivated["is_active"] is True
+    assert await _organization_audit_count(db_session, tenant) == 0
+    # Only the activity changed: the retirement is an UPDATE of that column.
+    assert [
+        sql for sql in api.statements if sql.upper().startswith("INSERT")
+    ] == []

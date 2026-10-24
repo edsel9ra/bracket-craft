@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import {
   DEFAULT_RULES_CONFIG,
+  GAME_FORMAT_OPTIONS,
   RANKING_CRITERIA,
   RULES_VALIDATION_MESSAGE_KEYS,
   cloneRulesConfig,
   effectiveStageRules,
+  isGameFormat,
   isRankingCriterion,
   normalizeRulesConfig,
   parseRulesConfigJson,
+  readRosterLimitInput,
   recalculatePipeline,
   serializeRulesConfig,
   type RankingCriterion,
@@ -15,6 +18,7 @@ import {
   type RulesValidationError,
   type StageOverride,
 } from '~/utils/rulesConfig';
+import { RULES_FIELD_HINT_IDS, RULES_INLINE_FIELD_IDS, RULES_SECTIONS, inlineFieldIssue, type RulesFieldIssue, type RulesInlineField, type RulesSectionId } from '~/utils/rulesWizard';
 
 interface StageOption {
   id: string;
@@ -26,22 +30,91 @@ const props = withDefaults(defineProps<{
   modelValue?: RulesConfig | null;
   stages?: StageOption[];
   disabled?: boolean;
+  /**
+   * Secciones visibles. El asistente de reglas muestra una por paso; sin valor
+   * se muestran todas, como hasta ahora (RF-001, RF-009).
+   */
+  sections?: readonly RulesSectionId[];
+  /** Errores del paso actual, para asociarlos con su campo (RF-005). */
+  fieldIssues?: readonly RulesFieldIssue[];
 }>(), {
   modelValue: null,
   stages: () => [],
   disabled: false,
+  sections: () => RULES_SECTIONS,
+  fieldIssues: () => [],
 });
 
 const emit = defineEmits<{
   'update:modelValue': [value: RulesConfig];
+  /** Errores del modo avanzado, para que el asistente los muestre por paso. */
+  validation: [errors: RulesValidationError[]];
 }>();
 
+function shows(section: RulesSectionId): boolean {
+  return props.sections.includes(section);
+}
+
 const { t } = useI18n();
-const config = ref<RulesConfig>(normalizeRulesConfig(props.modelValue || DEFAULT_RULES_CONFIG));
+const config = ref<RulesConfig>(normalizeForEditing(props.modelValue || DEFAULT_RULES_CONFIG));
 const advancedJson = ref(serializeRulesConfig(config.value));
 const advancedError = ref('');
 const validationErrors = ref<RulesValidationError[]>([]);
 const showAdvanced = ref(false);
+const gameFormats = GAME_FORMAT_OPTIONS;
+const limitFieldErrors = ref<Record<'min_players_per_team' | 'max_players_per_team', boolean>>({
+  min_players_per_team: false,
+  max_players_per_team: false,
+});
+
+/** Error del campo de formato o límites que el asistente ya conoce (RF-005). */
+function fieldIssue(field: RulesInlineField): RulesFieldIssue | null {
+  return inlineFieldIssue(props.fieldIssues, field);
+}
+
+/** Mensaje del campo en el idioma activo; vacío cuando es válido. */
+function fieldError(field: RulesInlineField): string {
+  const issue = fieldIssue(field);
+  if (issue) return t(issue.messageKey);
+  if (
+    (field === 'min_players_per_team' || field === 'max_players_per_team')
+    && limitFieldErrors.value[field]
+  ) {
+    return t('rules.error.integerField');
+  }
+  return '';
+}
+
+/** `aria-describedby` del control: su ayuda y, si hay, su mensaje de error. */
+function fieldDescribedBy(field: RulesInlineField): string {
+  const ids: string[] = [
+    field === 'game_format' ? RULES_FIELD_HINT_IDS.game_format : RULES_FIELD_HINT_IDS.limits,
+  ];
+  if (fieldError(field)) ids.push(RULES_INLINE_FIELD_IDS[field]);
+  return ids.join(' ');
+}
+
+/**
+ * Normaliza lo que llega del servidor o del padre sin recortar un límite
+ * inválido que el usuario acaba de escribir: ese valor debe conservarse para
+ * que la validación muestre el mensaje del campo (RF-044).
+ */
+function normalizeForEditing(value: unknown): RulesConfig {
+  const normalized = normalizeRulesConfig(value);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return normalized;
+  const source = value as Record<string, unknown>;
+  for (const field of ['min_players_per_team', 'max_players_per_team'] as const) {
+    const raw = source[field];
+    if (typeof raw === 'number' && Number.isFinite(raw) && !(Number.isInteger(raw) && raw >= 0)) {
+      normalized[field] = raw;
+    }
+  }
+  return normalized;
+}
+
+watch(validationErrors, (errors) => {
+  emit('validation', [...errors]);
+}, { deep: true });
 
 const availableCriteria = computed(() => {
   const used = new Set(config.value.ranking_pipeline.map((item) => item.criterion));
@@ -49,7 +122,7 @@ const availableCriteria = computed(() => {
 });
 
 watch(() => props.modelValue, (value) => {
-  const next = normalizeRulesConfig(value || DEFAULT_RULES_CONFIG);
+  const next = normalizeForEditing(value || DEFAULT_RULES_CONFIG);
   if (JSON.stringify(next) === JSON.stringify(config.value)) return;
   config.value = next;
   advancedJson.value = serializeRulesConfig(next);
@@ -132,6 +205,40 @@ function movePipelineStep(index: number, direction: -1 | 1) {
 
 function commitVisualChange() {
   commitConfig(config.value);
+}
+
+/**
+ * Guarda los cambios de formato y límites sin normalizar: un valor inválido
+ * debe llegar a la validación para mostrar su mensaje, no recortarse en
+ * silencio. El resto de la configuración no se pierde.
+ */
+function commitEditableConfig() {
+  advancedJson.value = serializeRulesConfig(config.value);
+  advancedError.value = '';
+  validationErrors.value = [];
+  emit('update:modelValue', cloneRulesConfig(config.value));
+}
+
+function setGameFormat(event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  if (!isGameFormat(value)) return;
+  config.value.game_format = value;
+  commitEditableConfig();
+}
+
+function setRosterLimit(field: 'min_players_per_team' | 'max_players_per_team', event: Event) {
+  const input = event.target as HTMLInputElement;
+  const normalized = readRosterLimitInput(input.value);
+  limitFieldErrors.value[field] = normalized === null;
+  if (normalized === null) {
+    // Conserva el valor tecleado para que la validación lo señale.
+    const typed = Number(input.value);
+    if (Number.isFinite(typed)) config.value[field] = typed;
+    commitEditableConfig();
+    return;
+  }
+  config.value[field] = normalized;
+  commitEditableConfig();
 }
 
 function applyAdvancedJson() {
@@ -254,7 +361,7 @@ function removeOverride(stageId: string) {
 
     <div v-if="!showAdvanced" class="rules-visual" @change="commitVisualChange">
       <fieldset :disabled="disabled">
-        <section class="editor-section">
+        <section v-if="shows('scoring')" class="editor-section">
           <div class="section-heading">
             <div><p class="eyebrow">01</p><h3>{{ t('rules.pointsSection') }}</h3></div>
             <p>{{ t('rules.pointsDescription') }}</p>
@@ -266,7 +373,7 @@ function removeOverride(stageId: string) {
           </div>
         </section>
 
-        <section class="editor-section">
+        <section v-if="shows('tiebreakers')" class="editor-section">
           <div class="section-heading">
             <div><p class="eyebrow">02</p><h3>{{ t('rules.pipelineSection') }}</h3></div>
             <p>{{ t('rules.pipelineDescription') }}</p>
@@ -296,18 +403,9 @@ function removeOverride(stageId: string) {
           <p v-if="!availableCriteria.length" class="muted-note">{{ t('rules.noCriteriaAvailable') }}</p>
         </section>
 
-        <div class="editor-columns">
-          <section class="editor-section">
-            <div class="section-heading"><div><p class="eyebrow">03</p><h3>{{ t('rules.substitutionsSection') }}</h3></div><p>{{ t('rules.substitutionsDescription') }}</p></div>
-            <div class="field-grid">
-              <label>{{ t('rules.maxPerTeam') }}<input v-model.number="config.substitutions.max_per_team" type="number" min="0" /></label>
-              <label>{{ t('rules.maxWindows') }}<input v-model.number="config.substitutions.max_windows" type="number" min="0" /></label>
-            </div>
-            <label class="checkbox-field"><input v-model="config.substitutions.allow_reentry" type="checkbox" /> {{ t('rules.allowReentry') }}</label>
-          </section>
-
-          <section class="editor-section">
-            <div class="section-heading"><div><p class="eyebrow">04</p><h3>{{ t('rules.disciplineSection') }}</h3></div><p>{{ t('rules.disciplineDescription') }}</p></div>
+        <div class="editor-columns" :class="{ 'editor-columns-single': !(shows('discipline') && shows('resolution')) }">
+          <section v-if="shows('discipline')" class="editor-section">
+            <div class="section-heading"><div><p class="eyebrow">03</p><h3>{{ t('rules.disciplineSection') }}</h3></div><p>{{ t('rules.disciplineDescription') }}</p></div>
             <div class="field-grid">
               <label>{{ t('rules.yellowCardLimit') }}<input v-model.number="config.discipline.yellow_card_limit" type="number" min="1" /></label>
               <label>{{ t('rules.yellowCardSuspensionMatches') }}<input v-model.number="config.discipline.yellow_card_suspension_matches" type="number" min="1" /></label>
@@ -322,18 +420,13 @@ function removeOverride(stageId: string) {
             </div>
           </section>
 
-          <section class="editor-section">
-            <div class="section-heading"><div><p class="eyebrow">05</p><h3>{{ t('rules.registrationSection') }}</h3></div><p>{{ t('rules.registrationDescription') }}</p></div>
-            <label>{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
-          </section>
-
-          <section class="editor-section">
-            <div class="section-heading"><div><p class="eyebrow">06</p><h3>{{ t('rules.resolutionSection') }}</h3></div><p>{{ t('rules.resolutionDescription') }}</p></div>
+          <section v-if="shows('resolution')" class="editor-section">
+            <div class="section-heading"><div><p class="eyebrow">04</p><h3>{{ t('rules.resolutionSection') }}</h3></div><p>{{ t('rules.resolutionDescription') }}</p></div>
             <label class="checkbox-field"><input v-model="config.stage_defaults.extra_time_enabled" type="checkbox" /> {{ t('rules.extraTime') }}</label>
             <label class="checkbox-field"><input v-model="config.stage_defaults.penalties_enabled" type="checkbox" /> {{ t('rules.penalties') }}</label>
             <div class="field-grid">
               <label>{{ t('rules.regularTimeMinutes') }}<input v-model.number="config.stage_defaults.regular_time_minutes" type="number" min="1" max="179" /></label>
-              <label>{{ t('rules.extraTimeMinutes') }}<input :value="stageExtraMinutes()" type="number" min="2" max="180" @change="setStageExtraMinutes($event)" /></label>
+              <label>{{ t('rules.extraTimeMinutes') }}<input :value="stageExtraMinutes()" type="number" min="2" max="180" :disabled="!config.stage_defaults.extra_time_enabled" @change="setStageExtraMinutes($event)" /><small v-if="!config.stage_defaults.extra_time_enabled" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
             </div>
             <div class="field-grid">
               <label>{{ t('rules.walkoverWinnerScore') }}<input v-model.number="config.stage_defaults.walkover_score.winner" type="number" min="0" /></label>
@@ -342,8 +435,88 @@ function removeOverride(stageId: string) {
           </section>
         </div>
 
-        <section class="editor-section">
-          <div class="section-heading"><div><p class="eyebrow">07</p><h3>{{ t('rules.stageOverridesSection') }}</h3></div><p>{{ t('rules.stageOverridesDescription') }}</p></div>
+        <section v-if="shows('format')" class="editor-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">05</p><h3>{{ t('rules.formatSection') }}</h3></div>
+            <p>{{ t('rules.formatDescription') }}</p>
+          </div>
+          <label>{{ t('rules.field.gameFormat') }}
+            <select
+              :value="config.game_format"
+              :aria-invalid="Boolean(fieldError('game_format'))"
+              :aria-describedby="fieldDescribedBy('game_format')"
+              @change="setGameFormat"
+            >
+              <option v-for="format in gameFormats" :key="format" :value="format">{{ format }}</option>
+            </select>
+          </label>
+          <p :id="RULES_FIELD_HINT_IDS.game_format" class="muted-note">{{ t('rules.gameFormatHint') }}</p>
+          <p
+            v-if="fieldError('game_format')"
+            :id="RULES_INLINE_FIELD_IDS.game_format"
+            class="form-error"
+            role="alert"
+          >{{ fieldError('game_format') }}</p>
+          <div class="field-grid">
+            <label>{{ t('rules.field.minPlayers') }}
+              <input
+                :value="config.min_players_per_team"
+                type="number"
+                min="0"
+                step="1"
+                :placeholder="t('rules.noLimit')"
+                :aria-invalid="Boolean(fieldError('min_players_per_team'))"
+                :aria-describedby="fieldDescribedBy('min_players_per_team')"
+                @change="setRosterLimit('min_players_per_team', $event)"
+              />
+              <small
+                v-if="fieldError('min_players_per_team')"
+                :id="RULES_INLINE_FIELD_IDS.min_players_per_team"
+                class="form-error"
+                role="alert"
+              >{{ fieldError('min_players_per_team') }}</small>
+            </label>
+            <label>{{ t('rules.field.maxPlayers') }}
+              <input
+                :value="config.max_players_per_team"
+                type="number"
+                min="0"
+                step="1"
+                :placeholder="t('rules.noLimit')"
+                :aria-invalid="Boolean(fieldError('max_players_per_team'))"
+                :aria-describedby="fieldDescribedBy('max_players_per_team')"
+                @change="setRosterLimit('max_players_per_team', $event)"
+              />
+              <small
+                v-if="fieldError('max_players_per_team')"
+                :id="RULES_INLINE_FIELD_IDS.max_players_per_team"
+                class="form-error"
+                role="alert"
+              >{{ fieldError('max_players_per_team') }}</small>
+            </label>
+          </div>
+          <p :id="RULES_FIELD_HINT_IDS.limits" class="muted-note">{{ t('rules.limitsHelp') }}</p>
+          <FormatWarning :format="config.game_format" message-key="format.notice.rules" />
+        </section>
+
+        <div class="editor-columns" :class="{ 'editor-columns-single': !(shows('substitutions') && shows('registration')) }">
+          <section v-if="shows('substitutions')" class="editor-section">
+            <div class="section-heading"><div><p class="eyebrow">06</p><h3>{{ t('rules.substitutionsSection') }}</h3></div><p>{{ t('rules.substitutionsDescription') }}</p></div>
+            <div class="field-grid">
+              <label>{{ t('rules.maxPerTeam') }}<input v-model.number="config.substitutions.max_per_team" type="number" min="0" /></label>
+              <label>{{ t('rules.maxWindows') }}<input v-model.number="config.substitutions.max_windows" type="number" min="0" /></label>
+            </div>
+            <label class="checkbox-field"><input v-model="config.substitutions.allow_reentry" type="checkbox" /> {{ t('rules.allowReentry') }}</label>
+          </section>
+
+          <section v-if="shows('registration')" class="editor-section">
+            <div class="section-heading"><div><p class="eyebrow">07</p><h3>{{ t('rules.registrationSection') }}</h3></div><p>{{ t('rules.registrationDescription') }}</p></div>
+            <label>{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
+          </section>
+        </div>
+
+        <section v-if="shows('overrides')" class="editor-section">
+          <div class="section-heading"><div><p class="eyebrow">08</p><h3>{{ t('rules.stageOverridesSection') }}</h3></div><p>{{ t('rules.stageOverridesDescription') }}</p></div>
           <div v-if="stages.length" class="override-list">
             <article v-for="stage in stages" :key="stage.id" class="override-card">
               <div class="override-heading">
@@ -354,7 +527,7 @@ function removeOverride(stageId: string) {
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideBoolean(stage.id, 'extra_time_enabled', $event)" /> {{ t('rules.extraTime') }}</label>
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'penalties_enabled')" @change="setOverrideBoolean(stage.id, 'penalties_enabled', $event)" /> {{ t('rules.penalties') }}</label>
                 <label>{{ t('rules.regularTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'regular_time_minutes')" type="number" min="1" max="179" @change="setOverrideMinutes(stage.id, 'regular_time_minutes', $event)" /></label>
-                <label>{{ t('rules.extraTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'extra_time_minutes')" type="number" min="2" max="180" @change="setOverrideMinutes(stage.id, 'extra_time_minutes', $event)" /></label>
+                <label>{{ t('rules.extraTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'extra_time_minutes')" type="number" min="2" max="180" :disabled="!overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideMinutes(stage.id, 'extra_time_minutes', $event)" /><small v-if="!overrideBoolean(stage.id, 'extra_time_enabled')" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
                 <label>{{ t('rules.walkoverWinnerScore') }}<input :value="overrideScore(stage.id, 'winner')" type="number" min="0" @change="setOverrideScore(stage.id, 'winner', $event)" /></label>
                 <label>{{ t('rules.walkoverLoserScore') }}<input :value="overrideScore(stage.id, 'loser')" type="number" min="0" @change="setOverrideScore(stage.id, 'loser', $event)" /></label>
                 <button class="remove-override" type="button" @click="removeOverride(stage.id)">{{ t('rules.removeStageOverride') }}</button>
@@ -412,6 +585,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .pipeline-actions button:disabled { opacity: 0.35; }
 .add-criterion { justify-self: start; padding: 0.65rem 0.85rem; font-size: 0.75rem; }
 .editor-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.editor-columns-single { grid-template-columns: minmax(0, 1fr); }
 .subheading { padding-top: 5px; border-top: 1px solid var(--line); color: var(--ink); font-size: 0.76rem; font-weight: 800; }
 .override-list { display: grid; gap: 8px; }
 .override-card { display: grid; gap: 12px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; }
