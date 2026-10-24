@@ -12,6 +12,7 @@ from app.core.locking import lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
+from app.modules.matches.errors import ResolutionNotEnabled
 from app.modules.matches.schemas import CloseMatchReportDTO
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
@@ -76,6 +77,7 @@ def effective_match_minutes(
         "regular_time_minutes": regular,
         "extra_time_minutes": extra,
         "extra_time_enabled": extra_time_enabled,
+        "penalties_enabled": bool(effective.get("penalties_enabled")),
         "max_minute": extra if extra_time_enabled and extra is not None else regular,
         "added_minute_max": STRUCTURAL_MAX_ADDED_MINUTE,
     }
@@ -92,6 +94,26 @@ def maximum_minute_for_resolution(
         if extra is not None:
             return int(extra)
     return int(minutes["regular_time_minutes"])
+
+
+def resolution_enabled(
+    minutes: Mapping[str, Any],
+    resolution_type: str | None,
+) -> bool:
+    """Whether the effective stage configuration admits this resolution (P5).
+
+    Regular time is always admitted; extra time and penalties depend on their
+    own flag, resolved with the effective stage configuration (including its
+    override). Walkover and administrative resolutions keep today's behaviour:
+    they are admitted here, and the administrative one keeps its own permission.
+    No clock is involved: this is a configuration question, not a minute one.
+    """
+
+    if resolution_type == "extra_time":
+        return bool(minutes.get("extra_time_enabled"))
+    if resolution_type == "penalties":
+        return bool(minutes.get("penalties_enabled"))
+    return True
 
 
 def validate_event_minute(
@@ -345,6 +367,13 @@ class CloseMatchReportService:
             self._validate_rosters(match, rosters)
             segments = await self._load_match_segments(context, match_id)
             minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
+            # The resolution is checked before any minute validation, so a
+            # resolution the stage does not enable is the unified 409 that the
+            # three operation points share (P5, RF-032). The status guard above
+            # already rejected a closed act, so nothing confirmed is revalidated
+            # (RF-035) and the published configuration is only read (RF-036).
+            if not resolution_enabled(minutes, dto.resolution_type):
+                raise ResolutionNotEnabled()
             self._validate_segments(dto, segments, minutes)
             limits = SubstitutionLimits.from_config(
                 effective_substitutions(match["rules_config"])

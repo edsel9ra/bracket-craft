@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { isNotFound, isUnauthorized } from '~/utils/api';
-import { roleLabelKey } from '~/utils/labels';
+import { roleKey, type AssignableRoleCode } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
 
 interface InvitationPreview {
@@ -8,7 +8,7 @@ interface InvitationPreview {
   organization_id: string;
   organization_name: string;
   email: string;
-  role_code: 'administrator' | 'operator' | 'referee' | 'viewer';
+  role_code: AssignableRoleCode;
   expires_at: string;
   status: 'pending' | 'accepted' | 'expired' | 'revoked';
   requires_login: boolean;
@@ -25,7 +25,7 @@ interface AcceptResponse {
 const route = useRoute();
 const auth = useAuthStore();
 const { request } = useApi();
-const { t, errorMessage, dateLocale } = useI18n();
+const { t, errorMessage, formatDateTime } = useI18n();
 const token = encodeURIComponent(String(route.params.token));
 const preview = ref<InvitationPreview | null>(null);
 const loading = ref(true);
@@ -43,7 +43,7 @@ const loginRedirect = computed(() => `/invitations/${encodeURIComponent(String(r
 const canAccept = computed(() => Boolean(preview.value?.status === 'pending' && (!preview.value.requires_login ? fullName.value.trim() && password.value : auth.userId)));
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(dateLocale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 async function loadPreview() {
@@ -99,7 +99,7 @@ await loadPreview();
         <p class="invitation-copy">{{ t('invitation.copy', { organization: preview.organization_name }) }}</p>
         <dl class="invitation-details">
           <div><dt>{{ t('invitation.email') }}</dt><dd>{{ preview.email }}</dd></div>
-          <div><dt>{{ t('invitation.role') }}</dt><dd>{{ t(roleLabelKey(preview.role_code)) }}</dd></div>
+          <div><dt>{{ t('invitation.role') }}</dt><dd>{{ t(roleKey(preview.role_code)) }}</dd></div>
           <div><dt>{{ t('invitation.expires') }}</dt><dd>{{ formatDate(preview.expires_at) }}</dd></div>
         </dl>
         <div v-if="preview.status !== 'pending'" class="form-error" role="alert">{{ t('invitation.unavailable') }}</div>

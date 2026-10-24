@@ -4,13 +4,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
+from app.modules.rules_engine.defaults import (
+    DEFAULT_GAME_FORMAT,
+    DEFAULT_MAX_PLAYERS_PER_TEAM,
+    DEFAULT_MIN_PLAYERS_PER_TEAM,
+    DEFAULT_RULES_CONFIG,
+)
 from app.modules.rules_engine.engine import normalize_rules_config
 
 
 class TournamentRulesConfig(BaseModel):
     schema_version: str = "3.3.0"
     engine_version: str = "2026.1"
+    game_format: str = DEFAULT_GAME_FORMAT
+    min_players_per_team: int = Field(default=DEFAULT_MIN_PLAYERS_PER_TEAM, ge=0, strict=True)
+    max_players_per_team: int = Field(default=DEFAULT_MAX_PLAYERS_PER_TEAM, ge=0, strict=True)
     points_system: dict[str, int]
     ranking_pipeline: list[dict[str, Any]]
     substitutions: dict[str, Any] | None = None

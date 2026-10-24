@@ -29,7 +29,3 @@ export const FORMATIONS_GRID: Record<FormationCode, Record<string, FormationPoin
 export function formationSlots(formation: FormationCode | ''): string[] {
   return formation ? Object.keys(FORMATIONS_GRID[formation]) : [];
 }
-
-export function positionLabel(position: string): string {
-  return position.replace('_', ' ');
-}

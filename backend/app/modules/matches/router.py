@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Mapping
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +21,7 @@ from app.modules.matches.audit import (
     publication_audit_action,
     record_match_audit,
 )
+from app.modules.matches.errors import ResolutionNotEnabled
 from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
@@ -42,7 +43,9 @@ from app.modules.matches.service import (
     CloseMatchReportService,
     effective_match_minutes,
     ensure_segment_team_state,
+    maximum_minute_for_resolution,
     replay_report_state,
+    resolution_enabled,
     roster_entries,
 )
 from app.modules.rules_engine.engine import effective_substitutions
@@ -52,6 +55,12 @@ from app.modules.rules_engine.substitutions import (
     SubstitutionLimits,
     remaining_limits,
     team_usage,
+)
+from app.modules.tournaments.roster_status import (
+    RosterSizeOutOfRange,
+    count_active_roster_players_by_team,
+    describe_roster_violations,
+    effective_roster_limits,
 )
 
 
@@ -126,6 +135,85 @@ async def _load_operation_match(
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
     return dict(match)
+
+
+def _maximum_minute_for_request(
+    minutes: Mapping[str, Any],
+    resolution_type: str | None,
+) -> int:
+    """Maximum minute of a segment request with the optional resolution (RF-032).
+
+    Validation order shared by ``POST /segments`` and ``…/interrupt`` (plan
+    §3.3): session and organization → match and status → operation permission
+    (inside :func:`_load_operation_match`) → **resolution enabled (409)** →
+    **minute range (422)** → write. On the opening segment the roster-size check
+    of :func:`_ensure_opening_roster_size` is interleaved between both
+    (resolution → size → minute, plan §5.3). The resolution check comes first so
+    a resolution the stage does not enable is the unified ``409`` even when the
+    minute is also out of range, and nothing is written before it.
+
+    Without ``resolution_type`` the stage maximum is kept, which is exactly the
+    previous behaviour and what the existing minute tests cover (P1). With the
+    field, the maximum of that resolution applies (SG-1) and an unenabled one
+    raises the same :class:`ResolutionNotEnabled` as the closing route (P5).
+    """
+
+    if resolution_type is None:
+        return int(minutes["max_minute"])
+    if not resolution_enabled(minutes, resolution_type):
+        raise ResolutionNotEnabled()
+    return maximum_minute_for_resolution(minutes, resolution_type)
+
+
+async def _ensure_opening_roster_size(
+    db: AsyncSession,
+    context: AuthContext,
+    match: Mapping[str, Any],
+    match_id: UUID,
+) -> None:
+    """Bloqueo de la apertura: los dos participantes dentro de rango (RF-050).
+
+    Solo actúa al crear el **primer** segmento del partido —la apertura (AP-1)—:
+    los segmentos posteriores no revalidan el tamaño. Los límites efectivos
+    salen de la configuración de la **versión del partido**, ya cargada en
+    ``rules_config`` por :func:`_load_operation_match`, y no del formato. Sin
+    límites (``0`` o claves ausentes) no se ejecuta ninguna consulta y abrir el
+    partido se comporta como antes. Si algún participante está por debajo del
+    mínimo o por encima del máximo, lanza el **409**
+    ``ROSTER_SIZE_OUT_OF_RANGE`` con el ``detail`` determinista de H4-T02: la
+    transacción no crea el segmento, no asegura contadores y no toca el estado
+    del partido.
+    """
+
+    limits = effective_roster_limits(match.get("rules_config") or {})
+    if not limits.has_limits:
+        return
+    existing_segments = (
+        await db.execute(
+            text("""
+                SELECT count(*)
+                FROM match_segments
+                WHERE match_id = :match_id AND organization_id = :organization_id
+            """),
+            {"match_id": str(match_id), "organization_id": str(context.organization_id)},
+        )
+    ).scalar_one()
+    if existing_segments:
+        return
+    team_ids = [
+        team_id
+        for team_id in (match.get("home_team_id"), match.get("away_team_id"))
+        if team_id is not None
+    ]
+    rows = await count_active_roster_players_by_team(
+        db,
+        context.organization_id,
+        match["tournament_id"],
+        team_ids,
+    )
+    detail = describe_roster_violations(rows, limits)
+    if detail:
+        raise RosterSizeOutOfRange(detail)
 
 
 async def _load_match_lineup(
@@ -256,17 +344,30 @@ async def _load_segment_lineup_state(
 
 
 def _build_operation_limits(match: dict[str, Any]) -> dict[str, Any]:
-    """Effective minutes of the stage, so the client never guesses the cap."""
+    """Effective limits of the stage, so the client never guesses the cap.
+
+    The four legacy keys keep their meaning; the four additive keys expose the
+    same effective configuration resolved per resolution (RF-032, CT-1), so the
+    client can validate events and segments without re-deriving the rule.
+    """
 
     minutes = effective_match_minutes(
         match.get("rules_config") or {},
         match.get("stage_id"),
     )
+    extra_time_enabled = bool(minutes["extra_time_enabled"])
+    extra_time_minutes = minutes["extra_time_minutes"]
     return {
         "regular_time_minutes": minutes["regular_time_minutes"],
-        "extra_time_minutes": minutes["extra_time_minutes"],
+        "extra_time_minutes": extra_time_minutes,
         "max_minute": minutes["max_minute"],
         "added_minute_max": minutes["added_minute_max"],
+        "max_minute_regular": minutes["regular_time_minutes"],
+        "max_minute_extra": (
+            extra_time_minutes if extra_time_enabled and extra_time_minutes is not None else None
+        ),
+        "extra_time_enabled": extra_time_enabled,
+        "penalties_enabled": bool(minutes["penalties_enabled"]),
     }
 
 
@@ -345,6 +446,14 @@ async def close_match(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> MatchCloseResponse:
+    """Cierra el acta y aplica el máximo efectivo de la resolución del cierre.
+
+    Una resolución que la configuración efectiva de la fase no habilita
+    responde **409** `RESOLUTION_NOT_ENABLED` (`detail` cadena y `code`
+    aditivo) sin escribir; el resto de validaciones y códigos no cambian. La
+    regla de duración está en `AGENTS.md` → «Minutos».
+    """
+
     try:
         return await CloseMatchReportService(db).execute(context, match_id, payload)
     except PermissionError as exc:
@@ -363,6 +472,15 @@ async def get_match_operation(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> MatchOperationResponse:
+    """Operación del partido, con los límites efectivos de la fase.
+
+    `limits` conserva las cuatro claves existentes y añade
+    `max_minute_regular`, `max_minute_extra` (nulo si la prórroga no está
+    habilitada), `extra_time_enabled` y `penalties_enabled`, resueltos con la
+    configuración efectiva de la fase. La regla de duración y la resolución
+    prevista están en `AGENTS.md` → «Minutos».
+    """
+
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         match = await _load_operation_match(
@@ -492,15 +610,42 @@ async def create_match_segment(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> MatchSegmentResponse:
+    """Crea un segmento y valida su minuto inicial contra el máximo aplicable.
+
+    `resolution_type` es opcional y aditivo: con valor, el máximo es el de esa
+    resolución; sin él se conserva el máximo de la fase. Una resolución no
+    habilitada responde **409** `RESOLUTION_NOT_ENABLED` (`detail` cadena y
+    `code` aditivo) antes de escribir, y el 422 de rango no cambia. La regla de
+    duración está en `AGENTS.md` → «Minutos».
+
+    El **primer** segmento es la apertura del partido (AP-1): antes de escribir
+    se comprueba que la plantilla activa de los dos participantes está dentro de
+    los límites efectivos de la versión y, si no lo está, responde **409**
+    `ROSTER_SIZE_OUT_OF_RANGE` con el detalle determinista (RF-050) sin crear el
+    segmento ni alterar el estado del partido. Los segmentos posteriores no
+    revalidan el tamaño.
+
+    Orden de validación (plan §5.3): sesión y organización → partido y estado →
+    permiso de operación → **resolución habilitada (409)** → **tamaño de
+    plantilla en la apertura (409)** → **minuto (422)** → escritura.
+    """
+
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         match = await _load_operation_match(db, context, match_id)
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite nuevos segmentos")
-        maximum_minute = effective_match_minutes(
-            match.get("rules_config") or {},
-            match.get("stage_id"),
-        )["max_minute"]
+        # Orden: resolución habilitada (409) → tamaño en la apertura (409) →
+        # rango de minuto (422) → escritura. El bloqueo por tamaño solo actúa en
+        # el primer segmento y, sin límites configurados, no ejecuta consultas.
+        maximum_minute = _maximum_minute_for_request(
+            effective_match_minutes(
+                match.get("rules_config") or {},
+                match.get("stage_id"),
+            ),
+            payload.resolution_type,
+        )
+        await _ensure_opening_roster_size(db, context, match, match_id)
         if payload.minute_start > maximum_minute:
             raise HTTPException(
                 status_code=422,
@@ -596,15 +741,27 @@ async def interrupt_match_segment(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> MatchSegmentInterruptionResponse:
+    """Interrumpe el segmento activo con el máximo de la resolución indicada.
+
+    `resolution_type` es opcional: con valor se aplica el máximo de esa
+    resolución; sin él, el de la fase. Una resolución no habilitada responde
+    **409** `RESOLUTION_NOT_ENABLED` (`detail` cadena y `code` aditivo) antes de
+    escribir. La regla de duración está en `AGENTS.md` → «Minutos».
+    """
+
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         match = await _load_operation_match(db, context, match_id)
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite interrupciones")
-        maximum_minute = effective_match_minutes(
-            match.get("rules_config") or {},
-            match.get("stage_id"),
-        )["max_minute"]
+        # Orden: resolución habilitada (409) → rango de minuto (422) → escritura.
+        maximum_minute = _maximum_minute_for_request(
+            effective_match_minutes(
+                match.get("rules_config") or {},
+                match.get("stage_id"),
+            ),
+            payload.resolution_type,
+        )
         if payload.minute > maximum_minute:
             raise HTTPException(
                 status_code=422,

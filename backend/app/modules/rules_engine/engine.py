@@ -9,9 +9,13 @@ from jsonschema import Draft7Validator
 
 from app.modules.rules_engine.defaults import (
     DEFAULT_EXTRA_TIME_MINUTES,
+    DEFAULT_GAME_FORMAT,
+    DEFAULT_MAX_PLAYERS_PER_TEAM,
+    DEFAULT_MIN_PLAYERS_PER_TEAM,
     DEFAULT_REGULAR_TIME_MINUTES,
     DEFAULT_STAGE_RULES,
     DEFAULT_SUBSTITUTIONS,
+    GAME_FORMAT_CATALOG,
 )
 
 
@@ -21,6 +25,9 @@ from app.modules.rules_engine.defaults import (
 APPLIED_RULE_KEYS = frozenset({
     "schema_version",
     "engine_version",
+    "game_format",
+    "min_players_per_team",
+    "max_players_per_team",
     "points_system",
     "ranking_pipeline",
     "substitutions",
@@ -42,6 +49,11 @@ RULES_SCHEMA: dict[str, Any] = {
     "properties": {
         "schema_version": {"enum": ["3.2.0", "3.3.0"]},
         "engine_version": {"const": "2026.1"},
+        # RF-042: purely declarative; it never derives nor bounds the limits.
+        "game_format": {"enum": list(GAME_FORMAT_CATALOG)},
+        # RF-044: 0 (or absent) means "no limit"; no extra ceiling is invented.
+        "min_players_per_team": {"type": "integer", "minimum": 0},
+        "max_players_per_team": {"type": "integer", "minimum": 0},
         "points_system": {
             "type": "object",
             "required": ["win", "draw", "loss"],
@@ -235,6 +247,10 @@ def normalize_rules_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     config.setdefault("roster_lock_matchday", None)
     config.pop("transfers", None)
 
+    config.setdefault("game_format", DEFAULT_GAME_FORMAT)
+    config.setdefault("min_players_per_team", DEFAULT_MIN_PLAYERS_PER_TEAM)
+    config.setdefault("max_players_per_team", DEFAULT_MAX_PLAYERS_PER_TEAM)
+
     config["schema_version"] = "3.3.0"
     config["stage_defaults"] = dict(config.get("stage_defaults") or {})
 
@@ -256,6 +272,15 @@ def validate_rules_config(config: dict[str, Any]) -> None:
             path = ".".join(str(part) for part in error.path)
             details.append(f"{path}: {error.message}" if path else error.message)
         raise ValueError("Configuración de reglas inválida: " + "; ".join(details))
+
+    # RF-044: only when both limits are greater than zero; 0 = no limit.
+    minimum = config.get("min_players_per_team") or 0
+    maximum = config.get("max_players_per_team") or 0
+    if minimum and maximum and minimum > maximum:
+        raise ValueError(
+            "Configuración de reglas inválida: min_players_per_team "
+            f"({minimum}) no puede ser mayor que max_players_per_team ({maximum})"
+        )
 
     pipeline = config["ranking_pipeline"]
     steps = [item["step"] for item in pipeline]

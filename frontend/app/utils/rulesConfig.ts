@@ -5,6 +5,17 @@ export const RULES_ENGINE_VERSION = '2026.1';
 export const DEFAULT_REGULAR_TIME_MINUTES = 90;
 export const DEFAULT_EXTRA_TIME_MINUTES = 120;
 
+/**
+ * RF-042: closed declarative catalog of the game format. `11v11` preserves the
+ * compatibility of a configuration that does not declare it yet.
+ */
+export const GAME_FORMAT_OPTIONS = ['5v5', '7v7', '9v9', '11v11'] as const;
+export type GameFormat = (typeof GAME_FORMAT_OPTIONS)[number];
+export const DEFAULT_GAME_FORMAT: GameFormat = '11v11';
+
+/** RF-044: 0 means "no limit"; the key may also be absent in an old config. */
+export const DEFAULT_PLAYERS_PER_TEAM = 0;
+
 export const RANKING_CRITERIA = [
   'points',
   'head_to_head',
@@ -75,6 +86,9 @@ export interface EffectiveStageRules {
 export interface RulesConfig {
   schema_version: string;
   engine_version: string;
+  game_format: GameFormat;
+  min_players_per_team: number;
+  max_players_per_team: number;
   points_system: PointsSystem;
   ranking_pipeline: RankingPipelineItem[];
   substitutions: SubstitutionRules;
@@ -108,6 +122,8 @@ export type RulesValidationErrorCode =
   | 'boolean_field'
   | 'walkover_score'
   | 'minutes_pair'
+  | 'game_format'
+  | 'roster_limits_pair'
   | 'section'
   | 'invalid_json';
 
@@ -130,6 +146,8 @@ export const RULES_VALIDATION_MESSAGE_KEYS: Record<RulesValidationErrorCode, str
   boolean_field: 'rules.error.booleanField',
   walkover_score: 'rules.error.walkoverScore',
   minutes_pair: 'rules.error.minutesPair',
+  game_format: 'rules.error.gameFormat',
+  roster_limits_pair: 'rules.error.rosterLimitsPair',
   section: 'rules.error.section',
   invalid_json: 'rules.error.invalidJson',
 };
@@ -137,6 +155,9 @@ export const RULES_VALIDATION_MESSAGE_KEYS: Record<RulesValidationErrorCode, str
 export const DEFAULT_RULES_CONFIG: RulesConfig = {
   schema_version: RULES_SCHEMA_VERSION,
   engine_version: RULES_ENGINE_VERSION,
+  game_format: DEFAULT_GAME_FORMAT,
+  min_players_per_team: DEFAULT_PLAYERS_PER_TEAM,
+  max_players_per_team: DEFAULT_PLAYERS_PER_TEAM,
   points_system: { win: 3, draw: 1, loss: 0 },
   ranking_pipeline: [
     { step: 1, criterion: 'points', params: {} },
@@ -167,6 +188,9 @@ export const DEFAULT_RULES_CONFIG: RulesConfig = {
 const RULES_PROPERTY_NAMES = [
   'schema_version',
   'engine_version',
+  'game_format',
+  'min_players_per_team',
+  'max_players_per_team',
   'points_system',
   'ranking_pipeline',
   'substitutions',
@@ -187,6 +211,40 @@ const isPositiveInteger = (value: unknown): value is number => isInteger(value) 
 
 export function isRankingCriterion(value: unknown): value is RankingCriterion {
   return typeof value === 'string' && (RANKING_CRITERIA as readonly string[]).includes(value);
+}
+
+/** Whether the value belongs to the closed game-format catalog (RF-042). */
+export function isGameFormat(value: unknown): value is GameFormat {
+  return typeof value === 'string' && (GAME_FORMAT_OPTIONS as readonly string[]).includes(value);
+}
+
+/** Declared format, falling back to `11v11` for an absent or unknown value. */
+export function normalizeGameFormat(value: unknown): GameFormat {
+  return isGameFormat(value) ? value : DEFAULT_GAME_FORMAT;
+}
+
+/**
+ * Reads a limit field as typed by the user (RF-044). An empty value means
+ * "no limit" and normalizes to `0` when leaving the field. Negative, decimal or
+ * non-numeric values return `null` so the entered value is kept and the field
+ * shows its validation message instead of being silently clamped.
+ */
+export function readRosterLimitInput(value: unknown): number | null {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/** Configuration value of a limit: a non-negative integer, or `0` (RF-044). */
+export function normalizeRosterLimit(value: unknown): number {
+  return isNonNegativeInteger(value) ? value : DEFAULT_PLAYERS_PER_TEAM;
 }
 
 export function cloneRulesConfig<T>(config: T): T {
@@ -293,6 +351,9 @@ export function normalizeRulesConfig(value: unknown): RulesConfig {
   return {
     schema_version: RULES_SCHEMA_VERSION,
     engine_version: typeof source.engine_version === 'string' ? source.engine_version : RULES_ENGINE_VERSION,
+    game_format: normalizeGameFormat(source.game_format),
+    min_players_per_team: normalizeRosterLimit(source.min_players_per_team),
+    max_players_per_team: normalizeRosterLimit(source.max_players_per_team),
     points_system: {
       win: normalizeNonNegativeInteger(points.win, DEFAULT_RULES_CONFIG.points_system.win),
       draw: normalizeNonNegativeInteger(points.draw, DEFAULT_RULES_CONFIG.points_system.draw),
@@ -377,6 +438,26 @@ export function validateRulesConfig(value: unknown): RulesValidationError[] {
     errors.push({ code: 'schema_version', path: 'schema_version' });
   }
   if (value.engine_version !== RULES_ENGINE_VERSION) errors.push({ code: 'engine_version', path: 'engine_version' });
+
+  // RF-042: absent means the compatible default; a declared value must be in
+  // the closed catalog.
+  if (value.game_format !== undefined && !isGameFormat(value.game_format)) {
+    errors.push({ code: 'game_format', path: 'game_format' });
+  }
+
+  // RF-044: optional non-negative integers; absent means "no limit".
+  for (const field of ['min_players_per_team', 'max_players_per_team'] as const) {
+    if (value[field] !== undefined && !isNonNegativeInteger(value[field])) {
+      errors.push({ code: 'integer_field', path: field });
+    }
+  }
+  const minPlayers = isNonNegativeInteger(value.min_players_per_team) ? value.min_players_per_team : 0;
+  const maxPlayers = isNonNegativeInteger(value.max_players_per_team) ? value.max_players_per_team : 0;
+  // The pair is only constrained when both declare a limit. The format never
+  // takes part in this rule (RF-043).
+  if (minPlayers > 0 && maxPlayers > 0 && minPlayers > maxPlayers) {
+    errors.push({ code: 'roster_limits_pair', path: 'max_players_per_team' });
+  }
 
   const rosterLockMatchday = value.roster_lock_matchday === '' ? null : value.roster_lock_matchday;
   if (rosterLockMatchday !== undefined

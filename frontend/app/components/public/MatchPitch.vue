@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FORMATIONS_GRID, positionLabel, type FormationCode } from '~/constants/formations';
+import { FORMATIONS_GRID, type FormationCode } from '~/constants/formations';
+import { positionLabel } from '~/utils/positions';
 
 interface LineupPlayer {
   player_id: string;
@@ -75,7 +76,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position">{{ positionLabel(player.position_slot || '') }}</span>
+        <span class="player-position">{{ positionLabel(player.position_slot || '', t) }}</span>
       </div>
       <div
         v-for="player in home.starters"
@@ -87,7 +88,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position">{{ positionLabel(player.position_slot || '') }}</span>
+        <span class="player-position">{{ positionLabel(player.position_slot || '', t) }}</span>
       </div>
     </div>
     <div v-if="showBench" class="bench-grid">

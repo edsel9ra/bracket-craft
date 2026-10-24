@@ -12,12 +12,19 @@ import {
   type InvitationOperation,
 } from '~/utils/invitationActions';
 import { invitationConflictCode, invitationConflictMessageKey } from '~/utils/invitationErrors';
-import { invitationStatusLabelKey, memberStatusLabelKey, roleLabelKey } from '~/utils/labels';
+import {
+  ASSIGNABLE_ROLE_CODES,
+  invitationStatusLabelKey,
+  isAssignableRole,
+  memberStatusLabelKey,
+  roleKey,
+  type AssignableRoleCode,
+} from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
 
 definePageMeta({ middleware: 'auth' });
 
-type MemberRole = 'administrator' | 'operator' | 'referee' | 'viewer';
+type MemberRole = AssignableRoleCode;
 
 interface Member {
   organization_user_id: string;
@@ -42,7 +49,7 @@ interface Invitation {
 const auth = useAuthStore();
 const route = useRoute();
 const { request } = useApi();
-const { t, errorMessage, dateLocale } = useI18n();
+const { t, errorMessage, formatDateTime } = useI18n();
 const members = ref<Member[]>([]);
 const invitations = ref<Invitation[]>([]);
 const loading = ref(true);
@@ -52,7 +59,8 @@ const pageError = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const generatedLink = ref<string | null>(null);
 const inviteForm = reactive<{ email: string; role_code: MemberRole }>({ email: '', role_code: 'viewer' });
-const roles: MemberRole[] = ['administrator', 'operator', 'referee', 'viewer'];
+/** Los roles editables salen de la fuente única; `owner` no está entre ellos (RF-025). */
+const assignableRoles = ASSIGNABLE_ROLE_CODES;
 
 /** Estado de operación de invitaciones por acción; `saving` solo gobierna el directorio. */
 const OPERATION_BY_ACTION: Record<InvitationAction, InvitationOperation> = {
@@ -66,17 +74,13 @@ const REVOKE_CONFIRM_KEY = 'members.confirmRevoke';
 
 const isCreatingInvitation = computed(() => invitationOperation.value === 'creating');
 
-function isEditableRole(code: string): boolean {
-  return roles.some((role) => role === code);
-}
-
 useHead({
   title: () => `${t('members.title')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
 });
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(dateLocale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
@@ -194,7 +198,7 @@ async function runInvitationAction(action: InvitationAction, invitation: Invitat
 /** Etiqueta accesible con rol y fecha de vencimiento: nunca el correo completo (RF-005). */
 function invitationAria(action: InvitationAction, invitation: Invitation): string {
   return t(invitationActionAriaKey(action), {
-    role: t(roleLabelKey(invitation.role_code)),
+    role: t(roleKey(invitation.role_code)),
     date: formatDate(invitation.expires_at),
   });
 }
@@ -262,7 +266,7 @@ await loadData();
                 <h2>{{ t('members.inviteTitle') }}</h2>
               </div>
               <label>{{ t('members.email') }}<input v-model="inviteForm.email" type="email" autocomplete="email" required /></label>
-              <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in roles" :key="role" :value="role">{{ t(roleLabelKey(role)) }}</option></select></label>
+              <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option></select></label>
               <p class="field-hint">{{ t('members.expiryHint') }}</p>
               <button class="button-primary" type="submit" :disabled="invitationControlsDisabled(invitationOperation)">{{ isCreatingInvitation ? t('common.processing') : t('members.invite') }}</button>
               <div v-if="generatedLink" class="generated-link" role="status">
@@ -276,7 +280,7 @@ await loadData();
               <div class="panel-heading"><div><p class="eyebrow">{{ t('members.pendingEyebrow') }}</p><h2>{{ t('members.invitations') }}</h2></div><span class="muted-note">{{ invitations.length }}</span></div>
               <ul v-if="invitations.length" class="resource-list">
                 <li v-for="invitation in invitations" :key="invitation.id">
-                  <div><strong>{{ invitation.email }}</strong><small>{{ t(roleLabelKey(invitation.role_code)) }} · {{ t(invitationStatusLabelKey(invitation.status)) }} · {{ formatDate(invitation.expires_at) }}</small></div>
+                  <div><strong>{{ invitation.email }}</strong><small>{{ t(roleKey(invitation.role_code)) }} · {{ t(invitationStatusLabelKey(invitation.status)) }} · {{ formatDate(invitation.expires_at) }}</small></div>
                   <div class="row-actions">
                     <button v-for="action in invitationActionsFor(invitation.status)" :key="action" class="text-button" :class="{ danger: action === 'revoke' }" type="button" :disabled="invitationControlsDisabled(invitationOperation)" :aria-label="invitationAria(action, invitation)" @click="runInvitationAction(action, invitation)">{{ t(invitationActionLabelKey(action)) }}</button>
                   </div>
@@ -298,9 +302,8 @@ await loadData();
                     <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
                     <td>
                       <select :value="member.role_code" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
-                        <option v-if="member.role_code === 'owner'" value="owner">{{ t(roleLabelKey('owner')) }}</option>
-                        <option v-else-if="!isEditableRole(member.role_code)" :value="member.role_code">{{ member.role_code }}</option>
-                        <option v-for="role in roles" :key="role" :value="role">{{ t(roleLabelKey(role)) }}</option>
+                        <option v-if="!isAssignableRole(member.role_code)" :value="member.role_code">{{ t(roleKey(member.role_code)) }}</option>
+                        <option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option>
                       </select>
                     </td>
                     <td><span class="status-tag" :class="{ inactive: !member.is_active }">{{ t(memberStatusLabelKey(member.is_active ? 'active' : 'inactive')) }}</span></td>

@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
            <article v-for="tournament in tournamentsStore.tournaments" :key="tournament.id" class="tournament-card">
               <span class="status-tag">{{ statusLabel(tournament.status) }}</span>
              <h3>{{ tournament.name }}</h3>
-             <p>{{ tournament.season }} · inicia {{ tournament.start_date }}</p>
+             <p>{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
               <NuxtLink class="card-action" :to="`/workspace/tournaments/${tournament.id}`">{{ t('workspace.configure') }} <span aria-hidden="true">↗</span></NuxtLink>
              <button
                v-if="tournament.status === 'draft' && tournament.draft_version_id"

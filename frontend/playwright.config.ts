@@ -58,5 +58,14 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { storageState },
     },
+    {
+      // Escenario propio de operación y cierre (spec 012, H4-T10): proyecto,
+      // motor y reglas propios. No comparte spec, localizadores ni veredicto
+      // con el reintento, y corre después de las tres vistas del reintento.
+      name: 'operation-flow',
+      testMatch: /operationFlow\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { storageState },
+    },
   ],
 });

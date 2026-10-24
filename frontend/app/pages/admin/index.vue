@@ -32,7 +32,7 @@ interface PlatformAudit {
 
 const auth = useAuthStore();
 const { request } = useApi();
-const { t, statusLabel, dateLocale, errorMessage } = useI18n();
+const { t, statusLabel, formatDateTime, errorMessage } = useI18n();
 const users = ref<PlatformUser[]>([]);
 const organizations = ref<PlatformOrganization[]>([]);
 const audit = ref<PlatformAudit[]>([]);
@@ -252,7 +252,7 @@ await load();
             <div v-for="entry in audit" :key="entry.id" class="audit-row">
               <strong>{{ entry.action }}</strong>
               <span>{{ entry.actor_email }} · {{ entry.target_type }}</span>
-               <time :datetime="entry.created_at">{{ new Date(entry.created_at).toLocaleString(dateLocale) }}</time>
+               <time :datetime="entry.created_at">{{ formatDateTime(entry.created_at) }}</time>
             </div>
              </TransitionGroup>
            </Transition>

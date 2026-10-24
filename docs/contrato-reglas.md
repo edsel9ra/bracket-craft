@@ -83,3 +83,25 @@ Posiciones: `GK`, `LB`, `LCB`, `RCB`, `RB`, `CDM_L`, `CDM_R`, `LW`, `CAM`,
   con ambos equipos.
 - `backend/tests/test_migration_021.py` (opt-in con PostgreSQL) comprueba que
   el `CHECK` real acepta las cuatro formaciones y rechaza una quinta.
+
+## 5. Alcance del contrato cerrado
+
+Este documento cubre **solo** los códigos de llave `GF1`/`GF2` y el catálogo
+cerrado de las cuatro formaciones con sus posiciones. `engine_version` sigue en
+**`2026.1`**.
+
+La configuración de la versión incluye además tres claves **aditivas** que
+quedan **fuera** de este contrato y no cambian ninguna regla del motor:
+
+| Clave | Tipo | Default | Significado |
+|---|---|---|---|
+| `game_format` | texto del catálogo `5v5`, `7v7`, `9v9`, `11v11` | `11v11` | Modalidad declarada; no altera formaciones, titulares ni planilla |
+| `min_players_per_team` | entero ≥ 0 | `0` (sin límite) | Mínimo de jugadores activos por equipo |
+| `max_players_per_team` | entero ≥ 0 | `0` (sin límite) | Máximo de jugadores activos por equipo |
+
+- Los defaults reproducen el comportamiento anterior: una configuración sin las
+  claves se lee como `11v11` y sin límites, y no se reescribe.
+- El formato **no** es referencia de validación de los límites ni habilita
+  formaciones por modalidad; la planilla soportada sigue siendo de once.
+- La aclaración no cambia `engine_version`, el catálogo de formaciones ni
+  ninguna regla deportiva.

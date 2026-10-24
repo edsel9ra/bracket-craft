@@ -8,6 +8,7 @@ integration for the 40/100 boundary lives in ``test_substitutions.py``.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -17,8 +18,18 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.core.tenancy import AuthContext
+from httpx import ASGITransport, AsyncClient
+
+from app.core.database import get_db
+from app.core.tenancy import AuthContext, get_auth_context
+from app.main import api
 from app.modules.matches import router as matches_router
+from app.modules.matches.errors import (
+    RESOLUTION_NOT_ENABLED,
+    RESOLUTION_NOT_ENABLED_DETAIL,
+    ResolutionNotEnabled,
+    resolution_not_enabled_body,
+)
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
     CreateMatchSegmentRequest,
@@ -29,6 +40,7 @@ from app.modules.matches.service import (
     CloseMatchReportService,
     effective_match_minutes,
     maximum_minute_for_resolution,
+    resolution_enabled,
     validate_event_minute,
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
@@ -60,6 +72,7 @@ def rules_config(
     regular: int = 90,
     extra: int = 120,
     extra_time_enabled: bool = False,
+    penalties_enabled: bool = False,
     stage_overrides: dict | None = None,
 ) -> dict:
     config = deepcopy(DEFAULT_RULES_CONFIG)
@@ -68,6 +81,7 @@ def rules_config(
             "regular_time_minutes": regular,
             "extra_time_minutes": extra,
             "extra_time_enabled": extra_time_enabled,
+            "penalties_enabled": penalties_enabled,
         }
     )
     config["stage_overrides"] = stage_overrides or {}
@@ -168,6 +182,62 @@ def test_the_resolution_maximum_uses_extra_time_only_when_it_is_needed_and_enabl
     assert maximum_minute_for_resolution(disabled, "regular") == 40
     assert maximum_minute_for_resolution(disabled, "extra_time") == 40
     assert maximum_minute_for_resolution(disabled, "penalties") == 40
+
+
+# ---------------------------------------------------------------------------
+# Resolution enabled by the effective stage configuration (P5, RF-032)
+# ---------------------------------------------------------------------------
+
+
+def test_resolution_enabled_always_admits_regular_walkover_and_administrative():
+    minutes = effective_match_minutes(
+        rules_config(extra_time_enabled=False, penalties_enabled=False), None
+    )
+
+    assert resolution_enabled(minutes, "regular") is True
+    assert resolution_enabled(minutes, "walkover") is True
+    assert resolution_enabled(minutes, "administrative") is True
+
+
+def test_resolution_enabled_follows_the_effective_extra_time_flag():
+    enabled = effective_match_minutes(rules_config(extra_time_enabled=True), None)
+    disabled = effective_match_minutes(rules_config(extra_time_enabled=False), None)
+
+    assert resolution_enabled(enabled, "extra_time") is True
+    assert resolution_enabled(disabled, "extra_time") is False
+
+
+def test_resolution_enabled_follows_the_effective_penalties_flag():
+    enabled = effective_match_minutes(rules_config(penalties_enabled=True), None)
+    disabled = effective_match_minutes(rules_config(penalties_enabled=False), None)
+
+    # Penalties depend on their own flag, never on the extra time one.
+    assert resolution_enabled(enabled, "penalties") is True
+    assert resolution_enabled(disabled, "penalties") is False
+
+
+def test_resolution_enabled_reads_the_stage_override_not_the_version_defaults():
+    config = rules_config(
+        extra_time_enabled=False,
+        stage_overrides={str(STAGE_ID): {"extra_time_enabled": True}},
+    )
+
+    overridden = effective_match_minutes(config, STAGE_ID)
+    inherited = effective_match_minutes(config, OTHER_STAGE_ID)
+
+    assert resolution_enabled(overridden, "extra_time") is True
+    assert resolution_enabled(inherited, "extra_time") is False
+
+
+def test_the_unified_resolution_error_is_a_409_with_a_stable_code():
+    error = ResolutionNotEnabled()
+
+    assert error.status_code == 409
+    assert error.code == RESOLUTION_NOT_ENABLED
+    assert resolution_not_enabled_body(error) == {
+        "detail": RESOLUTION_NOT_ENABLED_DETAIL,
+        "code": RESOLUTION_NOT_ENABLED,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -600,4 +670,499 @@ async def test_operation_exposes_the_effective_limits_with_the_stage_override(mo
         "extra_time_minutes": 100,
         "max_minute": 100,
         "added_minute_max": 30,
+        "max_minute_regular": 40,
+        "max_minute_extra": 100,
+        "extra_time_enabled": True,
+        "penalties_enabled": False,
     }
+
+
+async def _operation_limits(monkeypatch, config: dict) -> dict:
+    async def fake_lineup(db, organization_id, match_id):
+        return []
+
+    async def fake_tactical(db, organization_id, match_id):
+        return []
+
+    monkeypatch.setattr(matches_router, "_load_operation_match", _loader(_match(config)))
+    monkeypatch.setattr(matches_router, "_load_match_lineup", fake_lineup)
+    monkeypatch.setattr(matches_router, "_load_match_tactical_lineups", fake_tactical)
+
+    response = await matches_router.get_match_operation(
+        MATCH_ID, context(), _operation_session()
+    )
+    return response["limits"]
+
+
+@pytest.mark.asyncio
+async def test_operation_limits_add_the_new_fields_with_the_read_defaults(monkeypatch):
+    limits = await _operation_limits(monkeypatch, rules_config())
+
+    # The four legacy fields keep their exact meaning.
+    assert limits["regular_time_minutes"] == 90
+    assert limits["extra_time_minutes"] == 120
+    assert limits["max_minute"] == 90
+    assert limits["added_minute_max"] == 30
+    # The additive fields resolve the same effective configuration.
+    assert limits["max_minute_regular"] == 90
+    assert limits["max_minute_extra"] is None
+    assert limits["extra_time_enabled"] is False
+    assert limits["penalties_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_operation_limits_resolve_the_stage_override_and_its_flags(monkeypatch):
+    config = rules_config(
+        regular=90,
+        extra=120,
+        extra_time_enabled=True,
+        penalties_enabled=True,
+        stage_overrides={
+            str(STAGE_ID): {
+                "regular_time_minutes": 40,
+                "extra_time_minutes": 100,
+            }
+        },
+    )
+
+    limits = await _operation_limits(monkeypatch, config)
+
+    assert limits["regular_time_minutes"] == 40
+    assert limits["extra_time_minutes"] == 100
+    assert limits["max_minute"] == 100
+    assert limits["max_minute_regular"] == 40
+    assert limits["max_minute_extra"] == 100
+    assert limits["extra_time_enabled"] is True
+    assert limits["penalties_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_operation_limits_null_the_extra_maximum_when_the_stage_disables_it(monkeypatch):
+    config = rules_config(
+        regular=90,
+        extra=120,
+        extra_time_enabled=True,
+        stage_overrides={str(STAGE_ID): {"extra_time_enabled": False}},
+    )
+
+    limits = await _operation_limits(monkeypatch, config)
+
+    assert limits["extra_time_minutes"] == 120
+    assert limits["max_minute"] == 90
+    assert limits["max_minute_regular"] == 90
+    assert limits["max_minute_extra"] is None
+    assert limits["extra_time_enabled"] is False
+
+
+def test_effective_minutes_expose_penalties_enabled_per_stage():
+    config = rules_config(
+        penalties_enabled=True,
+        stage_overrides={str(OTHER_STAGE_ID): {"penalties_enabled": False}},
+    )
+
+    assert effective_match_minutes(config, None)["penalties_enabled"] is True
+    assert effective_match_minutes(config, STAGE_ID)["penalties_enabled"] is True
+    assert effective_match_minutes(config, OTHER_STAGE_ID)["penalties_enabled"] is False
+
+
+# ---------------------------------------------------------------------------
+# Close route: unified 409 and the untouched structural 422 (P5, RF-032)
+# ---------------------------------------------------------------------------
+
+
+CLOSE_BODY = {
+    "resolution_type": "extra_time",
+    "home_score_regular": 0,
+    "away_score_regular": 0,
+    "home_score": 1,
+    "away_score": 0,
+    "winner_team_id": str(HOME),
+}
+
+
+@asynccontextmanager
+async def close_client():
+    """HTTP client over the real app with the session and identity overridden."""
+
+    async def database():
+        yield object()
+
+    async def auth():
+        return context()
+
+    api.dependency_overrides[get_db] = database
+    api.dependency_overrides[get_auth_context] = auth
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api), base_url="http://test"
+        ) as client:
+            yield client
+    finally:
+        api.dependency_overrides.pop(get_db, None)
+        api.dependency_overrides.pop(get_auth_context, None)
+
+
+@pytest.mark.asyncio
+async def test_the_close_route_answers_the_unified_409_with_its_code(monkeypatch):
+    async def reject(self, context_, match_id, dto):
+        raise ResolutionNotEnabled()
+
+    monkeypatch.setattr(matches_router.CloseMatchReportService, "execute", reject)
+
+    async with close_client() as client:
+        response = await client.post(
+            f"/api/v1/matches/{MATCH_ID}/close", json=CLOSE_BODY
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": RESOLUTION_NOT_ENABLED_DETAIL,
+        "code": RESOLUTION_NOT_ENABLED,
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_close_route_still_rejects_an_out_of_range_minute_with_422(monkeypatch):
+    called = False
+
+    async def should_not_run(self, context_, match_id, dto):  # pragma: no cover
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(matches_router.CloseMatchReportService, "execute", should_not_run)
+    body = {
+        **CLOSE_BODY,
+        "events": [
+            {
+                "client_event_id": "out-of-range",
+                "event_type": "goal",
+                "team_id": str(HOME),
+                "player_id": str(PLAYER),
+                "minute": 181,
+                "segment_id": str(SEGMENT_1),
+            }
+        ],
+    }
+
+    async with close_client() as client:
+        response = await client.post(
+            f"/api/v1/matches/{MATCH_ID}/close", json=body
+        )
+
+    assert response.status_code == 422
+    assert called is False
+    # The sanitized validation body never echoes the rejected input.
+    assert "181" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Optional resolution in segments and interruptions (SG-1, P1, P5, RF-032)
+# ---------------------------------------------------------------------------
+#
+# Orden de validación de las dos rutas (el mismo del cierre y del plan §3.3):
+# sesión y organización → partido y estado → permiso de operación (dentro de
+# ``_load_operation_match``) → resolución habilitada (409) → rango de minuto
+# (422) → escritura.
+
+
+@pytest.mark.asyncio
+async def test_the_segment_route_without_resolution_keeps_the_stage_maximum(monkeypatch):
+    """P1: sin el campo, el máximo es el de la fase y el resultado no cambia."""
+
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=90, extra=120, extra_time_enabled=True))),
+    )
+
+    without_field = await matches_router.create_match_segment(
+        MATCH_ID,
+        CreateMatchSegmentRequest(segment_number=1, minute_start=95),
+        context(),
+        _segment_session(),
+    )
+
+    assert without_field["minute_start"] == 95
+
+    # El mismo minuto con la resolución prevista reglamentaria sale del máximo
+    # de esa resolución: 422 de rango, sin escrituras.
+    session = _segment_session()
+    with pytest.raises(HTTPException) as error:
+        await matches_router.create_match_segment(
+            MATCH_ID,
+            CreateMatchSegmentRequest(
+                segment_number=1, minute_start=95, resolution_type="regular"
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 422
+    assert "máximo de 90" in error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_the_segment_route_with_extra_time_resolution_uses_that_maximum(monkeypatch):
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=90, extra=120, extra_time_enabled=True))),
+    )
+
+    accepted = await matches_router.create_match_segment(
+        MATCH_ID,
+        CreateMatchSegmentRequest(
+            segment_number=1, minute_start=120, resolution_type="extra_time"
+        ),
+        context(),
+        _segment_session(),
+    )
+
+    assert accepted["minute_start"] == 120
+
+    session = _segment_session()
+    with pytest.raises(HTTPException) as error:
+        await matches_router.create_match_segment(
+            MATCH_ID,
+            CreateMatchSegmentRequest(
+                segment_number=1, minute_start=121, resolution_type="extra_time"
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 422
+    assert "máximo de 120" in error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resolution", ["extra_time", "penalties"])
+async def test_the_segment_route_rejects_a_resolution_the_stage_does_not_enable(
+    monkeypatch, resolution
+):
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(extra_time_enabled=False, penalties_enabled=False))),
+    )
+    session = _segment_session()
+
+    with pytest.raises(ResolutionNotEnabled) as error:
+        await matches_router.create_match_segment(
+            MATCH_ID,
+            CreateMatchSegmentRequest(
+                segment_number=1, minute_start=10, resolution_type=resolution
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.code == RESOLUTION_NOT_ENABLED
+    assert error.value.detail == RESOLUTION_NOT_ENABLED_DETAIL
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_the_unified_409_wins_over_the_range_422_on_a_segment(monkeypatch):
+    """La resolución habilitada se comprueba antes del rango de minuto."""
+
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=90, extra=120, extra_time_enabled=False))),
+    )
+    session = _segment_session()
+
+    with pytest.raises(ResolutionNotEnabled):
+        await matches_router.create_match_segment(
+            MATCH_ID,
+            CreateMatchSegmentRequest(
+                segment_number=1, minute_start=200, resolution_type="extra_time"
+            ),
+            context(),
+            session,
+        )
+
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_without_resolution_keeps_the_stage_maximum(monkeypatch):
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=40, extra=100, extra_time_enabled=True))),
+    )
+
+    without_field = await matches_router.interrupt_match_segment(
+        MATCH_ID,
+        SEGMENT_1,
+        InterruptMatchSegmentRequest(reason="weather", minute=95),
+        context(),
+        _interrupt_session(),
+    )
+
+    assert without_field["minute"] == 95
+
+    session = _interrupt_session()
+    with pytest.raises(HTTPException) as error:
+        await matches_router.interrupt_match_segment(
+            MATCH_ID,
+            SEGMENT_1,
+            InterruptMatchSegmentRequest(
+                reason="weather", minute=95, resolution_type="regular"
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 422
+    assert "máximo de 40" in error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_with_extra_time_resolution_reads_that_maximum(monkeypatch):
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=40, extra=100, extra_time_enabled=True))),
+    )
+
+    accepted = await matches_router.interrupt_match_segment(
+        MATCH_ID,
+        SEGMENT_1,
+        InterruptMatchSegmentRequest(
+            reason="weather", minute=100, resolution_type="extra_time"
+        ),
+        context(),
+        _interrupt_session(),
+    )
+
+    assert accepted["minute"] == 100
+
+    session = _interrupt_session()
+    with pytest.raises(HTTPException) as error:
+        await matches_router.interrupt_match_segment(
+            MATCH_ID,
+            SEGMENT_1,
+            InterruptMatchSegmentRequest(
+                reason="weather", minute=101, resolution_type="extra_time"
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 422
+    assert "máximo de 100" in error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_rejects_a_resolution_the_stage_does_not_enable(monkeypatch):
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(regular=90, extra=120, extra_time_enabled=False))),
+    )
+    session = _interrupt_session()
+
+    with pytest.raises(ResolutionNotEnabled) as error:
+        await matches_router.interrupt_match_segment(
+            MATCH_ID,
+            SEGMENT_1,
+            InterruptMatchSegmentRequest(
+                reason="weather", minute=50, resolution_type="extra_time"
+            ),
+            context(),
+            session,
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.code == RESOLUTION_NOT_ENABLED
+    assert error.value.detail == RESOLUTION_NOT_ENABLED_DETAIL
+    # Nada se escribe: no hay interrupción ni actualización del segmento.
+    assert session.writes == []
+
+
+class _RouteSession:
+    """Sesión mínima para ejercer el handler HTTP sin base de datos."""
+
+    def begin(self):
+        return Transaction()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        (
+            f"/api/v1/matches/{MATCH_ID}/segments",
+            {
+                "segment_number": 1,
+                "minute_start": 10,
+                "resolution_type": "extra_time",
+            },
+        ),
+        (
+            f"/api/v1/matches/{MATCH_ID}/segments/{SEGMENT_1}/interrupt",
+            {"reason": "weather", "minute": 50, "resolution_type": "extra_time"},
+        ),
+    ],
+)
+async def test_both_routes_answer_the_identical_unified_409(monkeypatch, path, body):
+    """P5: el mismo código y el mismo mensaje en crear segmento e interrumpir."""
+
+    async def no_rls(db, organization_id, user_id):
+        return None
+
+    async def database():
+        yield _RouteSession()
+
+    monkeypatch.setattr(matches_router, "set_rls_context", no_rls)
+    monkeypatch.setattr(
+        matches_router,
+        "_load_operation_match",
+        _loader(_match(rules_config(extra_time_enabled=False))),
+    )
+
+    async def auth():
+        return context()
+
+    api.dependency_overrides[get_db] = database
+    api.dependency_overrides[get_auth_context] = auth
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=api), base_url="http://test"
+        ) as client:
+            response = await client.post(path, json=body)
+    finally:
+        api.dependency_overrides.pop(get_db, None)
+        api.dependency_overrides.pop(get_auth_context, None)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": RESOLUTION_NOT_ENABLED_DETAIL,
+        "code": RESOLUTION_NOT_ENABLED,
+    }
+
+
+def test_the_optional_resolution_keeps_the_structural_422_of_both_requests():
+    with pytest.raises(ValidationError):
+        CreateMatchSegmentRequest(segment_number=1, minute_start=-1)
+    with pytest.raises(ValidationError):
+        CreateMatchSegmentRequest(
+            segment_number=1, minute_start=10, resolution_type="overtime"
+        )
+    with pytest.raises(ValidationError):
+        InterruptMatchSegmentRequest(reason="weather", minute=-1)
+    with pytest.raises(ValidationError):
+        InterruptMatchSegmentRequest(
+            reason="weather", minute=10, resolution_type="overtime"
+        )
+    # El campo sigue siendo opcional (P1).
+    assert CreateMatchSegmentRequest(segment_number=1, minute_start=10).resolution_type is None
+    assert InterruptMatchSegmentRequest(reason="weather", minute=10).resolution_type is None
