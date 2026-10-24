@@ -15,7 +15,6 @@ import {
   type WizardStepId,
   type WizardValues,
 } from './wizardModel.ts';
-import type { WizardDraft } from './wizardDraft.ts';
 
 /** Parámetro de la dirección que lleva el paso actual (RF-013). */
 export const STEP_PARAM = 'step';
@@ -178,14 +177,6 @@ export function stepBlock(step: WizardStepId, data: WizardStepData = {}): Wizard
 }
 
 /**
- * Dirección del paso que aporta el dato que falta (RF-015). El paso pedido se
- * mantiene: el enlace se ofrece, no se aplica solo.
- */
-export function blockedStepHref(location: string, block: WizardStepBlock | null): string | null {
-  return block ? stepUrl(location, block.provider) : null;
-}
-
-/**
  * Navegaciones que pueden ocurrir con un asistente abierto. Solo el descarte
  * explícito y el cambio de versión o de torneo piden confirmación (RF-008).
  */
@@ -262,43 +253,6 @@ export function resolveNavigation(
   return { proceed: true, discardDraft: !navigationRule(kind).keepsDraft };
 }
 
-/** Estado de apertura de un asistente (RF-013, RF-014, RF-015). */
-export interface WizardStart {
-  readonly step: WizardStepId;
-  readonly values: WizardValues;
-  readonly blocked: WizardStepBlock | null;
-  /** De dónde salen los valores: del borrador de la pestaña o del servidor. */
-  readonly source: 'draft' | 'server';
-}
-
-export interface WizardStartOptions {
-  readonly wizard: WizardKind;
-  /** Dirección completa (`/ruta?step=…&…`). */
-  readonly location: string;
-  /** Valores de partida del servidor. */
-  readonly serverValues?: WizardValues;
-  /** Borrador ya leído del almacenamiento de sesión, si existe. */
-  readonly draft?: WizardDraft | null;
-  readonly data?: WizardStepData;
-}
-
-/**
- * Estado con el que se abre un asistente. El paso sale de la dirección (también
- * en servidor) y el borrador de la pestaña solo aporta el paso cuando la
- * dirección no lo trae, más los valores introducidos (RF-004, RF-013, RF-014).
- */
-export function resolveWizardStart(options: WizardStartOptions): WizardStart {
-  const fromUrl = requestedStep(options.wizard, stepFromLocation(options.location));
-  const draft = options.draft ?? null;
-  const step = fromUrl ?? draft?.step ?? defaultStepId(options.wizard);
-  return {
-    step,
-    values: draft ? draft.values : (options.serverValues ?? {}),
-    blocked: stepBlock(step, options.data),
-    source: draft ? 'draft' : 'server',
-  };
-}
-
 /** Igualdad estructural de valores de formulario (RF-004, RF-007). */
 export function sameValues(left: WizardValues, right: WizardValues): boolean {
   return sameValue(left, right);
@@ -321,99 +275,4 @@ function sameValue(left: unknown, right: unknown): boolean {
   return keys.every(
     (key) => Object.hasOwn(rightRecord, key) && sameValue(leftRecord[key], rightRecord[key]),
   );
-}
-
-/**
- * Contrato mínimo de `useApi()` que un asistente puede llegar a necesitar al
- * guardar. La navegación entre pasos nunca lo usa: H1-T04 no escribe en la red.
- */
-export interface WizardApi {
-  readonly request: (path: string, options?: unknown) => Promise<unknown>;
-}
-
-export interface CreateWizardSessionOptions extends WizardStartOptions {
-  /** Doble o instancia real de `useApi()`; reservado para guardar (H1-T05…T07). */
-  readonly api: WizardApi;
-  /** Escritura de la dirección: una entrada de historial por cambio de paso. */
-  readonly writeLocation?: (url: string) => void;
-  /** Guarda el borrador de la pestaña cuando hay cambios sin guardar. */
-  readonly persist?: (draft: WizardDraft) => void;
-  /** Elimina el borrador de la pestaña al descartar. */
-  readonly clearDraft?: () => void;
-}
-
-export interface WizardSession {
-  readonly wizard: WizardKind;
-  readonly api: WizardApi;
-  readonly step: WizardStepId;
-  readonly blocked: WizardStepBlock | null;
-  readonly values: WizardValues;
-  readonly dirty: boolean;
-  goTo(step: WizardStepId): void;
-  setValues(values: WizardValues): void;
-  setData(data: WizardStepData): void;
-  /** Descarte explícito: vuelve a los valores del servidor y borra el borrador. */
-  discard(): void;
-}
-
-/**
- * Estado de la pestaña de un asistente (RF-004, RF-008, RF-013, RF-014, RF-015).
- * El estado vive en el cierre de esta función: ni global ni compartido entre
- * pestañas, y sin reloj. Cambiar de paso escribe la dirección y el borrador,
- * nunca la red.
- */
-export function createWizardSession(options: CreateWizardSessionOptions): WizardSession {
-  const { wizard } = options;
-  const serverValues = options.serverValues ?? {};
-  const start = resolveWizardStart(options);
-
-  let location = options.location;
-  let step = start.step;
-  let values = start.values;
-  let data = options.data ?? {};
-  let blocked = start.blocked;
-
-  const isDirty = (): boolean => !sameValues(values, serverValues);
-
-  function saveDraft(): void {
-    if (!options.persist || !isDirty()) return;
-    options.persist({ step, values });
-  }
-
-  return {
-    wizard,
-    api: options.api,
-    get step() {
-      return step;
-    },
-    get blocked() {
-      return blocked;
-    },
-    get values() {
-      return values;
-    },
-    get dirty() {
-      return isDirty();
-    },
-    goTo(next: WizardStepId) {
-      if (!isWizardStep(wizard, next) || next === step) return;
-      step = next;
-      location = stepUrl(location, next);
-      options.writeLocation?.(location);
-      blocked = stepBlock(step, data);
-      saveDraft();
-    },
-    setValues(next: WizardValues) {
-      values = next;
-      saveDraft();
-    },
-    setData(next: WizardStepData) {
-      data = next;
-      blocked = stepBlock(step, data);
-    },
-    discard() {
-      values = serverValues;
-      options.clearDraft?.();
-    },
-  };
 }

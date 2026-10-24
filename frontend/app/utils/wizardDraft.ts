@@ -25,7 +25,7 @@ export interface WizardDraftContext {
   readonly versionId?: string | null;
 }
 
-/** Borrador de un asistente: paso y valores introducidos, nada más. */
+/** Borrador de un asistente: paso y, si hay cambios, valores introducidos. */
 export interface WizardDraft {
   /**
    * Paso guardado, o `null` si el guardado no era un paso de este asistente:
@@ -33,7 +33,27 @@ export interface WizardDraft {
    * primero del asistente.
    */
   readonly step: WizardStepId | null;
-  readonly values: WizardValues;
+  /**
+   * Valores introducidos, o `null` cuando no hay cambios: el borrador solo
+   * recuerda el paso y los valores mostrados siguen siendo los del servidor
+   * (RF-014). Un objeto de valores vacío nunca se guarda.
+   */
+  readonly values: WizardValues | null;
+}
+
+/**
+ * Borrador que corresponde a un paso (RF-014). Con cambios guarda paso y
+ * valores; sin cambios guarda **solo el paso**. Los valores vacíos se tratan
+ * como «sin cambios»: persistirlos sustituiría los del servidor por un objeto
+ * vacío al restaurar la pestaña.
+ */
+export function draftForStep(
+  step: WizardStepId,
+  values: WizardValues | null | undefined,
+  hasChanges: boolean,
+): WizardDraft {
+  const stored = hasChanges && values && Object.keys(values).length > 0 ? values : null;
+  return { step, values: stored };
 }
 
 /** Parte de `Storage` que el borrador necesita. */
@@ -67,15 +87,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Formato guardado del borrador. */
+/** Formato guardado del borrador; sin valores, el objeto solo lleva el paso. */
 export function serializeDraft(draft: WizardDraft): string {
-  return JSON.stringify({ v: DRAFT_VERSION, step: draft.step, values: draft.values });
+  const payload = draft.values === null
+    ? { v: DRAFT_VERSION, step: draft.step }
+    : { v: DRAFT_VERSION, step: draft.step, values: draft.values };
+  return JSON.stringify(payload);
 }
 
 /**
  * Lee un borrador guardado (RF-014). Un contenido ilegible, de otra versión o
  * con valores que no son un objeto se ignora; un paso desconocido para el
- * asistente conserva los valores y deja que la dirección decida el paso.
+ * asistente conserva los valores y deja que la dirección decida el paso. Un
+ * borrador sin valores solo recuerda el paso.
  */
 export function parseDraft(
   wizard: WizardKind,
@@ -90,11 +114,15 @@ export function parseDraft(
     return null;
   }
 
-  if (!isRecord(parsed) || parsed.v !== DRAFT_VERSION || !isRecord(parsed.values)) return null;
+  if (!isRecord(parsed) || parsed.v !== DRAFT_VERSION) return null;
   const candidate = typeof parsed.step === 'string' ? parsed.step : null;
   const step = isWizardStep(wizard, candidate) ? candidate : null;
 
-  return { step, values: parsed.values as WizardValues };
+  const rawValues = parsed.values;
+  if (rawValues === undefined || rawValues === null) return { step, values: null };
+  if (!isRecord(rawValues)) return null;
+
+  return { step, values: rawValues as WizardValues };
 }
 
 export interface WizardDraftStore {

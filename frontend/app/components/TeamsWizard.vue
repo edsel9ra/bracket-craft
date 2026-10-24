@@ -32,6 +32,7 @@ import {
 import { resolveNavigation } from '~/utils/wizardStep';
 import { useWizardStep } from '~/composables/useWizardStep';
 import { useWizardDraft } from '~/composables/useWizardDraft';
+import { draftForStep } from '~/utils/wizardDraft';
 
 const props = withDefaults(defineProps<{
   tournamentId: string;
@@ -126,11 +127,8 @@ const dirty = computed(() => hasChanges());
 
 function persistDraft(): void {
   if (props.disabled) return;
-  if (!hasChanges()) {
-    draft.clear();
-    return;
-  }
-  draft.save({ step: step.value, values: teamDraftValues(values.value) });
+  // RF-014: sin cambios se recuerda solo el paso; con cambios, paso y valores.
+  draft.save(draftForStep(step.value, teamDraftValues(values.value), hasChanges()));
 }
 
 /** Mensaje del campo, en el idioma activo; vacío cuando el campo es válido. */
@@ -281,7 +279,8 @@ watch(() => props.resetToken, () => {
 });
 
 draft.applyAfterMount((stored) => {
-  if (!stored || props.disabled) return;
+  // Un borrador con solo paso no aporta valores: el alta empieza vacía.
+  if (!stored || !stored.values || props.disabled) return;
   const saved = restoreTeamValues(stored.values);
   form.name = typeof saved.name === 'string' ? saved.name : '';
   form.shortCode = typeof saved.shortCode === 'string' ? saved.shortCode : '';

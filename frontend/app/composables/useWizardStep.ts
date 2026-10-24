@@ -82,9 +82,6 @@ export function useWizardStep(options: UseWizardStepOptions) {
   const location = computed(() => stepUrl(route.fullPath, step.value));
   const data = computed<WizardStepData>(() => options.data?.() ?? {});
   const blocked = computed<WizardStepBlock | null>(() => stepBlock(step.value, data.value));
-  const blockedHref = computed(() => (
-    blocked.value ? stepUrl(location.value, blocked.value.provider) : null
-  ));
   const previous = computed(() => previousStepId(options.wizard, step.value));
   const next = computed(() => nextStepId(options.wizard, step.value));
 
@@ -122,5 +119,5 @@ export function useWizardStep(options: UseWizardStepOptions) {
     });
   }
 
-  return { step, blocked, blockedHref, previous, next, location, href, goTo };
+  return { step, blocked, previous, next, location, href, goTo };
 }

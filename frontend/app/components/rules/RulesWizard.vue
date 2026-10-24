@@ -25,6 +25,7 @@ import type { RulesStepId } from '~/utils/wizardModel';
 import { resolveNavigation, sameValues } from '~/utils/wizardStep';
 import { useWizardStep } from '~/composables/useWizardStep';
 import { useWizardDraft } from '~/composables/useWizardDraft';
+import { draftForStep } from '~/utils/wizardDraft';
 
 interface StageOption {
   id: string;
@@ -121,11 +122,12 @@ let pendingSave = false;
 
 function persistDraft(): void {
   if (props.disabled) return;
-  if (!dirty.value) {
-    draft.clear();
-    return;
-  }
-  draft.save({ step: step.value, values: workingConfig.value as unknown as Record<string, unknown> });
+  // RF-014: sin cambios se recuerda solo el paso; con cambios, paso y valores.
+  draft.save(draftForStep(
+    step.value,
+    workingConfig.value as unknown as Record<string, unknown>,
+    dirty.value,
+  ));
 }
 
 /**
@@ -186,7 +188,8 @@ watch(serverConfig, (next) => {
 }, { deep: true });
 
 draft.applyAfterMount((stored) => {
-  if (!stored || props.disabled) return;
+  // Un borrador con solo paso no aporta valores: mandan los del servidor.
+  if (!stored || !stored.values || props.disabled) return;
   emit('update:modelValue', normalizeRulesConfig(stored.values));
 });
 </script>

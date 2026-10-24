@@ -27,6 +27,7 @@ import {
 import { resolveNavigation } from '~/utils/wizardStep';
 import { useWizardStep } from '~/composables/useWizardStep';
 import { useWizardDraft } from '~/composables/useWizardDraft';
+import { draftForStep } from '~/utils/wizardDraft';
 
 interface StageOption {
   id: string;
@@ -276,24 +277,18 @@ function restoreServerValues(): void {
 
 function persistDraft(): void {
   if (props.disabled) return;
-  if (!dirty.value) {
-    draft.clear();
-    return;
-  }
-  draft.save({
-    step: step.value,
-    values: {
-      mode: mode.value,
-      selectedStageId: selectedStageId.value,
-      name: form.name,
-      stageOrder: form.stageOrder,
-      stageType: form.stageType,
-      teamIds: [...form.teamIds],
-      // RF-010: el borrador conserva la fase creada para reintentar tras recargar.
-      partialStageId: partial.value?.stageId ?? createdStageId.value ?? null,
-      pendingTeamIds: [...(partial.value?.pendingTeamIds ?? [])],
-    },
-  });
+  // RF-014: sin cambios se recuerda solo el paso; con cambios, paso y valores.
+  draft.save(draftForStep(step.value, {
+    mode: mode.value,
+    selectedStageId: selectedStageId.value,
+    name: form.name,
+    stageOrder: form.stageOrder,
+    stageType: form.stageType,
+    teamIds: [...form.teamIds],
+    // RF-010: el borrador conserva la fase creada para reintentar tras recargar.
+    partialStageId: partial.value?.stageId ?? createdStageId.value ?? null,
+    pendingTeamIds: [...(partial.value?.pendingTeamIds ?? [])],
+  }, dirty.value));
 }
 
 async function loadStageTeams(): Promise<void> {
@@ -529,7 +524,8 @@ onMounted(() => {
 });
 
 draft.applyAfterMount((stored) => {
-  if (!stored || props.disabled) return;
+  // Un borrador con solo paso no aporta valores: mandan los del servidor.
+  if (!stored || !stored.values || props.disabled) return;
   const saved = stored.values;
   const wantsExisting = saved.mode === 'existing' && props.stages.length > 0;
   mode.value = wantsExisting ? 'existing' : 'create';

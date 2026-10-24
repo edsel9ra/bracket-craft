@@ -149,3 +149,20 @@ Plan: `specs/012-formularios-asistidos-y-navegacion/plan.md`. Spec aprobada: 51 
 
 Verificación (2026-10-23): `pnpm test` (484), `pnpm run typecheck`, `pnpm run build` y `pnpm run typecheck:e2e` en verde; `pytest -q` **981 passed / 256 skipped**; `RUN_DATABASE_TESTS=1 … pytest -q tests/test_roster_limits_db.py` **25 passed**; `pnpm run e2e:test` **VERDE (0)** con 5 pruebas (reintento intacto) y `operation-flow` en 60.8 s / 61.6 s en dos corridas consecutivas.
 Verificación de H-1/H-2/H-14 (2026-10-23): `pnpm test` **485** (la prueba que simulaba `history` se reescribió como doble del router: paso derivado de la dirección y `replace`/`push`), `pnpm run typecheck`, `pnpm run build` y `pnpm run typecheck:e2e` en verde; `pnpm run e2e:test` **VERDE (0)** con 5 pruebas (las tres del reintento **sin cambios**) y `operation-flow` en 87.9 s con 29 transiciones y los hitos `wizard-back-navigation`, `segment-at-limit`, `event-at-limit`, `event-limit-announced`, `segment-limit-announced` y `report-closed`. Backend sin cambios: `pytest -q` no se reejecutó en esta ronda.
+
+---
+
+## Opcionales del cierre (2026-10-23)
+
+Correcciones aprobadas por el usuario sobre los opcionales que dejó la revisión. No cambian RF ni contrato: precisan RF-014 y retiran código muerto.
+
+- [x] **C-1. El paso se recuerda también sin cambios.** El borrador de la pestaña persiste el **último paso visitado** aunque no haya cambios, guardando **solo el paso** (sin valores) en ese caso; con cambios sigue guardando paso y valores. Se mantienen la dirección como única fuente del paso, la normalización de entrada con `replace`, el atrás, la recarga y el resto de RF-014/WP-1. RF-014.
+  Hecho cuando: `cd frontend && pnpm test` pasa con «remembers the last visited step without changes and stores only the step» y «keeps the step and the values when there are changes»; volver de otra sección sin cambios devuelve al último paso, con cambios igual, la recarga lo conserva y un borrador con solo paso no aporta valores al formulario.
+- [x] **C-2. Retirar el modelo de sesión sin consumidores.** Quitar `createWizardSession`, `resolveWizardStart` y sus tipos de `frontend/app/utils/wizardStep.ts` (solo los usaban las pruebas) y adaptar las pruebas para mantener la cobertura sobre `stepFromAddress`, `namesWizardStep`, `stepChangeWrite`, `entryStepWrite` y la tabla de navegaciones. Sin RF (limpieza).
+  Hecho cuando: `grep` no encuentra importaciones de las funciones retiradas en `frontend/app/` y `cd frontend && pnpm test && pnpm run typecheck` pasan.
+- [x] **C-3. E2E de la normalización sin `?step=`.** Añadir al escenario `operation-flow` un hito que abra la configuración **sin `?step=`** desde el listado y compruebe que la dirección se normaliza al **primer paso** sin añadir historial (+0 por la normalización), que un atrás sale del asistente y que el paso mostrado y `aria-current` coinciden. Sin esperas fijas ni reintentos; sin tocar el escenario de reintento. RF-013, RF-019.
+  Hecho cuando: `cd frontend && pnpm run typecheck:e2e` y `pnpm run e2e:test` terminan en **0** y el artefacto de `operation-flow` incluye el hito `wizard-entry-normalized`.
+- [x] **C-4. Precisión documental.** El pseudocódigo de entrada del plan nombra el **paso de entrada propio de fases** (composición de una fase existente, RF-002) y queda constancia de que el número de muestras `retrying` por vista es variable y **no** es un invariante del veredicto. Sin RF (documentación).
+  Hecho cuando: `plan.md` §3.1 y `AGENTS.md` reflejan ambas precisiones sin duplicar el contrato del arnés.
+
+Verificación de los opcionales (2026-10-23): `pnpm test` **485**, `pnpm run typecheck`, `pnpm run build` y `pnpm run typecheck:e2e` en verde (Node 24/pnpm 12.12.1 en `web`); `grep` sin importaciones de `createWizardSession`/`resolveWizardStart` en `frontend/app/`; `pnpm run e2e:test` **VERDE (0)** con 5 pruebas y `operation-flow` en 117.4 s / 30 transiciones, con el hito nuevo `wizard-entry-normalized` primero. Backend sin cambios: `pytest -q` no se reejecutó.

@@ -135,7 +135,7 @@ Resueltas con el usuario; **sustituyen** a las dudas de la fase 1. Todas son la 
 - **Paso alternativo:** conjunto de pasos del que se elige **exactamente uno**. El índice marca el elegido como completo y los demás como **alternativos**; no elegir ninguno impide confirmar.
 - **Estado de un paso:** `completo`, `incompleto`, `con error`, `omitido` (opcional sin configurar) o `alternativo` (no elegido).
 - **Paso en la dirección:** representación del paso actual en la dirección de la página, de modo que abrir o recargar esa dirección devuelva al usuario a ese paso.
-- **Borrador de asistente:** estado de un asistente —paso actual y valores introducidos— mientras la pestaña está abierta. Vive en el almacenamiento de sesión de esa pestaña: no se envía al servidor, no se comparte con otras pestañas ni con otros dispositivos y se descarta al cerrar la pestaña. Es distinto del borrador local del partido (abajo).
+- **Borrador de asistente:** estado de un asistente —paso actual y valores introducidos— mientras la pestaña está abierta. Vive en el almacenamiento de sesión de esa pestaña: no se envía al servidor, no se comparte con otras pestañas ni con otros dispositivos y se descarta al cerrar la pestaña. Recuerda el último paso visitado **también sin cambios**; en ese caso conserva solo el paso y no contiene valores. Es distinto del borrador local del partido (abajo).
 - **Borrador local del partido:** estado sin guardar de la operación de un partido que **ya existe hoy** en el almacenamiento local del navegador, por usuario, organización y partido. Guarda los **eventos** registrados y los **datos del formulario de cierre** —marcador, penales, ganador y motivo—, se restaura al volver y se descarta al cerrar el acta o con su acción explícita. **No guarda la resolución prevista** y no contiene nombre, documento ni fecha de nacimiento de ningún jugador.
 - **Datos válidos:** los que cumplen las validaciones del cliente que ya existen para ese formulario. La validez definitiva la determina el servidor; el cliente no relaja ni amplía ninguna regla de negocio.
 - **Alta de equipo:** registro de un equipo en el torneo, con nombre y código. **No** lo inscribe en ninguna fase.
@@ -202,7 +202,7 @@ Se describen como comportamiento observable, sin detallar la construcción.
 | **Guardado** | El servidor acepta | Confirmación con los valores devueltos; estado «sin cambios» | Valores del servidor |
 | **Guardado parcial** | La fase se creó y la inscripción falló | Aviso explícito, fase creada sin equipos y acción de reintentar sobre esa fase | La fase creada y la selección de equipos |
 | **Rechazado por el servidor** | El servidor responde con error de negocio o de validación | Motivo comprensible en el idioma activo, sin cerrar el asistente | Todos los pasos y valores |
-| **Recuperado tras recarga** | La página se recarga con el asistente abierto | El mismo paso y los mismos datos, con el aviso de cambios sin guardar | Paso actual y todos los valores de esa pestaña |
+| **Recuperado tras recarga** | La página se recarga con el asistente abierto | El mismo paso y los mismos datos, con el aviso de cambios sin guardar | Paso actual y, si hay cambios, todos los valores de esa pestaña |
 | **Solo lectura** | Versión no editable o falta de permiso | Campos legibles y sin acciones de escritura; se explica por qué | — |
 | **Descarte** | Se ejecuta la acción explícita de descartar | Confirmación antes de descartar | Nada, tras confirmar |
 
@@ -324,10 +324,11 @@ Se describen como comportamiento observable, sin detallar la construcción.
   - Recargar conserva el paso.
   - La dirección de un paso nunca contiene valores del formulario.
 
-- **RF-014.** MIENTRAS la pestaña siga abierta, EL SISTEMA conservará el borrador del asistente —paso actual y valores introducidos— en el almacenamiento de sesión de esa pestaña, de modo que recargar o cambiar de sección no pierda nada; el borrador no se comparte con otras pestañas ni con otros dispositivos y se descarta al cerrar la pestaña o la sesión.
+- **RF-014.** MIENTRAS la pestaña siga abierta, EL SISTEMA conservará el borrador del asistente —paso actual y valores introducidos— en el almacenamiento de sesión de esa pestaña, de modo que recargar o cambiar de sección no pierda nada; el borrador no se comparte con otras pestañas ni con otros dispositivos y se descarta al cerrar la pestaña o la sesión. El **último paso visitado se recuerda también cuando no hay cambios**: en ese caso el borrador contiene solo el paso y ningún valor.
   *Criterios de aceptación:*
   - Recargar conserva el paso y todos los valores introducidos hasta ese momento, incluidos los que estaban en corrección.
-  - Cambiar de sección y volver devuelve al usuario al mismo paso con los mismos datos.
+  - Cambiar de sección y volver devuelve al usuario al mismo paso con los mismos datos, **haya o no cambios**; sin cambios, el último paso visitado se recuerda igualmente.
+  - Sin cambios no se persiste ningún valor: el borrador guarda solo el paso y los valores mostrados siguen siendo los del servidor. Un objeto de valores vacío nunca se guarda.
   - Abrir la misma dirección en otra pestaña o en otro dispositivo empieza desde los valores del servidor: el borrador no se comparte.
   - Cerrar la pestaña o finalizar la sesión descarta el borrador; al volver no se recupera.
   - Nada del borrador se escribe en el servidor ni en almacenamiento persistente del navegador; la verificación lo comprueba sobre las peticiones emitidas y el almacenamiento usado.

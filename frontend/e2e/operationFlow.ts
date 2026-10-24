@@ -4,6 +4,9 @@
  *
  * Recorre por la interfaz, con el idioma fijado y localizadores accesibles:
  *
+ * 0. **Entrada sin `?step=` (RF-013, RF-014):** la configuración se abre desde
+ *    el listado, la dirección se normaliza al primer paso **sin añadir
+ *    historial** y un atrás sale del asistente.
  * 1. Torneo demo, **versión publicada**: el paso de reglas es de solo lectura,
  *    muestra las cuatro modalidades y 11v11 por defecto.
  * 2. **Teclado (RF-012, RNF-005, criterio 8):** los tres asistentes se recorren
@@ -528,6 +531,49 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
     });
 
     // ------------------------------------------------------------------
+    // 0. Entrada sin `?step=` (RF-013, RF-014): la configuración se abre desde
+    //    el listado y la dirección se normaliza al paso de entrada **sin
+    //    añadir historial** (+0 por la normalización); un atrás desde ahí sale
+    //    del asistente y el paso mostrado coincide con `aria-current`.
+    // ------------------------------------------------------------------
+    const rulesWizard = sectionFor(page, labelText(E2E_LABELS.rulesWizard));
+    await openSettled(page, '/workspace');
+    await check('entrada-sin-paso-normalizada', async () => {
+      const entry = RULES_STEPS[0];
+      if (!entry) {
+        throw new OperationFlowFailure('infrastructure', 'el asistente de reglas no declara pasos');
+      }
+      const configure = page
+        .locator(`a[href="/workspace/tournaments/${tournamentId}"]`)
+        .first();
+      await expect(configure).toBeVisible({ timeout: MAX_MS.initialConnected });
+
+      const historyBefore = await page.evaluate(() => window.history.length);
+      await configure.click();
+      await expectStepUrl(page, entry.id);
+      // La normalización usa `replace`: no añade ninguna entrada. La única
+      // entrada nueva es la de la navegación al abrir la configuración.
+      const historyAfter = await page.evaluate(() => window.history.length);
+      if (historyAfter !== historyBefore + 1) {
+        throw new OperationFlowFailure(
+          'behavioral',
+          `la normalización añadió ${historyAfter - historyBefore - 1} entradas de historial de más`,
+        );
+      }
+
+      const buttons = stepButtons(page, rulesWizard);
+      await expect(rulesWizard.locator('h3.wizard-step-title')).toHaveText(entry.label);
+      await expect(buttons.nth(0)).toHaveAttribute('aria-current', 'step');
+      await expect(buttons.nth(1)).not.toHaveAttribute('aria-current', 'step');
+
+      // Atrás: sale del asistente al listado, no a otro paso.
+      await page.goBack();
+      await expect(page).toHaveURL(/\/workspace$/);
+      await expect(page.locator('section.wizard-shell')).toHaveCount(0);
+    });
+    record('wizard-entry-normalized');
+
+    // ------------------------------------------------------------------
     // 1. Versión publicada del torneo demo: solo lectura y formato por
     //    defecto. No se crea ningún borrador sobre un torneo en operación.
     // ------------------------------------------------------------------
@@ -542,8 +588,6 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       });
       await selectOptionContaining(versionSelect, 'Publicado');
     });
-
-    const rulesWizard = sectionFor(page, labelText(E2E_LABELS.rulesWizard));
 
     await check('reglas-solo-lectura', async () => {
       await expect(

@@ -97,20 +97,24 @@ Regla general: ninguna lee el reloj, el entorno ni el almacenamiento; reciben lo
 ```
 estado = {
   wizard, versionId, phaseId?, values, errors,
-  step  (de la dirección; por defecto el primero),
+  step  (de la dirección; por defecto el paso de entrada),
   dirty (valores ≠ valores del servidor)
 }
 
 al abrir:
-  step = parseStep(url.search, wizard) o primero
+  step = parseStep(url.search, wizard) o entryStep(wizard)
+         # entryStep es el paso de entrada propio del asistente:
+         # reglas y equipos, el del borrador de la pestaña o el primero;
+         # fases, la composición cuando se trabaja sobre una fase existente (RF-002)
   valores = servidor(versionId)                  # siempre, también con enlace directo
   si hay borradorDeSesion(wizard, torneo, versión):
-      valores = borrador.valores; step = borrador.step
+      si trae valores: valores = borrador.valores   # sin valores → solo recuerda el paso
+      step = borrador.step
   si step depende de un dato ausente (fase, en pases):
       pasoBloqueado(step, enlaceAlPasoQueLoAporta)
 
 al cambiar de paso:
-  guardarBorrador()          # solo si hay cambios
+  guardarBorrador()          # con cambios: paso y valores; sin cambios: solo el paso
   step = paso de la dirección  # la dirección es la única fuente del paso
   url.push(stepUrl(nuevo))   # una entrada de historial por paso del usuario
   # el navegador atrás devuelve al paso anterior, que la dirección nombra
@@ -135,6 +139,8 @@ al recargar: el estado se reconstruye desde el borrador (misma pestaña)
 al cambiar de versión/torneo: confirmar descarte y borrar borrador
 al cerrar la pestaña: el navegador descarta el almacenamiento de sesión
 ```
+
+El paso se persiste **también sin cambios** (solo el paso, sin valores): volver de otra sección devuelve al último paso visitado. Un borrador con solo paso no aporta valores —los del servidor mandan— y no sustituye el paso que la dirección nombra.
 
 ### 3.2 Fases: creación y composición no atómicas
 
@@ -333,7 +339,7 @@ No hay variables de entorno nuevas ni cambios en `.env.example`, `docker-compose
 ### 10.3 Frontend (`node:test`, sin DOM)
 
 - `tests/wizard-model.test.ts`: pasos por asistente, obligatorio/opcional/alternativo, estados, confirmación, tabla de navegaciones.
-- `tests/wizard-step.test.ts`: `parseStep`/`stepUrl`, paso ausente, paso inválido, enlace compartido, paso de entrada por asistente, `entryStepWrite`/`stepChangeWrite` sobre un **doble del router** (una entrada por cambio de paso y atrás al paso anterior).
+- `tests/wizard-step.test.ts`: `parseStep`/`stepUrl`, paso ausente, paso inválido, enlace compartido, paso de entrada por asistente, `entryStepWrite`/`stepChangeWrite` sobre un **doble del router** (una entrada por cambio de paso y atrás al paso anterior), y el borrador de la pestaña: recuerdo del paso **sin cambios** (solo el paso, sin valores), con cambios (paso y valores) y sin valores vacíos.
 - `tests/roster-limits.test.ts`: límites, estado por equipo, `0` = sin límite, mensajes.
 - `tests/roster-lock.test.ts`: regla duplicada — jornada de referencia, todos confirmados, no cancelados.
 - `tests/match-resolution.test.ts`: máximos por resolución, `resolutionChangeOutcome` (ok/confirm/blocked), borrador local sin resolución.
@@ -341,6 +347,7 @@ No hay variables de entorno nuevas ni cambios en `.env.example`, `docker-compose
 - `tests/labels.test.ts` (ampliar): roles desde una fuente, `owner` incluido, código desconocido tal cual.
 - `tests/navigation.test.ts` (ampliar): sección activa, redirecciones y anclas conservadas.
 - `tests/rules-config.test.ts` (ampliar): tres claves, `min ≤ max`, defaults y paridad de claves.
+- El modelo del paso es puro y sin estado de sesión: `createWizardSession` y `resolveWizardStart` se retiran por no tener ningún consumidor en la aplicación; la cobertura se mantiene sobre las funciones vivas (`stepFromAddress`, `namesWizardStep`, `stepChangeWrite`, `entryStepWrite`) y la tabla de navegaciones.
 
 ### 10.4 Navegador y compilación
 

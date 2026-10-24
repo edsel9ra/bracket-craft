@@ -56,6 +56,7 @@ export const OPERATION_FLOW_STATES = [
   'wizard-keyboard-rules',
   'wizard-keyboard-phases',
   'wizard-keyboard-teams',
+  'wizard-entry-normalized',
   'wizard-error-associated',
   'wizard-error-corrected',
   'wizard-back-navigation',

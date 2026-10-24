@@ -4,24 +4,21 @@ import test from 'node:test';
 
 import {
   createWizardDraftStore,
+  draftForStep,
   draftKey,
   parseDraft,
   serializeDraft,
-  type WizardDraft,
   type WizardDraftContext,
   type WizardStorage,
 } from '../app/utils/wizardDraft.ts';
 import {
   NAVIGATION_RULES,
-  blockedStepHref,
-  createWizardSession,
   defaultStepId,
   entryStepWrite,
   namesWizardStep,
   parseStep,
   requestedStep,
   resolveNavigation,
-  resolveWizardStart,
   shouldConfirmNavigation,
   stepBlock,
   stepChangeWrite,
@@ -29,7 +26,6 @@ import {
   stepFromLocation,
   stepUrl,
   type NavigationKind,
-  type WizardApi,
 } from '../app/utils/wizardStep.ts';
 import { wizardSteps, type WizardKind, type WizardStepId, type WizardValues } from '../app/utils/wizardModel.ts';
 
@@ -58,17 +54,6 @@ function memoryStorage(initial: Record<string, string> = {}) {
     },
   };
   return { data, storage: storage satisfies WizardStorage };
-}
-
-function createApiDouble(): WizardApi & { calls: string[] } {
-  const calls: string[] = [];
-  return {
-    calls,
-    request: async (path: string) => {
-      calls.push(path);
-      return {};
-    },
-  };
 }
 
 // RF-013: sin `?step=` el asistente abre en su primer paso.
@@ -134,61 +119,45 @@ test('writes the step in the address without touching the rest', () => {
   assert.doesNotMatch(url, /win|gameFormat|scoring/);
 });
 
-// RF-015: enlace directo sin borrador. Reglas toma los valores del servidor.
-test('opens a shared rules step with the values of the server', () => {
-  const start = resolveWizardStart({
-    wizard: 'rules',
-    location: '/workspace/tournaments/t1?step=rules.format',
-    serverValues: { gameFormat: '7v7' },
-    draft: null,
-  });
+// RF-013/RF-015: un enlace directo a un paso válido se respeta, también sin
+// borrador, y un borrador con solo paso no aporta valores: mandan los del
+// servidor.
+test('respects a shared step and takes the values from the server', () => {
+  assert.equal(stepFromAddress('rules', '/workspace/tournaments/t1?step=rules.format'), 'rules.format');
+  assert.equal(stepFromAddress('teams', '/workspace/tournaments/t1?step=teams.review'), 'teams.review');
 
-  assert.equal(start.step, 'rules.format');
-  assert.deepEqual(start.values, { gameFormat: '7v7' });
-  assert.equal(start.blocked, null);
-  assert.equal(start.source, 'server');
-});
+  const { storage } = memoryStorage();
+  createWizardDraftStore(CONTEXT, storage).save(draftForStep('rules.discipline', { gameFormat: '11v11' }, false));
+  const draft = createWizardDraftStore(CONTEXT, storage).read();
 
-// RF-015: equipos muestra el paso vacío, sin redirigir.
-test('opens a shared teams step empty, incomplete and without a redirect', () => {
-  const start = resolveWizardStart({
-    wizard: 'teams',
-    location: '/workspace/tournaments/t1?step=teams.review',
-    serverValues: {},
-    draft: null,
-  });
-
-  assert.equal(start.step, 'teams.review');
-  assert.deepEqual(start.values, {});
-  assert.equal(start.blocked, null);
+  // La dirección pedida manda sobre el paso del borrador.
+  assert.equal(
+    stepFromAddress('rules', '/workspace/tournaments/t1?step=rules.format', draft?.step ?? defaultStepId('rules')),
+    'rules.format',
+  );
+  // Sin dirección, el borrador solo aporta el paso; no lleva valores.
+  assert.equal(stepFromAddress('rules', LOCATION, draft?.step ?? defaultStepId('rules')), 'rules.discipline');
+  assert.equal(draft?.values, null);
 });
 
 // RF-015: la composición de una fase sin fase se muestra bloqueada con enlace
 // al paso que aporta el dato; la dirección pedida se respeta.
 test('blocks the phase composition without a phase and links to its identity', () => {
-  const start = resolveWizardStart({
-    wizard: 'phases',
-    location: '/workspace/tournaments/t1?step=phases.composition',
-    serverValues: {},
-    draft: null,
-    data: { stageId: null },
-  });
-
-  assert.equal(start.step, 'phases.composition', 'the requested step must not be replaced');
-  assert.ok(start.blocked);
-  assert.equal(start.blocked.missing, 'stageId');
-  assert.equal(start.blocked.provider, 'phases.identity');
-  assert.equal(start.blocked.messageKey, 'wizard.step.blockedPhase');
-  assert.equal(start.blocked.actionKey, 'wizard.step.blockedPhaseAction');
-  assert.equal(
-    blockedStepHref('/workspace/tournaments/t1?step=phases.composition', start.blocked),
-    '/workspace/tournaments/t1?step=phases.identity',
-  );
+  const block = stepBlock('phases.composition', { stageId: null });
+  assert.ok(block);
+  assert.equal(block.missing, 'stageId');
+  assert.equal(block.provider, 'phases.identity');
+  assert.equal(block.messageKey, 'wizard.step.blockedPhase');
+  assert.equal(block.actionKey, 'wizard.step.blockedPhaseAction');
 
   assert.equal(stepBlock('phases.composition', { stageId: 'stage-1' }), null);
   assert.equal(stepBlock('phases.identity', {}), null);
   assert.equal(stepBlock('rules.substitutions', {}), null);
-  assert.equal(blockedStepHref(LOCATION, null), null);
+  // El paso pedido se mantiene: el enlace se ofrece, no se aplica solo.
+  assert.equal(
+    stepFromAddress('phases', '/workspace/tournaments/t1?step=phases.composition'),
+    'phases.composition',
+  );
 });
 
 // RF-014/WP-1: la clave asocia usuario, organización, torneo, versión y asistente.
@@ -235,46 +204,35 @@ test('a reload restores the step and every value, invalid ones included', () => 
     gameFormat: '7v7',
   };
 
-  createWizardDraftStore(CONTEXT, storage).save({ step: 'rules.discipline', values });
+  createWizardDraftStore(CONTEXT, storage).save(draftForStep('rules.discipline', values, true));
 
   const draft = createWizardDraftStore(CONTEXT, storage).read();
   assert.deepEqual(draft, { step: 'rules.discipline', values });
-
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: '/workspace/tournaments/t1?step=rules.discipline',
-    serverValues: { gameFormat: '11v11' },
-    draft,
-    api: createApiDouble(),
-  });
-
-  assert.equal(session.step, 'rules.discipline');
-  assert.deepEqual(session.values, values);
-  assert.equal(session.dirty, true);
+  assert.equal(
+    stepFromAddress('rules', LOCATION, draft?.step ?? defaultStepId('rules')),
+    'rules.discipline',
+  );
+  assert.deepEqual(draft?.values, values);
 });
 
 // RF-013: la dirección manda sobre el paso guardado; el borrador sigue aportando los valores.
 test('the address wins over the stored step and the draft keeps the values', () => {
   const { storage } = memoryStorage();
   const values = { scoring: { win: 3 } };
-  createWizardDraftStore(CONTEXT, storage).save({ step: 'rules.discipline', values });
+  createWizardDraftStore(CONTEXT, storage).save(draftForStep('rules.discipline', values, true));
 
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: '/workspace/tournaments/t1?step=rules.scoring',
-    serverValues: {},
-    draft: createWizardDraftStore(CONTEXT, storage).read(),
-    api: createApiDouble(),
-  });
-
-  assert.equal(session.step, 'rules.scoring');
-  assert.deepEqual(session.values, values);
+  const draft = createWizardDraftStore(CONTEXT, storage).read();
+  assert.equal(
+    stepFromAddress('rules', '/workspace/tournaments/t1?step=rules.scoring', draft?.step ?? defaultStepId('rules')),
+    'rules.scoring',
+  );
+  assert.deepEqual(draft?.values, values);
 });
 
 // RF-014: otra pestaña no comparte el borrador; la versión y el torneo tampoco.
 test('another tab, version or tournament never applies the draft', () => {
   const tabA = memoryStorage();
-  createWizardDraftStore(CONTEXT, tabA.storage).save({ step: 'rules.format', values: { gameFormat: '7v7' } });
+  createWizardDraftStore(CONTEXT, tabA.storage).save(draftForStep('rules.format', { gameFormat: '7v7' }, true));
 
   const otherTab = memoryStorage();
   assert.equal(createWizardDraftStore(CONTEXT, otherTab.storage).read(), null);
@@ -283,16 +241,8 @@ test('another tab, version or tournament never applies the draft', () => {
   assert.equal(createWizardDraftStore({ ...CONTEXT, tournamentId: 'tournament-2' }, tabA.storage).read(), null);
   assert.equal(createWizardDraftStore({ ...CONTEXT, organizationId: 'org-2' }, tabA.storage).read(), null);
 
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: '/workspace/tournaments/t1',
-    serverValues: { gameFormat: '11v11' },
-    draft: createWizardDraftStore({ ...CONTEXT, versionId: 'version-2' }, tabA.storage).read(),
-    api: createApiDouble(),
-  });
-  assert.equal(session.step, 'rules.scoring');
-  assert.deepEqual(session.values, { gameFormat: '11v11' });
-  assert.equal(session.dirty, false);
+  // Sin borrador aplicable se abre en el primer paso, no en el de la otra pestaña.
+  assert.equal(stepFromAddress('rules', LOCATION), 'rules.scoring');
 });
 
 // RF-014/RF-008: descartar borra el borrador de la pestaña y vuelve a lo guardado.
@@ -397,7 +347,8 @@ test('declares the navigation table of the spec in one place', () => {
   );
 });
 
-// RF-004: recorrer todos los pasos de ida y vuelta conserva cada valor, válido o no.
+// RF-004/RF-014: recorrer todos los pasos de ida y vuelta conserva cada valor,
+// válido o no: el borrador guarda los mismos valores con el paso nuevo.
 test('walking every step forward and back keeps every value', () => {
   const values: WizardValues = {
     scoring: { win: 3, loss: 'not-a-number' },
@@ -407,126 +358,80 @@ test('walking every step forward and back keeps every value', () => {
     gameFormat: '11v11',
     substitutions: { max_per_team: 99 },
   };
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: LOCATION,
-    serverValues: {},
-    api: createApiDouble(),
-  });
-
-  session.setValues(values);
-  assert.equal(session.dirty, true);
+  const { storage } = memoryStorage();
+  const store = createWizardDraftStore(CONTEXT, storage);
 
   const ids = stepIds('rules');
-  for (const id of ids) session.goTo(id);
-  for (const id of [...ids].reverse()) session.goTo(id);
-
-  assert.equal(session.step, 'rules.scoring');
-  assert.deepEqual(session.values, values);
+  for (const id of ids) {
+    assert.equal(store.save(draftForStep(id, values, true)), true);
+    const draft = store.read();
+    assert.equal(draft?.step, id);
+    assert.deepEqual(draft?.values, values);
+  }
+  for (const id of [...ids].reverse()) {
+    assert.equal(store.save(draftForStep(id, values, true)), true);
+    assert.deepEqual(store.read()?.values, values);
+  }
 });
 
-// RF-013/RF-004: cambiar de paso escribe la dirección y nunca la red.
-test('changing step writes the address but never the network', () => {
-  const api = createApiDouble();
-  const urls: string[] = [];
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: LOCATION,
-    serverValues: {},
-    api,
-    writeLocation: (url) => urls.push(url),
-  });
+// RF-013/RF-019: cada cambio de paso apila una sola entrada de historial con el
+// paso pedido y nunca con valores del formulario; atrás recorre los pasos.
+test('every step change pushes one address without form values', () => {
+  const { router, apply } = createRouterDouble(['/workspace', LOCATION]);
+  apply(entryStepWrite(router.current, stepFromAddress('rules', router.current)));
 
-  for (const id of stepIds('rules')) session.goTo(id);
-  for (const id of [...stepIds('rules')].reverse()) session.goTo(id);
-  session.goTo(session.step);
+  const ids = stepIds('rules');
+  let current = stepFromAddress('rules', router.current);
+  for (const id of ids.slice(1)) {
+    apply(stepChangeWrite(router.current, current, id));
+    assert.equal(stepFromLocation(router.current), id);
+    assert.equal(router.stack.length, 2 + ids.indexOf(id));
+    assert.doesNotMatch(router.current, /win=|gameFormat=|scoring=/);
+    current = id;
+  }
 
-  assert.deepEqual(urls, [
-    '/workspace/tournaments/t1?step=rules.tiebreakers#configuracion',
-    '/workspace/tournaments/t1?step=rules.discipline#configuracion',
-    '/workspace/tournaments/t1?step=rules.resolution#configuracion',
-    '/workspace/tournaments/t1?step=rules.format#configuracion',
-    '/workspace/tournaments/t1?step=rules.substitutions#configuracion',
-    '/workspace/tournaments/t1?step=rules.registration#configuracion',
-    '/workspace/tournaments/t1?step=rules.overrides#configuracion',
-    '/workspace/tournaments/t1?step=rules.registration#configuracion',
-    '/workspace/tournaments/t1?step=rules.substitutions#configuracion',
-    '/workspace/tournaments/t1?step=rules.format#configuracion',
-    '/workspace/tournaments/t1?step=rules.resolution#configuracion',
-    '/workspace/tournaments/t1?step=rules.discipline#configuracion',
-    '/workspace/tournaments/t1?step=rules.tiebreakers#configuracion',
-    '/workspace/tournaments/t1?step=rules.scoring#configuracion',
-  ]);
-  assert.equal(api.calls.length, 0, 'no step navigation may reach the API');
+  for (let index = ids.length - 2; index >= 0; index -= 1) {
+    const previousLocation = router.back();
+    assert.ok(previousLocation, `step ${index} must be reachable with back`);
+    assert.equal(stepFromLocation(previousLocation), ids[index]);
+  }
+  assert.equal(router.back(), '/workspace');
 });
 
-// RF-014: el borrador se guarda al cambiar de paso solo si hay cambios.
-test('saves the tab draft on a step change only when there are changes', () => {
-  const saved: WizardDraft[] = [];
-  const session = createWizardSession({
-    wizard: 'rules',
-    location: LOCATION,
-    serverValues: { gameFormat: '11v11' },
-    api: createApiDouble(),
-    persist: (draft) => saved.push(draft),
-  });
+// RF-014: sin cambios se recuerda solo el paso y no se guardan valores.
+test('remembers the last visited step without changes and stores only the step', () => {
+  const { storage, data } = memoryStorage();
+  const store = createWizardDraftStore(CONTEXT, storage);
 
-  session.goTo('rules.tiebreakers');
-  assert.deepEqual(saved, [], 'an untouched assistant writes no draft');
+  const stepOnly = draftForStep('rules.discipline', { gameFormat: '11v11' }, false);
+  assert.deepEqual(stepOnly, { step: 'rules.discipline', values: null });
+  assert.equal(store.save(stepOnly), true);
+  assert.deepEqual(store.read(), { step: 'rules.discipline', values: null });
 
-  session.setValues({ ...session.values, scoring: { win: 3 } });
-  assert.deepEqual(saved.at(-1), {
-    step: 'rules.tiebreakers',
-    values: { gameFormat: '11v11', scoring: { win: 3 } },
-  });
+  // Volver de otra sección sin `?step=`: el último paso visitado.
+  const draft = store.read();
+  assert.equal(stepFromAddress('rules', LOCATION, draft?.step ?? defaultStepId('rules')), 'rules.discipline');
+  // Recargar (misma pestaña, mismo borrador) lo conserva.
+  const reloaded = createWizardDraftStore(CONTEXT, storage).read();
+  assert.equal(stepFromAddress('rules', LOCATION, reloaded?.step ?? defaultStepId('rules')), 'rules.discipline');
 
-  session.goTo('rules.discipline');
-  assert.deepEqual(saved.at(-1), {
-    step: 'rules.discipline',
-    values: { gameFormat: '11v11', scoring: { win: 3 } },
-  });
-
-  session.setValues({ gameFormat: '11v11' });
-  assert.equal(session.dirty, false);
+  // No se persiste ningún valor, ni vacío.
+  assert.equal(data.size, 1);
+  assert.equal(storage.getItem(store.key ?? '')?.includes('values'), false);
+  assert.deepEqual(draftForStep('rules.discipline', {}, true), { step: 'rules.discipline', values: null });
 });
 
-// RF-008: el descarte explícito devuelve los valores del servidor y borra el borrador.
-test('discarding restores the server values and clears the tab draft', () => {
-  let clears = 0;
-  const session = createWizardSession({
-    wizard: 'teams',
-    location: '/workspace/tournaments/t1?step=teams.bulk',
-    serverValues: { name: 'Alpha' },
-    api: createApiDouble(),
-    clearDraft: () => {
-      clears += 1;
-    },
-  });
+// RF-014: con cambios se guardan el paso y todos los valores.
+test('keeps the step and the values when there are changes', () => {
+  const values: WizardValues = { scoring: { win: 3 }, gameFormat: '7v7' };
+  const withChanges = draftForStep('rules.format', values, true);
+  assert.deepEqual(withChanges, { step: 'rules.format', values });
 
-  session.setValues({ name: 'Beta', bulkCsv: 'name;code' });
-  assert.equal(session.dirty, true);
-
-  session.discard();
-  assert.deepEqual(session.values, { name: 'Alpha' });
-  assert.equal(session.dirty, false);
-  assert.equal(session.step, 'teams.bulk', 'discarding does not navigate by itself');
-  assert.equal(clears, 1);
-});
-
-// RF-015: al existir la fase, la composición deja de estar bloqueada sin salir del paso.
-test('a created phase unblocks the composition in place', () => {
-  const session = createWizardSession({
-    wizard: 'phases',
-    location: '/workspace/tournaments/t1?step=phases.composition',
-    serverValues: {},
-    api: createApiDouble(),
-    data: { stageId: null },
-  });
-
-  assert.ok(session.blocked);
-  session.setData({ stageId: 'stage-1' });
-  assert.equal(session.blocked, null);
-  assert.equal(session.step, 'phases.composition');
+  const { storage } = memoryStorage();
+  createWizardDraftStore(CONTEXT, storage).save(withChanges);
+  const draft = createWizardDraftStore(CONTEXT, storage).read();
+  assert.deepEqual(draft, { step: 'rules.format', values });
+  assert.equal(stepFromAddress('rules', LOCATION, draft?.step ?? defaultStepId('rules')), 'rules.format');
 });
 
 // RF-013/RF-019: la dirección es la **única** fuente del paso. Una dirección
@@ -703,6 +608,30 @@ const teamsWizardSource = readFileSync(
   new URL('../app/components/TeamsWizard.vue', import.meta.url),
   'utf8',
 );
+
+// RF-014: los tres asistentes guardan el borrador con `draftForStep` —sin
+// cambios, solo el paso— y un borrador con solo paso nunca sustituye los
+// valores del servidor.
+test('the assistants remember the step and ignore a step-only draft when restoring values', () => {
+  for (const [name, source] of [
+    ['rules', rulesWizardSource],
+    ['phases', phasesWizardSource],
+    ['teams', teamsWizardSource],
+  ] as const) {
+    assert.match(source, /draftForStep\(/, `${name} must persist the step without changes`);
+    assert.match(source, /!stored\.values/, `${name} must not apply values of a step-only draft`);
+    // Sin cambios no se borra el borrador: se recuerda el paso.
+    assert.doesNotMatch(source, /if \(!dirty\.value\) \{\s*draft\.clear\(\);/, name);
+    assert.doesNotMatch(source, /if \(!hasChanges\(\)\) \{\s*draft\.clear\(\);/, name);
+  }
+});
+
+// C-2: el modelo del paso no conserva estado de sesión ni un resolutor de
+// apertura; solo las funciones puras que usan la dirección y el composable.
+test('the step model has no session state left', () => {
+  const source = readFileSync(new URL('../app/utils/wizardStep.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /createWizardSession|resolveWizardStart|WizardSession|WizardStart|WizardApi/);
+});
 
 // RF-008: el cambio de versión y de torneo se intercepta con la misma tabla de
 // navegaciones; si el usuario cancela, la versión y el borrador no cambian.
