@@ -96,6 +96,43 @@ pnpm install
 pnpm dev
 ```
 
+## Acceso con Google
+
+El acceso con Google usa **solo el flujo de redirección con código**: el navegador recibe la dirección del proveedor, el código se canjea en el servidor y la sesión se entrega con la cookie existente. Ningún token del proveedor pasa por el navegador.
+
+**Configuración.** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_AUDIENCE` (= `client_id`) ya existían; `GOOGLE_REDIRECT_URI` es obligatoria cuando Google está habilitado, debe ser una URL absoluta `http(s)` y registrarse en Google Cloud Console con la ruta exacta `{API pública}/api/v1/auth/google/callback`. Su valor de desarrollo está en `.env.example`. Sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` el flujo queda deshabilitado.
+
+| Endpoint | Respuesta |
+|---|---|
+| `GET /auth/google/status` | `200 {"enabled": bool}` (público, sin secretos) |
+| `POST /auth/google/start` | Cuerpo `{"flow": "login" o "link", "redirect": texto o null}` → `200 {"authorization_url": …}`; guarda el intento y fija `bc_oauth_state` (`HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth/google`, `Max-Age=600`) |
+| `GET /auth/google/callback` | Login → `302 {frontend}/auth/callback?next=…` + cookie de sesión; vinculación → `302 /account/google?notice=GOOGLE_LINK_SUCCESS`; error → `302 /login?error=<CODE>` (o `/account/google?error=<CODE>` en la vinculación) |
+| `GET /auth/session` | `200 {"user_id", "organization_id"}` (primera organización del orden estable o `null`) |
+| `GET /auth/google/link` | `200 {"linked": bool}`; sin sesión, `401` |
+| `POST /organizations` | `{"name", "slug"}` → `201 {id, name, slug, organization_user_id}`; `409` sin `code` si la cuenta ya tiene organización; `409 ORGANIZATION_SLUG_TAKEN` si el identificador está ocupado |
+
+**Estado e intentos.** El intento vive en Redis con clave `sha256(state)` y TTL de 600 s; se consume con `GETDEL` (un solo uso), se compara con la cookie del navegador y un inicio nuevo invalida el anterior. Si Redis no responde, el flujo responde **503 GOOGLE_UNAVAILABLE** sin escribir.
+
+**Catálogo de códigos (`?error=`):** `GOOGLE_UNAVAILABLE`, `GOOGLE_CANCELLED`, `GOOGLE_STATE_INVALID`, `GOOGLE_IDENTITY_INVALID`, `ACCOUNT_DISABLED`, `ACCOUNT_EXISTS_PASSWORD`, `ACCOUNT_EXISTS_GOOGLE_ONLY`, `GOOGLE_ALREADY_LINKED`, `LINK_EMAIL_MISMATCH`, `LINK_IDENTITY_TAKEN`, `RATE_LIMITED` y `ORGANIZATION_SLUG_TAKEN`; el aviso de éxito es `GOOGLE_LINK_SUCCESS`. El cliente traduce `code`; el servidor no muestra códigos crudos en pantalla.
+
+**Cuentas y vinculación.** Una cuenta creada con Google nace sin contraseña y con su identidad en la misma transacción. Una cuenta local con contraseña recibe `ACCOUNT_EXISTS_PASSWORD` y debe entrar con su contraseña y vincular desde **`/account/google`**; la vinculación exige que el correo verificado coincida, no emite ni revoca sesión y nunca reescribe `users.email`. Un identificador de Google ya vinculado a otra cuenta responde `LINK_IDENTITY_TAKEN`.
+
+**Organización opcional.** Una sesión sin organización llega a **`/organization`** (también enlazada desde `/login`): nombre e identificador explícitos, sin creación automática. «Ahora no» conserva la cuenta y la sesión y muestra el aviso de organización no activa.
+
+**Retiro del camino anterior.** `POST /auth/google` (el que aceptaba un `access_token` del navegador) responde **410** `{"detail": …, "code": "GOOGLE_IDENTITY_INVALID"}` antes de leer el cuerpo, sin rate limit, proveedor ni escritura. Un cliente antiguo recibe un rechazo estable, no un 404.
+
+**Log de acceso.** La API arranca con `--no-access-log` en desarrollo y producción y registra una línea saneada por petición —`access method=… path=… status=…`— sin consulta, cabeceras ni cuerpo: el `code`/`state` del proveedor nunca llega al log.
+
+**Migración 024 (runbook).** Aditiva: un pre-chequeo **aborta con el conteo** si una cuenta tiene más de una identidad del mismo proveedor (no borra, fusiona ni reescribe filas) y después añade `uq_auth_identity_user_provider UNIQUE (user_id, provider)`. Sin grants nuevos, sin RLS y sin tocar `init/01`.
+
+```sh
+MIGRATION_TARGET=024 $COMPOSE run --rm db-migrate
+```
+
+**Orden: migración 024 → código.** El código nuevo funciona con el esquema 023, pero sin la restricción dos intentos simultáneos podrían dejar dos identidades en una cuenta. **No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). El volumen limpio (`init/00-03` → 001-024) termina con el mismo esquema que una base migrada.
+
+**Comprobación manual (T30, no ejecutada).** El job `e2e` **no** cubre Google. En este entorno no hay un cliente OAuth real configurado, así que la corrida manual —alta, reentrada sin duplicados, `ACCOUNT_EXISTS_PASSWORD` + vinculación, cancelación + `GOOGLE_STATE_INVALID` y retorno a una invitación— **no se ejecutó**; no se registran fecha ni resultados. Queda pendiente para un entorno de desarrollo con credenciales reales y su resultado se anotará aquí (fecha, entorno y códigos observados, sin correos ni identificadores).
+
 ## Contratos de invitación, presentación y versión
 
 Contratos de la spec 008 y cambios declarados de la spec 009 (C-1 y C-2). Cliente y servidor se despliegan juntos; no hay periodo de transición ni parámetro que reactive el comportamiento anterior.
@@ -426,7 +463,7 @@ MIGRATION_TARGET=023 $COMPOSE run --rm db-migrate
 ## Alcance inicial
 
 - Registro y login por email/password.
-- Preparación de Google OAuth mediante `auth_identities`.
+- Acceso con Google por redirección, vinculación desde la cuenta y organización opcional.
 - Organizaciones con membresías y RBAC.
 - Torneos y versiones inmutables.
 - Configuración privada de versiones, fases, equipos y partidos.

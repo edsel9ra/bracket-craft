@@ -11,6 +11,8 @@ from app.core.config import (
     Settings,
 )
 
+GOOGLE_REDIRECT_URI = "http://localhost:8000/api/v1/auth/google/callback"
+
 
 def test_production_settings_reject_development_secrets():
     with pytest.raises(ValidationError):
@@ -73,6 +75,7 @@ def test_google_oauth_requires_a_matching_audience():
             google_client_id="client-id",
             google_client_secret="client-secret",
             google_audience="another-client-id",
+            google_redirect_uri=GOOGLE_REDIRECT_URI,
         )
 
 
@@ -81,6 +84,7 @@ def test_empty_google_audience_falls_back_to_client_id():
         google_client_id="client-id",
         google_client_secret="client-secret",
         google_audience="",
+        google_redirect_uri=GOOGLE_REDIRECT_URI,
     )
 
     assert settings.google_oauth_enabled is True
@@ -91,10 +95,80 @@ def test_missing_google_audience_falls_back_to_client_id():
     settings = Settings(
         google_client_id="client-id",
         google_client_secret="client-secret",
+        google_redirect_uri=GOOGLE_REDIRECT_URI,
     )
 
     assert settings.google_oauth_enabled is True
     assert settings.google_audience == "client-id"
+
+
+# ---------------------------------------------------------------------------
+# GOOGLE_REDIRECT_URI (RF-4, D-14)
+# ---------------------------------------------------------------------------
+
+
+def test_google_oauth_requires_a_redirect_uri():
+    with pytest.raises(ValidationError) as error:
+        Settings(
+            google_client_id="client-id",
+            google_client_secret="client-secret",
+        )
+
+    assert "GOOGLE_REDIRECT_URI" in str(error.value)
+
+
+def test_enabled_google_oauth_with_an_empty_redirect_uri_fails():
+    with pytest.raises(ValidationError) as error:
+        Settings(
+            google_client_id="client-id",
+            google_client_secret="client-secret",
+            google_redirect_uri="   ",
+        )
+
+    assert "GOOGLE_REDIRECT_URI" in str(error.value)
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_empty_google_redirect_uri_is_treated_as_absent(value):
+    settings = Settings(google_redirect_uri=value)
+
+    assert settings.google_redirect_uri is None
+    assert settings.google_oauth_enabled is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/api/v1/auth/google/callback",
+        "api/v1/auth/google/callback",
+        "auth/google/callback",
+        "ftp://localhost:8000/api/v1/auth/google/callback",
+        "javascript:alert(1)",
+        "https://",
+        "http:///callback",
+        "//localhost:8000/callback",
+    ],
+)
+def test_google_redirect_uri_must_be_an_absolute_http_url(value):
+    with pytest.raises(ValidationError) as error:
+        Settings(google_redirect_uri=value)
+
+    assert "GOOGLE_REDIRECT_URI" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://localhost:8000/api/v1/auth/google/callback",
+        "https://api.example.test/api/v1/auth/google/callback",
+        "HTTPS://API.EXAMPLE.TEST/api/v1/auth/google/callback",
+    ],
+)
+def test_google_redirect_uri_accepts_absolute_http_urls(value):
+    settings = Settings(google_redirect_uri=value)
+
+    assert settings.google_redirect_uri == value
+
 
 
 def test_empty_google_audience_without_oauth_stays_disabled():
@@ -164,6 +238,9 @@ def test_settings_read_the_seven_recovered_variables_from_the_environment(monkey
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-from-env")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret-from-env")
     monkeypatch.setenv("GOOGLE_AUDIENCE", "client-from-env")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI", "https://api.example.test/api/v1/auth/google/callback"
+    )
     monkeypatch.setenv("STORAGE_SIGNING_ENDPOINT_URL", "https://signing.example.test")
 
     settings = Settings(_env_file=None)
@@ -174,4 +251,8 @@ def test_settings_read_the_seven_recovered_variables_from_the_environment(monkey
     assert settings.max_request_body_bytes == 1048576
     assert settings.storage_presign_seconds == 600
     assert settings.google_audience == "client-from-env"
+    assert (
+        settings.google_redirect_uri
+        == "https://api.example.test/api/v1/auth/google/callback"
+    )
     assert settings.storage_signing_endpoint_url == "https://signing.example.test"
