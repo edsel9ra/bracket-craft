@@ -16,7 +16,6 @@ import {
   defaultStepId,
   entryStepWrite,
   namesWizardStep,
-  parseStep,
   requestedStep,
   resolveNavigation,
   shouldConfirmNavigation,
@@ -62,10 +61,16 @@ test('opens the first step when the address has no step', () => {
   assert.equal(defaultStepId('phases'), 'phases.identity');
   assert.equal(defaultStepId('teams'), 'teams.details');
 
-  assert.equal(parseStep('rules', null), 'rules.scoring');
-  assert.equal(parseStep('phases', undefined), 'phases.identity');
-  assert.equal(parseStep('teams', ''), 'teams.details');
-  assert.equal(parseStep('rules', '   '), 'rules.scoring');
+  for (const location of [
+    LOCATION,
+    '/workspace/tournaments/t1',
+    '/workspace/tournaments/t1?step=',
+    '/workspace/tournaments/t1?step=%20%20',
+  ]) {
+    assert.equal(stepFromAddress('rules', location), 'rules.scoring', location);
+    assert.equal(stepFromAddress('phases', location), 'phases.identity', location);
+    assert.equal(stepFromAddress('teams', location), 'teams.details', location);
+  }
 
   assert.equal(requestedStep('rules', null), null);
   assert.equal(stepFromLocation(LOCATION), null);
@@ -75,25 +80,27 @@ test('opens the first step when the address has no step', () => {
 // al paso por defecto y nunca se inventa otro.
 test('ignores an unknown, empty or foreign step', () => {
   for (const raw of ['nope', 'rules.unknown', 'phases.identity', 'wizard.rules.scoring', '0']) {
-    assert.equal(parseStep('rules', raw), 'rules.scoring', raw);
     assert.equal(requestedStep('rules', raw), null, raw);
+    assert.equal(stepFromAddress('rules', `/workspace/tournaments/t1?step=${raw}`), 'rules.scoring', raw);
   }
-  assert.equal(parseStep('phases', 'rules.scoring'), 'phases.identity');
+  assert.equal(stepFromAddress('phases', '/workspace/tournaments/t1?step=rules.scoring'), 'phases.identity');
   assert.equal(requestedStep('teams', 'teams.unknown'), null);
 });
 
 // RF-013: el valor llega de la dirección con espacios accidentales y sigue siendo el mismo paso.
 test('trims the step read from the address', () => {
   assert.equal(requestedStep('rules', ' rules.scoring '), 'rules.scoring');
-  assert.equal(parseStep('rules', ' rules.scoring '), 'rules.scoring');
+  assert.equal(stepFromAddress('rules', '/workspace/tournaments/t1?step=%20rules.scoring%20'), 'rules.scoring');
   assert.equal(stepFromLocation('/workspace/tournaments/t1?step=teams.review'), 'teams.review');
 });
 
 // RF-013: el paso válido de un enlace compartido se respeta (sin redirección silenciosa).
 test('keeps every valid step of its own assistant', () => {
-  for (const id of stepIds('rules')) assert.equal(parseStep('rules', id), id);
-  for (const id of stepIds('phases')) assert.equal(parseStep('phases', id), id);
-  for (const id of stepIds('teams')) assert.equal(parseStep('teams', id), id);
+  for (const wizard of ['rules', 'phases', 'teams'] satisfies WizardKind[]) {
+    for (const id of stepIds(wizard)) {
+      assert.equal(stepFromAddress(wizard, `/workspace/tournaments/t1?step=${id}`), id, id);
+    }
+  }
 
   assert.equal(stepFromLocation('/workspace/tournaments/t1?step=rules.format#configuracion'), 'rules.format');
 });
@@ -630,7 +637,7 @@ test('the assistants remember the step and ignore a step-only draft when restori
 // apertura; solo las funciones puras que usan la dirección y el composable.
 test('the step model has no session state left', () => {
   const source = readFileSync(new URL('../app/utils/wizardStep.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /createWizardSession|resolveWizardStart|WizardSession|WizardStart|WizardApi/);
+  assert.doesNotMatch(source, /createWizardSession|resolveWizardStart|parseStep|WizardSession|WizardStart|WizardApi/);
 });
 
 // RF-008: el cambio de versión y de torneo se intercepta con la misma tabla de

@@ -84,7 +84,7 @@ Regla general: ninguna lee el reloj, el entorno ni el almacenamiento; reciben lo
 | `stepState(step, values, errors)` | `(StepDefinition, Values, Errors) → 'complete' \| 'incomplete' \| 'error' \| 'omitted' \| 'alternative'` | Índice (RF-006) |
 | `canConfirm(wizard, states)` | `(WizardKind, StepState[]) → { ok: boolean; blockedBy: string[] }` | Confirmación (RF-006) |
 | `navigationConfirmation(kind, hasChanges)` | `(NavigationKind, boolean) → boolean` | Tabla de navegaciones de la spec (RF-008) |
-| `parseStep(search, wizard)` / `stepUrl(base, step)` | `(string, WizardKind) → StepId` / `(string, StepId) → string` | Paso en la dirección (RF-013) |
+| `stepFromAddress(wizard, location, entryStep)` / `stepUrl(location, step)` | `(WizardKind, string, StepId) → StepId` / `(string, StepId \| null) → string` | Paso en la dirección (RF-013) |
 | `isRosterLockActive(config, stages, matches)` | `(RulesConfig, Stage[], Match[]) → boolean` | Aviso de cierre (P4) |
 | `resolutionChangeOutcome(persistedSegments, draftEvents, newMax)` | `(…, number) → 'ok' \| 'confirm' \| 'blocked'` | Cambio de resolución (RF-033, P2) |
 | `matchLimitsFor(limits, resolution)` | `(OperationLimits, Resolution) → { maxMinute, addedMax }` | Eventos y segmentos (RF-032) |
@@ -102,7 +102,7 @@ estado = {
 }
 
 al abrir:
-  step = parseStep(url.search, wizard) o entryStep(wizard)
+  step = stepFromAddress(wizard, url, entryStep(wizard))
          # entryStep es el paso de entrada propio del asistente:
          # reglas y equipos, el del borrador de la pestaña o el primero;
          # fases, la composición cuando se trabaja sobre una fase existente (RF-002)
@@ -339,7 +339,7 @@ No hay variables de entorno nuevas ni cambios en `.env.example`, `docker-compose
 ### 10.3 Frontend (`node:test`, sin DOM)
 
 - `tests/wizard-model.test.ts`: pasos por asistente, obligatorio/opcional/alternativo, estados, confirmación, tabla de navegaciones.
-- `tests/wizard-step.test.ts`: `parseStep`/`stepUrl`, paso ausente, paso inválido, enlace compartido, paso de entrada por asistente, `entryStepWrite`/`stepChangeWrite` sobre un **doble del router** (una entrada por cambio de paso y atrás al paso anterior), y el borrador de la pestaña: recuerdo del paso **sin cambios** (solo el paso, sin valores), con cambios (paso y valores) y sin valores vacíos.
+- `tests/wizard-step.test.ts`: `stepFromAddress`/`stepUrl`, paso ausente, paso inválido, enlace compartido, paso de entrada por asistente, `entryStepWrite`/`stepChangeWrite` sobre un **doble del router** (una entrada por cambio de paso y atrás al paso anterior), y el borrador de la pestaña: recuerdo del paso **sin cambios** (solo el paso, sin valores), con cambios (paso y valores) y sin valores vacíos.
 - `tests/roster-limits.test.ts`: límites, estado por equipo, `0` = sin límite, mensajes.
 - `tests/roster-lock.test.ts`: regla duplicada — jornada de referencia, todos confirmados, no cancelados.
 - `tests/match-resolution.test.ts`: máximos por resolución, `resolutionChangeOutcome` (ok/confirm/blocked), borrador local sin resolución.
@@ -347,7 +347,7 @@ No hay variables de entorno nuevas ni cambios en `.env.example`, `docker-compose
 - `tests/labels.test.ts` (ampliar): roles desde una fuente, `owner` incluido, código desconocido tal cual.
 - `tests/navigation.test.ts` (ampliar): sección activa, redirecciones y anclas conservadas.
 - `tests/rules-config.test.ts` (ampliar): tres claves, `min ≤ max`, defaults y paridad de claves.
-- El modelo del paso es puro y sin estado de sesión: `createWizardSession` y `resolveWizardStart` se retiran por no tener ningún consumidor en la aplicación; la cobertura se mantiene sobre las funciones vivas (`stepFromAddress`, `namesWizardStep`, `stepChangeWrite`, `entryStepWrite`) y la tabla de navegaciones.
+- El modelo del paso es puro y sin estado de sesión: `createWizardSession` y `resolveWizardStart` se retiran por no tener ningún consumidor en la aplicación; `parseStep` (sin uso fuera de sus pruebas) se retira también. La cobertura se mantiene sobre las funciones vivas (`stepFromAddress`, `namesWizardStep`, `stepChangeWrite`, `entryStepWrite`) y la tabla de navegaciones.
 
 ### 10.4 Navegador y compilación
 

@@ -50,15 +50,6 @@ export function requestedStep(
   return raw.trim() as WizardStepId;
 }
 
-/**
- * Paso que se muestra al abrir la dirección (RF-013, RF-015): el pedido si es
- * válido y, si no, el primero del asistente. Nunca redirige en silencio a otro
- * paso distinto del pedido.
- */
-export function parseStep(wizard: WizardKind, raw: string | null | undefined): WizardStepId {
-  return requestedStep(wizard, raw) ?? defaultStepId(wizard);
-}
-
 /** Valor de `?step=` de una dirección completa o parcial, o `null`. */
 export function stepFromLocation(location: string): string | null {
   const queryIndex = location.indexOf('?');
