@@ -34,6 +34,10 @@ RECOVERED_API_VARIABLES = (
 #: Variables que solo existían en la composición y ahora están documentadas.
 DOCUMENTED_RATE_LIMITS = ("AUTH_LOGIN_RATE_LIMIT", "AUTH_REGISTER_RATE_LIMIT")
 
+#: Variables del flujo de Google que deben llegar solo a la API y estar
+#: documentadas en ``.env.example`` (spec 013, T6).
+GOOGLE_API_VARIABLES = ("GOOGLE_REDIRECT_URI",)
+
 
 def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location("check_env_contract", SCRIPT_PATH)
@@ -160,9 +164,24 @@ def test_exceptions_are_tolerated_and_production_extras_are_required() -> None:
 
 
 def test_documented_rate_limits_and_recovered_variables_are_in_the_map() -> None:
-    for variable in RECOVERED_API_VARIABLES + DOCUMENTED_RATE_LIMITS:
+    for variable in RECOVERED_API_VARIABLES + DOCUMENTED_RATE_LIMITS + GOOGLE_API_VARIABLES:
         assert variable in CONTRACT.service_env["api"]
         assert variable in _documented()
+
+
+def test_google_redirect_uri_is_only_consumed_by_the_api() -> None:
+    config = _config()
+    assert "GOOGLE_REDIRECT_URI" in config["services"]["api"]["environment"]
+    for service in ("worker", "web", "db", "db-migrate"):
+        assert "GOOGLE_REDIRECT_URI" not in config["services"][service]["environment"]
+
+    del config["services"]["api"]["environment"]["GOOGLE_REDIRECT_URI"]
+    errors = _errors(config, profile="development")
+
+    assert any(
+        "api" in error and "GOOGLE_REDIRECT_URI" in error and "sin efecto" in error
+        for error in errors
+    )
 
 
 def test_non_service_consumers_are_declared_separately_from_compose_services() -> None:

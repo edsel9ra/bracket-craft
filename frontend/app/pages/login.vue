@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { googleErrorKey } from '~/utils/googleAuth';
 import { safeInternalRedirect } from '~/utils/navigation';
 
 const auth = useAuthStore();
@@ -11,6 +12,40 @@ const password = ref('');
 const fullName = ref('');
 const organizationName = ref('');
 const organizationSlug = ref('');
+
+// RF-1: la opción de Google solo se muestra si el servidor la tiene configurada.
+// Se consulta durante el renderizado en servidor para no parpadear.
+const { data: googleEnabled } = await useAsyncData(
+  'auth-google-status',
+  () => auth.googleStatus(),
+  { default: () => false },
+);
+const googlePending = ref(false);
+const googleError = ref<string | null>(null);
+const googleStatusId = 'google-status';
+
+const queryError = computed(() => {
+  const raw = route.query.error;
+  return typeof raw === 'string' && raw ? t(googleErrorKey(raw)) : null;
+});
+
+/**
+ * Solo se reenvía un `redirect` interno y presente: si falta, el backend aplica
+ * su destino por defecto (`/organization` sin organización, `/workspace` con
+ * ella) en vez de forzar `/workspace`.
+ */
+const googleRedirect = computed(() => {
+  const raw = route.query.redirect;
+  if (typeof raw !== 'string' || !raw) return null;
+  return safeInternalRedirect(raw, '') || null;
+});
+
+const needsOrganization = computed(() => Boolean(auth.userId && !auth.organizationId));
+
+function failureCode(cause: unknown): string | null {
+  const data = (cause as { data?: { code?: unknown } } | undefined)?.data;
+  return typeof data?.code === 'string' ? data.code : null;
+}
 
 function normalizeOrganizationSlug(value: string): string {
   return value
@@ -35,6 +70,19 @@ useHead(() => ({
 const redirectPath = computed(() => {
   return safeInternalRedirect(route.query.redirect, '/workspace');
 });
+
+async function startGoogle() {
+  if (googlePending.value) return;
+  googlePending.value = true;
+  googleError.value = null;
+  try {
+    const authorizationUrl = await auth.startGoogleAuthorization('login', googleRedirect.value);
+    window.location.assign(authorizationUrl);
+  } catch (cause) {
+    googleError.value = t(googleErrorKey(failureCode(cause)));
+    googlePending.value = false;
+  }
+}
 
 async function submit() {
   try {
@@ -75,6 +123,21 @@ async function submit() {
        <p class="auth-copy">
          {{ isRegister ? t('auth.registerCopy') : t('auth.loginCopy') }}
       </p>
+
+      <div v-if="googleEnabled" class="google-access">
+        <button
+          class="button-secondary auth-secondary-action google-button"
+          type="button"
+          :disabled="googlePending"
+          :aria-busy="googlePending ? 'true' : 'false'"
+          @click="startGoogle"
+        >
+          {{ googlePending ? t('google.waiting') : t('google.continue') }}
+        </button>
+        <p id="google-status" class="google-status" role="status" aria-live="polite">
+          {{ googlePending ? t('google.waiting') : '' }}
+        </p>
+      </div>
 
       <form class="auth-form" :aria-busy="auth.loading" @submit.prevent="submit">
         <label>
@@ -132,13 +195,18 @@ async function submit() {
             </label>
           </div>
         </Transition>
-        <div v-if="auth.error" id="auth-error" class="form-error" role="alert">{{ auth.error }}</div>
+        <div v-if="queryError || googleError || auth.error" id="auth-error" class="form-error" role="alert">
+          {{ queryError || googleError || auth.error }}
+        </div>
         <button class="button-primary" type="submit" :disabled="auth.loading">
            {{ auth.loading ? t('common.processing') : isRegister ? t('auth.createAccount') : t('auth.login') }}
         </button>
       </form>
 
        <div class="auth-secondary-actions">
+         <NuxtLink v-if="needsOrganization" to="/organization" class="button-secondary auth-secondary-action">
+            {{ t('organization.create') }}
+         </NuxtLink>
          <button class="button-secondary auth-secondary-action mode-toggle" type="button" @click="isRegister = !isRegister; auth.error = null">
             {{ isRegister ? t('auth.haveAccount') : t('auth.createNewAccount') }}
          </button>
@@ -160,6 +228,9 @@ async function submit() {
 h1 { margin: 0; font-size: clamp(2.4rem, 8vw, 4.6rem); line-height: 0.95; letter-spacing: -0.07em; }
 .auth-copy { color: var(--muted); line-height: 1.6; }
 .auth-form { display: grid; gap: 16px; margin-top: 28px; }
+.google-access { display: grid; gap: 6px; margin-top: 24px; }
+.google-button { width: 100%; justify-content: center; min-height: 46px; font-size: 0.9rem; }
+.google-status { min-height: 1.1rem; margin: 0; color: var(--muted); font-size: 0.78rem; }
 .register-fields { display: grid; gap: 16px; }
 label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
 input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.72); color: var(--ink); }

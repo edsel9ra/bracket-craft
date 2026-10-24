@@ -211,6 +211,7 @@ onMounted(() => {
               {{ t('shell.account') }} <span aria-hidden="true">v</span>
             </button>
             <div v-if="accountMenuOpen" class="workspace-account-menu" role="menu">
+              <NuxtLink to="/account/google" role="menuitem" @click="accountMenuOpen = false">{{ t('google.link.title') }}</NuxtLink>
               <button type="button" role="menuitem" @click="logout">{{ t('common.logout') }}</button>
             </div>
           </div>
@@ -260,6 +261,7 @@ onMounted(() => {
             <LanguageSwitcher :inline="true" />
             <div class="workspace-mobile-account">
               <span>{{ t('shell.account') }}</span>
+              <NuxtLink to="/account/google" class="workspace-mobile-account-link">{{ t('google.link.title') }}</NuxtLink>
               <button class="workspace-mobile-logout" type="button" @click="logout">{{ t('common.logout') }}</button>
             </div>
             <p v-if="organizationError" class="workspace-organization-error" role="alert">{{ organizationError }}</p>
@@ -331,8 +333,8 @@ onMounted(() => {
 .workspace-account { position: relative; }
 .workspace-account-button { background: transparent; color: var(--ink); cursor: pointer; }
 .workspace-account-menu { position: absolute; top: calc(100% + 10px); right: 0; min-width: 140px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-deep); }
-.workspace-account-menu button { width: 100%; padding: 9px 10px; border-radius: 7px; background: transparent; color: var(--ink); text-align: left; }
-.workspace-account-menu button:hover { background: rgba(212, 243, 106, 0.08); color: var(--accent); }
+.workspace-account-menu button, .workspace-account-menu a { width: 100%; padding: 9px 10px; border-radius: 7px; background: transparent; color: var(--ink); text-align: left; text-decoration: none; }
+.workspace-account-menu button:hover, .workspace-account-menu a:hover { background: rgba(212, 243, 106, 0.08); color: var(--accent); }
 .workspace-menu-toggle { display: none; align-items: center; gap: 8px; margin-left: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.75rem; font-weight: 800; }
 .workspace-menu-icon { display: grid; gap: 4px; width: 14px; }
 .workspace-menu-icon i { display: block; height: 1px; background: currentColor; }
@@ -347,6 +349,8 @@ onMounted(() => {
 .workspace-mobile-organization strong { color: var(--ink); font-size: 0.86rem; }
 .workspace-mobile-organization select { width: 100%; padding: 0.75rem; border: 1px solid var(--line); border-radius: 9px; background: #0c0f0c; color: var(--ink); font: inherit; }
 .workspace-mobile-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; color: var(--muted); font-size: 0.75rem; }
+.workspace-mobile-account-link { color: var(--muted); font-size: 0.8rem; text-decoration: underline; }
+.workspace-mobile-account-link:hover { color: var(--accent); }
 .workspace-mobile-logout { justify-self: start; padding: 0; background: transparent; color: var(--muted); font-size: 0.8rem; text-decoration: underline; }
 .workspace-mobile-logout:hover { color: var(--danger); }
 .workspace-organization-error { margin-top: 12px; padding: 10px 12px; border: 1px solid #a45b5b; border-radius: 9px; color: var(--danger); font-size: 0.78rem; }

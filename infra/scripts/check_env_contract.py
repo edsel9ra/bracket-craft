@@ -75,6 +75,7 @@ API_ENV = frozenset(
         "GOOGLE_AUDIENCE",
         "GOOGLE_CLIENT_ID",
         "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI",
         "INVITATION_EXPIRE_HOURS",
         "INVITATION_TOKEN_KEY",
         "JWT_ALGORITHM",

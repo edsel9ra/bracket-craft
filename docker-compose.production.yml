@@ -43,7 +43,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:?SMTP_FROM must be set}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2} --no-access-log
     ports: !reset []
     volumes: !reset []
     networks:
