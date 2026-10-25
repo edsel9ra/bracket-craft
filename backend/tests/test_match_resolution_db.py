@@ -2,7 +2,7 @@
 
 Requires ``RUN_DATABASE_TESTS=1`` and ``DATABASE_ADMIN_URL`` (the database must
 also have the application role). Each case builds a throwaway database at
-schema 023, because the close service owns the transaction it writes in: a
+the latest migrations, because the close service owns the transaction it writes in: a
 rejected close must roll back only its own work and the assertions must be able
 to read the committed state from an independent session.
 
@@ -116,7 +116,7 @@ async def committed_application(database_admin_url):
     engine = None
     try:
         await apply_init(admin)
-        await apply_migrations(admin, first=1, last=23)
+        await apply_migrations(admin, first=1)
         await admin.execute(
             f"""
             CREATE ROLE "{role_name}" LOGIN PASSWORD '{role_password}'

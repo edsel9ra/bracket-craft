@@ -21,7 +21,7 @@ match status untouched. Later segments are not an opening and do not revalidate
 the size. The validation order of the opening is the one of plan §5.3:
 resolution enabled (409) → roster size (409) → minute range (422) → write.
 
-Each case builds a throwaway database at schema 023, because the route owns the
+Each case builds a throwaway database at the latest migrations, because the route owns the
 transaction it writes in: a rejected batch must roll back and the assertions
 read the committed state from an independent session.
 
@@ -142,7 +142,7 @@ async def committed_application(database_admin_url):
     engine = None
     try:
         await apply_init(admin)
-        await apply_migrations(admin, first=1, last=23)
+        await apply_migrations(admin, first=1)
         await admin.execute(
             f"""
             CREATE ROLE "{role_name}" LOGIN PASSWORD '{role_password}'

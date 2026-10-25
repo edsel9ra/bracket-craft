@@ -38,6 +38,7 @@ from app.modules.tournaments.schemas import CreateRosterPlayerRequest
 
 STORAGE_DETAIL = "El almacenamiento de fotos no está disponible"
 PHOTOS_LOGGER = "app.modules.tournaments.photos"
+CREST_RESOLVER_LOGGER = "app.modules.crests.resolver"
 PHOTO_KEY = "private/organizations/org-1/rosters/roster-1/photo.jpg"
 OTHER_KEY = "private/organizations/org-1/rosters/roster-2/photo.jpg"
 
@@ -478,6 +479,14 @@ def install_storage(monkeypatch, storage: FakeStorage) -> None:
     monkeypatch.setattr(photos_module, "get_object_storage", lambda: storage)
 
 
+def install_media_storage(monkeypatch, storage: FakeStorage) -> None:
+    """The public matches endpoint signs photos and crests with the new resolver."""
+
+    monkeypatch.setattr(
+        "app.modules.crests.resolver.get_object_storage", lambda: storage
+    )
+
+
 def players_by_id(payload: list[dict]) -> dict[str, dict]:
     players = {}
     for match in payload:
@@ -492,9 +501,9 @@ def players_by_id(payload: list[dict]) -> dict[str, dict]:
 async def test_public_matches_degrades_failed_photos_to_null(monkeypatch, caplog):
     session = FakeSession([match_row()], lineup_rows())
     storage = FakeStorage(error=StorageError("storage down"), session=session)
-    install_storage(monkeypatch, storage)
+    install_media_storage(monkeypatch, storage)
 
-    with caplog.at_level(logging.WARNING, logger=PHOTOS_LOGGER):
+    with caplog.at_level(logging.WARNING, logger=CREST_RESOLVER_LOGGER):
         response = await get_public_matches(session)
 
     assert response.status_code == 200
@@ -507,13 +516,18 @@ async def test_public_matches_degrades_failed_photos_to_null(monkeypatch, caplog
     assert players[str(AWAY_STARTER_ID)]["last_name"] == "Ruiz"
     assert payload[0]["home_team_name"] == "Home FC"
     assert payload[0]["status"] == "scheduled"
-    assert len(resolver_records(caplog)) == 1
+    records = [
+        record
+        for record in caplog.records
+        if record.name == CREST_RESOLVER_LOGGER
+    ]
+    assert len(records) == 1
 
 
 async def test_public_matches_signs_after_the_read_transaction_closes(monkeypatch):
     session = FakeSession([match_row()], lineup_rows())
     storage = FakeStorage(session=session)
-    install_storage(monkeypatch, storage)
+    install_media_storage(monkeypatch, storage)
 
     response = await get_public_matches(session)
 
@@ -526,7 +540,7 @@ async def test_public_matches_signs_after_the_read_transaction_closes(monkeypatc
 async def test_public_matches_keeps_the_reference_payload(monkeypatch):
     session = FakeSession([match_row()], lineup_rows())
     storage = FakeStorage(session=session)
-    install_storage(monkeypatch, storage)
+    install_media_storage(monkeypatch, storage)
 
     response = await get_public_matches(session)
 
@@ -534,11 +548,14 @@ async def test_public_matches_keeps_the_reference_payload(monkeypatch):
     assert response.json() == [
         {
             **{key: _json(value) for key, value in match_row().items()},
+            "home_team_crest_url": None,
+            "away_team_crest_url": None,
             "lineup": {
                 "home": {
                     "team_id": str(HOME_TEAM_ID),
                     "team_name": "Home FC",
                     "formation_code": "4-3-3",
+                    "crest_url": None,
                     "starters": [
                         {
                             "player_id": str(HOME_STARTER_ID),
@@ -566,6 +583,7 @@ async def test_public_matches_keeps_the_reference_payload(monkeypatch):
                     "team_id": str(AWAY_TEAM_ID),
                     "team_name": "Away FC",
                     "formation_code": "4-3-3",
+                    "crest_url": None,
                     "starters": [
                         {
                             "player_id": str(AWAY_STARTER_ID),

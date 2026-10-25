@@ -459,6 +459,18 @@ function fillLabel(template: string, values: Readonly<Record<string, string>>): 
   );
 }
 
+/**
+ * Fecha futura para el partido del escenario. La fecha no puede ser anterior al
+ * ``eligible_from`` de las plantillas que el propio escenario crea al vuelo: una
+ * fecha fija hacía fallar la planilla (422 «aún no elegible») en cualquier
+ * corrida posterior a esa hora.
+ */
+function futureMatchDateLocal(): string {
+  const date = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T12:00`;
+}
+
 function formatCount(template: string, count: number): string {
   return template.replace('{count}', String(count));
 }
@@ -1067,7 +1079,7 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         .fill('1');
       await page
         .getByLabel(namePattern(labelText(E2E_LABELS.matchDateField)))
-        .fill('2026-10-24T12:00');
+        .fill(futureMatchDateLocal());
       await page
         .getByRole('button', { name: labelText(E2E_LABELS.createMatch), exact: true })
         .click();

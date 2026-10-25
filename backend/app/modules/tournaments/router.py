@@ -17,6 +17,11 @@ from app.core.locking import lock_stage_and_version, lock_version
 from app.core.permissions import require_permission
 from app.core.storage import StorageError, get_object_storage
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.crests.resolver import (
+    MediaGroup,
+    sign_crest_rows,
+    sign_media_rows,
+)
 from app.modules.rules_engine.engine import (
     effective_roster_lock_matchday,
     normalize_rules_config,
@@ -1021,7 +1026,8 @@ async def list_tournament_teams(
         await _ensure_tournament(db, context.organization_id, tournament_id)
         result = await db.execute(
             text("""
-                SELECT tt.team_id, t.name, t.short_code, t.logo_url, tt.status, tt.registered_at,
+                SELECT tt.team_id, t.name, t.short_code, t.logo_url,
+                       t.crest_object_key, tt.status, tt.registered_at,
                        COALESCE(
                            ARRAY_AGG(DISTINCT st.stage_id) FILTER (WHERE st.stage_id IS NOT NULL),
                            ARRAY[]::UUID[]
@@ -1035,7 +1041,8 @@ async def list_tournament_teams(
                  AND st.organization_id = tt.organization_id
                 WHERE tt.tournament_id = :tournament_id
                   AND tt.organization_id = :organization_id
-                GROUP BY tt.team_id, t.name, t.short_code, t.logo_url, tt.status, tt.registered_at
+                GROUP BY tt.team_id, t.name, t.short_code, t.logo_url,
+                         t.crest_object_key, tt.status, tt.registered_at
                 ORDER BY t.name, tt.team_id
                 LIMIT :limit OFFSET :offset
             """),
@@ -1046,7 +1053,12 @@ async def list_tournament_teams(
                 "offset": offset,
             },
         )
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+
+    # N-2: the read transaction is closed before signing. One batch for the
+    # whole listing; a storage failure is the Workspace 503.
+    await sign_crest_rows(rows, policy="error")
+    return rows
 
 
 @router.get(
@@ -4378,30 +4390,42 @@ async def list_public_tournaments(
 
 @router.get("/public/{tournament_id}", response_model=PublicTournamentResponse)
 async def public_tournament(tournament_id: UUID, db: AsyncSession = Depends(get_db)) -> PublicTournamentResponse:
-    result = await db.execute(
-        text("""
-            SELECT id, name, season, start_date, status
-            FROM v_public_tournaments
-            WHERE id = :tournament_id
-        """),
-        {"tournament_id": str(tournament_id)},
-    )
-    tournament = result.mappings().one_or_none()
-    if tournament is None:
-        raise HTTPException(status_code=404, detail="Torneo público no encontrado")
-    stages_result = await db.execute(
-        text("""
-            SELECT id, name, stage_type, stage_order
-            FROM v_public_stages
-            WHERE tournament_id = :tournament_id
-            ORDER BY stage_order, id
-        """),
-        {"tournament_id": str(tournament_id)},
-    )
-    return {
-        **dict(tournament),
-        "stages": [dict(stage) for stage in stages_result.mappings().all()],
-    }
+    async with db.begin():
+        result = await db.execute(
+            text("""
+                SELECT id, name, season, start_date, status
+                FROM v_public_tournaments
+                WHERE id = :tournament_id
+            """),
+            {"tournament_id": str(tournament_id)},
+        )
+        tournament = result.mappings().one_or_none()
+        if tournament is None:
+            raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+        stages_result = await db.execute(
+            text("""
+                SELECT id, name, stage_type, stage_order
+                FROM v_public_stages
+                WHERE tournament_id = :tournament_id
+                ORDER BY stage_order, id
+            """),
+            {"tournament_id": str(tournament_id)},
+        )
+        stages = [dict(stage) for stage in stages_result.mappings().all()]
+        teams_result = await db.execute(
+            text("""
+                SELECT team_id, name, short_code, crest_object_key
+                FROM v_public_tournament_teams
+                WHERE tournament_id = :tournament_id
+                ORDER BY name, team_id
+            """),
+            {"tournament_id": str(tournament_id)},
+        )
+        teams = [dict(team) for team in teams_result.mappings().all()]
+
+    # N-2: the read transaction is closed before signing; one batch per answer.
+    await sign_crest_rows(teams, policy="null")
+    return {**dict(tournament), "stages": stages, "teams": teams}
 
 
 @router.get("/public/{tournament_id}/standings")
@@ -4413,29 +4437,41 @@ async def public_standings(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[PublicStandingResponse]:
-    await _ensure_public_tournament(db, tournament_id)
-    result = await db.execute(
-        text("""
-            SELECT tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
-                   team_id, team_name, short_code, played, won, drawn, lost,
-                   goals_for, goals_against, goal_difference, points, fair_play_points,
-                   rank, calculated_at
-            FROM v_public_standings
-            WHERE tournament_id = :tournament_id
-              AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
-              AND (CAST(:group_id AS UUID) IS NULL OR group_id = CAST(:group_id AS UUID))
-             ORDER BY stage_order, group_name NULLS FIRST, rank, team_id
-             LIMIT :limit OFFSET :offset
-        """),
-        {
-            "tournament_id": str(tournament_id),
-            "stage_id": str(stage_id) if stage_id else None,
-            "group_id": str(group_id) if group_id else None,
-            "limit": limit,
-            "offset": offset,
-        },
-    )
-    return [dict(row) for row in result.mappings().all()]
+    async with db.begin():
+        await _ensure_public_tournament(db, tournament_id)
+        result = await db.execute(
+            text("""
+                SELECT s.tournament_id, s.stage_id, s.stage_name, s.stage_order,
+                       s.group_id, s.group_name, s.team_id, s.team_name, s.short_code,
+                       s.played, s.won, s.drawn, s.lost, s.goals_for,
+                       s.goals_against, s.goal_difference, s.points,
+                       s.fair_play_points, s.rank, s.calculated_at,
+                       pt.crest_object_key
+                FROM v_public_standings s
+                LEFT JOIN v_public_tournament_teams pt
+                  ON pt.tournament_id = s.tournament_id
+                 AND pt.team_id = s.team_id
+                WHERE s.tournament_id = :tournament_id
+                  AND (CAST(:stage_id AS UUID) IS NULL
+                       OR s.stage_id = CAST(:stage_id AS UUID))
+                  AND (CAST(:group_id AS UUID) IS NULL
+                       OR s.group_id = CAST(:group_id AS UUID))
+                 ORDER BY s.stage_order, s.group_name NULLS FIRST, s.rank, s.team_id
+                 LIMIT :limit OFFSET :offset
+            """),
+            {
+                "tournament_id": str(tournament_id),
+                "stage_id": str(stage_id) if stage_id else None,
+                "group_id": str(group_id) if group_id else None,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        rows = [dict(row) for row in result.mappings().all()]
+
+    # N-2: sign the whole table after the read transaction closed.
+    await sign_crest_rows(rows, policy="null")
+    return rows
 
 
 @router.get("/public/{tournament_id}/matches")
@@ -4453,17 +4489,29 @@ async def public_matches(
         await _ensure_public_tournament(db, tournament_id)
         result = await db.execute(
             text("""
-                SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
-                       bracket_code, matchday, match_date, home_team_id, home_team_name, home_team_short_code,
-                       away_team_id, away_team_name, away_team_short_code, home_score_regular,
-                       away_score_regular, home_score, away_score, home_penalties, away_penalties,
-                       winner_team_id, status, resolution_type
-                FROM v_public_matches
-                WHERE tournament_id = :tournament_id
-                  AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
-                  AND (CAST(:group_id AS UUID) IS NULL OR group_id = CAST(:group_id AS UUID))
-                  ORDER BY stage_order, stage_id, matchday NULLS LAST, bracket_code NULLS LAST,
-                           match_date NULLS LAST, id
+                SELECT m.id, m.tournament_id, m.stage_id, m.stage_name, m.stage_order,
+                       m.group_id, m.group_name, m.bracket_code, m.matchday, m.match_date,
+                       m.home_team_id, m.home_team_name, m.home_team_short_code,
+                       m.away_team_id, m.away_team_name, m.away_team_short_code,
+                       m.home_score_regular, m.away_score_regular, m.home_score,
+                       m.away_score, m.home_penalties, m.away_penalties,
+                       m.winner_team_id, m.status, m.resolution_type,
+                       ht.crest_object_key AS home_team_crest_object_key,
+                       at.crest_object_key AS away_team_crest_object_key
+                FROM v_public_matches m
+                LEFT JOIN v_public_tournament_teams ht
+                  ON ht.tournament_id = m.tournament_id
+                 AND ht.team_id = m.home_team_id
+                LEFT JOIN v_public_tournament_teams at
+                  ON at.tournament_id = m.tournament_id
+                 AND at.team_id = m.away_team_id
+                WHERE m.tournament_id = :tournament_id
+                  AND (CAST(:stage_id AS UUID) IS NULL
+                       OR m.stage_id = CAST(:stage_id AS UUID))
+                  AND (CAST(:group_id AS UUID) IS NULL
+                       OR m.group_id = CAST(:group_id AS UUID))
+                  ORDER BY m.stage_order, m.stage_id, m.matchday NULLS LAST,
+                           m.bracket_code NULLS LAST, m.match_date NULLS LAST, m.id
                  LIMIT :limit OFFSET :offset
             """),
             {
@@ -4535,10 +4583,34 @@ async def public_matches(
                 "away": match_lineups.get("away"),
             }
 
-    await sign_photo_rows(
-        players,
-        key_field="photo_url",
-        consent_field=None,
+    # N-2: the read transaction is closed. Photos and both crests of every match
+    # go in the same single batch; a failure degrades to null (public policy).
+    await sign_media_rows(
+        [
+            MediaGroup(
+                rows=[match],
+                key_field="home_team_crest_object_key",
+                value_field="home_team_crest_url",
+            )
+            for match in matches
+        ]
+        + [
+            MediaGroup(
+                rows=[match],
+                key_field="away_team_crest_object_key",
+                value_field="away_team_crest_url",
+            )
+            for match in matches
+        ]
+        + [MediaGroup(rows=players, key_field="photo_url", value_field="photo_url")],
         policy="null",
     )
+
+    # The published lineup of each side carries the crest of that same team.
+    for match in matches:
+        lineup = match.get("lineup") or {}
+        if lineup.get("home") is not None:
+            lineup["home"]["crest_url"] = match["home_team_crest_url"]
+        if lineup.get("away") is not None:
+            lineup["away"]["crest_url"] = match["away_team_crest_url"]
     return matches

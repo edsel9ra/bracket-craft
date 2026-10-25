@@ -273,6 +273,24 @@ onBeforeUnmount(() => {
            <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
         </section>
 
+        <section v-if="tournament.teams?.length" class="container public-teams">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">{{ t('public.teamsCount', { count: tournament.teams.length }) }}</p>
+                <h2>{{ t('setup.teams') }}</h2>
+              </div>
+            </div>
+            <ul class="public-team-list">
+              <li v-for="team in tournament.teams" :key="team.team_id">
+                <TeamCrest :team="team" :crest-url="team.crest_url" surface="public" />
+                <span>{{ team.name }}</span>
+                <small>{{ team.short_code }}</small>
+              </li>
+            </ul>
+          </div>
+        </section>
+
          <section v-if="!stageAwareLayout" class="container public-grid">
            <div class="panel standings-panel">
              <div class="panel-heading">
@@ -299,7 +317,15 @@ onBeforeUnmount(() => {
                  <tbody>
                    <tr v-for="standing in standings" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
                      <td class="rank">{{ standing.rank }}</td>
-                     <td><strong>{{ standing.team_name }}</strong><small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small></td>
+                     <td>
+                        <div class="standing-team">
+                          <TeamCrest :team="{ name: standing.team_name, short_code: standing.short_code }" :crest-url="standing.crest_url" surface="public" />
+                          <div>
+                            <strong>{{ standing.team_name }}</strong>
+                            <small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small>
+                          </div>
+                        </div>
+                      </td>
                      <td>{{ standing.played }}</td>
                      <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
                      <td class="points">{{ standing.points }}</td>
@@ -325,10 +351,16 @@ onBeforeUnmount(() => {
                <article v-for="match in matches" :key="match.id" class="match-card">
                  <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                  <div class="match-teams">
-                   <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
-                   <strong>{{ formatScore(match) }}</strong>
-                   <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
-                 </div>
+                        <div class="match-team">
+                          <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
+                          <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                        <strong>{{ formatScore(match) }}</strong>
+                        <div class="match-team match-team--away">
+                          <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
+                          <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                      </div>
                  <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
                  <button
                    v-if="match.lineup"
@@ -381,7 +413,15 @@ onBeforeUnmount(() => {
                    <tbody>
                      <tr v-for="standing in standingsForStage(stage.id)" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
                        <td class="rank">{{ standing.rank }}</td>
-                       <td><strong>{{ standing.team_name }}</strong><small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small></td>
+                       <td>
+                        <div class="standing-team">
+                          <TeamCrest :team="{ name: standing.team_name, short_code: standing.short_code }" :crest-url="standing.crest_url" surface="public" />
+                          <div>
+                            <strong>{{ standing.team_name }}</strong>
+                            <small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small>
+                          </div>
+                        </div>
+                      </td>
                        <td>{{ standing.played }}</td>
                        <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
                        <td class="points">{{ standing.points }}</td>
@@ -406,10 +446,16 @@ onBeforeUnmount(() => {
                    <article v-for="match in matchesForStage(stage.id)" :key="match.id" class="match-card">
                      <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                      <div class="match-teams">
-                       <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
-                       <strong>{{ formatScore(match) }}</strong>
-                       <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
-                     </div>
+                        <div class="match-team">
+                          <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
+                          <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                        <strong>{{ formatScore(match) }}</strong>
+                        <div class="match-team match-team--away">
+                          <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
+                          <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                      </div>
                      <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
                      <button
                        v-if="match.lineup"
@@ -442,10 +488,16 @@ onBeforeUnmount(() => {
                  <article v-for="match in matchesForStage(stage.id)" :key="match.id" class="match-card">
                    <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                    <div class="match-teams">
-                     <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
-                     <strong>{{ formatScore(match) }}</strong>
-                     <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
-                   </div>
+                        <div class="match-team">
+                          <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
+                          <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                        <strong>{{ formatScore(match) }}</strong>
+                        <div class="match-team match-team--away">
+                          <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
+                          <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                        </div>
+                      </div>
                    <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
                    <button
                      v-if="match.lineup"
@@ -500,6 +552,10 @@ onBeforeUnmount(() => {
 .phase-subheading h3 { margin: 6px 0 0; font-size: 1.35rem; letter-spacing: -0.04em; }
 .eyebrow { margin: 0; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 .table-scroll { overflow-x: auto; }
+.standing-team { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.public-team-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.public-team-list li { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid rgba(166, 170, 159, 0.15); border-radius: 12px; }
+.public-team-list small { color: var(--muted); font-size: 0.7rem; }
 table { width: 100%; border-collapse: collapse; min-width: 430px; }
 th { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-align: left; text-transform: uppercase; }
 th, td { padding: 13px 8px; border-bottom: 1px solid rgba(166, 170, 159, 0.14); }
@@ -513,7 +569,8 @@ td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72
 .match-card:hover { border-color: rgba(212, 243, 106, 0.42); transform: translateY(-3px); }
 .match-context, .match-footer { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .match-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 22px 0; font-size: 0.9rem; }
-.match-teams span:last-child { text-align: right; }
+.match-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.match-team--away { justify-content: flex-end; text-align: right; }
 .match-teams strong { color: var(--accent); font-size: 1.2rem; }
 .lineup-trigger { display: block; width: 100%; margin-top: 14px; padding: 13px 0 0; border-top: 1px solid rgba(166, 170, 159, 0.14); background: transparent; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
 .lineup-trigger:hover { color: var(--ink); }
@@ -535,6 +592,6 @@ td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72
   .detail-topbar, .detail-actions { align-items: stretch; flex-direction: column; }
   .detail-actions > * { justify-content: center; text-align: center; }
   .match-teams { grid-template-columns: 1fr; gap: 7px; text-align: center; }
-  .match-teams span:last-child { text-align: center; }
+  .match-team--away { justify-content: center; text-align: center; }
 }
 </style>
