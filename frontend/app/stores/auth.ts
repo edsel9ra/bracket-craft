@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 
 import { useTournamentsStore } from './tournaments';
 import { isNotFound, isUnauthorized } from '~/utils/api';
+import { googleStartRequest, type GoogleFlow } from '~/utils/googleAuth';
 import { organizationHistoryEntry, selectActiveOrganization } from '~/utils/organizationSelection';
 import { normalizeOrganizationId } from '~/utils/validation';
 
@@ -189,6 +190,66 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function restoreSession(): Promise<AuthResponse | null> {
+    /** Rehidrata la sesión desde la cookie de la API (RF-10, D-5). */
+    loading.value = true;
+    try {
+      const response = await request<AuthResponse>('/auth/session');
+      saveSession(response);
+      // La organización recordada por el navegador prevalece si sigue en la
+      // lista; el servidor solo aporta la primera del orden estable.
+      await loadOrganizations();
+      return response;
+    } catch (cause) {
+      if (isUnauthorized(cause)) {
+        clearSession();
+        return null;
+      }
+      throw cause;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function startGoogleAuthorization(
+    flow: GoogleFlow,
+    redirect: string | null = null,
+  ): Promise<string> {
+    /** Devuelve la URL del proveedor; la navegación la hace la página (D-3). */
+    const response = await request<{ authorization_url: string }>('/auth/google/start', {
+      method: 'POST',
+      body: googleStartRequest(flow, redirect),
+    });
+    return response.authorization_url;
+  }
+
+  async function googleStatus(): Promise<boolean> {
+    const response = await request<{ enabled: boolean }>('/auth/google/status');
+    return response.enabled;
+  }
+
+  async function googleLinkStatus(): Promise<boolean> {
+    const response = await request<{ linked: boolean }>('/auth/google/link');
+    return response.linked;
+  }
+
+  async function linkGoogle(redirect: string | null = null): Promise<string> {
+    return startGoogleAuthorization('link', redirect);
+  }
+
+  async function createOrganization(payload: {
+    name: string;
+    slug: string;
+  }): Promise<OrganizationSummary> {
+    const organization = await request<OrganizationSummary>('/organizations', {
+      method: 'POST',
+      body: payload,
+    });
+    // El alta deja la organización nueva como activa y recarga su acceso.
+    await loadOrganizations({ preferredOrganizationId: organization.id });
+    return organization;
+  }
+
   async function verifyWorkspace() {
     if (!userId.value) throw new Error(t('error.authRequired'));
     if (!organizationId.value) await loadOrganizations();
@@ -224,6 +285,12 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     login,
     register,
+    restoreSession,
+    startGoogleAuthorization,
+    googleStatus,
+    googleLinkStatus,
+    linkGoogle,
+    createOrganization,
     verifyWorkspace,
     loadOrganizations,
     loadAccess,

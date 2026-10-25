@@ -18,6 +18,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 
+from app.core.access_log import access_log_record
 from app.core.config import get_settings
 from app.core.csrf import (
     CSRF_HEADER_NAME,
@@ -33,11 +34,13 @@ from app.core.database import (
 )
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
+from app.modules.identity.errors import GoogleAuthError, google_error_body
 from app.modules.identity.router import router as identity_router
 from app.modules.invitations.errors import InvitationConflict, conflict_body
 from app.modules.invitations.router import router as invitations_router
 from app.modules.matches.errors import ResolutionNotEnabled
 from app.modules.matches.router import router as matches_router
+from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
 from app.modules.platform.router import router as platform_router
 from app.modules.tournaments.roster_status import RosterSizeOutOfRange
@@ -601,9 +604,15 @@ async def _request_validation_exception_handler(
         {field: error[field] for field in VALIDATION_ERROR_FIELDS if field in error}
         for error in exc.errors()
     ]
+    headers = (
+        {"Cache-Control": "no-store"}
+        if _request.url.path.startswith("/api/v1/auth/")
+        else None
+    )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": errors},
+        headers=headers,
     )
 
 
@@ -676,14 +685,54 @@ async def _coded_conflict_exception_handler(
     """Answer a domain 409 with the stable ``code`` next to ``detail``.
 
     One handler serves every coded conflict —a resolution the stage does not
-    enable and a roster size out of range—: ``detail`` stays a string so
-    clients that ignore ``code`` keep working, and ``code`` is the additive
-    identifier the frontend translates.
+    enable, a roster size out of range and a taken organization slug—:
+    ``detail`` stays a string so clients that ignore ``code`` keep working, and
+    ``code`` is the additive identifier the frontend translates.
     """
 
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": str(exc.detail), "code": exc.code},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def _google_auth_exception_handler(
+    _request: Request, exc: GoogleAuthError
+) -> JSONResponse:
+    """Answer any Google identity error with its stable additive ``code``.
+
+    The handler respects the exception's HTTP status (503, 409, 429…), keeps
+    ``detail`` as a string and forwards the headers the raiser set (for example
+    ``Retry-After``). No message carries account, provider or token data.
+    """
+
+    headers = dict(exc.headers or {})
+    headers.setdefault("Cache-Control", "no-store")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=google_error_body(exc),
+        headers=headers,
+    )
+
+
+async def _identity_http_exception_handler(
+    request: Request, exc: HTTPException
+) -> JSONResponse:
+    """Default ``HTTPException`` response, without caching on identity routes.
+
+    ``GET /auth/session`` (and any other 401/403/404 under ``/auth/``) keeps the
+    exact body and headers of the standard handler and only adds
+    ``Cache-Control: no-store`` where the identity data must not be stored.
+    """
+
+    headers = dict(exc.headers or {})
+    if request.url.path.startswith("/api/v1/auth/"):
+        headers.setdefault("Cache-Control", "no-store")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=headers or None,
     )
 
 
@@ -691,6 +740,9 @@ api.add_exception_handler(RequestValidationError, _request_validation_exception_
 api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_handler)
 api.add_exception_handler(ResolutionNotEnabled, _coded_conflict_exception_handler)
 api.add_exception_handler(RosterSizeOutOfRange, _coded_conflict_exception_handler)
+api.add_exception_handler(OrganizationSlugTaken, _coded_conflict_exception_handler)
+api.add_exception_handler(GoogleAuthError, _google_auth_exception_handler)
+api.add_exception_handler(HTTPException, _identity_http_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
 api.add_exception_handler(PoolTimeoutError, _pool_timeout_exception_handler)
 
@@ -803,6 +855,26 @@ api.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Organization-ID", "X-CSRF-Token"],
 )
+
+
+@api.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    """Una línea saneada por petición (RNF-5, D-11).
+
+    Se registra **después** del middleware de CSRF y tamaño, de modo que queda
+    por fuera y también cubre sus rechazos (403/413/400). No altera la respuesta
+    ni las excepciones: si el handler falla, registra 500 y relanza.
+    """
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.info(access_log_record(request.method, request.url.path, 500))
+        raise
+    logger.info(
+        access_log_record(request.method, request.url.path, response.status_code)
+    )
+    return response
 
 
 @api.get("/health")

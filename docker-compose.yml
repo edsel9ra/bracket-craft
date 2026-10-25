@@ -59,6 +59,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_AUDIENCE: ${GOOGLE_AUDIENCE:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
       MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-33554432}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       INVITATION_EXPIRE_HOURS: ${INVITATION_EXPIRE_HOURS:-48}
@@ -107,7 +108,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log
     volumes:
       - ./backend:/app
       - ./infra:/infra:ro

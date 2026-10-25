@@ -2,36 +2,28 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Spec 012 implementada, validada (APROBADO) y mergeada en `main`** (PR #8, squash `0765683`, CI de `main` en verde, 2026-10-24); rama `012-formularios-asistidos-y-navegacion` eliminada. **Última cerrada**; la anterior fue la **011** (2026-10-22).
-- **Constitución 1.4.0** (job `e2e` en la §4). **`main` protegida:** cinco *required checks*, *strict*, sin force push; los administradores pueden saltar la regla.
+- **Spec 013 implementada, aprobada por el usuario y cerrada** (2026-10-24): **30/30 tareas**, reviewer **APROBADO** y correcciones C-1…C-7 aplicadas. T30 no ejecutada (sin cliente OAuth real). Spec 012 cerrada y mergeada (PR #8, `0765683`); 011 en PR #7. Constitución **1.4.0**; `main` protegida con cinco *required checks*.
 
-## Spec 012 — formularios asistidos, navegación, formato y límites (implementada 2026-10-23)
-- **35/35 tareas y correcciones H-1…H-14 (H-5 sustituida por H-14); 4 hitos; sin migraciones** (reutiliza `rosters.is_active` y sus índices parciales). Esquema local en **023**.
-- **Navegación:** configuración en `/workspace/tournaments/{id}` (`#resumen`, `#configuracion`, `#equipos`); calendario y plantillas con ruta propia (`?stage=`/`?team=`); `#calendario` y `#plantillas` redirigen con reemplazo de historial.
-- **Asistentes (reglas, fases, equipos):** «Configuración» se muestra en solo lectura a `viewer` (visibilidad, no permiso); el paso vive **solo** en `?step=` (`useWizardStep` lo deriva de la dirección, `replace` al montar y `push` por cambio; nunca `history.replaceState`) y el borrador en `sessionStorage` por usuario/organización/torneo/versión/asistente, nunca en servidor.
-- **Formato y límites:** `game_format` (`5v5`/`7v7`/`9v9`/`11v11`, default `11v11`) es declarativo y solo avisa; `min/max_players_per_team` ≥ 0, 0/ausente = sin límite, `min ≤ max` solo con ambos > 0 y cadena vacía **422**; cuentan jugadores **activos**.
-- **Bloqueos 409 `ROSTER_SIZE_OUT_OF_RANGE`:** inscribir en fase, alta de equipo con `stage_id` (individual y lote) y primer segmento; editar la plantilla nunca se bloquea por tamaño.
-- **Retiro lógico RC-1:** `PATCH …/rosters/{id}/status` (`{is_active}`) idempotente, sin auditoría, 404 entre organizaciones; el retiro es la única excepción al bloqueo por jornada (RL-1) y la reactivación se comporta como un alta (RA-1: bloqueo, jugador ya activo y dorsal).
-- **Duración H3:** un único máximo efectivo para operación y cierre; `limits` gana `max_minute_regular`, `max_minute_extra`, `extra_time_enabled` y `penalties_enabled`; `resolution_type` opcional en segmento/interrupción; 409 `RESOLUTION_NOT_ENABLED`. La resolución prevista solo vive en la sesión de la pestaña.
-- **i18n y contrato:** posiciones desde `utils/positions.ts` y roles desde `utils/labels.ts` (claves `roles.*` en `composables/useI18n.ts`; barrido y paridad en `utils/i18nCatalog.ts`); `engine_version` sigue en **2026.1** (las tres claves nuevas quedan fuera del contrato cerrado y el formato no altera alineaciones).
-- **Opcionales del cierre (2026-10-23, fase 7):** (C-1) el borrador guarda el **último paso visitado también sin cambios** (`draftForStep` persiste solo el paso, `values: null`; un borrador con solo paso no aporta valores); (C-2) retirados `createWizardSession`/`resolveWizardStart` y sus tipos, más `blockedStepHref`/`blockedHref`, sin importaciones en `app/`; (C-3) hito E2E `wizard-entry-normalized` (abre la configuración sin `?step=`, normaliza al primer paso con historial +0 y un atrás sale del asistente); (C-4) plan §3.1 nombra el paso de entrada de fases y `AGENTS.md` aclara que las muestras `retrying` son variables.
-- **Evidencia final (2026-10-23, reejecutada al cerrar):** backend `pytest -q` **981 passed / 256 skipped**; frontend `pnpm test` **485/485**; `typecheck`, `build` y `typecheck:e2e` en verde; E2E **VERDE (0)** con 5 pruebas (`operation-flow` 117.4 s, 30 transiciones, hito nuevo primero); `infra/postgres/migrations/` sin cambios. La primera corrida del E2E tras un `build` + reinicio falló por compilación en frío del dev server (goto a `/rosters` agotó 45 s); la segunda, en caliente, pasó.
-- **E2E:** la condición de fin de un cambio de paso es `?step=` en la dirección; sin esperarla, la navegación pendiente revierte el paso siguiente. `server.log` puede quedar no disponible sin Docker CLI (declarado, no invalidante).
-- **Riesgos/opcionales que quedan:** relay sin filtro de rol (mitigación de revalidación cada 30 s, spec 011); sin API incremental ni anulación de eventos de acta cerrada (R11); elegir la vía de alta ya muestra su paso (RF-011) y el segmento en el límite se crea antes de la planilla.
-- **Pendiente:** despliegue del código (`docs/runbook-despliegue-019-023.md`; la 012 no añade migraciones) y los riesgos residuales ya listados.
+## Spec 013 — acceso con Google y asociación de cuentas (cerrada 2026-10-24)
+- **Migración 024** (`uq_auth_identity_user_provider` en `auth_identities`, pre-chequeo que aborta sin corregir filas; sin grants/RLS). Orden **024 → código**, sin rollback. La base local sigue en **023**: la 024 no se aplicó localmente; sus pruebas usan base desechable.
+- **Backend:** flujo único de redirección (`POST /auth/google/start` + `GET /auth/google/callback`), estado en Redis (`sha256(state)`, TTL 600 s, `GETDEL`) y cookie `bc_oauth_state`; `GET /auth/session`, `GET /auth/google/status`, `GET /auth/google/link`; `POST /auth/google` responde **410** `GOOGLE_IDENTITY_INVALID`. Vinculación desde `/account/google` sin tocar sesión ni `users.email`; organización opcional `POST /organizations` (409 sin `code` si ya tiene; `ORGANIZATION_SLUG_TAKEN` si el slug está ocupado).
+- **Seguridad:** firma del `id_token` no verificada (D-9: llega del canje por TLS); `GOOGLE_REDIRECT_URI` obligatoria si Google está habilitado; log de acceso saneado (`--no-access-log` + `app/core/access_log.py`, sin consulta).
+- **Frontend:** `/login` (estado SSR, espera accesible), `/auth/callback` (rehidrata y navega con `replace`), `/account/google`, `/organization`, `middleware/session.ts`; utilidades puras en `utils/googleAuth.ts` y catálogo es/en con paridad.
+- **Evidencia final:** backend `pytest -q` **1314 passed / 289 skipped**; opt-in con base real **32 passed**; frontend `pnpm test` **499**, `typecheck`, `build` y `typecheck:e2e` en verde; infraestructura y seguridad en 0. **Trivy y T30 no ejecutados.**
+- **Correcciones de revisión:** C-1 prueba RF-30 (login de cuenta solo-Google), C-2 textos del catálogo literales, C-3 `no-store` en errores de identidad y 201 de organización, C-4 cancelación consume y enruta por `flow`, C-5 plan §6.4, C-6 `Referrer-Policy: no-referrer`, C-7 opt-in en AGENTS.
+- **T30 manual:** **no ejecutada** por falta de cliente OAuth real en el entorno; declarada así en README/AGENTS, sin fecha ni resultados. **Pendiente de despliegue:** aplicar la **024 antes del código** y la corrida manual con Google real cuando haya credenciales.
 
-## Spec 011 — cierre de huecos (cerrada 2026-10-22)
-- PR **#7** (`6fa19c3`); CI en verde con `e2e`. C-2 atómica, miembro sin rol 403 real, sonda de outbox, mensajes de fallo y artefactos E2E. **Sin migraciones.**
+## Spec 012 — formularios asistidos… (cerrada 2026-10-23)
+- 35/35 tareas + H-1…H-14; configuración en `/workspace/tournaments/{id}` con `calendar`/`rosters` propias; asistentes con paso solo en `?step=` y borrador en `sessionStorage`; `game_format` declarativo; límites y retiro lógico; `engine_version` 2026.1.
+- Evidencia al cerrar: backend 981/256 skipped, frontend 485, `typecheck`/`build`/`typecheck:e2e` y E2E verdes. E2E: esperar `?step=` antes del paso siguiente; no matar el dev server con `build`.
 
-## Specs 008/009 y anteriores
-- **008:** PR #3; migraciones 022/023. **009:** PR #5; C-1 revocada 409, C-2 reapertura, `code` aditivo, salud 90/10 s. **010:** E2E del reintento en el contenedor oficial de Playwright. Ambas con **§6 aprobada**.
-- 001–004 cerradas; 005 con riesgo residual de sorteos Swiss en frío; 006 PR #1; 007 PR #2 (migración 021 antes del código).
+## Specs 011 / 008 / 009 y anteriores
+- **011:** PR #7 (sin migraciones). **008:** PR #3 (migraciones 022/023). **009:** PR #5 (C-1/C-2, `code` aditivo, salud 90/10 s). **010:** E2E en Playwright oficial. 001–007 cerradas (005: riesgo de sorteos Swiss en frío; 007: 021 antes del código).
 
 ## Entorno local
-- Backend: `python:3.14-slim` con repo montado; frontend en el servicio `web` (Node 24/pnpm 12.12.1); E2E en `mcr.microsoft.com/playwright:v1.64.1-noble` con red host.
-- La imagen `api` **no** trae `requirements-dev`: `pip install --target /tmp/devdeps -r requirements-dev.txt` y `PYTHONPATH=/tmp/devdeps`; monta el repo en `/repo` y ejecuta pytest desde `/repo/backend` con `PYTHONPYCACHEPREFIX` (los tests de contrato leen `/.env.example` y `docs/`).
-- **No ejecutes `pnpm run build` en `web` con el servidor de desarrollo vivo:** reemplaza `.nuxt` y sirve chunks rotos (la navegación del E2E se queda en la página anterior). Reinicia `web` tras el `build`.
-- Base local en **023** con smoke OK. Si el volumen se creó con otra `BRACKET_DB_PASSWORD`, `bracket_app` conserva la clave vieja (`127.0.0.1` es `trust`): alinear con `ALTER ROLE`.
+- Backend `python:3.14-slim`; frontend en `web` (Node 24/pnpm 12.12.1). La imagen `api` no trae dev deps: `pip install --target /tmp/devdeps -r requirements-dev.txt` y `PYTHONPATH=/tmp/devdeps`; los tests de contrato necesitan el repo montado en `/repo`.
+- **No ejecutes `pnpm run build` en `web` con el dev server vivo:** reemplaza `.nuxt`; reinicia `web` después.
+- Base local en 023; migraciones nuevas con `MIGRATION_TARGET=NNN`.
 
 ## Pendiente
-- TypeScript fijado en **`~6.0.3`**; no subir a 7.x (`vue-tsc` rompe `typecheck`).
+- TypeScript `~6.0.3` (no 7.x: rompe `vue-tsc`). Despliegue acumulado y riesgos residuales ya documentados.

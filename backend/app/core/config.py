@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_audience: str | None = None
+    google_redirect_uri: str | None = None
     jwt_issuer: str = "bracket-craft-api"
     jwt_audience: str = "bracket-craft-web"
     player_data_key: str = Field(default=DEVELOPMENT_PLAYER_DATA_KEY, min_length=32)
@@ -71,7 +72,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    @field_validator("google_audience", "storage_signing_endpoint_url", mode="after")
+    @field_validator(
+        "google_audience",
+        "google_redirect_uri",
+        "storage_signing_endpoint_url",
+        mode="after",
+    )
     @classmethod
     def blank_optional_string_to_none(cls, value: str | None) -> str | None:
         """Trata las variables opcionales vacías como ausentes (Compose inyecta "")."""
@@ -118,9 +124,18 @@ class Settings(BaseSettings):
         if "*" in {origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()}:
             raise ValueError("CORS_ALLOWED_ORIGINS no puede usar '*' con credenciales")
 
+        if self.google_redirect_uri is not None:
+            redirect = urlparse(self.google_redirect_uri)
+            if redirect.scheme not in {"http", "https"} or not redirect.netloc:
+                raise ValueError("GOOGLE_REDIRECT_URI debe ser una URL absoluta http(s)")
+
         if self.google_oauth_enabled:
             if not self.google_client_id or not self.google_client_secret:
                 raise ValueError("Google OAuth requiere GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET")
+            if self.google_redirect_uri is None:
+                raise ValueError(
+                    "Google OAuth requiere GOOGLE_REDIRECT_URI (dirección de retorno fija)"
+                )
             if self.google_audience is None:
                 self.google_audience = self.google_client_id
             if self.google_audience != self.google_client_id:
