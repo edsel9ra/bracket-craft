@@ -34,6 +34,8 @@ from app.core.database import (
 )
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
+from app.modules.crests.errors import CrestError
+from app.modules.crests.router import router as crests_router
 from app.modules.identity.errors import GoogleAuthError, google_error_body
 from app.modules.identity.router import router as identity_router
 from app.modules.invitations.errors import InvitationConflict, conflict_body
@@ -679,21 +681,25 @@ async def _invitation_conflict_exception_handler(
     return JSONResponse(status_code=exc.status_code, content=conflict_body(exc))
 
 
-async def _coded_conflict_exception_handler(
+async def _coded_exception_handler(
     _request: Request, exc: HTTPException
 ) -> JSONResponse:
-    """Answer a domain 409 with the stable ``code`` next to ``detail``.
+    """Answer a coded domain error with the stable ``code`` next to ``detail``.
 
-    One handler serves every coded conflict —a resolution the stage does not
-    enable, a roster size out of range and a taken organization slug—:
-    ``detail`` stays a string so clients that ignore ``code`` keep working, and
-    ``code`` is the additive identifier the frontend translates.
+    One handler serves every coded error —a resolution the stage does not
+    enable, a roster size out of range, a taken organization slug and the crest
+    catalog—: ``detail`` stays a string so clients that ignore ``code`` keep
+    working, ``code`` is the additive identifier the frontend translates and any
+    header the exception carries (``Retry-After``) is preserved. The response is
+    never cached (``Cache-Control: no-store``).
     """
 
+    headers = dict(exc.headers or {})
+    headers.setdefault("Cache-Control", "no-store")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": str(exc.detail), "code": exc.code},
-        headers={"Cache-Control": "no-store"},
+        headers=headers,
     )
 
 
@@ -738,9 +744,10 @@ async def _identity_http_exception_handler(
 
 api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
 api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_handler)
-api.add_exception_handler(ResolutionNotEnabled, _coded_conflict_exception_handler)
-api.add_exception_handler(RosterSizeOutOfRange, _coded_conflict_exception_handler)
-api.add_exception_handler(OrganizationSlugTaken, _coded_conflict_exception_handler)
+api.add_exception_handler(ResolutionNotEnabled, _coded_exception_handler)
+api.add_exception_handler(RosterSizeOutOfRange, _coded_exception_handler)
+api.add_exception_handler(OrganizationSlugTaken, _coded_exception_handler)
+api.add_exception_handler(CrestError, _coded_exception_handler)
 api.add_exception_handler(GoogleAuthError, _google_auth_exception_handler)
 api.add_exception_handler(HTTPException, _identity_http_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
@@ -916,6 +923,7 @@ api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")
 api.include_router(matches_router, prefix="/api/v1")
+api.include_router(crests_router, prefix="/api/v1")
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=api)
 app = sio_app

@@ -8,6 +8,13 @@ export interface PublicStage {
   stage_order: number;
 }
 
+export interface PublicTournamentTeam {
+  team_id: string;
+  name: string;
+  short_code: string;
+  crest_url: string | null;
+}
+
 export interface PublicTournament {
   id: string;
   name: string;
@@ -15,6 +22,8 @@ export interface PublicTournament {
   start_date: string;
   status: string;
   stages: PublicStage[];
+  /** Additive list of enrolled teams (empty when the tournament has none). */
+  teams?: PublicTournamentTeam[];
 }
 
 export interface PublicStanding {
@@ -36,6 +45,7 @@ export interface PublicStanding {
   points: number;
   fair_play_points: number;
   rank: number;
+  crest_url: string | null;
 }
 
 export interface PublicLineupPlayer {
@@ -52,6 +62,7 @@ export interface PublicTeamLineup {
   team_id: string;
   team_name: string;
   formation_code: FormationCode | null;
+  crest_url: string | null;
   starters: PublicLineupPlayer[];
   substitutes: PublicLineupPlayer[];
 }
@@ -75,8 +86,10 @@ export interface PublicMatch {
   home_team_name: string | null;
   home_team_short_code: string | null;
   away_team_id: string | null;
+  home_team_crest_url: string | null;
   away_team_name: string | null;
   away_team_short_code: string | null;
+  away_team_crest_url: string | null;
   home_score: number | null;
   away_score: number | null;
   home_penalties: number | null;

@@ -11,6 +11,7 @@ from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_matches
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.crests.resolver import MediaGroup, sign_media_rows
 from app.modules.matches.audit import (
     ASSIGN_MATCH_OFFICIAL,
     REMOVE_MATCH_OFFICIAL,
@@ -89,7 +90,11 @@ async def _load_operation_match(
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id, m.group_id,
                    m.matchday, m.match_date, m.status, m.result_confirmed,
                    m.home_team_id, ht.name AS home_team_name, ht.short_code AS home_team_short_code,
+                   ht.crest_object_key AS home_team_crest_object_key,
+                   ht.logo_url AS home_team_logo_url,
                    m.away_team_id, at.name AS away_team_name, at.short_code AS away_team_short_code,
+                   at.crest_object_key AS away_team_crest_object_key,
+                   at.logo_url AS away_team_logo_url,
                    m.home_score_regular, m.away_score_regular, m.home_score, m.away_score,
                    m.home_penalties, m.away_penalties, m.winner_team_id, m.resolution_type,
                    m.resolution_reason,
@@ -587,6 +592,24 @@ async def get_match_operation(
         lineup = await _load_match_lineup(db, context.organization_id, match_id)
         tactical_lineups = await _load_match_tactical_lineups(db, context.organization_id, match_id)
         event_rows = [dict(row) for row in event_result.mappings().all()]
+
+    # N-2: the read transaction is closed before signing. Both participants go
+    # in the same batch; a storage failure is the Workspace 503.
+    await sign_media_rows(
+        [
+            MediaGroup(
+                rows=[match],
+                key_field="home_team_crest_object_key",
+                value_field="home_team_crest_url",
+            ),
+            MediaGroup(
+                rows=[match],
+                key_field="away_team_crest_object_key",
+                value_field="away_team_crest_url",
+            ),
+        ],
+        policy="error",
+    )
 
     return {
         "match": match,

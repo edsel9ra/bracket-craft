@@ -87,9 +87,13 @@ interface MatchRecord {
   home_team_id: string | null;
   home_team_name: string | null;
   home_team_short_code: string | null;
+  home_team_crest_url: string | null;
+  home_team_logo_url: string | null;
   away_team_id: string | null;
   away_team_name: string | null;
   away_team_short_code: string | null;
+  away_team_crest_url: string | null;
+  away_team_logo_url: string | null;
   home_score_regular: number | null;
   away_score_regular: number | null;
   home_score: number | null;
@@ -1288,7 +1292,23 @@ onBeforeUnmount(() => {
       <div v-if="match" class="match-heading">
         <div>
           <p class="context-line">{{ match.tournament_name }} · {{ match.stage_name }} · {{ t('public.matchday', { value: match.matchday || '-' }) }}</p>
-          <h1>{{ match.home_team_name || t('public.toDefine') }} <span>vs</span> {{ match.away_team_name || t('public.toDefine') }}</h1>
+          <h1 class="match-title">
+            <TeamCrest
+              :team="{ name: match.home_team_name || t('public.toDefine'), short_code: match.home_team_short_code }"
+              :crest-url="match.home_team_crest_url"
+              :logo-url="match.home_team_logo_url"
+              surface="workspace"
+            />
+            <span>{{ match.home_team_name || t('public.toDefine') }}</span>
+            <span class="match-versus">vs</span>
+            <TeamCrest
+              :team="{ name: match.away_team_name || t('public.toDefine'), short_code: match.away_team_short_code }"
+              :crest-url="match.away_team_crest_url"
+              :logo-url="match.away_team_logo_url"
+              surface="workspace"
+            />
+            <span>{{ match.away_team_name || t('public.toDefine') }}</span>
+          </h1>
           <p class="workspace-copy">{{ formatDate(match.match_date) }}<span v-if="match.group_name"> · {{ match.group_name }}</span></p>
         </div>
         <div class="scoreboard" :aria-label="t('match.result')">
@@ -1521,6 +1541,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.match-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.match-title :deep(.team-crest) { flex: 0 0 auto; }
+.match-versus { color: var(--accent); font-size: 0.62em; letter-spacing: 0; }
 .operation-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.09), transparent 30rem), #0c0f0c; }
 .realtime-status { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .realtime-error, .realtime-reconnecting, .realtime-retrying { color: #ffcb7a; }

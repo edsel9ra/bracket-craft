@@ -586,6 +586,10 @@ async def test_reads_do_not_write_lock_or_audit(db_session, tenant_factory):
     await list_match_officials(match.match_id, context_for(tenant), api)
 
     assert str(response["match"]["id"]) == str(match.match_id)
+    # RF-4: the Workspace operation carries the legacy logo as the fallback
+    # while there is no crest; the public surfaces never expose it.
+    assert "home_team_logo_url" in response["match"]
+    assert "away_team_logo_url" in response["match"]
     assert _write_statements(api.statements) == []
     assert all("FOR UPDATE" not in sql.upper() for sql in api.statements)
     assert await _audit_rows(db_session, match.match_id) == []
@@ -867,7 +871,7 @@ async def test_a_reverted_action_leaves_no_audit_entry(database_admin_url):
 
 @asynccontextmanager
 async def committed_application(database_admin_url):
-    """Throwaway database at migration 023 plus a dedicated application role."""
+    """Throwaway database at the latest migrations plus a dedicated app role."""
 
     await ensure_application_role(database_admin_url)
     database = await create_database(database_admin_url)
@@ -877,7 +881,7 @@ async def committed_application(database_admin_url):
     engine = None
     try:
         await apply_init(admin)
-        await apply_migrations(admin, first=1, last=23)
+        await apply_migrations(admin, first=1)
         await admin.execute(
             f"""
             CREATE ROLE "{role_name}" LOGIN PASSWORD '{role_password}'

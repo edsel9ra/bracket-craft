@@ -452,6 +452,90 @@ MIGRATION_TARGET=023 $COMPOSE run --rm db-migrate
 
 **Limitación documentada:** no hay *backfill*, porque las vueltas de un calendario histórico no se pueden reconstruir. Una liga o fase de grupos de dos vueltas ya generada queda en una hasta que se regenere su calendario; mientras tanto, el límite de enfrentamientos manuales por pareja es uno. Como las versiones publicadas no admiten altas manuales, la limitación solo alcanza a borradores que aún no se han vuelto a sortear.
 
+## Escudos de equipo
+
+Una persona con `MANAGE_TOURNAMENTS` carga, reemplaza, consulta y elimina **una** imagen por equipo desde el torneo donde el equipo está inscrito. La imagen pertenece al equipo y se comparte entre todos los torneos en los que se inscribe; no hay permiso por torneo. Quien solo consulta (`viewer`) ve la imagen y **no** ve ningún control de escritura; el servidor rechaza la escritura con **403** sin escribir, sin borrar objetos y sin llamar al almacenamiento. El escudo **no es dato personal** y no exige consentimiento de imagen (las fotos de jugadores conservan el suyo).
+
+**Una sola fuente de verdad.** `logo_url` (la dirección externa heredada) se sigue devolviendo mientras el equipo no tenga escudo y pasa a `null` con la primera carga confirmada; no se descarga, no se copia, no se verifica y no se restituye al eliminar. El Workspace muestra esa dirección mientras no haya escudo; **las superficies públicas nunca la muestran**. Sin escudo (o si la imagen no carga) el sustituto son los dos primeros caracteres del código corto —o del nombre si el código tiene menos de dos—, sin icono roto y sin reintento automático: el enlace nuevo se pide cuando la vista vuelve a cargar los datos.
+
+**Endpoints** (Workspace; exigen `X-Organization-ID` y membresía con rol):
+
+| Método y ruta | Permiso | Respuesta |
+|---|---|---|
+| `GET /api/v1/tournaments/{tournament_id}/teams/{team_id}/crest` | contexto (membresía con rol) | `200 TeamCrestResponse` |
+| `POST /api/v1/tournaments/{tournament_id}/teams/{team_id}/crest` | `MANAGE_TOURNAMENTS` | `200 TeamCrestResponse` (carga o reemplazo) |
+| `DELETE /api/v1/tournaments/{tournament_id}/teams/{team_id}/crest` | `MANAGE_TOURNAMENTS` | `204`, idempotente |
+
+`TeamCrestResponse` es `{ team_id, crest_url, logo_url }`: `crest_url` es un enlace firmado temporal (`STORAGE_PRESIGN_SECONDS`, 300 s por defecto) o `null`; la referencia interna `crest_object_key` no se devuelve como campo en ninguna respuesta, no aparece en mensajes de error ni en registros y no se guarda en la auditoría.
+
+**Campos de lectura.** `GET /tournaments/{id}/teams` añade `crest_url` por fila; `GET /matches/{id}/operation` añade `match.home_team_crest_url`/`match.away_team_crest_url` (sin las claves) **y** `match.home_team_logo_url`/`match.away_team_logo_url`, la dirección externa que el Workspace usa como respaldo mientras no haya escudo y que nunca se publica; el detalle público añade `teams: [{team_id, name, short_code, crest_url}]` (`[]` sin equipos), la clasificación `crest_url` por fila, los partidos `home_team_crest_url`/`away_team_crest_url` y las alineaciones publicadas `lineup.home.crest_url`/`lineup.away.crest_url`. Ninguna respuesta pública incluye `logo_url`, la clave interna, nombre de archivo, tamaño, documentos, edad ni fecha de nacimiento.
+
+**Validación declarada.** Se admiten **JPG, PNG y WEBP estáticos** con un máximo de **5 MiB** (`STORAGE_MAX_IMAGE_BYTES`, **compartido con las fotos de jugadores**: cambiarlo afecta a ambas funciones). Manda el **contenido**, no el nombre ni la extensión: un archivo llamado `.png` con bytes JPEG se acepta y se sirve como JPEG. Se rechazan el archivo vacío, el exceso de tamaño, SVG y GIF, y la animación **declarada en el contenedor** (PNG con `acTL` antes de `IDAT`; WEBP con el bit de animación de `VP8X` o el bloque `ANIM`). **Lo que no se garantiza**, porque el servidor no decodifica: un contenedor truncado o corrupto con cabecera admitida se acepta y se sirve; los metadatos incrustados se sirven tal cual (no se eliminan); y una animación o corrupción que solo se manifieste al decodificar no se detecta. Las dimensiones tampoco se limitan: el servidor no las lee y el navegador sí.
+
+**Almacenamiento y degradación.** La imagen vive en el espacio privado (clave `private/organizations/{org}/tournaments/{tournament_id}/teams/{team_id}/…`, generada por el sistema); `teams.crest_object_key` guarda la referencia. La subida y la preparación de enlaces ocurren **con la transacción cerrada**; la escritura usa `SELECT … FOR UPDATE` sobre el equipo, deja `logo_url = NULL` y audita en la misma transacción; el objeto anterior se borra **solo tras un commit confirmado**. Si el almacenamiento falla al subir → **503** `CREST_STORAGE_UNAVAILABLE`, sin fila modificada y con la imagen anterior intacta; si falla la firma, el Workspace responde **503** y las superficies públicas dejan el campo en `null` con **200** y una sola entrada de registro. Un borrado fallido del archivo anterior deja un huérfano declarado, registra una línea y no convierte la respuesta en error. Los cambios de escudo **no emiten eventos**: otras vistas abiertas no se refrescan hasta que vuelven a pedir los datos (RF-53, RF-54).
+
+**Auditoría.** Cada carga, reemplazo o eliminación **efectiva** escribe `SET_TEAM_CREST` o `REMOVE_TEAM_CREST` en `administrative_audit_logs` (entidad `teams`, payload solo con `tournament_id`) en la misma transacción. Una operación rechazada, repetida o sin cambio no deja entrada.
+
+**Catálogo de errores** (`detail` sigue siendo una cadena y `code` es aditivo):
+
+| Código | Estado | Cuándo |
+|---|---|---|
+| `CREST_FILE_EMPTY` | 422 | Archivo vacío |
+| `CREST_FORMAT_UNSUPPORTED` | 422 | El contenido no es JPG/PNG/WEBP (incluye SVG y GIF) |
+| `CREST_ANIMATION_UNSUPPORTED` | 422 | Animación detectable en el contenedor |
+| `CREST_TOO_LARGE` | 422 | Supera el máximo de imagen |
+| `CREST_NOT_FOUND` | 404 | Equipo inexistente, de otra organización o no inscrito en el torneo del contexto |
+| `CREST_FORBIDDEN` | 403 | Sin `MANAGE_TOURNAMENTS` |
+| `CREST_UPLOAD_FAILED` | 500 | Fallo no clasificado durante la operación (compensado antes de responder) |
+| `CREST_STORAGE_UNAVAILABLE` | 503 | Fallo del almacenamiento al subir o al firmar |
+
+El miembro activo sin rol recibe el 403 de contexto de la organización, **sin** código propio. Un torneo inexistente o de otra organización responde el 404 existente («Torneo no encontrado»). Superar el límite global del cuerpo se rechaza antes de la operación y no pertenece a este catálogo.
+
+**Comprobación manual pendiente (no ejecutada).** La carga de una imagen real en un navegador, el recorrido completo de la operación solo con teclado y el anuncio del lector de pantalla **no se han ejecutado** en esta entrega; quedan como comprobación manual pendiente de la verificación final de la spec 014 y no se declaran verdes.
+
+**Riesgos aceptados.** Huérfanos sin recolección ni cota si un borrado falla o la confirmación es ambigua; sin cuota por organización; metadatos no eliminados; animación y truncamiento no garantizados; enlaces ya entregados que no se pueden revocar antes de su caducidad (300 s) y posibles cachés de navegador, intermediarios o terceros; `logo_url` externa visible en el Workspace mientras no haya escudo (expone la IP del personal a un tercero; nunca en público); ninguna vista se refresca sola al cambiar un escudo. La comprobación manual de teclado y lector de pantalla se declara en la verificación final de la spec.
+
+## Migración 025: escudos de equipo (runbook)
+
+La **025** es **aditiva** y va **después** de la 024: añade `teams.crest_object_key` (`TEXT` nula, sin default ni índice) y la vista pública `public.v_public_tournament_teams` (`security_barrier = true`, `REVOKE ALL … FROM PUBLIC` y `GRANT SELECT … TO bracket_app`). No toca `init/01`, `init/02` ni las migraciones 001–023, no añade filas, políticas ni restricciones y no reescribe datos (no hay *backfill*: la columna llega nula). La columna hereda el `GRANT` de tabla y la RLS de `teams`; la vista filtra la misma visibilidad que `v_public_tournaments` (versión publicada, torneo `published`/`live`/`finished` y organización activa) y no expone `logo_url`, documentos, edad ni fecha de nacimiento.
+
+**Orden de despliegue: 024 → 025 → código.** La 024 pertenece al PR de Google (spec 013) y aún no está en `main`; el runner aplica en orden numérico las no registradas y esta rama funciona también con el hueco de la 024. El código nuevo lee y escribe `crest_object_key`: contra el esquema 024 falla, mientras que la imagen anterior sigue funcionando con la columna nueva (es nula y no la selecciona). Si esta rama llegara a `main` antes que la 024, la 025 se **renumera** en el merge; no se edita ni se desaplica una migración aplicada.
+
+Prepara una copia verificada y detén `api` y `worker`:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre025.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre025.dump" >/dev/null && echo "backup OK"
+$COMPOSE stop api worker
+```
+
+Pre-chequeo informativo (no aborta; deja evidencia de que la 025 no estaba aplicada):
+
+```sql
+SELECT count(*) AS columna_existente
+FROM pg_attribute
+WHERE attrelid = 'public.teams'::regclass
+  AND attname = 'crest_object_key'
+  AND attnum > 0 AND NOT attisdropped;
+
+SELECT to_regclass('public.v_public_tournament_teams') AS vista_existente;
+
+SELECT has_table_privilege('bracket_app', 'public.teams', 'UPDATE') AS app_update_teams;
+```
+
+Aplica la migración **antes** que el código nuevo:
+
+```sh
+MIGRATION_TARGET=025 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+**Smoke:** `GET /docs`, una lectura pública (`/api/v1/tournaments/public`, el detalle, la clasificación y los partidos), el listado de equipos de un torneo y la operación de un partido; si hay datos, carga un escudo real, comprueba que `teams.crest_object_key` queda escrita y que `v_public_tournament_teams` devuelve el equipo del torneo publicado (y no el de un borrador o una organización inactiva), reemplázalo y elimínalo. La firma real contra SeaweedFS es opcional; el almacenamiento simulado ya está cubierto por la suite.
+
+**No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-025) termina con el mismo esquema que una base migrada y `backend/tests/test_migration_025.py` lo comprueba (opt-in con PostgreSQL).
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.

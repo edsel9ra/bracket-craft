@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type StageFormat } from '~/constants/stageFormats';
-import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import { getApiCode, isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
 import {
   DEFAULT_RULES_CONFIG,
@@ -11,6 +11,7 @@ import {
 } from '~/utils/rulesConfig';
 import { buildRulesPayload, gameFormatOf, serverValidationDetail } from '~/utils/rulesWizard';
 import { effectiveRosterLimits } from '~/utils/rosterLimits';
+import { applyCrestResponse, crestActionKey, crestErrorMessageKey } from '~/utils/teamCrest';
 import { isRosterLockActive, latestPublishedVersion } from '~/utils/rosterLock';
 import { createMatchDraftStore } from '~/utils/matchDraft';
 import { findMinutesOutside, minutesLimits } from '~/utils/rulesMinutes';
@@ -47,6 +48,14 @@ interface TeamSummary {
   short_code: string;
   status: string;
   stage_ids: string[];
+  logo_url?: string | null;
+  crest_url?: string | null;
+}
+
+interface TeamCrestResponse {
+  team_id: string;
+  crest_url: string | null;
+  logo_url: string | null;
 }
 
 interface RosterSummary {
@@ -347,6 +356,94 @@ async function fetchPaged<T>(path: string): Promise<T[]> {
     rows.push(...page);
     if (page.length < CONFIG_PAGE_SIZE) return rows;
     offset += page.length;
+  }
+}
+
+// RF-055/RF-056: una imagen por equipo, gestionada solo desde el torneo donde
+// está inscrito. El estado vive en la página: la fila se actualiza en sitio y
+// no se recarga ni se tocan la versión seleccionada ni los borradores de la 012.
+const crestBusyTeamId = ref<string | null>(null);
+const crestStatusMessage = ref<string | null>(null);
+const crestErrors = reactive<Record<string, string>>({});
+const crestFiles = reactive<Record<string, File | null>>({});
+const crestInputVersions = reactive<Record<string, number>>({});
+
+function crestInputId(teamId: string): string {
+  return `crest-file-${teamId}`;
+}
+
+function crestErrorId(teamId: string): string {
+  return `crest-error-${teamId}`;
+}
+
+function onCrestFileSelected(teamId: string, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  crestFiles[teamId] = input.files?.[0] ?? null;
+  delete crestErrors[teamId];
+}
+
+function applyCrestRow(response: TeamCrestResponse): void {
+  const index = teams.value.findIndex((candidate) => candidate.team_id === response.team_id);
+  if (index < 0) return;
+  const team = teams.value[index];
+  if (!team) return;
+  const updated = applyCrestResponse(team, response);
+  if (updated) teams.value[index] = updated;
+}
+
+function crestFailureMessage(teamId: string, cause: unknown): void {
+  const key = crestErrorMessageKey(getApiCode(cause));
+  crestErrors[teamId] = key ? t(key) : failureMessage(cause, t('crest.error.generic'));
+}
+
+async function uploadCrest(team: TeamSummary): Promise<void> {
+  if (!canManageTournaments.value) return;
+  const file = crestFiles[team.team_id] ?? null;
+  delete crestErrors[team.team_id];
+  if (!file) {
+    crestErrors[team.team_id] = t('crest.error.selectFile');
+    return;
+  }
+  crestBusyTeamId.value = team.team_id;
+  crestStatusMessage.value = t('crest.uploading');
+  const body = new FormData();
+  // El nombre del campo es el del contrato; el nombre del archivo no se usa.
+  body.append('file', file);
+  try {
+    // `FormData` fija el Content-Type con su boundary: no se sobrescribe.
+    const updated = await request<TeamCrestResponse>(
+      `/tournaments/${tournamentId}/teams/${team.team_id}/crest`,
+      { method: 'POST', body },
+    );
+    applyCrestRow(updated);
+    crestFiles[team.team_id] = null;
+    crestInputVersions[team.team_id] = (crestInputVersions[team.team_id] ?? 0) + 1;
+    crestStatusMessage.value = t('crest.updated');
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    crestFailureMessage(team.team_id, cause);
+    crestStatusMessage.value = null;
+  } finally {
+    crestBusyTeamId.value = null;
+  }
+}
+
+async function removeCrest(team: TeamSummary): Promise<void> {
+  if (!canManageTournaments.value || !team.crest_url) return;
+  if (import.meta.client && !window.confirm(t('crest.confirmRemove', { team: team.name }))) return;
+  crestBusyTeamId.value = team.team_id;
+  crestStatusMessage.value = t('crest.removing');
+  delete crestErrors[team.team_id];
+  try {
+    await request(`/tournaments/${tournamentId}/teams/${team.team_id}/crest`, { method: 'DELETE' });
+    applyCrestRow({ team_id: team.team_id, crest_url: null, logo_url: null });
+    crestStatusMessage.value = t('crest.removed');
+  } catch (cause) {
+    if (await redirectOnSessionFailure(cause)) return;
+    crestFailureMessage(team.team_id, cause);
+    crestStatusMessage.value = null;
+  } finally {
+    crestBusyTeamId.value = null;
   }
 }
 
@@ -702,8 +799,57 @@ loading.value = false;
                 @saved="refreshConfiguration"
                 @dirty-change="wizardDirty.teams = $event"
               />
+              <p v-if="crestStatusMessage" class="muted-note" role="status">{{ crestStatusMessage }}</p>
               <TransitionGroup name="card-list" tag="ul" class="resource-list">
-                <li v-for="team in teams" :key="team.team_id"><span>{{ team.name }}</span><small>{{ team.short_code }}</small></li>
+                <li
+                  v-for="team in teams"
+                  :key="team.team_id"
+                  class="team-row"
+                  :aria-busy="crestBusyTeamId === team.team_id"
+                >
+                  <TeamCrest
+                    :team="team"
+                    :crest-url="team.crest_url ?? null"
+                    :logo-url="team.logo_url ?? null"
+                    surface="workspace"
+                  />
+                  <span class="team-name">{{ team.name }}</span>
+                  <small>{{ team.short_code }}</small>
+                  <div v-if="canManageTournaments" class="crest-actions">
+                    <label :for="crestInputId(team.team_id)">{{ t('crest.fileLabel') }}</label>
+                    <input
+                      :id="crestInputId(team.team_id)"
+                      :key="crestInputVersions[team.team_id] ?? 0"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      :disabled="crestBusyTeamId === team.team_id"
+                      :aria-invalid="crestErrors[team.team_id] ? 'true' : undefined"
+                      :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
+                      @change="onCrestFileSelected(team.team_id, $event)"
+                    >
+                    <button
+                      type="button"
+                      class="button-secondary"
+                      :disabled="crestBusyTeamId === team.team_id || !crestFiles[team.team_id]"
+                      :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
+                      @click="uploadCrest(team)"
+                    >{{ t(crestActionKey(Boolean(team.crest_url))) }}</button>
+                    <button
+                      v-if="team.crest_url"
+                      type="button"
+                      class="button-secondary"
+                      :disabled="crestBusyTeamId === team.team_id"
+                      :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
+                      @click="removeCrest(team)"
+                    >{{ t('crest.remove') }}</button>
+                    <p
+                      v-if="crestErrors[team.team_id]"
+                      :id="crestErrorId(team.team_id)"
+                      class="form-error"
+                      role="alert"
+                    >{{ crestErrors[team.team_id] }}</p>
+                  </div>
+                </li>
               </TransitionGroup>
             </div>
           </div>
@@ -758,6 +904,12 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .resource-list li.active { color: var(--accent); }
 .resource-list li.active button { background: rgba(212, 243, 106, 0.08); }
 .resource-list small { color: var(--muted); font-size: 0.7rem; }
+.resource-list li.team-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.team-name { color: var(--ink); font-size: 0.85rem; }
+.crest-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.crest-actions label { font-size: 0.72rem; }
+.crest-actions .form-error { flex-basis: 100%; margin: 0; }
+
 .empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
 .loading-state { display: flex; align-items: center; gap: 12px; }
 .loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }

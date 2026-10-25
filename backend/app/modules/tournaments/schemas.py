@@ -220,6 +220,7 @@ class TournamentTeamSummaryResponse(BaseModel):
     name: str
     short_code: str
     logo_url: str | None = None
+    crest_url: str | None = None
     status: str
     registered_at: datetime
     stage_ids: list[UUID] = Field(default_factory=list)
@@ -228,6 +229,19 @@ class TournamentTeamSummaryResponse(BaseModel):
 class TournamentTeamCreateResponse(BaseModel):
     team_id: UUID
     tournament_id: UUID
+
+
+class TeamCrestResponse(BaseModel):
+    """Crest of a team in the Workspace: additive field next to ``logo_url``.
+
+    ``crest_url`` is a temporary signed link (``None`` when the team has no
+    crest). ``logo_url`` keeps its meaning and is ``null`` from the first
+    confirmed upload. The internal object key is never part of the response.
+    """
+
+    team_id: UUID
+    crest_url: str | None = None
+    logo_url: str | None = None
 
 
 class StageTeamSummaryResponse(BaseModel):
@@ -315,8 +329,16 @@ class PublicStageResponse(BaseModel):
     stage_order: int
 
 
+class PublicTournamentTeamResponse(BaseModel):
+    team_id: UUID
+    name: str
+    short_code: str
+    crest_url: str | None = None
+
+
 class PublicTournamentResponse(PublicTournamentSummaryResponse):
     stages: list[PublicStageResponse] = Field(default_factory=list)
+    teams: list[PublicTournamentTeamResponse] = Field(default_factory=list)
 
 
 class PublicStandingResponse(BaseModel):
@@ -340,6 +362,7 @@ class PublicStandingResponse(BaseModel):
     fair_play_points: int
     rank: int
     calculated_at: datetime | None = None
+    crest_url: str | None = None
 
 
 class PublicLineupPlayerResponse(BaseModel):
@@ -356,6 +379,7 @@ class PublicTeamLineupResponse(BaseModel):
     team_id: UUID
     team_name: str
     formation_code: str | None = None
+    crest_url: str | None = None
     starters: list[PublicLineupPlayerResponse] = Field(default_factory=list)
     substitutes: list[PublicLineupPlayerResponse] = Field(default_factory=list)
 
@@ -379,9 +403,11 @@ class PublicMatchResponse(BaseModel):
     home_team_id: UUID | None = None
     home_team_name: str | None = None
     home_team_short_code: str | None = None
+    home_team_crest_url: str | None = None
     away_team_id: UUID | None = None
     away_team_name: str | None = None
     away_team_short_code: str | None = None
+    away_team_crest_url: str | None = None
     home_score_regular: int | None = None
     away_score_regular: int | None = None
     home_score: int | None = None

@@ -17,6 +17,7 @@ interface TeamLineup {
   team_id: string;
   team_name: string;
   formation_code: FormationCode | null;
+  crest_url: string | null;
   starters: LineupPlayer[];
   substitutes: LineupPlayer[];
 }
@@ -142,9 +143,23 @@ function formatDate(value: string | null): string {
         <div class="lineup-dialog-title">
           <p class="eyebrow">{{ match.stage_name }}</p>
           <h2 :id="titleId">
-            <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+            <span class="lineup-team">
+              <TeamCrest
+                :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }"
+                :crest-url="match.lineup?.home?.crest_url ?? null"
+                surface="public"
+              />
+              <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+            </span>
             <b>vs</b>
-            <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+            <span class="lineup-team">
+              <TeamCrest
+                :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }"
+                :crest-url="match.lineup?.away?.crest_url ?? null"
+                surface="public"
+              />
+              <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+            </span>
           </h2>
           <p class="lineup-dialog-meta">{{ formatScore(match) }} · {{ formatDate(match.match_date) }}</p>
         </div>
@@ -188,7 +203,10 @@ function formatDate(value: string | null): string {
             <div class="lineup-modal-lists">
               <article v-for="team in lineupTeams(match)" :key="team.team_id" class="lineup-modal-team">
                 <div class="lineup-modal-team-heading">
-                  <strong>{{ team.team_name }}</strong>
+                  <div class="lineup-modal-team-title">
+                    <TeamCrest :team="{ name: team.team_name }" :crest-url="team.crest_url ?? null" surface="public" />
+                    <strong>{{ team.team_name }}</strong>
+                  </div>
                   <span>{{ team.formation_code || t('public.classicLineup') }}</span>
                 </div>
                 <div class="lineup-modal-roles">
@@ -232,6 +250,7 @@ function formatDate(value: string | null): string {
 .lineup-dialog-title h2 { display: flex; align-items: center; gap: 14px; margin: 8px 0 6px; font-size: clamp(1.35rem, 3vw, 2.3rem); letter-spacing: -0.06em; line-height: 1; }
 .lineup-dialog-title h2 span { overflow-wrap: anywhere; }
 .lineup-dialog-title h2 b { color: var(--accent); font-size: 0.62em; letter-spacing: 0; }
+.lineup-team { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .lineup-dialog-meta { margin: 0; color: var(--muted); font-size: 0.78rem; }
 .lineup-close { flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
 .lineup-close:hover { border-color: var(--accent); color: var(--accent); }
@@ -250,6 +269,7 @@ function formatDate(value: string | null): string {
 .lineup-modal-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .lineup-modal-team { min-width: 0; padding: 18px; border: 1px solid rgba(166, 170, 159, 0.18); border-radius: 14px; background: rgba(12, 15, 12, 0.4); }
 .lineup-modal-team-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.lineup-modal-team-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lineup-modal-team-heading strong { overflow-wrap: anywhere; font-size: 1rem; }
 .lineup-modal-team-heading span { flex: 0 0 auto; color: var(--accent); font-size: 0.72rem; }
 .lineup-modal-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; padding-top: 14px; }
