@@ -148,6 +148,60 @@ test('the operator marks the minute as edited and the screen clears it after a s
 });
 
 // ---------------------------------------------------------------------------
+// Defectos registrados en MEMORY.md
+// ---------------------------------------------------------------------------
+
+test('the interruption minute goes through the guard and remembers the operator edit', () => {
+  // El minuto del segmento activo no se copia a mano: pasa por la utilidad pura
+  // con la causa del refresco, así que el refresco normal y el del socket no
+  // pisan lo que el operador está escribiendo.
+  assert.match(PAGE, /applyInterruptionMinute\(/);
+  assert.doesNotMatch(
+    PAGE,
+    /interruptionForm\.minute = nextActiveSegment\.minute_start/,
+    'the interruption minute is still overwritten on every refresh',
+  );
+
+  // El operador marca el campo al escribir (evento del input, no un `watch`).
+  const minuteField = pageLineWith('v-model.number="interruptionForm.minute"');
+  assert.ok(minuteField, 'the interruption minute field disappeared');
+  assert.match(minuteField, /@input="markInterruptionMinuteDirty"/, 'the interruption minute has no edited marker');
+  assert.match(PAGE, /function markInterruptionMinuteDirty\(\)/);
+  assert.doesNotMatch(PAGE, /watch\(\s*\(\)\s*=>\s*interruptionForm\.minute/, 'a watcher marks the interruption minute');
+
+  // Tras interrumpir con éxito se limpia: el refresco forzado vuelve a
+  // prefijar y el campo no queda marcado como editado para siempre.
+  const interruptBlock = PAGE.slice(
+    PAGE.indexOf('async function interruptSegment'),
+    PAGE.indexOf('async function assignOfficial'),
+  );
+  assert.ok(interruptBlock.length > 0, 'the interruption action disappeared');
+  assert.match(interruptBlock, /interruptionForm\.minuteDirty = false/);
+});
+
+test('creating a segment never sends the interface flag to the server', () => {
+  const createBlock = PAGE.slice(
+    PAGE.indexOf('async function createSegment'),
+    PAGE.indexOf('async function interruptSegment'),
+  );
+  assert.ok(createBlock.length > 0, 'the create-segment action disappeared');
+
+  // El cuerpo se construye campo a campo: la bandera de interfaz no viaja.
+  assert.doesNotMatch(
+    createBlock,
+    /\.\.\.segmentForm/,
+    'the segment form is still spread into the request body',
+  );
+  const bodyStart = createBlock.indexOf('body:');
+  assert.ok(bodyStart > 0, 'the segment request has no body');
+  const body = createBlock.slice(bodyStart, createBlock.indexOf('},', bodyStart));
+  assert.doesNotMatch(body, /minuteDirty/, 'the request body carries the interface flag');
+  assert.match(createBlock, /segment_number: segmentForm\.segment_number/);
+  assert.match(createBlock, /minute_start: segmentForm\.minute_start/);
+  assert.match(createBlock, /resolutionPayload\(/);
+});
+
+// ---------------------------------------------------------------------------
 // RNF-007: la propuesta se anuncia y distingue su origen
 // ---------------------------------------------------------------------------
 

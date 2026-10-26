@@ -168,6 +168,42 @@ export function applySegmentProposal(
   };
 }
 
+/** Estado del minuto del formulario de interrupción que la pantalla mantiene. */
+export interface InterruptionMinuteState {
+  readonly minute: number;
+  readonly dirty: boolean;
+}
+
+/** Minuto de interrupción resultante de aplicar la propuesta. */
+export interface ResolvedInterruptionMinute {
+  readonly minute: number;
+  readonly dirty: boolean;
+}
+
+/**
+ * Aplica el minuto del segmento activo al formulario de interrupción con la
+ * misma regla que el del segmento (D-5): se escribe solo si hay propuesta y el
+ * refresco lo fuerza (montaje y tras crear o interrumpir) o el operador no lo
+ * ha editado. Al escribirse, el campo deja de estar editado a mano. Sin
+ * propuesta (`nextActiveSegment.minute_start === null`) se conserva lo que haya.
+ *
+ * El refresco del socket llega como `refresh`, así que no pisa el minuto que el
+ * operador está escribiendo. Es pura: no lee el reloj ni el estado global.
+ */
+export function applyInterruptionMinute(
+  current: Readonly<InterruptionMinuteState>,
+  proposal: number | null,
+  options: Readonly<SegmentProposalOptions> = {},
+): ResolvedInterruptionMinute {
+  const proposedMinute =
+    typeof proposal === 'number' && Number.isInteger(proposal) && proposal >= 0 ? proposal : null;
+  if (proposedMinute === null) return { minute: current.minute, dirty: current.dirty === true };
+  const prefill = options.forceMinute === true || current.dirty !== true;
+  return prefill
+    ? { minute: proposedMinute, dirty: false }
+    : { minute: current.minute, dirty: true };
+}
+
 /**
  * Mensaje de producto de cada causa de un 409 de operación, por su `code`.
  *
