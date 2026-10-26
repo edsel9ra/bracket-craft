@@ -40,7 +40,14 @@ from app.modules.identity.errors import GoogleAuthError, google_error_body
 from app.modules.identity.router import router as identity_router
 from app.modules.invitations.errors import InvitationConflict, conflict_body
 from app.modules.invitations.router import router as invitations_router
-from app.modules.matches.errors import ResolutionNotEnabled
+from app.modules.matches.errors import (
+    AssistPlayerInvalid,
+    DoubleYellowInconsistent,
+    ResolutionNotEnabled,
+    WalkoverConfigInconsistent,
+    WalkoverScoreMismatch,
+    WalkoverStateNotAllowed,
+)
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
@@ -687,11 +694,13 @@ async def _coded_exception_handler(
     """Answer a coded domain error with the stable ``code`` next to ``detail``.
 
     One handler serves every coded error —a resolution the stage does not
-    enable, a roster size out of range, a taken organization slug and the crest
-    catalog—: ``detail`` stays a string so clients that ignore ``code`` keep
-    working, ``code`` is the additive identifier the frontend translates and any
-    header the exception carries (``Retry-After``) is preserved. The response is
-    never cached (``Cache-Control: no-store``).
+    enable, an invalid assist, an inconsistent double yellow, a walkover state,
+    score or configuration conflict, a roster size out of range, a taken
+    organization slug and the crest catalog—: ``detail`` stays
+    a string so clients that ignore ``code`` keep working, ``code`` is the
+    additive identifier the frontend translates and any header the exception
+    carries (``Retry-After``) is preserved. The response is never cached
+    (``Cache-Control: no-store``).
     """
 
     headers = dict(exc.headers or {})
@@ -745,6 +754,11 @@ async def _identity_http_exception_handler(
 api.add_exception_handler(RequestValidationError, _request_validation_exception_handler)
 api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_handler)
 api.add_exception_handler(ResolutionNotEnabled, _coded_exception_handler)
+api.add_exception_handler(AssistPlayerInvalid, _coded_exception_handler)
+api.add_exception_handler(DoubleYellowInconsistent, _coded_exception_handler)
+api.add_exception_handler(WalkoverStateNotAllowed, _coded_exception_handler)
+api.add_exception_handler(WalkoverScoreMismatch, _coded_exception_handler)
+api.add_exception_handler(WalkoverConfigInconsistent, _coded_exception_handler)
 api.add_exception_handler(RosterSizeOutOfRange, _coded_exception_handler)
 api.add_exception_handler(OrganizationSlugTaken, _coded_exception_handler)
 api.add_exception_handler(CrestError, _coded_exception_handler)

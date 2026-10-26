@@ -3,11 +3,16 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  ASSIST_PLAYER_INVALID_CODE,
   DEFAULT_RESOLUTION,
+  DOUBLE_YELLOW_INCONSISTENT_CODE,
   MAXIMUM_SOURCE_LABEL_KEYS,
   RESOLUTION_LABEL_KEYS,
   RESOLUTION_NOT_ENABLED_CODE,
   ROSTER_SIZE_OUT_OF_RANGE_CODE,
+  WALKOVER_CONFIG_INCONSISTENT_CODE,
+  WALKOVER_SCORE_MISMATCH_CODE,
+  WALKOVER_STATE_NOT_ALLOWED_CODE,
   classifyMatchConflict,
   closeResolutionDecision,
   createResolutionStore,
@@ -44,6 +49,7 @@ import {
   type MatchDraftScope,
   type MatchDraftStorage,
 } from '../app/utils/matchDraft.ts';
+import { closeConflictMessageKey } from '../app/utils/matchSegments.ts';
 
 // Spec 012, H3-T04 (RF-033, RF-034). La resolución prevista se elige con un
 // único control en la operación, el máximo se lee de `limits` (el cliente no
@@ -281,14 +287,23 @@ test('renders a single planned-resolution control in the operation', () => {
 // RF-033: las tres llamadas envían la resolución mostrada a través del mismo
 // cálculo; ninguna usa un segundo valor.
 test('sends the shown resolution on segment, interruption and close', () => {
+  // Crear e interrumpir la envían con el cálculo directo…
   assert.equal(
     PAGE_SOURCE.split('resolutionPayload(').length - 1,
-    3,
-    'create, interrupt and close must send the resolution',
+    2,
+    'create and interrupt must send the resolution',
   );
   assert.match(PAGE_SOURCE, /\/matches\/\$\{matchId\}\/segments`/);
   assert.match(PAGE_SOURCE, /\/segments\/\$\{activeSegment\.value!\.id\}\/interrupt`/);
   assert.match(PAGE_SOURCE, /\/matches\/\$\{matchId\}\/close`/);
+
+  // …y el cierre dentro del cuerpo de la utilidad pura (spec 016, RF-005), que
+  // recibe la misma resolución mostrada.
+  assert.match(
+    PAGE_SOURCE,
+    /buildCloseReportBody\(\{[\s\S]{0,200}resolution: resolution\.value/,
+    'the close body does not carry the shown resolution',
+  );
 
   assert.match(PAGE_SOURCE, /const \{ request \} = useApi\(\)/);
   assert.doesNotMatch(PAGE_SOURCE, /\$fetch\(/);
@@ -985,6 +1000,44 @@ test('distinguishes the opening size 409 from the resolution 409 by the additive
   assert.equal(matchConflictDetail(null), null);
 });
 
+// Spec 017, T6 (RF-006): el cierre rechazado por una doble amarilla incoherente
+// llega con su propio `code` aditivo. El clasificador lo distingue sin mirar el
+// texto, igual que el asistente inválido de la 015, y un 409 anterior sin `code`
+// sigue cayendo en `other` para no cambiar el comportamiento del cliente.
+test('classifies the double yellow and the assist codes additively', () => {
+  assert.equal(DOUBLE_YELLOW_INCONSISTENT_CODE, 'DOUBLE_YELLOW_INCONSISTENT');
+  assert.equal(ASSIST_PLAYER_INVALID_CODE, 'ASSIST_PLAYER_INVALID');
+
+  const doubleYellow = {
+    status: 409,
+    data: {
+      detail: 'La roja por doble amarilla del minuto 61 no tiene exactamente dos amarillas previas.',
+      code: DOUBLE_YELLOW_INCONSISTENT_CODE,
+    },
+  };
+  assert.equal(classifyMatchConflict(doubleYellow), 'double_yellow_inconsistent');
+  assert.equal(matchConflictDetail(doubleYellow), doubleYellow.data.detail);
+
+  const assist = {
+    status: 409,
+    data: { detail: 'El asistente no está en la plantilla del partido.', code: ASSIST_PLAYER_INVALID_CODE },
+  };
+  assert.equal(classifyMatchConflict(assist), 'assist_player_invalid');
+
+  // Los códigos de la 012 siguen clasificándose igual.
+  assert.equal(
+    classifyMatchConflict({ status: 409, data: { code: RESOLUTION_NOT_ENABLED_CODE } }),
+    'resolution_not_enabled',
+  );
+  assert.equal(
+    classifyMatchConflict({ status: 409, data: { code: ROSTER_SIZE_OUT_OF_RANGE_CODE } }),
+    'roster_size_out_of_range',
+  );
+
+  // Compatibilidad: sin `code` el detalle sigue mandando y no se inventa causa.
+  assert.equal(classifyMatchConflict({ status: 409, data: { detail: 'Doble amarilla' } }), 'other');
+});
+
 test('keeps the match unopened and allows a retry after the opening size 409', () => {
   assert.match(PAGE_SOURCE, /classifyMatchConflict\(cause\) === 'roster_size_out_of_range'/);
   assert.match(PAGE_SOURCE, /openingBlocked\.value = describeOpeningBlocked\(/);
@@ -996,10 +1049,14 @@ test('keeps the match unopened and allows a retry after the opening size 409', (
 
   const requestAt = body.indexOf('/matches/${matchId}/segments`');
   const responseAt = body.indexOf('showOpeningBlocked(cause)');
-  const incrementAt = body.indexOf('segmentForm.segment_number += 1');
+  // Spec 017 (RF-015): el formulario ya no avanza sumando uno en el cliente; el
+  // número y el minuto los fija la propuesta del servidor en el refresco que
+  // sigue a la creación, que también ocurre solo si el servidor aceptó.
+  const incrementAt = body.indexOf("refreshOperation('segment-changed')");
   assert.ok(requestAt > 0, 'the creation request is missing');
   assert.ok(responseAt > requestAt, 'the opening block is only decided by the server response');
   assert.ok(incrementAt > requestAt, 'the interface only advances after a successful creation');
+  assert.doesNotMatch(body, /segmentForm\.segment_number \+= 1/, 'the client advances the number by hand');
 
   // El intento no se bloquea antes de llamar al servidor: no hay comprobación
   // local del tamaño en la ruta de creación.
@@ -1138,10 +1195,73 @@ test('the operation uses the combined validator when adding and when restoring a
     TRANSLATIONS_SOURCE,
     /'match\.eventMinuteExceedsMaximum': '[^']*\{minute\}[^']*\{added\}[^']*\{max\}/,
   );
-  // El cierre no puede ignorar los eventos restaurados fuera del tope.
+  // El cierre no puede ignorar los eventos restaurados fuera del tope: el
+  // problema de minuto entra en la validación previa como `minuteIssue`.
   const closeValidation = PAGE_SOURCE.slice(
-    PAGE_SOURCE.indexOf('function closeValidationError('),
+    PAGE_SOURCE.indexOf('function closeValidationIssue('),
     PAGE_SOURCE.indexOf('function failureMessage('),
   );
   assert.match(closeValidation, /draftMinuteViolations\.value/);
+});
+
+// ---------------------------------------------------------------------------
+// Spec 016, T9 (RF-005, RF-012, RNF-003). El walkover añade tres códigos de
+// dominio a la misma clasificación de conflictos de la operación y deja de
+// bloquearse por segmentos persistidos fuera del máximo: el servidor no valida
+// segmentos en el W.O. (D-13).
+// ---------------------------------------------------------------------------
+
+test('classifies the three walkover codes with the shared classifier', () => {
+  assert.equal(WALKOVER_STATE_NOT_ALLOWED_CODE, 'WALKOVER_STATE_NOT_ALLOWED');
+  assert.equal(WALKOVER_SCORE_MISMATCH_CODE, 'WALKOVER_SCORE_MISMATCH');
+  assert.equal(WALKOVER_CONFIG_INCONSISTENT_CODE, 'WALKOVER_CONFIG_INCONSISTENT');
+
+  const cases = [
+    ['walkover_state_not_allowed', WALKOVER_STATE_NOT_ALLOWED_CODE],
+    ['walkover_score_mismatch', WALKOVER_SCORE_MISMATCH_CODE],
+    ['walkover_config_inconsistent', WALKOVER_CONFIG_INCONSISTENT_CODE],
+  ] as const;
+
+  for (const [kind, code] of cases) {
+    assert.equal(classifyMatchConflict({ status: 409, data: { detail: 'x', code } }), kind);
+    assert.ok(closeConflictMessageKey(kind), `${kind} needs its own message`);
+  }
+
+  assert.equal(classifyMatchConflict({ status: 409, data: { code: 'OTRO' } }), 'other');
+});
+
+// D-13/RF-012: con walkover el servidor no valida segmentos, así que un
+// segmento persistido por encima del máximo no bloquea el cambio; el aviso por
+// eventos del borrador se conserva. Con las demás resoluciones sigue bloqueando.
+test('does not block a walkover because of persisted segments beyond the maximum', () => {
+  const segments: ResolutionSegmentInput[] = [
+    ...PERSISTED_SEGMENTS,
+    { id: 'seg-3', segment_number: 3, minute_start: 91, minute_end: 100, status: 'completed' },
+  ];
+  const events: ResolutionDraftEventInput[] = [
+    { client_event_id: 'ev-1', event_type: 'goal', minute: 95, added_minute: 0 },
+  ];
+
+  assert.equal(resolutionChangeOutcome(segments, [], 90).outcome, 'blocked');
+
+  const walkoverChange = resolutionChangeOutcome(segments, [], 90, { resolution: 'walkover' });
+  assert.equal(walkoverChange.outcome, 'ok');
+
+  const walkoverWithDraft = resolutionChangeOutcome(segments, events, 90, {
+    resolution: 'walkover',
+  });
+  assert.equal(walkoverWithDraft.outcome, 'confirm');
+  assert.equal(walkoverWithDraft.events.length, 1);
+
+  const decision = closeResolutionDecision({
+    planned: 'regular',
+    chosen: 'walkover',
+    limits: FULL,
+    segments,
+    draftEvents: [],
+    confirmed: true,
+  });
+  assert.equal(decision.outcome, 'confirm');
+  assert.equal(decision.send, true);
+  assert.equal(decision.needsConfirmation, true);
 });

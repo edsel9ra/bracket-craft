@@ -45,11 +45,15 @@ from app.modules.matches.service import (
     effective_match_minutes,
     ensure_segment_team_state,
     maximum_minute_for_resolution,
+    next_segment_proposal,
     replay_report_state,
     resolution_enabled,
     roster_entries,
 )
-from app.modules.rules_engine.engine import effective_substitutions
+from app.modules.rules_engine.engine import (
+    effective_stage_rules,
+    effective_substitutions,
+)
 from app.modules.rules_engine.substitutions import (
     MatchEvent,
     SubstitutionError,
@@ -354,14 +358,18 @@ def _build_operation_limits(match: dict[str, Any]) -> dict[str, Any]:
     The four legacy keys keep their meaning; the four additive keys expose the
     same effective configuration resolved per resolution (RF-032, CT-1), so the
     client can validate events and segments without re-deriving the rule.
+    `walkover_score` (spec 016, RF-005) is the fifth additive key: the pair the
+    close will apply, resolved with the same configuration —so the screen shows
+    it in read-only mode— and never a new source of truth.
     """
 
-    minutes = effective_match_minutes(
-        match.get("rules_config") or {},
-        match.get("stage_id"),
-    )
+    config = match.get("rules_config") or {}
+    minutes = effective_match_minutes(config, match.get("stage_id"))
     extra_time_enabled = bool(minutes["extra_time_enabled"])
     extra_time_minutes = minutes["extra_time_minutes"]
+    walkover_score = effective_stage_rules(config, match.get("stage_id")).get(
+        "walkover_score"
+    ) or {}
     return {
         "regular_time_minutes": minutes["regular_time_minutes"],
         "extra_time_minutes": extra_time_minutes,
@@ -373,6 +381,10 @@ def _build_operation_limits(match: dict[str, Any]) -> dict[str, Any]:
         ),
         "extra_time_enabled": extra_time_enabled,
         "penalties_enabled": bool(minutes["penalties_enabled"]),
+        "walkover_score": {
+            "winner": int(walkover_score.get("winner", 3)),
+            "loser": int(walkover_score.get("loser", 0)),
+        },
     }
 
 
@@ -484,6 +496,13 @@ async def get_match_operation(
     habilitada), `extra_time_enabled` y `penalties_enabled`, resueltos con la
     configuración efectiva de la fase. La regla de duración y la resolución
     prevista están en `AGENTS.md` → «Minutos».
+
+    `next_segment` (RF-015) es la propuesta del siguiente segmento derivada de
+    lo persistido —`segment_number`, `minute_start` y `derived`—, o `null` si el
+    partido es terminal o su versión no está publicada. Se calcula con los
+    segmentos y las interrupciones que la respuesta ya lee: es una lectura, no
+    crea ni modifica segmentos y no añade consultas (RNF-008). El servidor sigue
+    validando número y minuto al crear el segmento (RF-013/RF-014).
     """
 
     async with db.begin():
@@ -578,7 +597,7 @@ async def get_match_operation(
             text("""
                 SELECT me.id, me.client_event_id, me.event_type, me.team_id,
                        t.name AS team_name, me.beneficiary_team_id, me.player_id,
-                       me.player_out_id, me.player_in_id,
+                       me.player_out_id, me.player_in_id, me.assist_player_id,
                        p.first_name, p.last_name, me.minute, me.added_minute,
                        me.segment_id, me.metadata, me.is_voided, me.created_at
                 FROM match_events me
@@ -591,6 +610,8 @@ async def get_match_operation(
         )
         lineup = await _load_match_lineup(db, context.organization_id, match_id)
         tactical_lineups = await _load_match_tactical_lineups(db, context.organization_id, match_id)
+        segments = [dict(row) for row in segment_result.mappings().all()]
+        interruptions = [dict(row) for row in interruption_result.mappings().all()]
         event_rows = [dict(row) for row in event_result.mappings().all()]
 
     # N-2: the read transaction is closed before signing. Both participants go
@@ -613,8 +634,8 @@ async def get_match_operation(
 
     return {
         "match": match,
-        "segments": [dict(row) for row in segment_result.mappings().all()],
-        "interruptions": [dict(row) for row in interruption_result.mappings().all()],
+        "segments": segments,
+        "interruptions": interruptions,
         "officials": [dict(row) for row in officials_result.mappings().all()],
         "eligible_officials": [dict(row) for row in eligible_result.mappings().all()],
         "rosters": [dict(row) for row in roster_result.mappings().all()],
@@ -623,6 +644,12 @@ async def get_match_operation(
         "events": event_rows,
         "substitutions": _build_operation_substitutions(match, lineup, event_rows),
         "limits": _build_operation_limits(match),
+        "next_segment": next_segment_proposal(
+            match.get("status"),
+            match.get("version_status"),
+            segments,
+            interruptions,
+        ),
     }
 
 

@@ -2,9 +2,42 @@ import json
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.rule_contract import FORMATION_CODES
+
+
+# Catálogo cerrado de eventos del acta (RF-004). Ampliarlo exige cambiar la
+# spec 015: no es configuración ni se deduce del `rules_config`.
+EVENT_TYPES: tuple[str, ...] = (
+    "goal",
+    "own_goal",
+    "penalty_goal",
+    "yellow_card",
+    "red_card",
+    "substitution",
+    "foul",
+)
+EventType = Literal[*EVENT_TYPES]
+
+RedCardType = Literal["direct_red", "double_yellow_red"]
+RED_CARD_TYPES: tuple[RedCardType, ...] = ("direct_red", "double_yellow_red")
+
+# Claves admitidas en `metadata` por tipo de evento (RF-002). Un tipo ausente
+# no admite ninguna; cualquier otra clave es 422.
+METADATA_KEYS_BY_EVENT_TYPE: dict[str, frozenset[str]] = {
+    "red_card": frozenset({"red_card_type"}),
+}
+
+# Forma canónica de `client_event_id` (RF-015, D-5): el identificador de cliente
+# deja de ser texto libre, pero la forma se valida solo en la API —la base
+# conserva la columna y una `CHECK` sobre datos históricos añadiría superficie
+# de migración sin garantía nueva—. Se admiten mayúsculas y minúsculas, igual
+# que el patrón de UUID que ya usa el resto del esquema.
+CLIENT_EVENT_ID_PATTERN = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 OfficialRole = Literal[
@@ -23,6 +56,16 @@ FormationCode = Literal[*FORMATION_CODES]
 # opcional: sin él, el servidor aplica el máximo de la fase (P1).
 ResolutionType = Literal["regular", "extra_time", "penalties", "walkover", "administrative"]
 
+# Catálogo cerrado del motivo de walkover (RF-007, D-5): no hay texto libre ni
+# código «otra». La obligatoriedad y el catálogo son de la API; la base solo
+# almacena el código en `matches.resolution_reason` (migración 027).
+WALKOVER_REASONS: tuple[str, ...] = (
+    "no_show",
+    "withdrawal",
+    "insufficient_players",
+    "sanction",
+)
+
 
 class OfficialAssignmentRequest(BaseModel):
     organization_user_id: UUID
@@ -30,8 +73,17 @@ class OfficialAssignmentRequest(BaseModel):
 
 
 class MatchEventPayload(BaseModel):
-    client_event_id: str = Field(min_length=1, max_length=100)
-    event_type: Literal["goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "substitution", "foul"]
+    # Catálogo cerrado en la raíz (RF-002, D-4): una clave de primer nivel que
+    # el tipo no declara es 422 en vez de ignorarse. El evento viaja completo a
+    # la auditoría del cierre, así que una clave ignorada sería un canal de
+    # texto libre hacia el acta.
+    model_config = ConfigDict(extra="forbid")
+
+    # El identificador de cliente es un UUID (RF-015): si no tiene esa forma es
+    # 422 y no se persiste. El patrón sustituye al antiguo tope de longitud, que
+    # ya no aporta nada sobre una cadena de 36 caracteres.
+    client_event_id: str = Field(pattern=CLIENT_EVENT_ID_PATTERN)
+    event_type: EventType
     team_id: UUID
     beneficiary_team_id: UUID | None = None
     player_id: UUID | None = None
@@ -40,6 +92,10 @@ class MatchEventPayload(BaseModel):
     # a 422 before the handler runs.
     player_out_id: UUID | None = None
     player_in_id: UUID | None = None
+    # Asistencia (RF-007): campo opcional del gol, como máximo una por gol y
+    # nunca del propio goleador. La pertenencia a la plantilla, el mismo equipo
+    # y la presencia en campo son del motor (RF-008): T4 y T5.
+    assist_player_id: UUID | None = None
     minute: int = Field(ge=0, le=180)
     added_minute: int = Field(default=0, ge=0, le=30)
     segment_id: UUID
@@ -54,7 +110,7 @@ class MatchEventPayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_event(self) -> "MatchEventPayload":
-        if self.event_type in {"goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "substitution", "foul"} and self.player_id is None:
+        if self.player_id is None:
             raise ValueError(f"{self.event_type} requiere player_id")
         if self.event_type == "substitution":
             if self.player_out_id is None or self.player_in_id is None:
@@ -68,21 +124,40 @@ class MatchEventPayload(BaseModel):
         if self.event_type == "own_goal":
             if self.beneficiary_team_id is None or self.beneficiary_team_id == self.team_id:
                 raise ValueError("Un autogol requiere un equipo beneficiario distinto")
-        if self.event_type in {"goal", "penalty_goal"} and self.beneficiary_team_id not in (None, self.team_id):
-            raise ValueError("Un gol normal debe beneficiar al equipo que ejecuta la acción")
+        elif self.beneficiary_team_id is not None:
+            # Incluye `goal`/`penalty_goal` con su propio equipo, que antes se
+            # toleraba (RF-002, RNF-003 d).
+            raise ValueError("beneficiary_team_id solo aplica a un autogol")
+        if self.event_type == "goal":
+            if self.assist_player_id is not None and self.assist_player_id == self.player_id:
+                # RF-008: el asistente no puede ser el goleador (estructural).
+                raise ValueError("El asistente debe ser distinto del goleador")
+        elif self.assist_player_id is not None:
+            # RF-009: el autogol, el penalti, las tarjetas, la sustitución y la
+            # falta no admiten asistencia.
+            raise ValueError("assist_player_id solo aplica a un gol")
+        allowed_metadata_keys = METADATA_KEYS_BY_EVENT_TYPE.get(self.event_type, frozenset())
+        unknown_metadata_keys = set(self.metadata or {}) - allowed_metadata_keys
+        if unknown_metadata_keys:
+            # El mensaje no repite las claves recibidas: son texto del cliente
+            # y no deben viajar al 422 ni a la auditoría (RNF-002).
+            if unknown_metadata_keys == {"red_card_type"}:
+                raise ValueError("red_card_type solo aplica a una tarjeta roja")
+            raise ValueError("metadata solo admite la clave red_card_type")
         if self.event_type == "red_card":
             red_card_type = (self.metadata or {}).get("red_card_type", "direct_red")
-            if red_card_type not in {"direct_red", "double_yellow_red"}:
+            if red_card_type not in RED_CARD_TYPES:
                 raise ValueError("red_card_type no es válido")
-        elif self.metadata and "red_card_type" in self.metadata:
-            raise ValueError("red_card_type solo aplica a una tarjeta roja")
         return self
 
 
 class CloseMatchReportDTO(BaseModel):
     resolution_type: Literal["regular", "extra_time", "penalties", "walkover", "administrative"]
-    home_score_regular: int = Field(ge=0)
-    away_score_regular: int = Field(ge=0)
+    # D-9: la pareja reglamentaria solo deja de ser obligatoria en `walkover`.
+    # Con `0` como «no informado» un walkover 0-3 legítimo sería indistinguible
+    # de un cliente que envía 0-0 por defecto.
+    home_score_regular: int | None = Field(default=None, ge=0)
+    away_score_regular: int | None = Field(default=None, ge=0)
     home_score: int | None = Field(default=None, ge=0)
     away_score: int | None = Field(default=None, ge=0)
     home_penalties: int | None = Field(default=None, ge=0)
@@ -103,6 +178,32 @@ class CloseMatchReportDTO(BaseModel):
 
     @model_validator(mode="after")
     def validate_resolution(self) -> "CloseMatchReportDTO":
+        """Comprueba solo la **estructura** del acta (422).
+
+        La coherencia **numérica** del marcador (final menor que el
+        reglamentario, `regular` con final distinto, `penalties` sin empate tras
+        la prórroga y tanda igualada) no se valida aquí: es dominio del paso 13
+        del cierre y responde **409** con `detail` cadena (RF-007, RNF-003 f).
+
+        Lo que sí decide este validador es la **presencia** de cada campo por
+        resolución (D-9): la pareja reglamentaria es obligatoria salvo en
+        `walkover`, cuyo marcador deriva el servidor de la configuración (RF-005).
+        """
+        regular_scores_set = (
+            self.home_score_regular is not None or self.away_score_regular is not None
+        )
+        regular_pair_set = (
+            self.home_score_regular is not None and self.away_score_regular is not None
+        )
+        if regular_scores_set and not regular_pair_set:
+            raise ValueError(
+                "Los dos marcadores reglamentarios son obligatorios cuando se informa uno"
+            )
+        if self.resolution_type != "walkover" and not regular_pair_set:
+            # D-9: solo el walkover puede omitirlos; el resto de resoluciones no
+            # cambia su contrato (422).
+            raise ValueError("Esta resolución requiere los dos marcadores reglamentarios")
+
         penalties_set = self.home_penalties is not None or self.away_penalties is not None
         final_scores_set = self.home_score is not None or self.away_score is not None
         if final_scores_set and (self.home_score is None or self.away_score is None):
@@ -111,34 +212,33 @@ class CloseMatchReportDTO(BaseModel):
         if self.resolution_type == "penalties":
             if self.home_penalties is None or self.away_penalties is None:
                 raise ValueError("Los dos marcadores de penales son obligatorios")
-            if self.home_penalties == self.away_penalties:
-                raise ValueError("La tanda de penales debe tener un ganador")
-            if self.home_score is None or self.away_score is None or self.home_score != self.away_score:
-                raise ValueError("El partido debe estar empatado después de la prórroga")
         elif penalties_set:
             raise ValueError("Los penales solo aplican con resolution_type=penalties")
         if self.resolution_type in {"extra_time", "penalties", "administrative"}:
             if self.home_score is None or self.away_score is None:
                 raise ValueError("Esta resolución requiere los dos marcadores finales")
-            if self.home_score < self.home_score_regular or self.away_score < self.away_score_regular:
-                raise ValueError("El marcador final no puede ser menor al reglamentario")
         if self.resolution_type in {"extra_time", "penalties", "walkover", "administrative"} and self.winner_team_id is None:
             raise ValueError("Esta resolución requiere winner_team_id")
-        if self.resolution_type == "regular":
-            if self.reason is not None:
-                raise ValueError("La razón solo aplica a una resolución administrativa")
-            if final_scores_set and (
-                self.home_score != self.home_score_regular or self.away_score != self.away_score_regular
-            ):
-                raise ValueError("Una resolución regular debe coincidir con el marcador reglamentario")
+        if self.resolution_type == "walkover":
+            # RF-007: motivo obligatorio y de catálogo cerrado (D-8: es el mismo
+            # campo que la administrativa, con otro dominio).
+            if self.reason is None:
+                raise ValueError("El walkover requiere un motivo")
+            if self.reason not in WALKOVER_REASONS:
+                raise ValueError("El motivo del walkover no es válido")
         elif self.resolution_type == "administrative":
             if self.reason is None:
                 raise ValueError("La resolución administrativa requiere una razón")
         elif self.reason is not None:
-            raise ValueError("La razón solo aplica a una resolución administrativa")
+            raise ValueError(
+                "La razón solo aplica a un walkover o a una resolución administrativa"
+            )
         if self.resolution_type in {"walkover", "administrative"} and self.events:
             raise ValueError("Esta resolución no permite eventos individuales")
-        event_ids = [event.client_event_id for event in self.events]
+        # La identidad del evento no distingue caja: el UUID se compara en su
+        # forma canónica (RF-012), igual que la escritura y la búsqueda de un
+        # evento ya persistido.
+        event_ids = [event.client_event_id.lower() for event in self.events]
         if len(event_ids) != len(set(event_ids)):
             raise ValueError("No se permiten client_event_id duplicados en la misma acta")
         return self
@@ -229,6 +329,23 @@ class MatchSegmentInterruptionResponse(BaseModel):
     created_at: Any
 
 
+class NextSegmentProposal(BaseModel):
+    """Propuesta del siguiente segmento derivada de lo persistido (RF-015).
+
+    Es una **propuesta de solo lectura**: ``GET /matches/{id}/operation`` no
+    crea ni modifica nada y el servidor sigue validando número y minuto al crear
+    un segmento (RF-013/RF-014). ``derived`` verdadero significa que
+    ``minute_start`` sale de lo persistido (el fin del último segmento o el
+    minuto de su interrupción); falso significa que no hay de dónde derivarlo
+    —último segmento activo o completado sin ``minute_end``— y el operador lo
+    indica, con ``minute_start`` nulo.
+    """
+
+    segment_number: int
+    minute_start: int | None = None
+    derived: bool
+
+
 class MatchOperationResponse(BaseModel):
     match: dict[str, Any]
     segments: list[dict[str, Any]]
@@ -241,6 +358,7 @@ class MatchOperationResponse(BaseModel):
     events: list[dict[str, Any]]
     substitutions: dict[str, Any]
     limits: dict[str, Any]
+    next_segment: NextSegmentProposal | None = None
 
 
 class MatchOfficialResponse(BaseModel):

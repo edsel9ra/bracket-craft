@@ -29,6 +29,36 @@ import {
   type ResolutionType,
 } from '~/utils/matchResolution';
 import {
+  assistCandidates,
+  buildDraftEvent,
+  eventSummary,
+  eventTypeAnnouncement,
+  isEventFieldRequired,
+  newClientEventId,
+  validateAssist,
+  validateEventValues,
+  validateSegmentMinute,
+  visibleEventFields,
+  type EventFormValues,
+} from '~/utils/matchEvents';
+import {
+  WALKOVER_REASON_LABEL_KEYS,
+  WALKOVER_REASONS,
+  buildCloseReportBody,
+  closePreflight,
+  walkoverScoreFrom,
+  type ClosePreflightIssue,
+} from '~/utils/matchClose';
+import {
+  SEGMENT_PROPOSAL_HINT_LABEL_KEYS,
+  applySegmentProposal,
+  classifyCloseConflict,
+  closeConflictMessageKey,
+  forceMinuteOnRefresh,
+  segmentProposalHint,
+  type SegmentRefreshCause,
+} from '~/utils/matchSegments';
+import {
   OPENING_BLOCKED_LABEL_KEYS,
   describeOpeningBlocked,
   effectiveRosterLimits,
@@ -49,9 +79,8 @@ import {
   normalizeMatchLimits,
   normalizeSubstitutionsState,
   previewCounters,
-  readDraftEvent,
+  readDraftEvents,
   substitutionAvailability,
-  substitutionFieldsFor,
   substitutionOptions,
   teamSubstitutionState,
   validateSubstitutionPair,
@@ -199,6 +228,9 @@ interface MatchEvent {
   team_name: string;
   beneficiary_team_id: string | null;
   player_id: string;
+  player_out_id?: string | null;
+  player_in_id?: string | null;
+  assist_player_id?: string | null;
   first_name: string;
   last_name: string;
   minute: number;
@@ -220,6 +252,13 @@ interface MatchOperation {
   events: MatchEvent[];
   substitutions?: unknown;
   limits?: (MatchLimits & OperationLimits) | null;
+  /**
+   * Propuesta del siguiente segmento (spec 017, RF-015). Se declara como
+   * `unknown` a propósito: la forma la valida `parseSegmentProposal` en la
+   * frontera, así que una respuesta inesperada no rompe el formulario. Es
+   * `null` en un partido terminal o con la versión sin publicar.
+   */
+  next_segment?: unknown;
 }
 
 type DraftEvent = DraftEventRecord<EventType>;
@@ -244,10 +283,13 @@ const lineupFormations = ref<Record<string, FormationCode | ''>>({});
 const draftEvents = ref<DraftEvent[]>([]);
 const draftRestored = ref(false);
 const draftSavedAt = ref<string | null>(null);
+// Eventos del borrador guardado que ya no cumplen el contrato del acta y se
+// descartaron al restaurar (spec 015, D-9). Solo se informa del número.
+const draftDroppedEvents = ref(0);
 let hydratingDraft = false;
 let disposed = false;
 
-const segmentForm = reactive({ segment_number: 1, minute_start: 0 });
+const segmentForm = reactive({ segment_number: 1, minute_start: 0, minuteDirty: false });
 const interruptionForm = reactive<{ reason: InterruptionReason; minute: number; notes: string }>({
   reason: 'other',
   minute: 0,
@@ -262,6 +304,7 @@ const eventForm = reactive<{
   team_id: string;
   beneficiary_team_id: string;
   player_id: string;
+  assist_player_id: string;
   player_out_id: string;
   player_in_id: string;
   minute: number;
@@ -272,13 +315,34 @@ const eventForm = reactive<{
   team_id: '',
   beneficiary_team_id: '',
   player_id: '',
+  assist_player_id: '',
   player_out_id: '',
   player_in_id: '',
   minute: 1,
   added_minute: 0,
   red_card_type: 'direct_red',
 });
-const substitutionError = ref<string | null>(null);
+const eventIdError = ref<string | null>(null);
+// RNF-007: cada error del alta vive en su campo, con `aria-invalid` y
+// `aria-describedby`, y se muestra en el idioma activo. Se guarda la clave y
+// sus parámetros (no el texto) para que un cambio de idioma lo reescriba.
+type EventFieldKey =
+  | 'event_type'
+  | 'segment'
+  | 'team'
+  | 'player'
+  | 'player_out'
+  | 'player_in'
+  | 'assist'
+  | 'beneficiary'
+  | 'red_card_type'
+  | 'minute'
+  | 'added_minute';
+interface EventFieldIssue {
+  readonly key: string;
+  readonly params?: Record<string, string | number>;
+}
+const eventFieldIssues = ref<Partial<Record<EventFieldKey, EventFieldIssue>>>({});
 const closeForm = reactive<{
   home_score_regular: number;
   away_score_regular: number;
@@ -357,6 +421,13 @@ const selectedSegment = computed(() => operation.value?.segments.find((segment) 
 const activeSegment = computed(() => operation.value?.segments.find((segment) => segment.status === 'active'));
 const selectedSegmentIsActive = computed(() => selectedSegment.value?.status === 'active');
 const selectedInterruption = computed(() => operation.value?.interruptions.find((item) => item.segment_id === selectedSegment.value?.id));
+// RF-015/RNF-007: origen del minuto propuesto. El número del segmento es
+// siempre el del servidor; este texto dice si el minuto se dedujo de lo
+// persistido o lo tiene que indicar el operador, y se anuncia al cambiar.
+const segmentProposalHintText = computed(() => {
+  const kind = segmentProposalHint(operation.value?.next_segment);
+  return kind ? t(SEGMENT_PROPOSAL_HINT_LABEL_KEYS[kind]) : '';
+});
 const homeRoster = computed(() => operation.value?.rosters.filter((entry) => entry.team_id === match.value?.home_team_id) || []);
 const awayRoster = computed(() => operation.value?.rosters.filter((entry) => entry.team_id === match.value?.away_team_id) || []);
 const eventPlayers = computed(() => {
@@ -370,6 +441,26 @@ const eventPlayers = computed(() => {
 const eventRosterPlayers = computed(() => operation.value?.rosters.filter((entry) => (
   entry.team_id === eventForm.team_id && entry.is_active
 )) || []);
+// RF-001: el formulario pinta solo los campos propios del tipo elegido.
+const eventOwnFields = computed(() => visibleEventFields(eventForm.event_type));
+// RNF-007: el `<select>` nativo anuncia su valor, no que el formulario cambie
+// sus campos (autogol añade el beneficiario, la roja la clase, las tarjetas y
+// el penalti retiran la asistencia). La región viva está siempre montada y su
+// texto cambia con el tipo; si se montara con el cambio no se anunciaría.
+const eventTypeNotice = computed(() => eventTypeAnnouncement(
+  eventForm.event_type,
+  t(eventTypes.find((event) => event.value === eventForm.event_type)?.labelKey || 'match.eventType'),
+  t,
+) ?? '');
+// RF-007/RF-008: el asistente solo existe en un gol; los candidatos son los
+// jugadores de la **alineación** del mismo equipo salvo el goleador, la misma
+// fuente que el selector de jugador. El resto de la validez (plantilla del
+// partido, estar en campo en ese minuto) es del servidor.
+const eventAssistCandidates = computed(() => assistCandidates(
+  eventPlayers.value,
+  eventForm.team_id,
+  eventForm.player_id,
+));
 const substitutionState = computed(() => normalizeSubstitutionsState(operation.value?.substitutions));
 const matchLimits = computed(() => normalizeMatchLimits(operation.value?.limits) ?? DEFAULT_MATCH_LIMITS);
 
@@ -455,6 +546,9 @@ function changeResolution(next: ResolutionType): void {
     operation.value?.segments,
     draftEvents.value,
     maximumMinuteFor(operationLimits.value, effective),
+    // Spec 016, D-13: el W.O. no valida segmentos, así que un segmento
+    // persistido por encima del máximo no bloquea el cambio a `walkover`.
+    { resolution: effective },
   );
   if (outcome.outcome === 'blocked') {
     // P2: no se corrige ningún segmento guardado; se pide resolver primero.
@@ -492,6 +586,36 @@ function rosterOptions(options: SubstitutionOption[]): Array<{ player: RosterEnt
 
 function substitutionMessage(reason: SubstitutionUnavailableReason | null): string {
   return t(substitutionReasonKeys[reason || 'no_state']);
+}
+
+function clearEventFieldIssues(): void {
+  eventFieldIssues.value = {};
+}
+
+function setEventFieldIssue(
+  field: EventFieldKey,
+  key: string,
+  params?: Record<string, string | number>,
+): void {
+  eventFieldIssues.value = {
+    ...eventFieldIssues.value,
+    [field]: params ? { key, params } : { key },
+  };
+}
+
+/** Texto del error del campo en el idioma activo; vacío cuando es válido. */
+function eventFieldError(field: EventFieldKey): string {
+  const issue = eventFieldIssues.value[field];
+  return issue ? t(issue.key, issue.params) : '';
+}
+
+function eventFieldErrorId(field: EventFieldKey): string {
+  return `event-field-${field}-error`;
+}
+
+/** `aria-describedby` del control: su mensaje de error, si lo tiene. */
+function eventFieldDescribedBy(field: EventFieldKey): string | undefined {
+  return eventFieldError(field) ? eventFieldErrorId(field) : undefined;
 }
 const teamRosters = computed(() => [
   { key: 'home', team_id: match.value?.home_team_id || '', name: match.value?.home_team_name || t('setup.home'), players: homeRoster.value },
@@ -593,9 +717,12 @@ function loadPersistedDraft() {
 
   hydratingDraft = true;
   try {
-    draftEvents.value = draft.events
-      .map((event) => readDraftEvent(event, eventTypeValues, matchLimits.value))
-      .filter((event): event is DraftEvent => event !== null);
+    // Spec 015, T10: un evento que ya no se puede reenviar (identificador que no
+    // es UUID, asistente en un tipo ajeno, `metadata` cerrada…) se descarta y se
+    // cuenta; el resto del borrador se restaura tal cual, en su orden.
+    const restored = readDraftEvents(draft.events, eventTypeValues, matchLimits.value);
+    draftEvents.value = restored.events;
+    draftDroppedEvents.value = restored.dropped;
     // Solo los campos conocidos y válidos del formulario de cierre; un borrador
     // antiguo con la resolución prevista ya la trae descartada de `read()`.
     Object.assign(closeForm, draft.result);
@@ -603,10 +730,14 @@ function loadPersistedDraft() {
     draftSavedAt.value = draft.saved_at;
   } catch {
     // Un guardado que no se puede aplicar se descarta como antes de la spec 012.
+    draftDroppedEvents.value = 0;
     removePersistedDraft();
   } finally {
     hydratingDraft = false;
   }
+  // Lo descartado no vuelve: el guardado se reescribe ya limpio y, si no queda
+  // nada que reenviar, se borra (D-9).
+  if (draftDroppedEvents.value > 0) persistDraft();
 }
 
 function persistDraft() {
@@ -633,53 +764,82 @@ function discardDraft() {
   Object.assign(closeForm, defaultCloseForm);
   eventForm.player_out_id = '';
   eventForm.player_in_id = '';
-  substitutionError.value = null;
+  clearEventFieldIssues();
   draftRestored.value = false;
+  draftDroppedEvents.value = 0;
   persistDraft();
 }
 
-function closeValidationError(): string | null {
-  const resolutionType = resolution.value;
-  const homeTeamId = match.value?.home_team_id;
-  const awayTeamId = match.value?.away_team_id;
-  if (!homeTeamId || !awayTeamId || !selectedSegmentIsActive.value || !hasCompleteLineup.value) {
-    return t('match.needSegmentLineup');
-  }
-  const scoreFields = [closeForm.home_score_regular, closeForm.away_score_regular, closeForm.home_score, closeForm.away_score, closeForm.home_penalties, closeForm.away_penalties];
-  if (scoreFields.some((value) => value !== null && (!Number.isInteger(value) || value < 0))) return t('match.closeValidation');
-  const participants = new Set([homeTeamId, awayTeamId]);
-  if (closeForm.winner_team_id && !participants.has(closeForm.winner_team_id)) return t('match.closeValidation');
-  // RF-032: un evento del borrador (también restaurado) fuera del tope
-  // combinado haría que el servidor rechazara el cierre; se avisa antes.
-  const minuteViolation = draftMinuteViolations.value[0];
-  if (minuteViolation) return eventMinuteMessage(minuteViolation.validation);
+// Spec 016 (RF-012, RF-007): el walkover pide ganador y motivo y **no** pide
+// ninguno de los seis marcadores. La pareja efectiva la publica el servidor en
+// `limits.walkover_score`; la pantalla la muestra en solo lectura y no la envía.
+const walkoverScore = computed(() => walkoverScoreFrom(operationLimits.value));
+const walkoverReasonOptions = WALKOVER_REASONS.map((reason) => ({
+  value: reason,
+  labelKey: WALKOVER_REASON_LABEL_KEYS[reason],
+}));
+// RNF-007: el ganador y el motivo son campos más del cierre, cada uno con su
+// error asociado por `aria-invalid`/`aria-describedby` (el patrón que ya usa el
+// alta de eventos).
+const WALKOVER_WINNER_ERROR_ID = 'close-walkover-winner-error';
+const WALKOVER_REASON_ERROR_ID = 'close-walkover-reason-error';
+const closeFieldIssue = ref<ClosePreflightIssue | null>(null);
+const walkoverWinnerError = computed(() => (
+  resolution.value === 'walkover' && closeFieldIssue.value?.key === 'match.walkoverWinnerRequired'
+    ? t(closeFieldIssue.value.key, closeFieldIssue.value.params)
+    : ''
+));
+const walkoverWinnerDescribedBy = computed(() => (
+  walkoverWinnerError.value ? WALKOVER_WINNER_ERROR_ID : undefined
+));
+const walkoverReasonError = computed(() => (
+  resolution.value === 'walkover' && closeFieldIssue.value?.key === 'match.walkoverReasonRequired'
+    ? t(closeFieldIssue.value.key, closeFieldIssue.value.params)
+    : ''
+));
+const walkoverReasonDescribedBy = computed(() => (
+  walkoverReasonError.value ? WALKOVER_REASON_ERROR_ID : undefined
+));
 
-  if (resolutionType === 'regular') {
-    const goals = { [homeTeamId]: 0, [awayTeamId]: 0 } as Record<string, number>;
-    for (const event of draftEvents.value) {
-      if (['goal', 'own_goal', 'penalty_goal'].includes(event.event_type)) {
-        const beneficiary = event.event_type === 'own_goal' ? event.beneficiary_team_id : event.team_id;
-        if (beneficiary && beneficiary in goals) goals[beneficiary] = (goals[beneficiary] ?? 0) + 1;
-      }
-    }
-    if (goals[homeTeamId] !== closeForm.home_score_regular || goals[awayTeamId] !== closeForm.away_score_regular) {
-      return t('match.closeValidation');
-    }
-  }
-  if (['walkover', 'administrative'].includes(resolutionType) && draftEvents.value.length) return t('match.closeValidation');
-  if (resolutionType !== 'regular' && closeForm.winner_team_id === '') return t('match.closeValidation');
-  if (resolutionType === 'extra_time') {
-    if (closeForm.home_score === null || closeForm.away_score === null) return t('match.closeValidation');
-    if (closeForm.home_score < closeForm.home_score_regular || closeForm.away_score < closeForm.away_score_regular) return t('match.closeValidation');
-  }
-  if (resolutionType === 'penalties') {
-    if (closeForm.home_score === null || closeForm.away_score === null || closeForm.home_score !== closeForm.away_score) return t('match.closeValidation');
-    if (closeForm.home_penalties === null || closeForm.away_penalties === null || closeForm.home_penalties === closeForm.away_penalties) return t('match.closeValidation');
-  }
-  if (resolutionType === 'administrative' && (closeForm.home_score === null || closeForm.away_score === null || closeForm.home_score !== closeForm.home_score_regular || closeForm.away_score !== closeForm.away_score_regular)) return t('match.closeValidation');
-  if (resolutionType === 'administrative' && !closeForm.reason.trim()) return t('match.administrativeReasonRequired');
-  if (resolutionType !== 'administrative' && closeForm.reason.trim()) return t('match.closeValidation');
-  return null;
+/**
+ * Primer problema del cierre (RF-012). La decisión vive en la utilidad pura: el
+ * walkover no exige segmento activo ni planilla y exige motivo de catálogo; el
+ * resto de resoluciones conserva sus exigencias. El servidor sigue siendo la
+ * autoridad y esto solo evita un 422 evitable.
+ */
+function closeValidationIssue(): ClosePreflightIssue | null {
+  const minuteViolation = draftMinuteViolations.value[0];
+  return closePreflight({
+    resolution: resolution.value,
+    limits: operationLimits.value,
+    homeTeamId: match.value?.home_team_id,
+    awayTeamId: match.value?.away_team_id,
+    segmentActive: selectedSegmentIsActive.value,
+    lineupComplete: hasCompleteLineup.value,
+    scores: { ...closeForm },
+    winnerTeamId: closeForm.winner_team_id,
+    reason: closeForm.reason,
+    draftEvents: draftEvents.value,
+    minuteIssue: minuteViolation
+      ? {
+          key: 'match.eventMinuteExceedsMaximum',
+          params: {
+            minute: minuteViolation.validation.minute,
+            added: minuteViolation.validation.added,
+            max: minuteViolation.validation.max,
+          },
+        }
+      : null,
+  });
+}
+
+function closeValidationError(): string | null {
+  const issue = closeValidationIssue();
+  // RNF-007: el problema se guarda además de mostrarse, para que el motivo del
+  // walkover lo anuncie su propio campo y no solo la región del error.
+  closeFieldIssue.value = issue;
+  if (!issue) return null;
+  return t(issue.key, issue.params);
 }
 
 function failureMessage(cause: unknown, fallback: string): string {
@@ -699,7 +859,30 @@ async function redirectOnSessionFailure(cause: unknown): Promise<boolean> {
   return false;
 }
 
-function applyOperation(value: MatchOperation) {
+/**
+ * RF-015/D-5: el formulario de segmento sale de la propuesta del servidor
+ * (`next_segment`), no de una suma del cliente. El número es siempre el del
+ * servidor; el minuto solo se escribe si la propuesta es derivada y el refresco
+ * lo permite (`forceMinuteOnRefresh`): al montar y tras crear o interrumpir,
+ * pero no en un refresco manual ni en el que provoca el socket.
+ */
+function syncSegmentForm(proposal: unknown, cause: SegmentRefreshCause): void {
+  const resolved = applySegmentProposal({
+    segment_number: segmentForm.segment_number,
+    minute_start: segmentForm.minute_start,
+    minuteDirty: segmentForm.minuteDirty,
+  }, proposal, { forceMinute: forceMinuteOnRefresh(cause) });
+  segmentForm.segment_number = resolved.segment_number;
+  segmentForm.minute_start = resolved.minute_start;
+  segmentForm.minuteDirty = resolved.minuteDirty;
+}
+
+/** El operador ha escrito el minuto: un refresco normal ya no lo pisa. */
+function markSegmentMinuteDirty(): void {
+  segmentForm.minuteDirty = true;
+}
+
+function applyOperation(value: MatchOperation, cause: SegmentRefreshCause = 'refresh') {
   operation.value = value;
   // Si el partido ya tiene segmentos (por ejemplo, abierto en otra pestaña) el
   // aviso de apertura bloqueada dejó de ser cierto.
@@ -709,7 +892,7 @@ function applyOperation(value: MatchOperation) {
   if (!currentSegment || (currentSegment.status !== 'active' && nextActiveSegment)) {
     selectedSegmentId.value = nextActiveSegment?.id || value.segments.at(-1)?.id || '';
   }
-  segmentForm.segment_number = Math.max(1, ...value.segments.map((segment) => segment.segment_number + 1));
+  syncSegmentForm(value.next_segment, cause);
   if (nextActiveSegment) interruptionForm.minute = nextActiveSegment.minute_start;
   if (!eventForm.team_id) {
     eventForm.team_id = value.match.home_team_id || value.match.away_team_id || '';
@@ -785,8 +968,8 @@ async function fetchOperation(): Promise<MatchOperation> {
   return await request<MatchOperation>(`/matches/${matchId}/operation`);
 }
 
-async function refreshOperation() {
-  applyOperation(await fetchOperation());
+async function refreshOperation(cause: SegmentRefreshCause = 'refresh') {
+  applyOperation(await fetchOperation(), cause);
 }
 
 const operationReload = createReloadCoordinator(async () => {
@@ -833,6 +1016,7 @@ async function runAction(
 ) {
   busyAction.value = action;
   actionError.value = null;
+  clearEventFieldIssues();
   try {
     await callback();
   } catch (cause) {
@@ -876,9 +1060,8 @@ async function createSegment() {
       body: { ...segmentForm, ...resolutionPayload(operationLimits.value, resolution.value) },
     });
     openingBlocked.value = null;
-    segmentForm.segment_number += 1;
-    segmentForm.minute_start = 0;
-    await refreshOperation();
+    segmentForm.minuteDirty = false;
+    await refreshOperation('segment-changed');
   }, (cause) => {
     if (opening && classifyMatchConflict(cause) === 'roster_size_out_of_range') {
       showOpeningBlocked(cause);
@@ -907,9 +1090,9 @@ async function interruptSegment() {
         ...resolutionPayload(operationLimits.value, resolution.value),
       },
     });
-    segmentForm.minute_start = interruptionForm.minute;
+    segmentForm.minuteDirty = false;
     interruptionForm.notes = '';
-    await refreshOperation();
+    await refreshOperation('segment-changed');
   });
 }
 
@@ -998,29 +1181,77 @@ watch(selectedSegmentId, (segmentId) => {
   persistSelectedSegment(segmentId);
 });
 
-function pushDraftEvent(playerId: string, playerOutId: string, playerInId: string) {
-  draftEvents.value.push({
-    client_event_id: globalThis.crypto?.randomUUID?.() || `event-${Date.now()}-${draftEvents.value.length}`,
-    event_type: eventForm.event_type,
-    team_id: eventForm.team_id,
-    beneficiary_team_id: eventForm.event_type === 'own_goal' ? eventForm.beneficiary_team_id : null,
-    player_id: playerId,
-    minute: eventForm.minute,
-    added_minute: eventForm.added_minute,
-    segment_id: selectedSegmentId.value,
-    ...substitutionFieldsFor(eventForm.event_type, playerOutId, playerInId),
-    metadata: eventForm.event_type === 'red_card'
-      ? { red_card_type: eventForm.red_card_type }
-      : undefined,
-  });
+function pushDraftEvent(formValues: EventFormValues): boolean {
+  // RF-015: el identificador sale de `crypto.randomUUID()`. Sin él no se
+  // inventa un texto: el evento no entra y se avisa (el texto fino es T11).
+  const clientEventId = newClientEventId(globalThis.crypto);
+  if (!clientEventId) {
+    eventIdError.value = t('match.eventIdUnavailable');
+    return false;
+  }
+  // RF-001/RF-002: el payload se construye desde el catálogo del tipo, así que
+  // nunca lleva un campo prohibido con valor ni una clave desconocida.
+  const event = buildDraftEvent(formValues, selectedSegmentId.value, clientEventId);
+  if (!event) return false;
+  draftEvents.value.push(event);
+  return true;
 }
 
+/** Campo y texto de cada problema estructural del catálogo (RF-006). */
+const eventValidationIssues: Record<string, { field: EventFieldKey; key: string }> = {
+  unknown_event_type: { field: 'event_type', key: 'match.eventUnknownType' },
+  missing_player: { field: 'player', key: 'match.eventMissingPlayer' },
+  missing_beneficiary: { field: 'beneficiary', key: 'match.ownGoalBeneficiary' },
+  beneficiary_same_team: { field: 'beneficiary', key: 'match.eventBeneficiarySameTeam' },
+  missing_player_out: { field: 'player_out', key: 'match.substitutionPairRequired' },
+  missing_player_in: { field: 'player_in', key: 'match.substitutionPairRequired' },
+  same_substitution_player: { field: 'player_in', key: 'match.substitutionSamePlayer' },
+  assist_same_as_scorer: { field: 'assist', key: 'match.eventAssistSameAsScorer' },
+  assist_not_in_goal: { field: 'assist', key: 'match.eventAssistNotAllowed' },
+};
+
+/** Texto del rechazo por el intervalo del segmento (RF-006, viñeta 2). */
+const eventSegmentMinuteKeys = {
+  before_segment: { key: 'match.eventMinuteBeforeSegment' },
+  after_segment: { key: 'match.eventMinuteAfterSegment' },
+} as const;
+
+/** Texto del asistente que no es del equipo del goleador (RF-006). */
+const eventAssistIssueKeys = {
+  not_in_team: { key: 'match.eventAssistOtherTeam' },
+} as const;
+
+/** Textos de los campos que no dependen del tipo (RF-006). */
+const eventFormIssueKeys = {
+  segment: { key: 'match.needSegmentEvent' },
+  team: { key: 'match.eventMissingTeam' },
+} as const;
+
 function addEvent() {
-  substitutionError.value = null;
-  if (!selectedSegmentId.value || !selectedSegmentIsActive.value || !eventForm.team_id) {
-    actionError.value = t('match.needSegmentEvent');
+  eventIdError.value = null;
+  clearEventFieldIssues();
+
+  if (!selectedSegmentId.value || !selectedSegmentIsActive.value) {
+    setEventFieldIssue('segment', eventFormIssueKeys.segment.key);
     return;
   }
+  if (!eventForm.team_id) {
+    setEventFieldIssue('team', eventFormIssueKeys.team.key);
+    return;
+  }
+
+  const values: EventFormValues = { ...eventForm };
+  // RF-006: solo el subconjunto declarado. La plantilla del partido, las
+  // sanciones, el estado en campo y los límites de sustitución son autoridad
+  // del servidor. Cada problema se queda junto a su campo (RNF-007).
+  let blocked = false;
+  for (const issue of validateEventValues(values).issues) {
+    const target = eventValidationIssues[issue.code];
+    if (!target) continue;
+    setEventFieldIssue(target.field, target.key);
+    blocked = true;
+  }
+
   const limits = resolutionLimits.value;
   // RF-032: la misma regla que el cierre, sobre `minute + added_minute`; el
   // evento inválido no se añade y lo escrito se conserva para corregirlo.
@@ -1031,15 +1262,50 @@ function addEvent() {
     limits.addedMax,
   );
   if (!minuteCheck.ok) {
-    // Los valores que se nombran son los escritos, no una normalización: el
-    // operador ve exactamente qué minuto y qué añadido corregir.
-    actionError.value = t('match.eventMinuteExceedsMaximum', {
-      minute: eventForm.minute,
-      added: eventForm.added_minute,
-      max: limits.maxMinute,
-    });
-    return;
+    if (minuteCheck.reason === 'added') {
+      // El añadido por sí solo no es válido o supera su tope: el error se
+      // queda junto a su campo, que es el único que hay que corregir. El
+      // exceso combinado sigue junto al minuto, que es el campo principal.
+      setEventFieldIssue('added_minute', 'match.addedMinuteOutOfRange', { max: limits.addedMax });
+    } else {
+      // Los valores que se nombran son los escritos, no una normalización: el
+      // operador ve exactamente qué minuto y qué añadido corregir.
+      setEventFieldIssue('minute', 'match.eventMinuteExceedsMaximum', {
+        minute: eventForm.minute,
+        added: eventForm.added_minute,
+        max: limits.maxMinute,
+      });
+    }
+    blocked = true;
+  } else {
+    // RF-006: el minuto debe caer dentro del segmento seleccionado cuando ya
+    // tiene fin; el servidor lo vuelve a comprobar al cerrar.
+    const segmentCheck = validateSegmentMinute(eventForm.minute, selectedSegment.value);
+    if (!segmentCheck.ok) {
+      const before = segmentCheck.issue === 'before_segment';
+      setEventFieldIssue(
+        'minute',
+        eventSegmentMinuteKeys[before ? 'before_segment' : 'after_segment'].key,
+        before ? { start: segmentCheck.start ?? 0 } : { end: segmentCheck.end ?? 0 },
+      );
+      blocked = true;
+    }
   }
+
+  if (eventForm.event_type === 'goal' && eventForm.assist_player_id) {
+    const assist = validateAssist(
+      eventForm.assist_player_id,
+      eventForm.player_id,
+      eventPlayers.value,
+    );
+    if (!assist.ok && assist.issue === 'not_in_team') {
+      setEventFieldIssue('assist', eventAssistIssueKeys.not_in_team.key);
+      blocked = true;
+    }
+  }
+
+  if (blocked) return;
+
   if (eventForm.event_type === SUBSTITUTION_EVENT_TYPE) {
     const pair = validateSubstitutionPair(
       eventSubstitutionTeam.value,
@@ -1048,25 +1314,31 @@ function addEvent() {
       eventForm.player_in_id,
     );
     if (!pair.ok) {
-      substitutionError.value = substitutionMessage(pair.reason);
+      const field: EventFieldKey = pair.reason === 'not_on_field' ? 'player_out' : 'player_in';
+      setEventFieldIssue(field, substitutionReasonKeys[pair.reason || 'no_state']);
       return;
     }
-    pushDraftEvent(pair.player_out_id, pair.player_out_id, pair.player_in_id);
+    if (!pushDraftEvent({
+      ...values,
+      player_out_id: pair.player_out_id,
+      player_in_id: pair.player_in_id,
+    })) {
+      if (!eventIdError.value) setEventFieldIssue('team', eventFormIssueKeys.team.key);
+      return;
+    }
     eventForm.player_out_id = '';
     eventForm.player_in_id = '';
     actionError.value = null;
     return;
   }
-  if (!eventForm.player_id) {
-    actionError.value = t('match.needSegmentEvent');
+
+  if (!pushDraftEvent(values)) {
+    // Un evento no construible no entra al borrador; el aviso ya está puesto.
+    if (!eventIdError.value) setEventFieldIssue('team', eventFormIssueKeys.team.key);
     return;
   }
-  if (eventForm.event_type === 'own_goal' && !eventForm.beneficiary_team_id) {
-    actionError.value = t('match.ownGoalBeneficiary');
-    return;
-  }
-  pushDraftEvent(eventForm.player_id, '', '');
   eventForm.player_id = '';
+  eventForm.assist_player_id = '';
   eventForm.beneficiary_team_id = '';
   eventForm.red_card_type = 'direct_red';
   actionError.value = null;
@@ -1077,6 +1349,12 @@ function removeEvent(clientEventId: string) {
 }
 
 watch([draftEvents, closeForm], persistDraft, { deep: true });
+
+// RNF-007: al corregir el formulario, el error asociado a su campo deja de
+// estar vigente; el aviso general se limpia al reintentar el cierre.
+watch(closeForm, () => {
+  if (closeFieldIssue.value) closeFieldIssue.value = null;
+}, { deep: true });
 
 function handleBeforeUnload(event: BeforeUnloadEvent) {
   if (!hasUnsavedDraft.value || isTerminal.value) return;
@@ -1130,23 +1408,31 @@ async function closeMatch() {
   await runAction('close', async () => {
     await request(`/matches/${matchId}/close`, {
       method: 'POST',
-      body: {
-        ...resolutionPayload(operationLimits.value, resolution.value),
-        home_score_regular: closeForm.home_score_regular,
-        away_score_regular: closeForm.away_score_regular,
-        home_score: resolution.value === 'regular' ? null : closeForm.home_score,
-        away_score: resolution.value === 'regular' ? null : closeForm.away_score,
-        home_penalties: resolution.value === 'penalties' ? closeForm.home_penalties : null,
-        away_penalties: resolution.value === 'penalties' ? closeForm.away_penalties : null,
-        winner_team_id: ['regular'].includes(resolution.value) ? null : closeForm.winner_team_id || null,
-        reason: resolution.value === 'administrative' ? closeForm.reason.trim() : null,
+      // RF-005/RF-012: el cuerpo lo construye la utilidad pura. En `walkover` no
+      // se envía ninguna de las seis claves de marcador: lo deriva el servidor.
+      body: buildCloseReportBody({
+        resolution: resolution.value,
+        limits: operationLimits.value,
+        scores: { ...closeForm },
+        winnerTeamId: closeForm.winner_team_id,
+        reason: closeForm.reason,
         events: draftEvents.value,
-      },
+      }),
     });
     draftEvents.value = [];
     draftRestored.value = false;
+    draftDroppedEvents.value = 0;
     await refreshOperation();
     removePersistedDraft();
+  }, (cause) => {
+    // RF-006/RF-010: el 409 del cierre se explica por su `code` aditivo con el
+    // clasificador de `matchSegments`. Una causa sin código conocido conserva
+    // el `detail` del servidor, que es más concreto que un texto genérico.
+    const kind = classifyCloseConflict(cause);
+    const key = kind === 'other' ? null : closeConflictMessageKey(kind);
+    if (!key) return false;
+    actionError.value = t(key);
+    return true;
   });
 }
 
@@ -1159,11 +1445,33 @@ function rosterPlayerName(playerId: string | null): string {
   return roster ? playerName(roster) : '';
 }
 
+/** Textos del resumen, siempre por i18n y con paridad es/en (RF-005). */
+function eventSummaryLabels() {
+  return {
+    assist: t('match.assistShort'),
+    ownGoal: t('match.ownGoalBeneficiaryShort'),
+    redCardDirect: t('match.redCardDirectShort'),
+    redCardDouble: t('match.redCardDoubleShort'),
+  };
+}
+
 function draftEventSummary(event: DraftEvent): string {
-  if (event.event_type === SUBSTITUTION_EVENT_TYPE && event.player_out_id && event.player_in_id) {
-    return `${rosterPlayerName(event.player_out_id)} → ${rosterPlayerName(event.player_in_id)}`;
-  }
-  return rosterPlayerName(event.player_id);
+  // RF-005: borrador y acta comparten el resumen; el asistente del gol y el
+  // equipo beneficiado del autogol se resuelven desde la operación. Las
+  // palabras son formas cortas del catálogo, no etiquetas de campo.
+  return eventSummary(event, rosterPlayerName, eventSummaryLabels(), teamName);
+}
+
+function persistedEventSummary(event: MatchEvent): string {
+  // RF-011: la operación no devuelve el nombre del asistente; se resuelve de la
+  // plantilla. El jugador principal conserva el nombre que trae el evento.
+  const ownName = `${event.first_name} ${event.last_name}`.trim();
+  return eventSummary(
+    event,
+    (playerId) => (playerId === event.player_id && ownName ? ownName : rosterPlayerName(playerId)),
+    eventSummaryLabels(),
+    teamName,
+  );
 }
 
 function teamName(teamId: string | null): string {
@@ -1190,13 +1498,22 @@ function formatDate(value: string | null): string {
 watch(() => eventForm.team_id, () => {
   if (!eventPlayers.value.some((player) => player.player_id === eventForm.player_id)) eventForm.player_id = '';
   if (eventForm.beneficiary_team_id === eventForm.team_id) eventForm.beneficiary_team_id = '';
+  // RF-007: un asistente del equipo anterior deja de ser candidato.
+  if (!eventAssistCandidates.value.some((player) => player.player_id === eventForm.assist_player_id)) {
+    eventForm.assist_player_id = '';
+  }
   eventForm.player_out_id = '';
   eventForm.player_in_id = '';
-  substitutionError.value = null;
 });
 
 watch(() => eventForm.event_type, (eventType) => {
-  substitutionError.value = null;
+  clearEventFieldIssues();
+  eventIdError.value = null;
+  // RF-001: al cambiar de tipo se descarta el valor de un campo que el nuevo
+  // tipo no admite; ningún valor residual viaja al evento.
+  if (eventType !== 'goal') eventForm.assist_player_id = '';
+  if (eventType !== 'own_goal') eventForm.beneficiary_team_id = '';
+  if (eventType !== 'red_card') eventForm.red_card_type = 'direct_red';
   if (eventType === SUBSTITUTION_EVENT_TYPE) {
     eventForm.player_id = '';
   } else {
@@ -1205,8 +1522,17 @@ watch(() => eventForm.event_type, (eventType) => {
   }
 });
 
-watch([() => eventForm.player_out_id, () => eventForm.player_in_id], () => {
-  substitutionError.value = null;
+watch(() => eventForm.player_id, (playerId) => {
+  // RF-008: el goleador no puede ser su propio asistente.
+  if (eventForm.event_type === 'goal' && eventForm.assist_player_id === playerId) {
+    eventForm.assist_player_id = '';
+  }
+});
+
+// RNF-007: al corregir un valor, su error deja de estar vigente. El aviso de
+// identificador no depende de un campo y vive aparte.
+watch(eventForm, () => {
+  if (Object.keys(eventFieldIssues.value).length) clearEventFieldIssues();
 });
 
 watch([eventOutgoingOptions, eventIncomingOptions], () => {
@@ -1218,8 +1544,12 @@ watch([eventOutgoingOptions, eventIncomingOptions], () => {
   }
 });
 
-watch(resolution, (resolutionType) => {
-  if (resolutionType !== 'administrative') closeForm.reason = '';
+watch(resolution, () => {
+  // D-8: `reason` es el mismo campo con dos dominios (catálogo del walkover y
+  // texto libre de la administrativa). Al cambiar de resolución se vacía para
+  // no arrastrar un texto libre al catálogo cerrado ni al revés.
+  closeForm.reason = '';
+  closeFieldIssue.value = null;
 });
 
 // RF-034: si la configuración efectiva deja de habilitar la resolución elegida,
@@ -1240,7 +1570,9 @@ if (initialOperationError.value) {
     error.value = failureMessage(initialOperationError.value, t('match.noLoad'));
   }
 } else if (initialOperation.value) {
-  applyOperation(initialOperation.value);
+  // Primer prerrelleno del formulario de segmento: es el único refresco que
+  // escribe el minuto propuesto además de crear o interrumpir.
+  applyOperation(initialOperation.value, 'mount');
 }
 loading.value = false;
 
@@ -1330,6 +1662,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <p v-if="isTerminal" class="segment-warning report-locked" role="status">{{ t('match.reportLocked') }}</p>
+
         <div v-if="actionError" class="form-error" role="alert">{{ actionError }}</div>
 
         <section v-if="openingBlocked" class="stage-partial opening-blocked" role="alert" aria-live="assertive">
@@ -1380,13 +1714,15 @@ onBeforeUnmount(() => {
                 <h3>{{ t('match.gameSegments') }}</h3>
                 <div class="field-row">
                   <label>{{ t('match.segmentNumber') }}<input v-model.number="segmentForm.segment_number" type="number" min="1" required /></label>
-                  <label>{{ t('match.startMinute') }}<input v-model.number="segmentForm.minute_start" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
+                  <label>{{ t('match.startMinute') }}<input v-model.number="segmentForm.minute_start" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-describedby="segmentProposalHintText ? 'segment-proposal-hint' : undefined" @input="markSegmentMinuteDirty" /></label>
                 </div>
+                <p v-if="segmentProposalHintText" id="segment-proposal-hint" class="field-hint" role="status">{{ segmentProposalHintText }}</p>
                   <label>{{ t('match.activeSegment') }}
-                   <select v-model="selectedSegmentId" required>
+                   <select v-model="selectedSegmentId" required :aria-invalid="Boolean(eventFieldError('segment'))" :aria-describedby="eventFieldDescribedBy('segment')">
                      <option value="" disabled>{{ t('match.selectSegment') }}</option>
                      <option v-for="segment in operation.segments" :key="segment.id" :value="segment.id">{{ t('match.segmentOption', { number: segment.segment_number, minute: segment.minute_start }) }} · {{ statusLabel(segment.status) }}</option>
                    </select>
+                   <small v-if="eventFieldError('segment')" :id="eventFieldErrorId('segment')" class="form-error" role="alert">{{ eventFieldError('segment') }}</small>
                  </label>
                  <div v-if="selectedSegment" class="segment-status">
                    <span class="muted-note">{{ t('match.segmentStatus') }}</span>
@@ -1484,26 +1820,33 @@ onBeforeUnmount(() => {
                  <span class="muted-note">{{ t('match.pendingEvents', { count: draftEvents.length }) }}</span>
                </div>
              </div>
+             <p v-if="draftDroppedEvents > 0" class="segment-warning" role="status">{{ t('match.draftEventsDropped', { count: draftDroppedEvents }) }}</p>
              <div v-if="canOperateMatch" class="event-form">
-              <label>{{ t('match.eventType') }}<select v-model="eventForm.event_type"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select></label>
-              <label>{{ t('setup.teams') }}<select v-model="eventForm.team_id"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
-               <template v-if="eventForm.event_type === 'substitution'">
-                  <label>{{ t('match.playerOut') }}<select v-model="eventForm.player_out_id" :disabled="eventSubstitutionAvailability.disabled"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventOutgoingOptions" :key="`out-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select></label>
-                  <label>{{ t('match.playerIn') }}<select v-model="eventForm.player_in_id" :disabled="eventSubstitutionAvailability.disabled"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventIncomingOptions" :key="`in-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select></label>
+              <label>{{ t('match.eventType') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.event_type" required :aria-invalid="Boolean(eventFieldError('event_type'))" :aria-describedby="eventFieldDescribedBy('event_type')"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select><small v-if="eventFieldError('event_type')" :id="eventFieldErrorId('event_type')" class="form-error" role="alert">{{ eventFieldError('event_type') }}</small></label>
+              <p class="field-hint full-width" role="status">{{ eventTypeNotice }}</p>
+              <label>{{ t('setup.teams') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.team_id" required :aria-invalid="Boolean(eventFieldError('team'))" :aria-describedby="eventFieldDescribedBy('team')"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="eventFieldError('team')" :id="eventFieldErrorId('team')" class="form-error" role="alert">{{ eventFieldError('team') }}</small></label>
+               <template v-if="eventOwnFields.includes('player_out')">
+                  <label>{{ t('match.playerOut') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_out_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_out')" :aria-invalid="Boolean(eventFieldError('player_out'))" :aria-describedby="eventFieldDescribedBy('player_out')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventOutgoingOptions" :key="`out-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_out')" :id="eventFieldErrorId('player_out')" class="form-error" role="alert">{{ eventFieldError('player_out') }}</small></label>
+                  <label>{{ t('match.playerIn') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_in_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_in')" :aria-invalid="Boolean(eventFieldError('player_in'))" :aria-describedby="eventFieldDescribedBy('player_in')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventIncomingOptions" :key="`in-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_in')" :id="eventFieldErrorId('player_in')" class="form-error" role="alert">{{ eventFieldError('player_in') }}</small></label>
                 </template>
-                <label v-else>{{ t('match.player') }}<select v-model="eventForm.player_id"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select></label>
-               <label v-if="eventForm.event_type === 'red_card'">{{ t('match.redCardType') }}<select v-model="eventForm.red_card_type"><option value="direct_red">{{ t('match.directRed') }}</option><option value="double_yellow_red">{{ t('match.doubleYellowRed') }}</option></select></label>
-               <label>{{ t('match.minute') }}<input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
-              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" /></label>
-              <label v-if="eventForm.event_type === 'own_goal'">{{ t('match.beneficiary') }}<select v-model="eventForm.beneficiary_team_id" required><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
-               <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive || (eventForm.event_type === 'substitution' && (eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register))" @click="addEvent">{{ t('match.addEvent') }}</button>
+                <template v-else>
+                  <label>{{ t('match.player') }}<span v-if="isEventFieldRequired(eventForm.event_type, 'player')" class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_id" :required="isEventFieldRequired(eventForm.event_type, 'player')" :aria-invalid="Boolean(eventFieldError('player'))" :aria-describedby="eventFieldDescribedBy('player')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select><small v-if="eventFieldError('player')" :id="eventFieldErrorId('player')" class="form-error" role="alert">{{ eventFieldError('player') }}</small></label>
+                  <label v-if="eventOwnFields.includes('beneficiary')">{{ t('match.beneficiary') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.beneficiary_team_id" required :aria-invalid="Boolean(eventFieldError('beneficiary'))" :aria-describedby="eventFieldDescribedBy('beneficiary')"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="eventFieldError('beneficiary')" :id="eventFieldErrorId('beneficiary')" class="form-error" role="alert">{{ eventFieldError('beneficiary') }}</small></label>
+                  <label v-if="eventOwnFields.includes('assist')">{{ t('match.assist') }}<select v-model="eventForm.assist_player_id" :aria-invalid="Boolean(eventFieldError('assist'))" :aria-describedby="eventFieldDescribedBy('assist')"><option value="">{{ t('match.assistNone') }}</option><option v-for="player in eventAssistCandidates" :key="`assist-${player.roster_id}`" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select><small v-if="eventFieldError('assist')" :id="eventFieldErrorId('assist')" class="form-error" role="alert">{{ eventFieldError('assist') }}</small></label>
+                </template>
+               <label v-if="eventOwnFields.includes('red_card_type')">{{ t('match.redCardType') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.red_card_type" :required="isEventFieldRequired(eventForm.event_type, 'red_card_type')" :aria-invalid="Boolean(eventFieldError('red_card_type'))" :aria-describedby="eventFieldDescribedBy('red_card_type')"><option value="direct_red">{{ t('match.directRed') }}</option><option value="double_yellow_red">{{ t('match.doubleYellowRed') }}</option></select><small v-if="eventFieldError('red_card_type')" :id="eventFieldErrorId('red_card_type')" class="form-error" role="alert">{{ eventFieldError('red_card_type') }}</small></label>
+               <label>{{ t('match.minute') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-invalid="Boolean(eventFieldError('minute'))" :aria-describedby="eventFieldDescribedBy('minute')" /><small v-if="eventFieldError('minute')" :id="eventFieldErrorId('minute')" class="form-error" role="alert">{{ eventFieldError('minute') }}</small></label>
+              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" :aria-invalid="Boolean(eventFieldError('added_minute'))" :aria-describedby="eventFieldDescribedBy('added_minute')" /><small v-if="eventFieldError('added_minute')" :id="eventFieldErrorId('added_minute')" class="form-error" role="alert">{{ eventFieldError('added_minute') }}</small></label>
+              <p v-if="eventForm.event_type === 'goal'" class="field-hint" role="status">{{ t('match.assistHint') }}</p>
+              <p v-else-if="eventForm.event_type === 'foul'" class="field-hint" role="status">{{ t('match.foulInformative') }}</p>
                 <div v-if="eventForm.event_type === 'substitution'" class="substitution-preview" role="status">
                   <strong>{{ t('match.substitutionPreview') }}</strong>
                   <span>{{ t('match.substitutionsRemaining', { used: eventSubstitutionCounters.substitutions_used, max: eventSubstitutionTeam?.max_per_team ?? 0 }) }}</span>
                   <span>{{ t('match.windowsRemaining', { used: eventSubstitutionCounters.windows_used, max: eventSubstitutionTeam?.max_windows ?? 0 }) }}</span>
                   <span v-if="eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register" class="substitution-blocked">{{ substitutionMessage(eventSubstitutionAvailability.reason || 'exhausted') }}</span>
                 </div>
-                <p v-if="substitutionError" class="form-error substitution-error" role="alert">{{ substitutionError }}</p>
+                <button class="button-secondary" type="button" :disabled="isTerminal || !selectedSegmentIsActive || (eventForm.event_type === 'substitution' && (eventSubstitutionAvailability.disabled || !eventSubstitutionCounters.can_register))" @click="addEvent">{{ t('match.addEvent') }}</button>
+                <p v-if="eventIdError" class="form-error event-id-error" role="alert">{{ eventIdError }}</p>
             </div>
               <p v-if="draftMinuteMessage" class="segment-warning" role="alert">{{ draftMinuteMessage }}</p>
               <ul v-if="draftEvents.length" class="event-list">
@@ -1511,7 +1854,7 @@ onBeforeUnmount(() => {
              </ul>
               <button v-if="canOperateMatch && hasUnsavedDraft" class="text-button draft-discard" type="button" @click="discardDraft">{{ t('match.discardDraft') }}</button>
              <ul v-if="!draftEvents.length && operation.events.length" class="event-list persisted-events">
-               <li v-for="event in operation.events" :key="event.id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ event.team_name }} · {{ event.first_name }} {{ event.last_name }}</span><small>{{ event.is_voided ? t('match.voided') : t('match.confirmed') }}</small></li>
+               <li v-for="event in operation.events" :key="event.id"><span><strong>{{ event.minute }}' · {{ eventLabel(event.event_type) }}</strong> · {{ event.team_name }} · {{ persistedEventSummary(event) }}</span><small>{{ event.is_voided ? t('match.voided') : t('match.confirmed') }}</small></li>
             </ul>
               <p v-else-if="!draftEvents.length" class="muted-note">{{ t('match.eventsAtomic') }}</p>
           </section>
@@ -1519,19 +1862,29 @@ onBeforeUnmount(() => {
            <section class="panel close-panel panel-wide" @focusin="beginClose">
             <div class="panel-heading"><div><p class="eyebrow">05 · {{ t('match.result') }}</p><h2>{{ t('match.closeReport') }}</h2></div><span class="muted-note">{{ rulesDefaults.extra_time_enabled ? t('match.overtimeEnabled') : t('match.noOvertime') }}</span></div>
              <div class="score-form">
-               <p class="muted-note close-resolution full-width">{{ t('match.closeUsesResolution', { resolution: resolutionLabel(resolution) }) }} · {{ t('match.resolutionMaximum', { max: resolutionLimits.maxMinute }) }}</p>
+               <p class="muted-note close-resolution full-width">{{ t('match.closeUsesResolution', { resolution: resolutionLabel(resolution) }) }}<template v-if="resolution !== 'walkover'"> · {{ t('match.resolutionMaximum', { max: resolutionLimits.maxMinute }) }}</template></p>
+               <template v-if="resolution === 'walkover'">
+                 <!-- RF-012/D-7: el W.O. no necesita segmento ni planilla; se dice para que el botón habilitado no parezca un defecto. -->
+                 <p class="muted-note full-width walkover-notice" role="status">{{ t('match.walkoverNoSegment') }}</p>
+                  <label>{{ t('match.winner') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverWinnerError)" :aria-describedby="walkoverWinnerDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="walkoverWinnerError" :id="WALKOVER_WINNER_ERROR_ID" class="form-error" role="alert">{{ walkoverWinnerError }}</small></label>
+                  <label>{{ t('match.walkoverReason') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.reason" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverReasonError)" :aria-describedby="walkoverReasonDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-for="option in walkoverReasonOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option></select><small v-if="walkoverReasonError" :id="WALKOVER_REASON_ERROR_ID" class="form-error" role="alert">{{ walkoverReasonError }}</small></label>
+                 <!-- RF-005: la pareja efectiva la deriva el servidor; aquí solo se muestra, nunca se edita ni se envía. -->
+                 <p class="muted-note full-width walkover-score" role="status">{{ t('match.walkoverScore') }}: {{ walkoverScore ? `${walkoverScore.winner}-${walkoverScore.loser}` : '—' }}</p>
+               </template>
+               <template v-else>
                <label>{{ match.home_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                <label>{{ match.away_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
               <template v-if="resolution !== 'regular'">
-                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" :required="resolution !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" :required="resolution !== 'walkover'" :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                   <label v-if="resolution === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                   <label v-if="resolution === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
                    <label>{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                </template>
                 <label v-if="resolution === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="!canOperateMatch || isTerminal" /></label>
+               </template>
              </div>
-                <div class="close-actions"><p class="muted-note">{{ t('match.backendValidation') }}</p><button v-if="canOperateMatch" class="button-primary close-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="closeMatch">{{ busyAction === 'close' ? t('match.closing') : isTerminal ? t('match.closed') : t('match.confirmReport') }}</button></div>
+                <div class="close-actions"><p class="muted-note">{{ t('match.backendValidation') }}</p><button v-if="canOperateMatch" class="button-primary close-button" type="button" :disabled="Boolean(busyAction) || isTerminal || (!selectedSegmentIsActive && resolution !== 'walkover')" @click="closeMatch">{{ busyAction === 'close' ? t('match.closing') : isTerminal ? t('match.closed') : t('match.confirmReport') }}</button></div>
           </section>
         </div>
       </template>
@@ -1576,6 +1929,8 @@ onBeforeUnmount(() => {
 .panel h3 { margin: 0 0 12px; font-size: 1rem; }
 .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
 .muted-note, .field-hint { color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+.required-mark { margin-left: 3px; color: var(--accent); font-weight: 700; }
+label > small.form-error { padding: 0; border: 0; font-size: 0.72rem; }
 .sub-grid, .roster-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .soft-panel { display: grid; align-content: start; gap: 13px; padding: 17px; border: 1px solid rgba(166, 170, 159, 0.16); border-radius: 14px; background: rgba(12, 15, 12, 0.32); }
 .segment-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(212, 243, 106, 0.08); }

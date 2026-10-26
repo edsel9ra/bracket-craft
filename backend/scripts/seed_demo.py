@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1252,7 +1252,15 @@ def _goal_events(
         for goal_number in range(score):
             events.append(
                 MatchEventPayload(
-                    client_event_id=f"demo-{match.code.lower()}-goal-{event_number}",
+                    # RF-015: el identificador de cliente es un UUID. Se deriva
+                    # de la misma etiqueta para que el seed siga siendo
+                    # idempotente entre corridas.
+                    client_event_id=str(
+                        uuid5(
+                            NAMESPACE_URL,
+                            f"bracket-craft-demo:{match.code}:{event_number}",
+                        )
+                    ),
                     event_type="goal",
                     team_id=team_id,
                     player_id=rosters[goal_number % 11].player_id,

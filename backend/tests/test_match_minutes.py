@@ -44,6 +44,7 @@ from app.modules.matches.service import (
     validate_event_minute,
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
+from tests.event_ids import event_id
 
 ORGANIZATION_ID = UUID(int=8001)
 USER_ID = UUID(int=8002)
@@ -90,7 +91,7 @@ def rules_config(
 
 def goal_event(minute: int, *, added_minute: int = 0) -> MatchEventPayload:
     return MatchEventPayload(
-        client_event_id=f"goal-{minute}-{added_minute}",
+        client_event_id=event_id(f"goal-{minute}-{added_minute}"),
         event_type="goal",
         team_id=HOME,
         player_id=PLAYER,
@@ -674,6 +675,8 @@ async def test_operation_exposes_the_effective_limits_with_the_stage_override(mo
         "max_minute_extra": 100,
         "extra_time_enabled": True,
         "penalties_enabled": False,
+        # spec 016 (RF-005): la pareja efectiva del walkover, aditiva.
+        "walkover_score": {"winner": 3, "loser": 0},
     }
 
 
@@ -834,7 +837,7 @@ async def test_the_close_route_still_rejects_an_out_of_range_minute_with_422(mon
         **CLOSE_BODY,
         "events": [
             {
-                "client_event_id": "out-of-range",
+                "client_event_id": event_id("out-of-range"),
                 "event_type": "goal",
                 "team_id": str(HOME),
                 "player_id": str(PLAYER),

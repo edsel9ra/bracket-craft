@@ -21,6 +21,11 @@ Invariants
 * Legacy ``substitution`` events without ``player_out_id``/``player_in_id`` are
   informational: they consume neither substitutions nor windows and do not
   change the on-field state (RF-034).
+* The assist (``assist_player_id``, spec 015) belongs to the goal event and is
+  validated **inside the replay**: it must be a team-mate of the scorer and be
+  on the field in the goal minute according to the same interval union. The
+  state used is the one derived from the events that precede the goal in
+  canonical order, exactly like the scorer's own on-field check.
 
 Errors are raised as :class:`SubstitutionError`, a ``ValueError`` subclass with
 a stable :class:`SubstitutionErrorCode`. The closing service maps every
@@ -64,6 +69,7 @@ __all__ = [
     "segment_balances",
     "starter_player_ids",
     "team_usage",
+    "validate_assist_player",
     "validate_player_on_field",
     "validate_roster_minutes",
     "validate_substitution",
@@ -85,6 +91,10 @@ class SubstitutionErrorCode(str, Enum):
     WINDOWS_EXHAUSTED = "windows_exhausted"
     PLAYER_NOT_ON_FIELD = "player_not_on_field"
     ROSTER_MINUTES_CONFLICT = "roster_minutes_conflict"
+    # Spec 015 (RF-008): el asistente informado no es del mismo equipo que el
+    # goleador o no está en campo en el minuto del gol. El cierre lo traduce al
+    # 409 con ``code`` ``ASSIST_PLAYER_INVALID``.
+    ASSIST_PLAYER_INVALID = "assist_player_invalid"
 
 
 class SubstitutionError(ValueError):
@@ -122,6 +132,10 @@ class MatchEvent:
     player_id: UUID | None = None
     player_out_id: UUID | None = None
     player_in_id: UUID | None = None
+    # Asistencia (spec 015, RF-007): solo un ``goal`` puede llevarla y nunca es
+    # el propio goleador; esas dos reglas son estructurales (422) y viven en el
+    # esquema. Aquí solo se modela el dato que el replay valida.
+    assist_player_id: UUID | None = None
     segment_id: UUID | None = None
 
     @classmethod
@@ -137,6 +151,7 @@ class MatchEvent:
             player_id=_as_optional_uuid(event.get("player_id")),
             player_out_id=_as_optional_uuid(event.get("player_out_id")),
             player_in_id=_as_optional_uuid(event.get("player_in_id")),
+            assist_player_id=_as_optional_uuid(event.get("assist_player_id")),
             segment_id=_as_optional_uuid(event.get("segment_id")),
         )
 
@@ -561,6 +576,47 @@ def validate_player_on_field(
             SubstitutionErrorCode.PLAYER_NOT_ON_FIELD,
             f"El evento del jugador {player_id} está fuera de sus intervalos "
             "en campo",
+        )
+
+
+def validate_assist_player(
+    state: OnFieldState,
+    assist_player_id: UUID,
+    minute: int,
+    added_minute: int = 0,
+    *,
+    team_id: UUID | None = None,
+) -> None:
+    """Require the assist to be a team-mate on the field at the goal minute.
+
+    ``state`` is the on-field state of the scoring team **before** the goal in
+    canonical order, so the interval union decides presence exactly as it does
+    for the scorer. ``team_id`` is the roster team of the assist (``None`` when
+    the player has no row in ``match_rosters``); a different team from the
+    scorer is rejected with the same code as being out of the roster or off the
+    field, because all three are ``ASSIST_PLAYER_INVALID`` (RF-008, RF-014).
+
+    The replay owns the check (D-7): a pass over the persisted events could not
+    know the on-field state of that minute.
+    """
+
+    if team_id is not None and team_id != state.team_id:
+        raise SubstitutionError(
+            SubstitutionErrorCode.ASSIST_PLAYER_INVALID,
+            f"El asistente {assist_player_id} no pertenece al mismo equipo "
+            "que el goleador",
+        )
+    if not state.is_in_roster(assist_player_id):
+        raise SubstitutionError(
+            SubstitutionErrorCode.ASSIST_PLAYER_INVALID,
+            f"El asistente {assist_player_id} no está en la plantilla del "
+            "partido",
+        )
+    if not state.is_on_field_at(assist_player_id, minute + added_minute):
+        raise SubstitutionError(
+            SubstitutionErrorCode.ASSIST_PLAYER_INVALID,
+            f"El asistente {assist_player_id} no está en campo en el minuto "
+            "del gol",
         )
 
 

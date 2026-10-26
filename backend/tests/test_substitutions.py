@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.core.tenancy import AuthContext
 from app.modules.matches.router import get_match_operation
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
+from tests.event_ids import event_id
 from app.modules.matches.service import NO_LINEUP_NOTICE, CloseMatchReportService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from db_helpers import (
@@ -85,7 +86,8 @@ def substitution(
     client_event_id: str,
 ) -> MatchEventPayload:
     return MatchEventPayload(
-        client_event_id=client_event_id,
+        # RF-015: la etiqueta de la prueba se convierte en un UUID estable.
+        client_event_id=event_id(client_event_id),
         event_type="substitution",
         team_id=team_id,
         player_id=out_id,
@@ -105,7 +107,7 @@ def goal(
     client_event_id: str,
 ) -> MatchEventPayload:
     return MatchEventPayload(
-        client_event_id=client_event_id,
+        client_event_id=event_id(client_event_id),
         event_type="goal",
         team_id=team_id,
         player_id=player_id,
@@ -520,7 +522,7 @@ async def _insert_event(
 
 @asynccontextmanager
 async def committed_application(database_admin_url):
-    """Throwaway database at 021 plus a dedicated role that inherits the app role."""
+    """Throwaway database at the latest migrations plus a dedicated role."""
 
     await ensure_application_role(database_admin_url)
     database = await create_database(database_admin_url)
@@ -530,7 +532,7 @@ async def committed_application(database_admin_url):
     engine = None
     try:
         await apply_init(admin)
-        await apply_migrations(admin, first=1, last=21)
+        await apply_migrations(admin, first=1)
         await admin.execute(
             f"""
             CREATE ROLE "{role_name}" LOGIN PASSWORD '{role_password}'
@@ -662,9 +664,9 @@ async def test_close_persists_the_pair_and_rewrites_every_segment_balance(
         )
     ).mappings().all()
     assert [(row["client_event_id"], row["player_out_id"], row["player_in_id"]) for row in pairs] == [
-        ("t005-persist-1", starter_1, substitute_1),
-        ("t005-persist-2", starter_2, substitute_2),
-        ("t005-persist-3", starter_3, substitute_3),
+        (event_id("t005-persist-1"), starter_1, substitute_1),
+        (event_id("t005-persist-2"), starter_2, substitute_2),
+        (event_id("t005-persist-3"), starter_3, substitute_3),
     ]
     assert all(row["player_id"] == row["player_out_id"] for row in pairs)
 
@@ -915,7 +917,7 @@ async def test_an_identical_event_is_reused_and_not_counted_twice(db_session, te
         db_session,
         tenant,
         match,
-        client_event_id="t005-retry-1",
+        client_event_id=event_id("t005-retry-1"),
         out_id=out_id,
         in_id=substitute_id,
         minute=20,
@@ -944,9 +946,12 @@ async def test_an_identical_event_is_reused_and_not_counted_twice(db_session, te
             text("""
                 SELECT id, player_out_id, player_in_id
                 FROM match_events
-                WHERE match_id = :match_id AND client_event_id = 't005-retry-1'
+                WHERE match_id = :match_id AND client_event_id = :client_event_id
             """),
-            {"match_id": str(match.match_id)},
+            {
+                "match_id": str(match.match_id),
+                "client_event_id": event_id("t005-retry-1"),
+            },
         )
     ).mappings().one()
     assert event["id"] == existing_id
@@ -970,7 +975,7 @@ async def test_a_conflicting_retry_is_rejected_without_partial_writes(database_a
                 session,
                 match.tenant,
                 match,
-                client_event_id="t005-retry-conflict",
+                client_event_id=event_id("t005-retry-conflict"),
                 out_id=match.home_starters[0],
                 in_id=match.home_substitutes[0],
                 minute=20,
@@ -1018,7 +1023,7 @@ async def test_operation_exposes_the_state_without_writing(db_session, tenant_fa
         db_session,
         tenant,
         match,
-        client_event_id="t005-operation-1",
+        client_event_id=event_id("t005-operation-1"),
         out_id=out_id,
         in_id=substitute_id,
         minute=20,

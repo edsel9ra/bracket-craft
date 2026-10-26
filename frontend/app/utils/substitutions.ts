@@ -13,6 +13,8 @@
  * It is framework-free: no Nuxt, no DOM, no clock and no I/O.
  */
 
+import { dropLegacyClientEventIds, isUuid } from './matchEvents.ts';
+
 export const SUBSTITUTION_EVENT_TYPE = 'substitution';
 
 export type SubstitutionUnavailableReason =
@@ -108,6 +110,11 @@ export interface DraftEvent<T extends string = string> {
   segment_id: string;
   player_out_id: string | null;
   player_in_id: string | null;
+  /**
+   * Asistente del gol (spec 015, RF-007). La pantalla lo escribe al construir el
+   * evento; leerlo y sanearlo al restaurar el borrador es T10.
+   */
+  assist_player_id?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -118,6 +125,9 @@ export type SubstitutionPairResult =
 const MAX_TEXT_LENGTH = 100;
 const STRUCTURAL_MAX_MINUTE = 180;
 const STRUCTURAL_MAX_ADDED_MINUTE = 30;
+
+/** Clases de roja que el servidor acepta (spec 015, `RED_CARD_TYPES`). */
+const RED_CARD_TYPES: readonly string[] = ['direct_red', 'double_yellow_red'];
 
 /** Form limits used only when the operation response has no `limits` block. */
 export const DEFAULT_MATCH_LIMITS: MatchLimits = {
@@ -399,12 +409,47 @@ function integerBetween(value: unknown, min: number, max: number): number | null
 }
 
 /**
- * Validates a persisted draft event, including the new substitution pair.
+ * `metadata` del borrador (RF-002): solo la clave `red_card_type` en una roja y
+ * con un valor del catálogo. Cualquier otra clave, un valor no textual o un
+ * `metadata` que no sea un objeto ya no se puede reenviar al cierre.
+ */
+function readDraftMetadata(
+  value: unknown,
+  eventType: string,
+): { readonly ok: true; readonly metadata: Record<string, unknown> | null } | { readonly ok: false } {
+  if (value === null || value === undefined) return { ok: true, metadata: null };
+  if (typeof value !== 'object' || Array.isArray(value)) return { ok: false };
+  const metadata = value as Record<string, unknown>;
+  const keys = Object.keys(metadata);
+  if (keys.length === 0) return { ok: true, metadata };
+  if (eventType !== 'red_card') return { ok: false };
+  if (keys.some((key) => key !== 'red_card_type')) return { ok: false };
+  const redCardType = metadata.red_card_type;
+  if (typeof redCardType !== 'string' || !RED_CARD_TYPES.includes(redCardType)) return { ok: false };
+  return { ok: true, metadata };
+}
+
+/**
+ * Valida un evento del borrador guardado y devuelve una copia normalizada.
  *
- * A `substitution` needs both ids, different from each other and with
- * `player_id === player_out_id` (the payload contract of the closing API).
- * Any other type must not carry the pair. Returns a normalized copy so a
- * restored draft always has both keys.
+ * Un `substitution` necesita los dos identificadores, distintos entre sí y con
+ * `player_id === player_out_id` (contrato del cierre); cualquier otro tipo no
+ * lleva el par. Además se comprueba lo que el servidor ya no admite (spec 015,
+ * RNF-003), de modo que lo que se guarda se puede reenviar tal cual sin **422**:
+ *
+ * * `client_event_id` con forma de UUID (RF-015): los borradores antiguos
+ *   guardaban `event-<marca>` y se descartan, sin reescribir el identificador
+ *   (D-9).
+ * * `assist_player_id` solo en un gol, con forma de UUID y distinto del goleador
+ *   (RF-007, RF-009); el resto de la validez del asistente es del servidor.
+ * * `beneficiary_team_id` solo en un autogol y distinto del equipo del evento
+ *   (RF-002).
+ * * `metadata` cerrada (RF-002).
+ *
+ * Devuelve `null` —el evento completo se descarta— cuando no se puede reenviar:
+ * corregirlo a medias guardaría un acta distinta de la que el operador compuso.
+ * Un evento válido se restaura con el asistente y el resto de campos intactos;
+ * los campos opcionales ausentes se normalizan a `null`.
  */
 export function readDraftEvent<T extends string>(
   value: unknown,
@@ -413,7 +458,7 @@ export function readDraftEvent<T extends string>(
 ): DraftEvent<T> | null {
   if (!value || typeof value !== 'object') return null;
   const event = value as Record<string, unknown>;
-  const clientEventId = text(event.client_event_id);
+  const clientEventId = isUuid(event.client_event_id) ? event.client_event_id : null;
   const eventType = typeof event.event_type === 'string' && (eventTypes as readonly string[]).includes(event.event_type)
     ? event.event_type as T
     : null;
@@ -435,12 +480,29 @@ export function readDraftEvent<T extends string>(
   const playerIn = event.player_in_id === null || event.player_in_id === undefined
     ? null
     : text(event.player_in_id);
+  const assist = event.assist_player_id === null || event.assist_player_id === undefined
+    ? null
+    : event.assist_player_id;
 
   if (eventType === SUBSTITUTION_EVENT_TYPE) {
     if (!playerOut || !playerIn || playerOut === playerIn || playerId !== playerOut) return null;
   } else if (playerOut !== null || playerIn !== null) {
     return null;
   }
+
+  if (eventType === 'own_goal') {
+    if (!beneficiary || beneficiary === teamId) return null;
+  } else if (beneficiary !== null) {
+    // Incluye un gol con beneficiario, que el servidor rechaza (RF-002).
+    return null;
+  }
+
+  if (assist !== null) {
+    if (!isUuid(assist) || eventType !== 'goal' || assist === playerId) return null;
+  }
+
+  const metadata = readDraftMetadata(event.metadata, eventType);
+  if (!metadata.ok) return null;
 
   const result: DraftEvent<T> = {
     client_event_id: clientEventId,
@@ -453,9 +515,52 @@ export function readDraftEvent<T extends string>(
     segment_id: segmentId,
     player_out_id: playerOut,
     player_in_id: playerIn,
+    assist_player_id: assist,
   };
-  if (event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)) {
-    result.metadata = event.metadata as Record<string, unknown>;
+  if (metadata.metadata !== null) {
+    result.metadata = metadata.metadata;
   }
   return result;
+}
+
+/** Eventos restaurados del borrador y cuántos se descartaron. */
+export interface DraftEventsReadResult<T extends string> {
+  readonly events: DraftEvent<T>[];
+  /** Eventos que ya no cumplen el contrato y no se pueden reenviar (D-9). */
+  readonly dropped: number;
+}
+
+/**
+ * Restaura los eventos de un borrador guardado.
+ *
+ * Los identificadores anteriores a la spec (`event-<marca>`) se descartan con
+ * `dropLegacyClientEventIds` (D-9: se descarta el evento, no se reescribe su
+ * identificador) y cada evento restante se valida con `readDraftEvent`. El que
+ * ya no cumple el contrato del acta se **descarta** y se cuenta para avisar al
+ * operador; el resto conserva el orden del borrador. El borrador no es la
+ * fuente de verdad: el servidor sigue siendo la autoridad.
+ */
+export function readDraftEvents<T extends string>(
+  values: unknown,
+  eventTypes: readonly T[],
+  limits: MatchLimits = DEFAULT_MATCH_LIMITS,
+): DraftEventsReadResult<T> {
+  const raw: unknown[] = Array.isArray(values) ? values : [];
+  // Una entrada que ni siquiera es un objeto no puede ser un evento: cuenta como
+  // descartada y no se pasa al descarte de identificadores.
+  const candidates = raw.filter(
+    (value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object',
+  );
+  const legacy = dropLegacyClientEventIds(candidates);
+  const events: DraftEvent<T>[] = [];
+  let dropped = legacy.dropped + (raw.length - candidates.length);
+  for (const value of legacy.events) {
+    const event = readDraftEvent(value, eventTypes, limits);
+    if (event) {
+      events.push(event);
+    } else {
+      dropped += 1;
+    }
+  }
+  return { events, dropped };
 }

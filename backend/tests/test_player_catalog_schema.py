@@ -193,8 +193,9 @@ async def test_player_references_use_composite_foreign_keys(db_session):
 
     # Isolation pattern from 015: every tenant-owned reference is a composite
     # FK to players (id, organization_id). Migration 021 adds two more player
-    # references to match_events for the substitution pair, so a table may own
-    # several composite FKs and each allowed player column is declared here.
+    # references to match_events for the substitution pair, and 026 the optional
+    # goal assist, so a table may own several composite FKs and each allowed
+    # player column is declared here.
     allowed_pairs: dict[str, set[tuple[str, str]]] = {
         table: {("player_id", "organization_id")} for table in PLAYER_TENANT_TABLES
     }
@@ -202,6 +203,7 @@ async def test_player_references_use_composite_foreign_keys(db_session):
         {
             ("player_out_id", "organization_id"),
             ("player_in_id", "organization_id"),
+            ("assist_player_id", "organization_id"),
         }
     )
 

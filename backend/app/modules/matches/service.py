@@ -12,7 +12,14 @@ from app.core.locking import lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
-from app.modules.matches.errors import ResolutionNotEnabled
+from app.modules.matches.errors import (
+    AssistPlayerInvalid,
+    DoubleYellowInconsistent,
+    ResolutionNotEnabled,
+    WalkoverConfigInconsistent,
+    WalkoverScoreMismatch,
+    WalkoverStateNotAllowed,
+)
 from app.modules.matches.schemas import CloseMatchReportDTO
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
@@ -41,6 +48,7 @@ from app.modules.rules_engine.substitutions import (
     remaining_limits,
     segment_balances,
     team_usage,
+    validate_assist_player,
     validate_player_on_field,
     validate_roster_minutes,
     validate_substitution,
@@ -114,6 +122,62 @@ def resolution_enabled(
     if resolution_type == "penalties":
         return bool(minutes.get("penalties_enabled"))
     return True
+
+
+@dataclass(frozen=True)
+class WalkoverScore:
+    """Marcador de walkover ya orientado a local y visitante (RF-005).
+
+    ``home_score``/``away_score`` son el resultado que se escribe en el partido;
+    ``winner_score``/``loser_score`` son la pareja **configurada** por la fase
+    (``{winner, loser}``), que es la que se nombra en los mensajes y la que
+    decide la coherencia D-3/D-5. Se separan para que el mensaje del 409 hable
+    de la configuración y no del lado del partido.
+    """
+
+    home_score: int
+    away_score: int
+    winner_score: int
+    loser_score: int
+
+    @property
+    def is_coherent(self) -> bool:
+        """D-3/D-5: el ganador declarado tiene que ir por delante."""
+
+        return self.winner_score > self.loser_score
+
+
+def derive_walkover_score(
+    config: Mapping[str, Any] | None,
+    stage_id: UUID | str | None,
+    home_team_id: UUID | None,
+    away_team_id: UUID | None,
+    winner_team_id: UUID | None,
+) -> WalkoverScore | None:
+    """Derive the walkover pair from the effective stage configuration (RF-005).
+
+    Pure and deterministic (RNF-006): it resolves ``walkover_score`` with the
+    same :func:`effective_stage_rules` the operation screen publishes, so the
+    value the client sees in ``limits`` is exactly the one the close applies.
+    ``stage_defaults`` is merged over the read default 3-0 and the stage
+    override is applied on top, key by key.
+
+    The pair is oriented to the match: the declared winner gets ``winner`` and
+    the opponent ``loser``. ``None`` means the winner is not a participant; the
+    engine (:func:`compute_match_outcome`) remains the authority over the
+    outcome, so this is a deliberate double check of participation (plan §5.1).
+    """
+
+    effective = effective_stage_rules(config or {}, stage_id)
+    configured = effective.get("walkover_score") or {}
+    winner_score = int(configured.get("winner", 3))
+    loser_score = int(configured.get("loser", 0))
+
+    if winner_team_id is not None and winner_team_id == home_team_id:
+        return WalkoverScore(winner_score, loser_score, winner_score, loser_score)
+    if winner_team_id is not None and winner_team_id == away_team_id:
+        return WalkoverScore(loser_score, winner_score, winner_score, loser_score)
+    return None
 
 
 def validate_event_minute(
@@ -191,12 +255,27 @@ def replay_report_state(
     Limits are per team and per match. Two changes of the same team in the same
     segment and minute share one window, so an already consumed window never
     counts twice.
+
+    **Prioridad de los dos pasos del cierre (RF-001).** El estado en campo y las
+    sustituciones son el paso **8** y el asistente del gol el paso **9**: una
+    asistencia inválida del minuto 10 no puede ganar a una sustitución inválida
+    del minuto 50. Como el asistente solo se puede comprobar en su punto del
+    orden canónico —necesita el estado en campo de ese minuto (D-7)—, su
+    violación se **retiene** y se informa al final, después de que el paso 8
+    haya tenido su oportunidad en todo el acta. Hay una sola pasada y una sola
+    regla: el asistente se sigue validando con :func:`validate_assist_player` en
+    el mismo bucle; lo único que cambia es **cuándo** se lanza el error. Así el
+    cierre conserva la prioridad declarada sin duplicar el motor ni recorrer el
+    acta dos veces.
     """
 
     entries = roster_entries(rosters)
+    entries_by_player = {entry.player_id: entry for entry in entries}
     teams = tuple(dict.fromkeys(_as_uuid(team_id) for team_id in team_ids))
     states = {team_id: build_on_field(entries, [], team_id) for team_id in teams}
     usage = {team_id: TeamUsage() for team_id in teams}
+    # Paso 9 retenido: se informa solo si el paso 8 no falló (ver docstring).
+    deferred_assist_error: SubstitutionError | None = None
 
     for event in canonical_event_order(events):
         state = states.get(event.team_id)
@@ -245,11 +324,31 @@ def replay_report_state(
                 f"El jugador {event.player_id} no está en la plantilla del equipo",
             )
         validate_player_on_field(state, event.player_id, event.minute, event.added_minute)
+        if event.assist_player_id is not None:
+            # Paso 9 (RF-001). El estado es el de los eventos anteriores en
+            # orden canónico, la misma regla que la comprobación del goleador, y
+            # solo el replay lo conoce (D-7). El defecto se retiene: el paso 8
+            # (estado en campo y sustituciones) tiene prioridad aunque su
+            # violación aparezca después en el acta.
+            assist_entry = entries_by_player.get(event.assist_player_id)
+            try:
+                validate_assist_player(
+                    state,
+                    event.assist_player_id,
+                    event.minute,
+                    event.added_minute,
+                    team_id=assist_entry.team_id if assist_entry is not None else None,
+                )
+            except SubstitutionError as error:
+                if deferred_assist_error is None:
+                    deferred_assist_error = error
         if event.event_type == RED_CARD:
             states[event.team_id] = apply_red_card(
                 state, event.player_id, event.effective_minute
             )
 
+    # Paso 8 completo: los minutos de plantilla también son estado en campo y
+    # se informan antes que el asistente.
     for entry in entries:
         state = states.get(entry.team_id)
         if state is None:
@@ -260,6 +359,9 @@ def replay_report_state(
             entered_minute=entry.entered_minute,
             left_minute=entry.left_minute,
         )
+
+    if deferred_assist_error is not None:
+        raise deferred_assist_error
 
     return ReportState(limits=limits, states=states, usage=usage)
 
@@ -301,14 +403,238 @@ def _as_uuid(value: Any) -> UUID:
     return value if isinstance(value, UUID) else UUID(str(value))
 
 
+def canonical_client_event_id(value: str) -> str:
+    """Canonical form of the event's client identifier (RF-012).
+
+    The API accepts the UUID in upper or lower case (RF-015), but the value that
+    is written and the value used to look for an already persisted event are
+    **the same**: the lowercase form of RFC 4122. Without this normalisation two
+    retries of the same ``client_event_id`` in a different case would be two
+    different rows for ``uq_event_client_id``.
+    """
+
+    return value.lower()
+
+
+def normalize_event_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Comparable additional information (D-10): ``None`` and ``{}`` are equal."""
+
+    return dict(value) if value else {}
+
+
+# --- Coherencia disciplinaria del acta (RF-006) -----------------------------
+
+YELLOW_CARD = "yellow_card"
+DOUBLE_YELLOW_RED = "double_yellow_red"
+
+
+def _acta_value(event: MatchEventPayload | Mapping[str, Any], key: str, default: Any = None) -> Any:
+    """Lea un campo del evento sea un ``MatchEventPayload`` o un ``mapping``."""
+
+    if isinstance(event, Mapping):
+        return event.get(key, default)
+    return getattr(event, key, default)
+
+
+def double_yellow_violations(
+    events: Sequence[MatchEventPayload | Mapping[str, Any]],
+) -> tuple[int, ...]:
+    """Índices del acta que incumplen la doble amarilla (RF-006, D-3).
+
+    Una roja con ``metadata.red_card_type == "double_yellow_red"`` exige
+    **exactamente dos** amarillas previas del mismo jugador en el mismo partido.
+    Cero, una o tres o más son violación; la roja directa no se mira y una
+    segunda amarilla nunca deriva en roja (DU-10).
+
+    **«Previas»** se interpreta con el orden canónico del acta
+    ``(minute, added_minute, índice del acta)`` —el mismo de RF-005, de la
+    proyección por segmento y del replay del motor—: cuentan solo las amarillas
+    **estrictamente anteriores** a la roja en ese orden. No hay ventana de
+    «misma jugada» porque el acta no declara jugadas: el orden canónico es la
+    única lectura determinista (RNF-006) y así una amarilla posterior a la roja,
+    o del mismo minuto con índice mayor, no cuenta.
+
+    La fuente es **solo** el acta recibida (los eventos de la petición, que son
+    los del partido): las amarillas guardadas en otro partido no cuentan. La
+    función es pura —sin base, sin reloj, sin entorno— y acepta tanto los
+    ``MatchEventPayload`` de la petición como ``mappings`` para probarla con
+    dicts (una misma llamada usa una sola forma: la comparación del jugador es
+    exacta). Devuelve los índices del payload (posición en ``events``) en orden
+    canónico; el servicio informa el primero (RF-001).
+
+    El contador no se reinicia al aplicar una roja: es el número de amarillas
+    del jugador en el acta. Una segunda roja del mismo jugador es, de todos
+    modos, un defecto anterior del paso 8 (estado en campo) en un acta real.
+    """
+
+    ordered = sorted(
+        enumerate(events),
+        key=lambda item: (
+            int(_acta_value(item[1], "minute") or 0),
+            int(_acta_value(item[1], "added_minute") or 0),
+            item[0],
+        ),
+    )
+    yellows: dict[Any, int] = {}
+    violations: list[int] = []
+    for index, event in ordered:
+        event_type = _acta_value(event, "event_type")
+        player_id = _acta_value(event, "player_id")
+        if player_id is None:
+            continue
+        if event_type == YELLOW_CARD:
+            yellows[player_id] = yellows.get(player_id, 0) + 1
+            continue
+        if event_type != RED_CARD:
+            continue
+        metadata = _acta_value(event, "metadata") or {}
+        if metadata.get("red_card_type") != DOUBLE_YELLOW_RED:
+            continue
+        if yellows.get(player_id, 0) != 2:
+            violations.append(index)
+    return tuple(violations)
+
+
+# --- Propuesta del siguiente segmento (RF-015) ------------------------------
+
+TERMINAL_MATCH_STATUSES = frozenset({"finished", "cancelled", "administrative_resolution"})
+PUBLISHED_VERSION_STATUS = "published"
+INTERRUPTED_SEGMENT = "interrupted"
+COMPLETED_SEGMENT = "completed"
+
+
+def _stored_value(row: Mapping[str, Any] | Any, key: str, default: Any = None) -> Any:
+    """Lea un campo de una fila sea un ``Mapping`` o un objeto con atributos."""
+
+    if isinstance(row, Mapping):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
+def _interruption_order(row: Mapping[str, Any] | Any) -> tuple[int, str, str]:
+    """Clave determinista de una interrupción: ``(minute, created_at, id)``."""
+
+    created_at = _stored_value(row, "created_at")
+    interruption_id = _stored_value(row, "id")
+    return (
+        int(_stored_value(row, "minute") or 0),
+        "" if created_at is None else str(created_at),
+        "" if interruption_id is None else str(interruption_id),
+    )
+
+
+def next_segment_proposal(
+    match_status: str | None,
+    version_status: str | None,
+    segments: Iterable[Mapping[str, Any] | Any],
+    interruptions: Iterable[Mapping[str, Any] | Any],
+) -> dict[str, Any] | None:
+    """Propuesta del siguiente segmento derivada de lo persistido (RF-015, D-4).
+
+    **No crea ni modifica nada**: es un cálculo de solo lectura sobre los
+    segmentos y las interrupciones que la operación ya lee (RNF-008), sin
+    consultas nuevas, sin reloj y sin automatismo (DU-9). El servidor sigue
+    siendo la autoridad al crear un segmento (RF-013/RF-014), así que el
+    operador siempre confirma.
+
+    Devuelve ``None`` cuando no se podría crear ningún segmento: partido
+    **terminal** (``finished``, ``cancelled`` o ``administrative_resolution``) o
+    versión **no publicada** (D-7). ``suspended`` **sí** recibe propuesta,
+    porque la ruta de creación de segmentos lo admite y negarla ofrecería menos
+    de lo que el servidor permite.
+
+    Si no hay segmentos, el primero del partido: ``{1, 0, derived: True}``. Con
+    segmentos, ``segment_number`` es siempre el siguiente al último y
+    ``minute_start``/``derived`` salen del último:
+
+    * ``interrupted`` → el minuto de **su** interrupción más reciente, derivado;
+    * ``completed`` con ``minute_end`` → ese fin, derivado;
+    * ``active`` → ``minute_start`` nulo y ``derived`` falso: no hay nada de lo
+      que derivarlo y lo indica el operador;
+    * ``completed`` sin ``minute_end`` (posible en datos históricos) → igual,
+      nulo y no derivado;
+    * ``interrupted`` sin fila de interrupción (dato anómalo) → igual, nulo y no
+      derivado, en vez de inventar el minuto.
+
+    La función acepta ``mappings`` y objetos con atributos. Es determinista: el
+    orden de entrada no importa (los segmentos se ordenan por
+    ``segment_number`` y las interrupciones por ``(minute, created_at, id)``) y
+    los desempates son estables (RNF-006).
+    """
+
+    if match_status in TERMINAL_MATCH_STATUSES:
+        return None
+    if version_status != PUBLISHED_VERSION_STATUS:
+        return None
+
+    ordered = sorted(
+        segments,
+        key=lambda row: int(_stored_value(row, "segment_number") or 0),
+    )
+    if not ordered:
+        return {"segment_number": 1, "minute_start": 0, "derived": True}
+
+    last = ordered[-1]
+    segment_number = int(_stored_value(last, "segment_number") or 0) + 1
+    status = _stored_value(last, "status")
+
+    if status == INTERRUPTED_SEGMENT:
+        last_id = _stored_value(last, "id")
+        own = [
+            row
+            for row in interruptions
+            if last_id is not None and _stored_value(row, "segment_id") == last_id
+        ]
+        if not own:
+            return {"segment_number": segment_number, "minute_start": None, "derived": False}
+        latest = max(own, key=_interruption_order)
+        return {
+            "segment_number": segment_number,
+            "minute_start": int(_stored_value(latest, "minute") or 0),
+            "derived": True,
+        }
+
+    if status == COMPLETED_SEGMENT:
+        minute_end = _stored_value(last, "minute_end")
+        if minute_end is None:
+            return {"segment_number": segment_number, "minute_start": None, "derived": False}
+        return {
+            "segment_number": segment_number,
+            "minute_start": int(minute_end),
+            "derived": True,
+        }
+
+    # Activo (o cualquier otro estado sin base): lo indica el operador.
+    return {"segment_number": segment_number, "minute_start": None, "derived": False}
+
+
 class CloseMatchReportService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
     async def execute(self, context: AuthContext, match_id: UUID, dto: CloseMatchReportDTO) -> dict[str, Any]:
+        """Cierra el acta aplicando el **orden único** de validación (RF-001).
+
+        Una petición con dos defectos de dominio informa el del paso anterior y
+        no escribe nada; el orden no depende del orden del payload ni del orden
+        en que las comprobaciones aparezcan escritas. Los **422 estructurales**
+        del esquema se resuelven antes del handler y prevalecen sobre cualquier
+        paso. La existencia y el aislamiento del partido se resuelven al
+        cargarlo (**404** tanto si no existe como si es de otra organización),
+        antes del permiso, y no cuentan como paso del orden de dominio. El
+        walkover **sí tiene rama propia** desde la spec 016: se inserta después
+        del paso 5 y omite los pasos 6 a 12 (ver :meth:`_execute_walkover`); la
+        plantilla y los bloqueos de jugador se cargan después de ese punto, así
+        que la rama no los consulta (D-6, RNF-008).
+        """
+
         async with self.db.begin():
+            # --- 1. Sesión, organización y aislamiento ----------------------
             await set_rls_context(self.db, context.organization_id, context.user_id)
             identity = await self._load_match_identity(context, match_id)
+            # Orden de bloqueo declarado (RF-018): fase → versión → destinos de
+            # avance → partido → segmento activo → jugadores. Los bloqueos no
+            # son validación: el defecto se informa en su paso.
             await lock_stage_and_version(
                 self.db,
                 context.organization_id,
@@ -320,6 +646,11 @@ class CloseMatchReportService:
             advancement = AdvancementService(self.db)
             await advancement.lock_targets(context, match_id, identity)
             match = await self._lock_match(context, match_id)
+
+            # --- 2. Permiso (conjunción) ------------------------------------
+            # `CLOSE_MATCH_REPORT` y, a la vez, rol operativo o asignación como
+            # oficial del partido; la administrativa exige además dueño o
+            # administrador (RF-002).
             try:
                 if dto.resolution_type == "administrative":
                     await require_administrative_resolution(
@@ -337,13 +668,25 @@ class CloseMatchReportService:
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
 
+            # --- 3. Estado del partido y versión publicada -------------------
             if match["status"] in {"finished", "cancelled", "administrative_resolution", "suspended"}:
+                if dto.resolution_type == "walkover":
+                    # RF-001: el walkover se declara solo sobre los estados que
+                    # hoy admiten cierre y los cuatro inadmisibles salen con su
+                    # ``code`` aditivo, sin transición de estado nueva.
+                    raise WalkoverStateNotAllowed(match["status"])
                 raise ValueError(f"El estado {match['status']} no admite cierre normal")
             if match["version_status"] != "published":
                 raise ValueError("La versión del torneo no está publicada")
+
+            # --- 4. Dos equipos participantes -------------------------------
             if match["home_team_id"] is None or match["away_team_id"] is None:
                 raise ValueError("El partido debe tener dos equipos participantes")
 
+            # Bloqueo del segmento activo. Se lee aquí para respetar el orden de
+            # bloqueo (fase → versión → destinos → partido → segmento →
+            # jugadores); el defecto de «sin segmento activo» se informa en el
+            # paso 6, y los bloqueos de jugador se toman después del paso 5.
             active_segment_result = await self.db.execute(
                 text("""
                     SELECT id, minute_start
@@ -357,40 +700,104 @@ class CloseMatchReportService:
             )
             active_segment_row = active_segment_result.mappings().one_or_none()
             active_segment = active_segment_row["id"] if active_segment_row else None
-            if active_segment is None:
-                raise ValueError("El partido necesita un segmento activo antes de cerrar el acta")
 
+            minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
+
+            # --- 5. Resolución habilitada por la configuración efectiva ------
+            # El estado ya rechazó un acta cerrada, así que nada confirmado se
+            # revalida (RF-035) y la configuración publicada solo se lee
+            # (RF-036). Es el 409 unificado que comparten los tres puntos de
+            # operación (P5, RF-032).
+            if not resolution_enabled(minutes, dto.resolution_type):
+                raise ResolutionNotEnabled()
+
+            # --- 13′/14′. Rama del walkover (spec 016) ----------------------
+            # Se **inserta** aquí: los pasos 1-5 son los de la 017 y no se
+            # reordena nada. La rama omite los pasos 6 (segmento activo,
+            # segmentos, tiempos e intervalo), 7 (participantes de los eventos
+            # y plantilla), 8 (estado en campo y sustituciones), 9 (asistente),
+            # 10 (doble amarilla), 11 (marcador contra eventos) y 12
+            # (sanciones): un partido que no se juega no tiene acta que
+            # validar (RF-003, RF-009). Las exenciones preexistentes de
+            # `walkover` en `_validate_event_team_scope`,
+            # `_validate_event_participants`, `_validate_substitutions` y
+            # `_validate_event_score_consistency` quedan **inalcanzables** por
+            # esta rama y se conservan como la exención de la resolución
+            # administrativa y como defensa en profundidad.
+            if dto.resolution_type == "walkover":
+                return await self._execute_walkover(
+                    context, match, dto, active_segment_row
+                )
+
+            # Plantilla, bloqueos de jugador y segmentos del camino normal. Van
+            # **después** del paso 5 para que la rama no los consulte (D-6) y
+            # el orden de bloqueo no cambia: partido → segmento → jugadores.
             rosters = await self._load_match_rosters(context, match_id)
             player_ids = sorted({row["player_id"] for row in rosters}, key=str)
             for player_id in player_ids:
                 await self._lock_player(match["tournament_id"], player_id)
-            self._validate_rosters(match, rosters)
             segments = await self._load_match_segments(context, match_id)
-            minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
-            # The resolution is checked before any minute validation, so a
-            # resolution the stage does not enable is the unified 409 that the
-            # three operation points share (P5, RF-032). The status guard above
-            # already rejected a closed act, so nothing confirmed is revalidated
-            # (RF-035) and the published configuration is only read (RF-036).
-            if not resolution_enabled(minutes, dto.resolution_type):
-                raise ResolutionNotEnabled()
+
+            # --- 6. Estructura del acta: segmento activo, segmentos, tiempos,
+            #        intervalo y máximo efectivo -----------------------------
+            if active_segment is None:
+                raise ValueError("El partido necesita un segmento activo antes de cerrar el acta")
             self._validate_segments(dto, segments, minutes)
+
+            # --- 7. Participantes y plantilla -------------------------------
+            # La regla de identificadores es única (RF-020): un equipo o
+            # beneficiario de **otra organización** es 404 y se resuelve antes
+            # del 409 de «no participa»; un jugador de otra organización sigue
+            # siendo 409.
+            await self._validate_event_team_scope(context, dto, match)
+            self._validate_event_participants(dto, match, rosters)
+            self._validate_rosters(match, rosters)
+
+            # --- 8. Estado en campo y sustituciones --------------------------
+            # El motor puro los valida antes de escribir (RF-005). Primero el
+            # paso 8 —estado en campo, sustituciones, ventanas, reentrada y
+            # minutos de plantilla—, que se informa aunque su defecto aparezca
+            # después en el acta que un asistente inválido.
             limits = SubstitutionLimits.from_config(
                 effective_substitutions(match["rules_config"])
             )
+            # --- 9. Asistente del gol ---------------------------------------
+            # La misma llamada informa después el asistente (409 con su código),
+            # solo si el paso 8 no falló: el replay retiene ese error y lo lanza
+            # al terminar su única pasada (RF-001).
             self._validate_substitutions(dto, match, rosters, limits)
+
+            # --- 10. Coherencia disciplinaria (doble amarilla) --------------
+            # Puro y sobre el acta de la **petición**: una roja marcada como
+            # doble amarilla exige exactamente dos amarillas previas del mismo
+            # jugador en el mismo partido (RF-006). No deriva rojas (DU-10) y no
+            # escribe (el defecto es 409 con su código).
+            self._validate_double_yellow(dto)
+
+            # --- 11. Marcador frente a eventos ------------------------------
             self._validate_event_score_consistency(
                 dto,
                 match["home_team_id"],
                 match["away_team_id"],
                 regular_time_minutes=minutes["regular_time_minutes"],
             )
+
+            # --- 12. Sanciones vigentes de la plantilla ---------------------
             await self._validate_suspensions(context, match["tournament_id"], player_ids)
 
-            persisted_events = await self._persist_events(context, match, dto, rosters, segments)
+            # --- 13. Coherencia de la resolución y del ganador --------------
+            # El resultado se calcula **antes de escribir** (RF-007, RF-009) y
+            # sobre los eventos de la **petición**, no sobre los persistidos.
+            # Es equivalente por la reutilización idempotente (RF-008): el paso
+            # 14 solo reutiliza una fila existente cuando es idéntica (tipo,
+            # equipo, beneficiario, jugadores, minuto, segmento, `metadata` y
+            # asistente) y responde **409** «inmutable» si difiere; para el
+            # marcador solo cuentan `event_type`, `team_id` y
+            # `beneficiary_team_id` (`_goal_credit`), que esa comparación
+            # cubre. Un acta inválida no deja ninguna escritura.
             outcome = compute_match_outcome(
                 match["rules_config"],
-                persisted_events,
+                self._request_events(dto),
                 dto.resolution_type,
                 match["home_team_id"],
                 match["away_team_id"],
@@ -405,6 +812,10 @@ class CloseMatchReportService:
             if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
                 raise ValueError("La gran final de doble eliminación debe tener un ganador")
 
+            # --- 14. Escritura atómica, clasificación, avance, auditoría y
+            #         outbox ---------------------------------------------------
+
+            persisted_events = await self._persist_events(context, match, dto, rosters, segments)
             target_status = "administrative_resolution" if dto.resolution_type == "administrative" else "finished"
             await self.db.execute(
                 text("""
@@ -508,6 +919,210 @@ class CloseMatchReportService:
                         "payload": event_payload,
                     },
                 )
+
+        return {
+            "status": "success",
+            "match_id": str(match_id),
+            "home_score": outcome.home_score,
+            "away_score": outcome.away_score,
+            "winner_team_id": str(outcome.winner_team_id) if outcome.winner_team_id else None,
+        }
+
+    async def _execute_walkover(
+        self,
+        context: AuthContext,
+        match: Mapping[str, Any],
+        dto: CloseMatchReportDTO,
+        active_segment_row: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Rama del walkover: pasos 13′ y 14′ del orden único (spec 016).
+
+        La llama :meth:`execute` **después** del paso 5 y antes de cargar la
+        plantilla, así que los pasos 1-5 (sesión y aislamiento, autorización,
+        estado y versión, dos equipos y resolución habilitada) ya se cumplieron
+        y esta rama **omite** el resto del tronco:
+
+        | Paso | Qué valida el tronco | Walkover |
+        |---|---|---|
+        | 6 | segmento activo, segmentos, tiempos e intervalo | **no se ejecuta** (RF-003) |
+        | 7 | participantes de los eventos, plantilla (`_validate_rosters`) | **no se ejecuta** (RF-003) |
+        | 8 | estado en campo y sustituciones | **no se ejecuta** (RF-003) |
+        | 9 | asistente del gol | **no se ejecuta** |
+        | 10 | doble amarilla | **no se ejecuta** (no hay eventos) |
+        | 11 | marcador contra eventos | **no se ejecuta** (no hay eventos) |
+        | 12 | sanciones vigentes de la plantilla | **no se ejecuta** (RF-009) |
+        | 13′ | marcador derivado, pareja coherente, desajuste informado y motor | **sí** |
+        | 14′ | escritura atómica, segmento activo, clasificación, avance, auditoría y outbox | **sí**, sin eventos, sin proyección por segmento y sin sanciones |
+
+        No consulta plantilla, alineación, contadores ni sanciones y no toma
+        bloqueos de jugador (D-6, RNF-008); el partido y el segmento activo ya
+        están bloqueados por :meth:`execute`. El orden de los defectos es
+        estable (RNF-006): participación del ganador → pareja incoherente
+        (`WALKOVER_CONFIG_INCONSISTENT`, D-4) → marcador informado distinto
+        (`WALKOVER_SCORE_MISMATCH`). Todo se calcula **antes de escribir**, así
+        que un 409 no deja ninguna fila.
+        """
+
+        match_id = match["id"]
+        pair = derive_walkover_score(
+            match["rules_config"],
+            match["stage_id"],
+            match["home_team_id"],
+            match["away_team_id"],
+            dto.winner_team_id,
+        )
+        if pair is None:
+            # Mismo mensaje que el motor: el defecto es de participantes y no
+            # lleva ``code`` (plan §6.2).
+            raise ValueError("El ganador informado no participa en el partido")
+        # D-4: la guarda de la pareja va **antes** que la comprobación del
+        # marcador informado. El motor aceptaría la pareja incoherente (solo la
+        # compara con la configurada) y la clasificación daría la victoria al
+        # otro equipo; al revés, el 409 del motor ganaría y se perdería el
+        # ``code`` y la salida documentada (la resolución administrativa).
+        if not pair.is_coherent:
+            raise WalkoverConfigInconsistent(pair.winner_score, pair.loser_score)
+        # D-10: un marcador informado que coincide se acepta (un cliente antiguo
+        # sigue funcionando); uno distinto es el 409 aditivo y no se escribe.
+        informed_pair = (
+            ("home_score_regular", pair.home_score),
+            ("away_score_regular", pair.away_score),
+            ("home_score", pair.home_score),
+            ("away_score", pair.away_score),
+        )
+        for field_name, expected in informed_pair:
+            value = getattr(dto, field_name)
+            if value is not None and value != expected:
+                raise WalkoverScoreMismatch(pair.winner_score, pair.loser_score)
+
+        # Paso 13′: el motor sigue siendo la autoridad del desenlace (D-3).
+        # Revalida la participación del ganador, la pareja frente a la
+        # configuración publicada y devuelve el resultado; sin eventos, el
+        # marcador es exactamente el derivado.
+        outcome = compute_match_outcome(
+            match["rules_config"],
+            [],
+            "walkover",
+            match["home_team_id"],
+            match["away_team_id"],
+            pair.home_score,
+            pair.away_score,
+            pair.home_score,
+            pair.away_score,
+            None,
+            None,
+            dto.winner_team_id,
+        )
+        if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
+            raise ValueError("La gran final de doble eliminación debe tener un ganador")
+
+        final_status = "finished"
+        await self.db.execute(
+            text("""
+                UPDATE matches
+                SET home_score_regular = :home_score_regular,
+                    away_score_regular = :away_score_regular,
+                    home_score = :home_score,
+                    away_score = :away_score,
+                    home_penalties = NULL,
+                    away_penalties = NULL,
+                    winner_team_id = :winner_team_id,
+                    status = :status,
+                    resolution_type = 'walkover',
+                    resolution_reason = :resolution_reason,
+                    result_confirmed = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :match_id AND organization_id = :organization_id
+            """),
+            {
+                "home_score_regular": outcome.home_score,
+                "away_score_regular": outcome.away_score,
+                "home_score": outcome.home_score,
+                "away_score": outcome.away_score,
+                "winner_team_id": str(outcome.winner_team_id) if outcome.winner_team_id else None,
+                "status": final_status,
+                # RF-007: el motivo es el **código** del catálogo cerrado, que
+                # la API ya validó; la migración 027 es la que lo admite en la
+                # columna para una resolución que no es la administrativa.
+                "resolution_reason": dto.reason,
+                "match_id": str(match_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        if active_segment_row is not None:
+            # RF-004: el activo se cierra en **su** minuto de inicio, porque un
+            # walkover no registra eventos de los que derivar un final. Los
+            # completados y los interrumpidos no se tocan y no se crea ninguno.
+            await self.db.execute(
+                text("""
+                    UPDATE match_segments
+                    SET status = 'completed',
+                        minute_end = COALESCE(minute_end, :minute_end)
+                    WHERE id = :segment_id AND organization_id = :organization_id
+                """),
+                {
+                    "segment_id": str(active_segment_row["id"]),
+                    "organization_id": str(context.organization_id),
+                    "minute_end": int(active_segment_row["minute_start"]),
+                },
+            )
+
+        # RF-009 y RNF-008: no se llama a `_validate_suspensions`,
+        # `_load_discipline_history`, `_serve_suspensions`,
+        # `_insert_suspensions`, `_rewrite_segment_team_state` ni
+        # `_persist_events`. Un partido que no se juega no cumple sanciones, no
+        # tiene eventos y no aporta información nueva a la proyección por
+        # segmento.
+        await self._recalculate_standings(context, match)
+        await self._advance_bracket(context, match_id, match, outcome)
+
+        audit_payload = {
+            "previous_status": match["status"],
+            "final_status": final_status,
+            "tournament_version_id": str(match["tournament_version_id"]),
+            "resolution_type": "walkover",
+            # RNF-010: el contenido incluye resolución, ganador, marcador y
+            # motivo; el motivo va en la raíz (D-12) además de en la petición.
+            "resolution_reason": dto.reason,
+            "walkover_score": {
+                "home": pair.home_score,
+                "away": pair.away_score,
+            },
+            "outcome": outcome.__dict__,
+            "event_ids": [],
+            "suspensions": 0,
+            "request": dto.model_dump(mode="json"),
+        }
+        await self.db.execute(
+            text("""
+                INSERT INTO administrative_audit_logs
+                    (organization_id, entity_type, entity_id, action, payload, performed_by_member_id)
+                VALUES (:organization_id, 'matches', :match_id, :action, CAST(:payload AS jsonb), :member_id)
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "match_id": str(match_id),
+                "action": "CLOSE_MATCH_REPORT",
+                "payload": json.dumps(audit_payload, default=str),
+                "member_id": str(context.organization_user_id),
+            },
+        )
+        event_payload = json.dumps(
+            {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
+        )
+        # RNF-011: exactamente los mismos tres eventos que un cierre normal.
+        for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
+            await self.db.execute(
+                text("""
+                    INSERT INTO outbox_events (organization_id, event_type, payload)
+                    VALUES (:organization_id, :event_type, CAST(:payload AS jsonb))
+                """),
+                {
+                    "organization_id": str(context.organization_id),
+                    "event_type": event_type,
+                    "payload": event_payload,
+                },
+            )
 
         return {
             "status": "success",
@@ -639,7 +1254,10 @@ class CloseMatchReportService:
         for event in dto.events:
             segment = segments_by_id.get(event.segment_id)
             if segment is None:
-                raise ValueError("El evento pertenece a un segmento inexistente")
+                # Regla única de identificadores (RF-014): un segmento que no
+                # existe en este partido y organización se resuelve con 404, sin
+                # revelar existencia. El router lo mapea por ``LookupError``.
+                raise LookupError("Segmento no encontrado en el partido")
             if segment["status"] not in {"active", "completed"}:
                 raise ValueError("No se pueden registrar eventos en un segmento interrumpido")
             if event.minute < segment["minute_start"]:
@@ -651,6 +1269,91 @@ class CloseMatchReportService:
                 event.added_minute,
                 maximum=maximum_minute,
             )
+
+    async def _validate_event_team_scope(
+        self,
+        context: AuthContext,
+        dto: CloseMatchReportDTO,
+        match: Mapping[str, Any],
+    ) -> None:
+        """Single identifier rule for the teams named by the events (RF-014).
+
+        A team of another organization is **404** (existence is never revealed);
+        a team of the organization that does not play this match keeps the
+        **409** it already had. The lookup only runs when some event names a team
+        that is not a participant, so a normal report adds no query. Walkover and
+        administrative resolutions admit no events, and their own 409 keeps
+        precedence.
+        """
+
+        if dto.resolution_type in {"walkover", "administrative"}:
+            return
+        participants = {match["home_team_id"], match["away_team_id"]}
+        named = set()
+        for event in dto.events:
+            named.add(event.team_id)
+            if event.beneficiary_team_id is not None:
+                named.add(event.beneficiary_team_id)
+        foreign = {team_id for team_id in named if team_id not in participants}
+        if not foreign:
+            return
+        result = await self.db.execute(
+            text("""
+                SELECT id
+                FROM teams
+                WHERE organization_id = :organization_id
+                  AND id = ANY(CAST(:team_ids AS uuid[]))
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "team_ids": [team_id for team_id in sorted(foreign, key=str)],
+            },
+        )
+        known = {row["id"] for row in result.mappings().all()}
+        if foreign - known:
+            raise LookupError("Equipo no encontrado")
+
+    @staticmethod
+    def _validate_event_participants(
+        dto: CloseMatchReportDTO,
+        match: Mapping[str, Any],
+        rosters: Iterable[Mapping[str, Any]],
+    ) -> None:
+        """Participantes y elegibilidad de cada evento del acta (RF-004).
+
+        Puro: lee la plantilla que ya se cargó con sus bloqueos de jugador y no
+        escribe nada. Un evento de un equipo que no juega, de un jugador fuera
+        de la plantilla válida o del equipo indicado, antes de entrar o después
+        de salir, y un beneficiario que no participa son el **409** de este
+        paso. La **existencia** de un equipo de otra organización no se decide
+        aquí: es el **404** de :meth:`_validate_event_team_scope`, que corre
+        antes (regla única de identificadores, RF-020).
+        """
+
+        if dto.resolution_type in {"walkover", "administrative"}:
+            return
+        participants = {match["home_team_id"], match["away_team_id"]}
+        roster_by_player = {row["player_id"]: row for row in rosters}
+        for event in dto.events:
+            if event.team_id not in participants:
+                # Mismo código y mensaje que el replay del motor: el defecto es
+                # de participantes, no una regla nueva de este paso.
+                raise SubstitutionError(
+                    SubstitutionErrorCode.TEAM_MISMATCH,
+                    "El evento pertenece a un equipo que no participa en el partido",
+                )
+            if event.beneficiary_team_id is not None and event.beneficiary_team_id not in participants:
+                raise ValueError("El equipo beneficiario no participa en el partido")
+            roster = roster_by_player.get(event.player_id)
+            if roster is None or roster["team_id"] != event.team_id:
+                raise SubstitutionError(
+                    SubstitutionErrorCode.PLAYER_NOT_IN_ROSTER,
+                    f"El jugador {event.player_id} no está en la plantilla del equipo",
+                )
+            if roster["entered_minute"] is not None and event.minute < roster["entered_minute"]:
+                raise ValueError("El evento ocurre antes de la entrada del jugador")
+            if roster["left_minute"] is not None and event.minute > roster["left_minute"]:
+                raise ValueError("El evento ocurre después de la salida del jugador")
 
     @staticmethod
     def _validate_substitutions(
@@ -664,19 +1367,31 @@ class CloseMatchReportService:
         No event, counter, score, standings or outbox row is touched when a
         substitution breaks a rule (RF-017). Walkover and administrative
         resolutions do not admit events, so they are not replayed.
+
+        Cubre los pasos **8** (estado en campo y sustituciones) y **9**
+        (asistente del gol) con una sola pasada del motor: el replay informa
+        primero cualquier violación del paso 8, aunque el asistente inválido
+        esté en un minuto anterior, y solo después la del asistente (RF-001).
         """
 
         if dto.resolution_type in {"walkover", "administrative"}:
             return
-        replay_report_state(
-            rosters,
-            [
-                MatchEvent.from_mapping(event.model_dump(), index=index)
-                for index, event in enumerate(dto.events)
-            ],
-            (match["home_team_id"], match["away_team_id"]),
-            limits,
-        )
+        try:
+            replay_report_state(
+                rosters,
+                [
+                    MatchEvent.from_mapping(event.model_dump(), index=index)
+                    for index, event in enumerate(dto.events)
+                ],
+                (match["home_team_id"], match["away_team_id"]),
+                limits,
+            )
+        except SubstitutionError as error:
+            # D-8: el motor puro no importa HTTP. Solo el código del asistente
+            # gana el ``code`` aditivo; el resto conserva su 409 de pertenencia.
+            if error.code is SubstitutionErrorCode.ASSIST_PLAYER_INVALID:
+                raise AssistPlayerInvalid(str(error)) from error
+            raise
 
     async def _rewrite_segment_team_state(
         self,
@@ -746,6 +1461,28 @@ class CloseMatchReportService:
                 },
             )
         return balances
+
+    @staticmethod
+    def _validate_double_yellow(dto: CloseMatchReportDTO) -> None:
+        """Coherencia de la doble amarilla del acta (paso 10, RF-006).
+
+        La regla es :func:`double_yellow_violations`: exactamente dos amarillas
+        previas del mismo jugador en el orden canónico del acta. Se informa la
+        primera violación en ese orden (RF-001) con el minuto de la roja y sin
+        nombres (RNF-002). El walkover y la administrativa no admiten eventos
+        (422 del esquema), así que la función devuelve el acta vacía sin
+        violaciones y no hace falta una rama propia.
+        """
+
+        violations = double_yellow_violations(dto.events)
+        if not violations:
+            return
+        red_card = dto.events[violations[0]]
+        raise DoubleYellowInconsistent(
+            "La roja por doble amarilla del minuto "
+            f"{red_card.minute} no tiene exactamente dos amarillas previas del "
+            "mismo jugador"
+        )
 
     @staticmethod
     def _validate_event_score_consistency(
@@ -819,24 +1556,45 @@ class CloseMatchReportService:
         if result.first() is not None:
             raise ValueError("La planilla contiene un jugador suspendido")
 
+    @staticmethod
+    def _request_events(dto: CloseMatchReportDTO) -> list[dict[str, Any]]:
+        """Los eventos de la petición con la forma que consume el motor puro.
+
+        `compute_match_outcome` solo lee `event_type`, `team_id` y
+        `beneficiary_team_id` de cada gol (`_goal_credit`); el resto de campos
+        del evento no interviene en el marcador.
+        """
+
+        return [
+            {
+                "event_type": event.event_type,
+                "team_id": event.team_id,
+                "beneficiary_team_id": event.beneficiary_team_id,
+            }
+            for event in dto.events
+        ]
+
     async def _persist_events(self, context, match, dto, rosters, segments) -> list[dict[str, Any]]:
+        """Write the report's events (step 14).
+
+        Participants, roster eligibility, the segment interval and the
+        beneficiary were already validated in steps 6 and 7: a persisted event
+        can no longer break them. The defensive checks that remain are the ones
+        the pure schema already answers before the handler.
+        """
+
         match_id = match["id"]
-        valid_player_ids = {row["player_id"] for row in rosters}
-        participants = {match["home_team_id"], match["away_team_id"]}
         segment_statuses = {row["id"]: row["status"] for row in segments}
         segments_by_id = {row["id"]: row for row in segments}
-        roster_teams = {row["player_id"]: row["team_id"] for row in rosters}
-        roster_by_player = {row["player_id"]: row for row in rosters}
         persisted: list[dict[str, Any]] = []
         seen_client_event_ids: set[str] = set()
         for event in dto.events:
-            if event.client_event_id in seen_client_event_ids:
+            client_event_id = canonical_client_event_id(event.client_event_id)
+            if client_event_id in seen_client_event_ids:
                 raise ValueError("No se permiten client_event_id duplicados en la misma acta")
-            seen_client_event_ids.add(event.client_event_id)
+            seen_client_event_ids.add(client_event_id)
             if dto.resolution_type in {"walkover", "administrative"}:
                 raise ValueError("Esta resolución no permite eventos individuales")
-            if event.player_id not in valid_player_ids:
-                raise ValueError(f"El jugador {event.player_id} no está en la planilla")
             if segment_statuses.get(event.segment_id) not in {"active", "completed"}:
                 raise ValueError("No se pueden registrar eventos en un segmento interrumpido")
             segment = segments_by_id[event.segment_id]
@@ -844,22 +1602,12 @@ class CloseMatchReportService:
                 segment["minute_end"] is not None and event.minute > segment["minute_end"]
             ):
                 raise ValueError("El evento está fuera del intervalo de su segmento")
-            if event.team_id not in participants:
-                raise ValueError("El evento pertenece a un equipo que no participa en el partido")
-            if roster_teams[event.player_id] != event.team_id:
-                raise ValueError("El jugador del evento no pertenece al equipo indicado")
-            roster = roster_by_player[event.player_id]
-            if roster["entered_minute"] is not None and event.minute < roster["entered_minute"]:
-                raise ValueError("El evento ocurre antes de la entrada del jugador")
-            if roster["left_minute"] is not None and event.minute > roster["left_minute"]:
-                raise ValueError("El evento ocurre después de la salida del jugador")
-            if event.beneficiary_team_id is not None and event.beneficiary_team_id not in participants:
-                raise ValueError("El equipo beneficiario no participa en el partido")
 
             existing_result = await self.db.execute(
                 text("""
                     SELECT id, event_type, team_id, beneficiary_team_id, player_id,
-                           player_out_id, player_in_id, minute, added_minute, segment_id
+                           player_out_id, player_in_id, minute, added_minute, segment_id,
+                           assist_player_id, metadata
                     FROM match_events
                     WHERE organization_id = :organization_id
                       AND match_id = :match_id
@@ -868,23 +1616,32 @@ class CloseMatchReportService:
                 {
                     "organization_id": str(context.organization_id),
                     "match_id": str(match_id),
-                    "client_event_id": event.client_event_id,
+                    "client_event_id": client_event_id,
                 },
             )
             existing = existing_result.mappings().one_or_none()
             if existing:
-                if any(existing[key] != event_value for key, event_value in {
-                    "event_type": event.event_type,
-                    "team_id": event.team_id,
-                    "beneficiary_team_id": event.beneficiary_team_id,
-                    "player_id": event.player_id,
-                    "player_out_id": event.player_out_id,
-                    "player_in_id": event.player_in_id,
-                    "minute": event.minute,
-                    "added_minute": event.added_minute,
-                    "segment_id": event.segment_id,
-                }.items()):
-                    raise ValueError(f"El evento {event.client_event_id} es inmutable")
+                # La comparación cubre todo lo que el evento declara (RF-012):
+                # `metadata` con `{}` ↔ `None` normalizado (D-10) y la
+                # asistencia, que antes no existía.
+                if any(
+                    existing[key] != event_value
+                    for key, event_value in {
+                        "event_type": event.event_type,
+                        "team_id": event.team_id,
+                        "beneficiary_team_id": event.beneficiary_team_id,
+                        "player_id": event.player_id,
+                        "player_out_id": event.player_out_id,
+                        "player_in_id": event.player_in_id,
+                        "minute": event.minute,
+                        "added_minute": event.added_minute,
+                        "segment_id": event.segment_id,
+                        "assist_player_id": event.assist_player_id,
+                    }.items()
+                ) or normalize_event_metadata(
+                    existing["metadata"]
+                ) != normalize_event_metadata(event.metadata):
+                    raise ValueError(f"El evento {client_event_id} es inmutable")
                 persisted.append(dict(existing))
                 continue
 
@@ -892,13 +1649,14 @@ class CloseMatchReportService:
                 text("""
                     INSERT INTO match_events
                         (organization_id, match_id, segment_id, team_id, beneficiary_team_id, player_id,
-                         player_out_id, player_in_id,
+                         player_out_id, player_in_id, assist_player_id,
                          event_type, minute, added_minute, client_event_id, metadata)
                     VALUES (:organization_id, :match_id, :segment_id, :team_id, :beneficiary_team_id, :player_id,
-                            :player_out_id, :player_in_id,
+                            :player_out_id, :player_in_id, :assist_player_id,
                             :event_type, :minute, :added_minute, :client_event_id, CAST(:metadata AS jsonb))
                     RETURNING id, event_type, team_id, beneficiary_team_id, player_id,
-                              player_out_id, player_in_id, minute, added_minute, segment_id
+                              player_out_id, player_in_id, assist_player_id,
+                              minute, added_minute, segment_id
                 """),
                 {
                     "organization_id": str(context.organization_id),
@@ -909,10 +1667,11 @@ class CloseMatchReportService:
                     "player_id": str(event.player_id),
                     "player_out_id": str(event.player_out_id) if event.player_out_id else None,
                     "player_in_id": str(event.player_in_id) if event.player_in_id else None,
+                    "assist_player_id": str(event.assist_player_id) if event.assist_player_id else None,
                     "event_type": event.event_type,
                     "minute": event.minute,
                     "added_minute": event.added_minute,
-                    "client_event_id": event.client_event_id,
+                    "client_event_id": client_event_id,
                     "metadata": json.dumps(event.metadata or {}),
                 },
             )
