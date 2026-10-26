@@ -2,33 +2,33 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Specs 015, 016 y 017 cerradas e `implementadas` (2026-10-25)**, aprobadas por el usuario y con reviewer `APROBADO` en las tres. **Tanda de operación de partidos cerrada.**
-- **Tanda de operación de partidos completa.** Esquema en **027**; `engine_version` sigue en 2026.1.
-- **En `main` desde el 2026-10-25** (squash `48b6b98`, PR #12) con los cinco jobs de CI en verde, E2E incluido. Pendiente de despliegue: **migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback.
-- **Migración 027** (spec 016): relaja `chk_administrative_resolution_reason` para admitir el código del W.O. en `walkover`; la obligatoriedad es de la API. Orden **027 → código**, sin rollback.
-- Última cerrada antes de la tanda: **014** (escudos). Constitución **1.4.0**; `main` con cinco *required checks*; esquema en **027** (025 → 026 con la 015 → 027 con la 016).
+- **Specs 015, 016, 017 y 018 cerradas e `implementadas`** (2026-10-25), con reviewer `APROBADO`; **tanda de operación de partidos cerrada y en `main`** (squash `48b6b98`, PR #12) con los cinco jobs de CI en verde, E2E incluido.
+- Esquema en **027**; `engine_version` sigue en **2026.1**; constitución **1.4.0** y `main` con cinco *required checks*. Última cerrada antes de la tanda: **014** (escudos).
+- **Pendiente de despliegue: migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback. La **027** (016) relaja `chk_administrative_resolution_reason`; la obligatoriedad del motivo es de la API.
+
+## Spec 018 — sanción única por doble amarilla (8/8 tareas, termina T8)
+- **Una jugada = una sanción:** se absorben **todos** los umbrales que crucen las amarillas del acta que compone la expulsión (la primera o la última, y dos umbrales); no se absorbe nada de otra jugada ni de un acta anterior. La roja **directa** + umbral conserva **dos** (fuera de alcance).
+- **Duración:** la de la sanción **por expulsión** (`direct_red_suspension_matches` de la versión publicada), aplicada **una vez**. Ninguna amarilla se descuenta y el contador no se reinicia con la roja.
+- **Etiqueta y origen:** la sanción se deriva del **tipo de roja registrado también en el cierre que la registra** (el `RETURNING` devuelve `metadata`); **solo los eventos del acta que se cierra** originan sanciones (el historial solo cuenta y empareja) y la unicidad es **por evento de roja con cualquier motivo**, con una lectura acotada que no se ejecuta sin rojas. El recuento auditado es `len(created)` (`RETURNING id`).
+- **Sin migración** (esquema **027**), **sin superficie nueva**, y excepción acotada a §3.2 declarada y aprobada (regla fija en el motor).
+- **Evidencia (T8, 2026-10-25):** sin base **1919 passed / 432 skipped**; con base, conjunto de siete archivos **348 passed** (195.0 s) —la suite completa con base es la de T5: **2350 passed**, 8m30s—; frontend **628 (627 pass / 1 skipped preexistente)**; `typecheck`/`build` **0** (build 34.9 s, `web` reiniciado); E2E **VERDE (0)**, `operation-flow` 31/31 hitos. Sin tocar `infra/postgres/` ni `frontend/`.
+- **Validación 2026-10-25: @reviewer APROBADO** (15/15 RF y 17/17 criterios; diferencial viejo-vs-nuevo sobre 6 144 casos sin sanciones nuevas fuera de RNF-004). Aplicados los tres puntos opcionales útiles: prueba de aislamiento de la lectura de rojas registradas (13 casos con base), cita del plan corregida y evidencia de sensibilidad de T1 registrada; quedan sin caso propio los casos límite 22 y 24.
 
 ## Spec 017 — cierre de actas y segmentos (10/10 tareas)
-- **Orden único de validación de 14 pasos**: entre defectos de dominio gana el del paso anterior y un fallo no escribe nada. Los 422 estructurales prevalecen y no llevan `code`.
-- **8 → 9**: el asistente se valida en el paso 9 y su error se **retiene** hasta terminar el paso 8 (una sola pasada del motor, sin duplicar reglas).
-- **422 → 409** en las cuatro incoherencias numéricas del marcador (`detail` cadena, **sin `code`**); `DOUBLE_YELLOW_INCONSISTENT` es el único código nuevo (exactamente dos amarillas previas, orden canónico).
-- **Resultado calculado antes de escribir** (paso 13), con los eventos de la petición; la idempotencia garantiza la equivalencia.
-- **`next_segment`** = `{segment_number, minute_start, derived}`, nulo en partido terminal o versión no publicada; el cliente ya no calcula el número y **no pisa** el minuto editado (`minuteDirty`/`forceMinute`).
-- **Walkover**: el usuario decidió (2026-10-25) que su rama pertenece **íntegramente a la 016**; la 017 delega y su criterio 16 queda «no aplicable hasta la 016». *(Histórico: en la 017 un W.O. aún exigía segmento y plantilla; la 016 lo derogó.)*
-- **Evidencia final:** backend **1779/376** sin base y **2155** con base; frontend **610**; `typecheck`/`build` 0; E2E **VERDE (0)** (31 hitos); infra y seguridad 0.
+- **Orden único de validación de 14 pasos**: gana el defecto del paso anterior y un fallo no escribe nada; los **422 estructurales** prevalecen y no llevan `code`.
+- **8 → 9** (el error del asistente se retiene hasta terminar el paso 8), **422 → 409** en las cuatro incoherencias numéricas del marcador y `DOUBLE_YELLOW_INCONSISTENT` como único `code` nuevo.
+- **Resultado calculado antes de escribir** (paso 13) con los eventos de la petición; **`next_segment`** = `{segment_number, minute_start, derived}` y el cliente ya no calcula el número ni pisa el minuto editado. El **walkover** de esta spec se delegó íntegro a la 016.
 
 ## Spec 016 — walkover (10/10 tareas)
-- **Rama propia tras el paso 5** de la 017: **omite los pasos 6–12** —no exige segmento activo ni plantilla, no valida tiempos, sustituciones, doble amarilla, marcador contra eventos ni sanciones— y no carga plantilla ni bloquea jugadores. Autorización: **la misma conjunción** del cierre.
-- **Motivo de catálogo** (`no_show`/`withdrawal`/`insufficient_players`/`sanction`) obligatorio en `resolution_reason`; **marcador derivado** de `walkover_score` (default 3-0, override por fase) y publicado en `limits.walkover_score` (novena clave).
-- **Códigos:** `WALKOVER_STATE_NOT_ALLOWED` → `WALKOVER_CONFIG_INCONSISTENT` → `WALKOVER_SCORE_MISMATCH` (409 con `code`). Guardar/publicar `winner <= loser` es 422 y **no** se valida en `validate_rules_config` (corre al cerrar, clasificar y clonar).
-- **Efecto:** tabla (los goles del W.O. **cuentan** para la diferencia), avance de llave, sin eventos, sin sanciones servidas ni creadas, mismo outbox de tres eventos. Un segmento activo queda `completed` en su `minute_start`.
-- **Evidencia (2026-10-25, estado final):** backend **1899/419** sin base y **63** con base (`test_migration_027` + `test_match_resolution_db`); frontend **627 + 1 skip**; `typecheck`/`build` 0; **E2E VERDE (0)** re-ejecutado por el reviewer sobre el código final; infra 0.
-- **Nota:** la prueba de paridad del catálogo de motivos se **omite** dentro del contenedor `web` (solo monta `frontend`) y compara cuando el repo está alcanzable, como en CI. Se revirtió un montaje `./backend` que se había añadido a `docker-compose.yml` para hacerla pasar.
+- **Rama propia tras el paso 5** de la 017: omite los pasos 6–12 y no carga plantilla ni bloquea jugadores; autorización, **la misma conjunción** del cierre.
+- **Motivo de catálogo** obligatorio en `resolution_reason`; **marcador derivado** de `walkover_score` (default 3-0, override por fase) publicado en `limits.walkover_score`; los tres **409 con `code`** y `winner <= loser` en **422** al guardar o publicar.
+- **Efecto:** tabla (los goles del W.O. **cuentan**), avance de llave, sin eventos ni sanciones, mismo outbox de tres eventos. La prueba de paridad del catálogo se **omite** en el contenedor `web`.
+- **Evidencia** (en los `tasks.md`): backend **1779/376** y **2155**; **1899/419** y **63**; frontend **610** y **627 + 1 skip**; `typecheck`/`build` 0; **E2E VERDE (0)**.
 
-## Defectos fuera de alcance (registrados, sin dueño)
-- **Doble sanción:** amarillas acumuladas + roja por doble amarilla = **2 partidos** por la misma jugada. Merece spec propia con prioridad.
-- **Etiqueta de sanción:** el `INSERT` de eventos no devuelve `metadata`, así que una roja por doble amarilla recién registrada se etiqueta `direct_red_card`; reutilizar la fila la etiqueta bien.
-- **Minuto de interrupción**: se pisa en el refresco del socket (la 017 arregló el del segmento). **`minuteDirty`** viaja en el cuerpo del `POST /segments` (hoy ignorado; rompería con `extra="forbid"`).
+## Defectos registrados
+- **Doble sanción (resuelto en la 018):** amarillas acumuladas + roja por doble amarilla sumaban **2 partidos** por la misma jugada; ahora es **uno** con la duración de expulsión.
+- **Etiqueta de sanción (resuelto en la 018):** el `INSERT` de eventos ya devuelve `metadata`, así que una roja recién registrada se etiqueta bien en su primer cierre (antes `direct_red_card`).
+- **Minuto de interrupción** (sin dueño): se pisa en el refresco del socket (la 017 arregló el del segmento). **`minuteDirty`** viaja en el cuerpo del `POST /segments` (hoy ignorado; rompería con `extra="forbid"`).
 
 ## Lecciones del proceso (operación de partidos)
 - T5 de la 015 citó un archivo de pruebas que no existía y se dio por completa: **los «hecho cuando» que citan archivos deben crearlos**.
