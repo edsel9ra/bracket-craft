@@ -4,7 +4,8 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Estado
 - **Specs 015, 016 y 017 cerradas e `implementadas` (2026-10-25)**, aprobadas por el usuario y con reviewer `APROBADO` en las tres. **Tanda de operación de partidos cerrada.**
 - **Tanda de operación de partidos completa.** Esquema en **027**; `engine_version` sigue en 2026.1.
-- **Migración 027** (spec 016): `chk_administrative_resolution_reason` solo permitía `resolution_reason` en la resolución administrativa, así que el motivo del W.O. (DU-7) no tenía dónde guardarse. La 027 solo **relaja** el CHECK (acepta `NULL` o catálogo en `walkover`); la obligatoriedad es de la API. Orden **027 → código**, sin rollback, aplicada en local.
+- **En `main` desde el 2026-10-26** (squash `48b6b98`, PR #12) con los cinco jobs de CI en verde, E2E incluido. Pendiente de despliegue: **migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback.
+- **Migración 027** (spec 016): relaja `chk_administrative_resolution_reason` para admitir el código del W.O. en `walkover`; la obligatoriedad es de la API. Orden **027 → código**, sin rollback.
 - Última cerrada antes de la tanda: **014** (escudos). Constitución **1.4.0**; `main` con cinco *required checks*; esquema en **027** (025 → 026 con la 015 → 027 con la 016).
 
 ## Spec 017 — cierre de actas y segmentos (10/10 tareas)
