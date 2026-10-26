@@ -28,7 +28,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Defectos registrados
 - **Doble sanción (resuelto en la 018):** amarillas acumuladas + roja por doble amarilla sumaban **2 partidos** por la misma jugada; ahora es **uno** con la duración de expulsión.
 - **Etiqueta de sanción (resuelto en la 018):** el `INSERT` de eventos ya devuelve `metadata`, así que una roja recién registrada se etiqueta bien en su primer cierre (antes `direct_red_card`).
-- **Minuto de interrupción** (sin dueño): se pisa en el refresco del socket (la 017 arregló el del segmento). **`minuteDirty`** viaja en el cuerpo del `POST /segments` (hoy ignorado; rompería con `extra="forbid"`).
+- **Minuto de interrupción (resuelto, 2026-10-26):** ya no se pisa en cada refresco —utilidad pura `applyInterruptionMinute` con la causa del refresco y marcador `interruptionForm.minuteDirty` que solo fija el `@input` y se limpia al interrumpir— y el cuerpo del `POST /segments` se construye campo a campo, así que **`minuteDirty` no viaja** al servidor. Evidencia: frontend **636 (635 pass / 1 skipped)**, `typecheck`/`build` **0**, E2E **VERDE (0)** con `operation-flow` 31/31 hitos.
 
 ## Lecciones del proceso (operación de partidos)
 - T5 de la 015 citó un archivo de pruebas que no existía y se dio por completa: **los «hecho cuando» que citan archivos deben crearlos**.

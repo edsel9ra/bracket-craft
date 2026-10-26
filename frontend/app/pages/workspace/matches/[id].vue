@@ -51,6 +51,7 @@ import {
 } from '~/utils/matchClose';
 import {
   SEGMENT_PROPOSAL_HINT_LABEL_KEYS,
+  applyInterruptionMinute,
   applySegmentProposal,
   classifyCloseConflict,
   closeConflictMessageKey,
@@ -290,9 +291,10 @@ let hydratingDraft = false;
 let disposed = false;
 
 const segmentForm = reactive({ segment_number: 1, minute_start: 0, minuteDirty: false });
-const interruptionForm = reactive<{ reason: InterruptionReason; minute: number; notes: string }>({
+const interruptionForm = reactive<{ reason: InterruptionReason; minute: number; minuteDirty: boolean; notes: string }>({
   reason: 'other',
   minute: 0,
+  minuteDirty: false,
   notes: '',
 });
 const officialForm = reactive<{ organization_user_id: string; official_role: OfficialRole }>({
@@ -882,6 +884,27 @@ function markSegmentMinuteDirty(): void {
   segmentForm.minuteDirty = true;
 }
 
+/**
+ * El minuto de la interrupción sigue la misma regla que el del segmento (D-5):
+ * se prefija con el `minute_start` del segmento activo al montar y tras crear o
+ * interrumpir, y un refresco normal —incluido el que provoca el socket— no pisa
+ * lo que el operador está escribiendo.
+ */
+function syncInterruptionForm(proposal: number | null, cause: SegmentRefreshCause): void {
+  const resolved = applyInterruptionMinute(
+    { minute: interruptionForm.minute, dirty: interruptionForm.minuteDirty },
+    proposal,
+    { forceMinute: forceMinuteOnRefresh(cause) },
+  );
+  interruptionForm.minute = resolved.minute;
+  interruptionForm.minuteDirty = resolved.dirty;
+}
+
+/** El operador ha escrito el minuto de la interrupción: un refresco no lo pisa. */
+function markInterruptionMinuteDirty(): void {
+  interruptionForm.minuteDirty = true;
+}
+
 function applyOperation(value: MatchOperation, cause: SegmentRefreshCause = 'refresh') {
   operation.value = value;
   // Si el partido ya tiene segmentos (por ejemplo, abierto en otra pestaña) el
@@ -893,7 +916,7 @@ function applyOperation(value: MatchOperation, cause: SegmentRefreshCause = 'ref
     selectedSegmentId.value = nextActiveSegment?.id || value.segments.at(-1)?.id || '';
   }
   syncSegmentForm(value.next_segment, cause);
-  if (nextActiveSegment) interruptionForm.minute = nextActiveSegment.minute_start;
+  syncInterruptionForm(nextActiveSegment?.minute_start ?? null, cause);
   if (!eventForm.team_id) {
     eventForm.team_id = value.match.home_team_id || value.match.away_team_id || '';
   }
@@ -1057,7 +1080,11 @@ async function createSegment() {
   await runAction('segment', async () => {
     await request(`/matches/${matchId}/segments`, {
       method: 'POST',
-      body: { ...segmentForm, ...resolutionPayload(operationLimits.value, resolution.value) },
+      body: {
+        segment_number: segmentForm.segment_number,
+        minute_start: segmentForm.minute_start,
+        ...resolutionPayload(operationLimits.value, resolution.value),
+      },
     });
     openingBlocked.value = null;
     segmentForm.minuteDirty = false;
@@ -1091,6 +1118,7 @@ async function interruptSegment() {
       },
     });
     segmentForm.minuteDirty = false;
+    interruptionForm.minuteDirty = false;
     interruptionForm.notes = '';
     await refreshOperation('segment-changed');
   });
@@ -1734,7 +1762,7 @@ onBeforeUnmount(() => {
                    <h3>{{ t('match.interruptSegment') }}</h3>
                    <p class="muted-note">{{ t('match.interruptionHint') }}</p>
                    <label>{{ t('match.interruptReason') }}<select v-model="interruptionForm.reason"><option value="lighting_failure">{{ t('match.reasonLightingFailure') }}</option><option value="weather">{{ t('match.reasonWeather') }}</option><option value="pitch_invasion">{{ t('match.reasonPitchInvasion') }}</option><option value="other">{{ t('match.reasonOther') }}</option></select></label>
-                   <label>{{ t('match.interruptMinute') }}<input v-model.number="interruptionForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required /></label>
+                   <label>{{ t('match.interruptMinute') }}<input v-model.number="interruptionForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required @input="markInterruptionMinuteDirty" /></label>
                    <label>{{ t('match.interruptNotes') }}<textarea v-model="interruptionForm.notes" maxlength="1000" :placeholder="t('match.interruptNotesPlaceholder')" /></label>
                    <button class="button-secondary" type="submit" :disabled="Boolean(busyAction) || isTerminal">{{ busyAction === 'interrupt-segment' ? t('common.processing') : t('match.interruptSegment') }}</button>
                  </form>

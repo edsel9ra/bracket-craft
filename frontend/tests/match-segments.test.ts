@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   CLOSE_CONFLICT_MESSAGE_LABEL_KEYS,
   SEGMENT_PROPOSAL_HINT_LABEL_KEYS,
+  applyInterruptionMinute,
   applySegmentProposal,
   classifyCloseConflict,
   closeConflictMessageKey,
@@ -12,6 +13,7 @@ import {
   parseSegmentProposal,
   segmentProposalHint,
   shouldPrefillMinute,
+  type InterruptionMinuteState,
   type SegmentFormState,
 } from '../app/utils/matchSegments.ts';
 import {
@@ -174,6 +176,83 @@ test('only pre-fills the minute when the proposal is derived', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Minuto de interrupción (defecto registrado en MEMORY.md)
+//
+//   propuesta (minute_start del segmento activo) │ dirty │ forceMinute │ resultado
+//   ─────────────────────────────────────────────┼───────┼─────────────┼──────────
+//   null                                         │ —     │ —           │ conserva
+//   número                                       │ no    │ no          │ prefija
+//   número                                       │ no    │ sí          │ prefija
+//   número                                       │ sí    │ no          │ conserva
+//   número                                       │ sí    │ sí          │ prefija
+// ---------------------------------------------------------------------------
+
+const CLEAN_INTERRUPTION: InterruptionMinuteState = { minute: 0, dirty: false };
+const EDITED_INTERRUPTION: InterruptionMinuteState = { minute: 63, dirty: true };
+
+test('pre-fills the interruption minute on mount', () => {
+  const next = applyInterruptionMinute(CLEAN_INTERRUPTION, 45, {
+    forceMinute: forceMinuteOnRefresh('mount'),
+  });
+  assert.deepEqual(next, { minute: 45, dirty: false });
+});
+
+test('a normal refresh never overwrites the interruption minute the operator is writing', () => {
+  // El refresco manual y el del socket llegan con `refresh`: no pisan nada.
+  assert.equal(forceMinuteOnRefresh('refresh'), false);
+  assert.deepEqual(
+    applyInterruptionMinute(EDITED_INTERRUPTION, 45, { forceMinute: forceMinuteOnRefresh('refresh') }),
+    { minute: 63, dirty: true },
+  );
+  // Sin opción explícita tampoco se pisa lo editado.
+  assert.deepEqual(applyInterruptionMinute(EDITED_INTERRUPTION, 45), {
+    minute: 63,
+    dirty: true,
+  });
+});
+
+test('a forced refresh pre-fills the interruption minute even after editing it', () => {
+  for (const cause of ['mount', 'segment-changed'] as const) {
+    assert.deepEqual(
+      applyInterruptionMinute(EDITED_INTERRUPTION, 30, {
+        forceMinute: forceMinuteOnRefresh(cause),
+      }),
+      { minute: 30, dirty: false },
+      `a ${cause} refresh does not pre-fill the interruption minute`,
+    );
+  }
+});
+
+test('the interruption form keeps its minute when there is no proposal', () => {
+  // Partido sin segmento activo: no hay minuto que proponer y no se inventa.
+  assert.deepEqual(applyInterruptionMinute(EDITED_INTERRUPTION, null), EDITED_INTERRUPTION);
+  assert.deepEqual(
+    applyInterruptionMinute(EDITED_INTERRUPTION, null, { forceMinute: true }),
+    EDITED_INTERRUPTION,
+  );
+  assert.deepEqual(applyInterruptionMinute(CLEAN_INTERRUPTION, null), CLEAN_INTERRUPTION);
+});
+
+test('pre-filling the interruption minute clears the edited flag', () => {
+  const next = applyInterruptionMinute(CLEAN_INTERRUPTION, 12);
+  assert.deepEqual(next, { minute: 12, dirty: false });
+
+  // Al escribir el minuto propuesto, el campo deja de estar editado a mano.
+  const forced = applyInterruptionMinute({ minute: 63, dirty: true }, 12, { forceMinute: true });
+  assert.deepEqual(forced, { minute: 12, dirty: false });
+});
+
+test('the interruption minute utility is deterministic and does not mutate its inputs', () => {
+  const current: InterruptionMinuteState = Object.freeze({ minute: 41, dirty: true });
+
+  const first = applyInterruptionMinute(current, 22, { forceMinute: true });
+  const second = applyInterruptionMinute(current, 22, { forceMinute: true });
+  assert.deepEqual(first, second);
+  assert.deepEqual(first, { minute: 22, dirty: false });
+  assert.deepEqual(current, { minute: 41, dirty: true });
+});
+
+// ---------------------------------------------------------------------------
 // Cierre del acta: códigos aditivos (RF-006)
 // ---------------------------------------------------------------------------
 
@@ -266,6 +345,7 @@ test('does not read the clock, the network or the storage', () => {
   for (const exported of [
     'parseSegmentProposal',
     'applySegmentProposal',
+    'applyInterruptionMinute',
     'segmentProposalHint',
     'shouldPrefillMinute',
     'forceMinuteOnRefresh',
