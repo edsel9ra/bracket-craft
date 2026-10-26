@@ -2,17 +2,17 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Specs 015, 016, 017 y 018 cerradas e `implementadas`** (2026-10-25), con reviewer `APROBADO`; **tanda de operación de partidos cerrada y en `main`** (squash `48b6b98`, PR #12) con los cinco jobs de CI en verde, E2E incluido.
+- **Specs 015, 016, 017 y 018 cerradas e `implementadas`** (2026-10-25), con reviewer `APROBADO`; **las dos entregas están en `main`**: la tanda de operación de partidos (squash `48b6b98`, PR #12) y la 018 (squash `3bd1655`, PR #14), ambas con los cinco jobs de CI en verde, E2E incluido.
 - Esquema en **027**; `engine_version` sigue en **2026.1**; constitución **1.4.0** y `main` con cinco *required checks*. Última cerrada antes de la tanda: **014** (escudos).
 - **Pendiente de despliegue: migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback. La **027** (016) relaja `chk_administrative_resolution_reason`; la obligatoriedad del motivo es de la API.
 
-## Spec 018 — sanción única por doble amarilla (8/8 tareas, termina T8)
+## Spec 018 — sanción única por doble amarilla (implementada y en main)
 - **Una jugada = una sanción:** se absorben **todos** los umbrales que crucen las amarillas del acta que compone la expulsión (la primera o la última, y dos umbrales); no se absorbe nada de otra jugada ni de un acta anterior. La roja **directa** + umbral conserva **dos** (fuera de alcance).
 - **Duración:** la de la sanción **por expulsión** (`direct_red_suspension_matches` de la versión publicada), aplicada **una vez**. Ninguna amarilla se descuenta y el contador no se reinicia con la roja.
 - **Etiqueta y origen:** la sanción se deriva del **tipo de roja registrado también en el cierre que la registra** (el `RETURNING` devuelve `metadata`); **solo los eventos del acta que se cierra** originan sanciones (el historial solo cuenta y empareja) y la unicidad es **por evento de roja con cualquier motivo**, con una lectura acotada que no se ejecuta sin rojas. El recuento auditado es `len(created)` (`RETURNING id`).
 - **Sin migración** (esquema **027**), **sin superficie nueva**, y excepción acotada a §3.2 declarada y aprobada (regla fija en el motor).
 - **Evidencia (T8, 2026-10-25):** sin base **1919 passed / 432 skipped**; con base, conjunto de siete archivos **348 passed** (195.0 s) —la suite completa con base es la de T5: **2350 passed**, 8m30s—; frontend **628 (627 pass / 1 skipped preexistente)**; `typecheck`/`build` **0** (build 34.9 s, `web` reiniciado); E2E **VERDE (0)**, `operation-flow` 31/31 hitos. Sin tocar `infra/postgres/` ni `frontend/`.
-- **Validación 2026-10-25: @reviewer APROBADO** (15/15 RF y 17/17 criterios; diferencial viejo-vs-nuevo sobre 6 144 casos sin sanciones nuevas fuera de RNF-004). Aplicados los tres puntos opcionales útiles: prueba de aislamiento de la lectura de rojas registradas (13 casos con base), cita del plan corregida y evidencia de sensibilidad de T1 registrada; quedan sin caso propio los casos límite 22 y 24.
+- **Validación 2026-10-25: @reviewer APROBADO** (15/15 RF y 17/17 criterios; diferencial viejo-vs-nuevo sobre 6 144 casos sin sanciones nuevas fuera de RNF-004). Aplicados los tres puntos opcionales útiles: prueba de aislamiento de la lectura de rojas registradas (13 casos con base), cita del plan corregida y evidencia de sensibilidad de T1 registrada; quedan sin caso propio los casos límite 22 y 24; en `main` desde el 2026-10-26.
 
 ## Spec 017 — cierre de actas y segmentos (10/10 tareas)
 - **Orden único de validación de 14 pasos**: gana el defecto del paso anterior y un fallo no escribe nada; los **422 estructurales** prevalecen y no llevan `code`.
