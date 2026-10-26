@@ -27,6 +27,7 @@ from app.modules.rules_engine.engine import (
     normalize_rules_config,
     remap_stage_overrides,
     validate_rules_config,
+    validate_walkover_score,
 )
 from app.modules.rules_engine.schemas import CreateTournamentRequest, UpdateRulesConfigRequest
 from app.modules.tournaments.pairings import (
@@ -4290,6 +4291,9 @@ async def publish_version(
             raise HTTPException(status_code=409, detail="No se puede publicar una nueva versión durante o después de la operación")
         try:
             validate_rules_config(version["rules_config"])
+            # RF-011: publishing is the only path by which a historical pair
+            # could come back; the pair is validated on the persisted draft.
+            validate_walkover_score(version["rules_config"])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

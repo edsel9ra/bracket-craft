@@ -10,7 +10,10 @@ from app.modules.rules_engine.defaults import (
     DEFAULT_MIN_PLAYERS_PER_TEAM,
     DEFAULT_RULES_CONFIG,
 )
-from app.modules.rules_engine.engine import normalize_rules_config
+from app.modules.rules_engine.engine import (
+    normalize_rules_config,
+    validate_walkover_score,
+)
 
 
 class TournamentRulesConfig(BaseModel):
@@ -34,6 +37,9 @@ class TournamentRulesConfig(BaseModel):
         if self.transfers is not None:
             raw["transfers"] = self.transfers
         normalized = normalize_rules_config(raw)
+        # RF-011: saving and updating rules is a configuration limit; the pair
+        # is validated here only, never inside ``validate_rules_config`` (D-2).
+        validate_walkover_score(normalized)
         for name, value in normalized.items():
             setattr(self, name, value)
         # Deprecated block: accepted on input, never written back.

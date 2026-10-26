@@ -20,6 +20,7 @@ from app.modules.tournaments.schemas import (
     PublicStageResponse,
     PublicTournamentResponse,
 )
+from tests.event_ids import event_id
 
 
 def _operation_response(limits: dict) -> MatchOperationResponse:
@@ -54,11 +55,14 @@ def test_operation_limits_add_the_four_fields_and_keep_the_legacy_ones():
         "max_minute_extra",
         "extra_time_enabled",
         "penalties_enabled",
+        # spec 016 (RF-005): la pareja efectiva del walkover, aditiva.
+        "walkover_score",
     }
     assert dumped["max_minute_regular"] == 90
     assert dumped["max_minute_extra"] is None
     assert dumped["extra_time_enabled"] is False
     assert dumped["penalties_enabled"] is False
+    assert dumped["walkover_score"] == {"winner": 3, "loser": 0}
 
 
 def test_operation_limits_resolve_the_flags_of_the_stage():
@@ -87,7 +91,7 @@ def test_operation_limits_resolve_the_flags_of_the_stage():
 def test_own_goal_requires_a_different_beneficiary():
     with pytest.raises(ValidationError):
         MatchEventPayload(
-            client_event_id="event-1",
+            client_event_id=event_id("event-1"),
             event_type="own_goal",
             team_id=uuid4(),
             player_id=uuid4(),

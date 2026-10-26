@@ -65,6 +65,17 @@ export interface OperationLimits {
   readonly penalties_enabled?: boolean;
   readonly max_minute?: number | null;
   readonly added_minute_max?: number | null;
+  /**
+   * Pareja efectiva del marcador de walkover (spec 016, RF-005). Aditiva: una
+   * respuesta anterior al cambio no la trae y la pantalla muestra «—».
+   */
+  readonly walkover_score?: WalkoverScoreLimits | null;
+}
+
+/** Marcador de walkover tal como lo publica `limits` (spec 016, RF-005). */
+export interface WalkoverScoreLimits {
+  readonly winner?: number | null;
+  readonly loser?: number | null;
 }
 
 /** Límites efectivos para la resolución prevista (RF-032, RF-033). */
@@ -382,6 +393,19 @@ function eventExcess(event: ResolutionDraftEventInput, max: number): number {
 }
 
 /**
+ * Opciones del juicio del cambio de resolución.
+ *
+ * `resolution` es la resolución **elegida**: con `walkover` el servidor no
+ * valida segmentos (spec 016, D-13), así que un segmento persistido por encima
+ * del máximo ya no bloquea el cambio. La lista de segmentos se sigue
+ * devolviendo como información y el aviso por eventos del borrador se
+ * conserva.
+ */
+export interface ResolutionChangeOptions {
+  readonly resolution?: unknown;
+}
+
+/**
  * Juzga un cambio de resolución contra los segmentos persistidos y los eventos
  * del borrador (plan §3.5). No modifica ninguna de las dos listas.
  */
@@ -389,8 +413,11 @@ export function resolutionChangeOutcome(
   persistedSegments: readonly ResolutionSegmentInput[] | null | undefined,
   draftEvents: readonly ResolutionDraftEventInput[] | null | undefined,
   newMax: number,
+  options: ResolutionChangeOptions = {},
 ): ResolutionChangeResult {
   const max = integer(newMax) ?? 0;
+  // Spec 016, D-13: el W.O. no valida segmentos ni depende de sus minutos.
+  const ignoresSegments = options.resolution === 'walkover';
 
   const segments: OutOfLimitSegment[] = [];
   for (const segment of persistedSegments ?? []) {
@@ -420,7 +447,7 @@ export function resolutionChangeOutcome(
     });
   });
 
-  if (segments.length) {
+  if (segments.length && !ignoresSegments) {
     const first = segments[0]!;
     return {
       outcome: 'blocked',
@@ -505,7 +532,9 @@ export function closeResolutionDecision(input: CloseResolutionInput): CloseResol
   const chosen = normalizeResolution(input.limits, input.chosen);
   const planned = normalizeResolution(input.limits, input.planned);
   const maxMinute = maximumMinuteFor(input.limits, chosen);
-  const result = resolutionChangeOutcome(input.segments, input.draftEvents, maxMinute);
+  const result = resolutionChangeOutcome(input.segments, input.draftEvents, maxMinute, {
+    resolution: chosen,
+  });
   const changed = chosen !== planned;
 
   const base = {
@@ -672,10 +701,22 @@ export function createResolutionStore(
 
 export const RESOLUTION_NOT_ENABLED_CODE = 'RESOLUTION_NOT_ENABLED';
 export const ROSTER_SIZE_OUT_OF_RANGE_CODE = 'ROSTER_SIZE_OUT_OF_RANGE';
+// Spec 017 (RF-006, RF-010): códigos aditivos del cierre del acta.
+export const ASSIST_PLAYER_INVALID_CODE = 'ASSIST_PLAYER_INVALID';
+export const DOUBLE_YELLOW_INCONSISTENT_CODE = 'DOUBLE_YELLOW_INCONSISTENT';
+// Spec 016 (RF-001, RF-005, RF-008): códigos aditivos del walkover.
+export const WALKOVER_STATE_NOT_ALLOWED_CODE = 'WALKOVER_STATE_NOT_ALLOWED';
+export const WALKOVER_SCORE_MISMATCH_CODE = 'WALKOVER_SCORE_MISMATCH';
+export const WALKOVER_CONFIG_INCONSISTENT_CODE = 'WALKOVER_CONFIG_INCONSISTENT';
 
 export type MatchConflictKind =
   | 'resolution_not_enabled'
   | 'roster_size_out_of_range'
+  | 'assist_player_invalid'
+  | 'double_yellow_inconsistent'
+  | 'walkover_state_not_allowed'
+  | 'walkover_score_mismatch'
+  | 'walkover_config_inconsistent'
   | 'other';
 
 /** Causa de un 409 de operación según su `code` aditivo, sin mirar el texto. */
@@ -683,6 +724,11 @@ export function classifyMatchConflict(cause: unknown): MatchConflictKind {
   const code = getApiCode(cause);
   if (code === ROSTER_SIZE_OUT_OF_RANGE_CODE) return 'roster_size_out_of_range';
   if (code === RESOLUTION_NOT_ENABLED_CODE) return 'resolution_not_enabled';
+  if (code === ASSIST_PLAYER_INVALID_CODE) return 'assist_player_invalid';
+  if (code === DOUBLE_YELLOW_INCONSISTENT_CODE) return 'double_yellow_inconsistent';
+  if (code === WALKOVER_STATE_NOT_ALLOWED_CODE) return 'walkover_state_not_allowed';
+  if (code === WALKOVER_SCORE_MISMATCH_CODE) return 'walkover_score_mismatch';
+  if (code === WALKOVER_CONFIG_INCONSISTENT_CODE) return 'walkover_config_inconsistent';
   return 'other';
 }
 

@@ -536,6 +536,50 @@ $COMPOSE up -d api worker
 
 **No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-025) termina con el mismo esquema que una base migrada y `backend/tests/test_migration_025.py` lo comprueba (opt-in con PostgreSQL).
 
+## Migración 026: asistencia del gol (runbook)
+
+La **026** es **aditiva** y va **después** de la 025: añade `match_events.assist_player_id` (`UUID` nula, sin default ni índice), la clave foránea compuesta `(assist_player_id, organization_id)` a `players(id, organization_id)` con `ON DELETE RESTRICT` y el `CHECK` `chk_match_event_assist` —la asistencia solo existe en `goal` y nunca repite al goleador—, añadido **validado** porque la columna nace nula y no hay filas que lo incumplan. No reescribe filas, no toca `init/01` ni `init/02`, no cambia políticas ni grants y no tiene *backfill*: los goles ya cerrados quedan sin asistente y siguen siendo válidos. El mismo equipo, la plantilla del partido y la presencia en campo son autoridad de la API (**409** `ASSIST_PLAYER_INVALID`) y no se modelan en la base.
+
+Prepara una copia verificada y aplica la migración; el `CHECK` validado toma un bloqueo breve sobre `match_events`, así que conviene una ventana de baja actividad:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre026.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre026.dump" >/dev/null && echo "backup OK"
+MIGRATION_TARGET=026 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+La migración solo imprime conteos (eventos `goal` y cuántos llevan asistencia) y no aborta por datos históricos.
+
+**Orden de despliegue: migración 026 → código.** El backend nuevo escribe `assist_player_id` en cada acta y contra el esquema 025 falla por columna inexistente; la imagen anterior ignora la columna nula y sigue cerrando actas, así que no hace falta detener `api` ni `worker` durante la ventana.
+
+**Smoke:** `GET /docs`, una lectura pública de torneo y, si hay datos, la operación de un partido (`GET /matches/{id}/operation`) y el cierre de un acta con un gol con asistencia válida; comprueba que el evento devuelve `assist_player_id` y que un acta sin asistencia sigue cerrando.
+
+**No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-026) termina con el mismo esquema que una base migrada y `backend/tests/test_migration_026.py` lo comprueba (opt-in con PostgreSQL).
+
+## Migración 027: motivo del walkover (runbook)
+
+La **027** es **correctiva y aditiva** y va **después** de la 026: `chk_administrative_resolution_reason` solo admitía motivo en `administrative` y lo exigía nulo para cualquier otra resolución, así que el código del walkover no cabía en `resolution_reason`. La 027 reemplaza esa restricción por una que admite en `walkover` `NULL` (filas históricas y un despliegue en el que la migración llegue antes que el código) o uno de los cuatro códigos del catálogo (`no_show`, `withdrawal`, `insufficient_players`, `sanction`), conserva en `administrative` el motivo obligatorio de 1..1000 caracteres y sigue prohibiendo el motivo en `regular`, `extra_time` y `penalties`. No añade columnas, índices, políticas, grants ni RLS, no reescribe filas, no toca `init/01` y no tiene *backfill*. La obligatoriedad y el catálogo son autoridad de la API: la base no exige motivo en un walkover.
+
+Prepara una copia verificada y aplica la migración; el `CHECK` validado recorre `matches` una vez y toma un bloqueo breve, así que conviene una ventana de baja actividad:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre027.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre027.dump" >/dev/null && echo "backup OK"
+MIGRATION_TARGET=027 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+**Orden de despliegue: migración 027 → código.** El backend nuevo escribe un motivo no nulo en `resolution_reason` y contra el esquema 026 el `UPDATE` violaría la restricción, así que el cierre respondería un 409 de integridad engañoso; la imagen anterior convive con la 027 sin cambios porque sigue escribiendo `NULL`.
+
+**Smoke:** `GET /docs`, una lectura pública de un torneo y, si hay datos, la operación de un partido (`GET /matches/{id}/operation`), donde `limits.walkover_score` debe traer la pareja efectiva, y el cierre de un acta como walkover con su motivo; después el partido debe mostrar `resolution_type: "walkover"`, el marcador derivado y el resultado en la clasificación.
+
+**No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-027) termina con el mismo esquema que una base migrada y `backend/tests/test_migration_027.py` lo comprueba (opt-in con PostgreSQL).
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
@@ -552,7 +596,7 @@ $COMPOSE up -d api worker
 - Torneos y versiones inmutables.
 - Configuración privada de versiones, fases, equipos y partidos.
 - Configuración JSON de puntuación, desempates, disciplina, sustituciones y ventana de inscripción; sin transferencias.
-- Cierre de actas con goles, tarjetas, sustituciones, suspensiones y outbox.
+- Cierre de actas con goles (asistencia opcional), tarjetas, sustituciones, suspensiones y outbox.
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
 - Avance manual de equipos entre fases en versiones en borrador.
@@ -580,6 +624,55 @@ El asistente de reglas pregunta **cómo serán los torneos** y **cuántos jugado
 - **Editar la plantilla nunca se bloquea por tamaño:** el alta individual, la importación CSV/ZIP, la foto y el consentimiento guardan siempre; si el equipo queda fuera de rango, la pantalla muestra un aviso destacado con la cantidad y el rango (`cumple` / `por debajo` / `por encima`).
 - **Tres superficies de bloqueo:** inscribir el equipo en una fase, crear un equipo **con fase destino** (`POST /teams` o `/teams/bulk` con `stage_id`, lote todo o nada) y **abrir el partido** (su primer segmento). Si algún equipo participante está fuera de rango, responden **409** con `code: ROSTER_SIZE_OUT_OF_RANGE` y un `detail` que nombra equipo, mínimo, máximo y cantidad actual («sin límite» para 0 o ausente). Sin límites configurados no se añade ninguna comprobación; la apertura rechazada no crea el segmento ni cambia el estado del partido. El detalle es determinista: todos los equipos si son diez o menos; si son más, los diez primeros por nombre (desempate por identificador) y el total.
 - **Retiro lógico y reactivación:** en la pantalla de plantillas, un jugador puede **retirarse** (deja de contar como inscrito activo y no se ofrece para alinear) y **reactivarse**. La fila no se borra y el histórico, las alineaciones y los resultados ya registrados no cambian; las respuestas públicas de la API siguen igual y la proyección interna `v_public_tournament_players` deja de listarlo mientras está retirado. La **reactivación** equivale a un alta: conserva el **409** del bloqueo por jornada y los conflictos de jugador ya activo en el torneo o de dorsal ocupado. El **retiro** es la **única** excepción a ese bloqueo (RL-1), porque solo reduce la plantilla. Ni el retiro ni la reactivación escriben auditoría. Contrato aditivo e idempotente: `PATCH /api/v1/tournaments/{tournament_id}/rosters/{roster_id}/status` con `{ "is_active": boolean }`, que devuelve el mismo modelo que la lista de plantilla; un roster de otro torneo u organización responde **404**.
+
+## Eventos del acta y asistencias
+
+El acta se compone con un **catálogo cerrado de siete tipos**. Todos comparten equipo, minuto, minuto añadido, segmento, tipo y `client_event_id` (UUID); cada tipo pide solo lo suyo y los campos que no le corresponden **no se envían**:
+
+| Tipo | Campos propios | Efecto en el juego |
+|---|---|---|
+| `goal` | jugador (goleador) y **asistente opcional** | Suma un gol al equipo del jugador |
+| `penalty_goal` | jugador | Suma un gol al equipo del jugador |
+| `own_goal` | jugador (autor) y **equipo beneficiario**, obligatorio y distinto del equipo del jugador | Suma un gol al equipo beneficiario |
+| `yellow_card` | jugador | Fair play; acumulación |
+| `red_card` | jugador y clase de roja (`direct_red` por defecto o `double_yellow_red`) | Expulsión y suspensión; fair play |
+| `substitution` | jugador que sale y jugador que entra, distintos | Estado en campo; cupo y ventana |
+| `foul` | jugador | Ninguno: es informativo y no sanciona |
+
+- **Catálogo cerrado (cambio observable para clientes).** Una clave de primer nivel que el tipo no declara es **422** (antes se ignoraba). `metadata` solo admite `red_card_type` en `red_card`: cualquier otra clave, en cualquier tipo, es **422** y no se persiste ni llega a la auditoría. `beneficiary_team_id` solo se admite en `own_goal`; informado en otro tipo —incluido un gol con su propio equipo— es **422**. `assist_player_id` solo en `goal`.
+- **Identificador de cliente.** `client_event_id` exige **forma de UUID** (con mayúsculas o minúsculas); cualquier otro texto es **422** y no se guarda. El cliente genera `crypto.randomUUID()` y, si el navegador no lo ofrece, no añade el evento y lo explica en lugar de inventar un texto: el respaldo de texto anterior ya no se acepta. El servidor lo normaliza a minúsculas al comparar y al escribir, así que dos reintentos con distinta caja son el mismo evento. La forma se valida **solo en la API** (la base no añade `CHECK`) y los eventos históricos con identificador de texto libre se conservan y no se revalidan.
+- **Asistencia.** `assist_player_id` es opcional en `goal`, como máximo uno por gol y **distinto del goleador** (**422** si coincide). Debe ser un jugador de la **misma plantilla del partido**, del **mismo equipo** que el goleador y **en campo** en el minuto del gol; si no, **409** con `detail` de cadena y `code` aditivo `ASSIST_PLAYER_INVALID`. La operación devuelve solo el identificador (UUID), sin nombre: el cliente lo resuelve con la plantilla del partido que ya recibe. Un mismo jugador puede asistir dos goles del mismo partido.
+- **Asistencia opaca al juego.** No cambia el marcador, la clasificación, el fair play, las sanciones ni el ganador, no emite eventos de outbox y no se publica en ninguna proyección ni ruta pública. Un gol sin asistente es válido siempre y no se exige.
+- **Identificadores de otra organización.** Regla única del acta: partido, segmento, equipo y equipo beneficiario de otra organización responden **404** sin revelar existencia (equipo y beneficiario pasan de **409** a **404**); un jugador de otra organización o fuera de la plantilla del partido sigue siendo **409**, nunca 404 ni 500.
+- **Sin rutas ni permisos nuevos.** La escritura sigue siendo la del cierre; el miembro sin rol conserva su **403** y el observador lee sin escribir.
+- **Contrato de reglas.** `docs/contrato-reglas.md` (`engine_version` **2026.1**) no cambia: el catálogo de eventos y la asistencia son aditivos y quedan **fuera** del contrato cerrado, que solo cubre los códigos de llave y las formaciones. El detalle de contrato para clientes está en `AGENTS.md` → «Contratos que cambian».
+
+## Cierre de actas y segmentos
+
+El cierre es una **operación atómica**: se valida completa y, si algo falla, no se escribe nada. El contrato detallado está en `AGENTS.md` → «Cierre del acta (spec 017)», «Marcadores del cierre (spec 017)», «Doble amarilla (spec 017)» y «Segmentos y propuesta (spec 017)»; aquí se describe lo que observa el operador y el cliente.
+
+- **Orden único de validación:** (1) sesión y organización —un partido inexistente o de otra organización responde **404** al cargarlo—; (2) permiso `CLOSE_MATCH_REPORT` **y** rol operativo o asignación como oficial (**403** si falta la conjunción); (3) estado no terminal y versión publicada; (4) dos equipos; (5) resolución habilitada; (6) estructura del acta: segmento activo, segmentos, tiempos e intervalo; (7) participantes y plantilla; (8) estado en campo y sustituciones; (9) asistente del gol; (10) doble amarilla; (11) marcador frente a eventos; (12) sanciones; (13) coherencia de la resolución y del ganador; (14) escritura. Entre dos defectos de **dominio** se informa el del paso anterior; los errores de dominio son **409** con `detail` de cadena, salvo el **403** de la autorización y los **404** de aislamiento. Un fallo en cualquier paso no escribe eventos, contadores, marcador, clasificación, avance, sanciones, auditoría ni outbox.
+- **Excepción estructural (sin cambio):** los **422** del esquema —claves o campos no aplicables, rangos del modelo, `client_event_id` duplicado en la misma acta o más de 500 eventos— se resuelven antes del handler, prevalecen sobre cualquier paso de dominio y no llevan `code`.
+- **La resolución no habilitada va antes:** el paso 5 precede a «sin segmento activo» y a la plantilla. Un cierre con `extra_time` sin prórroga habilitada (o `penalties` sin penales) responde **409** `RESOLUTION_NOT_ENABLED` aunque además falte el segmento activo o la plantilla; antes el orden lo decidía el lugar de cada comprobación.
+- **Marcadores y cambio de código:** el reglamentario informado debe coincidir con los goles cuyo `minute` no supera `regular_time_minutes` (el minuto añadido no clasifica el gol). `regular` exige el reglamentario, el final es opcional y debe igualarlo, y no admite penales, goles posteriores al reglamentario ni `reason`; `extra_time` exige final ≥ reglamentario y ganador; `penalties` exige final igual al reglamentario (empate) y tanda con ganador; `administrative` exige final igual al reglamentario, ganador y motivo; `walkover` no pasa por esa matriz: se declara con el ganador y un motivo de catálogo, el marcador se **deriva** de la fase y no se envía ninguno de los seis campos (ver «Walkover (W.O.)»). Las comprobaciones de **presencia** siguen siendo **422**; las cuatro de **coherencia numérica** —final menor que el reglamentario, `regular` con final distinto, `penalties` sin empate y tanda igualada— pasan de **422** a **409** de dominio con `detail` de cadena y **sin** `code`. Un cliente que dependiera del 422 en esos cuatro casos observa un cambio.
+- **El resultado se calcula antes de escribir:** el paso 13 calcula el marcador y el ganador con los eventos de la **petición**, no con los persistidos, así que un acta inválida no deja ninguna fila. La reutilización idempotente de un evento ya guardado hace equivalente ese cálculo a lo que finalmente se escribe.
+- **Doble amarilla:** una roja marcada como `double_yellow_red` exige **exactamente dos** amarillas previas del mismo jugador en el mismo partido, contadas en orden `(minute, added_minute, índice del acta)`. Cero, una o tres o más responden **409** con `detail` de cadena (el minuto, nunca un nombre) y `code` aditivo `DOUBLE_YELLOW_INCONSISTENT`, sin escribir. La roja directa no cambia, una segunda amarilla no deriva en roja y las actas cerradas no se revalidan: un acta abierta que incumpla la regla deja de poder cerrarse.
+- **Propuesta de segmento:** `GET /api/v1/matches/{id}/operation` devuelve `next_segment` con `{segment_number, minute_start, derived}` o `null`, derivado de los segmentos e interrupciones ya persistidos: sin segmentos `{1, 0, true}`; último interrumpido, el minuto de su interrupción; último completado con fin, su fin; último activo sin interrupción o completado sin `minute_end`, `{n+1, null, false}` porque lo indica el operador; `null` en un partido terminal o con la versión no publicada, y `suspended` sí propone. Es un campo aditivo y de solo lectura: el `GET` no escribe, el servidor sigue validando número y minuto al crear y la pantalla ya no los calcula por su cuenta. La propuesta fija el número y prerrellena el minuto solo si es derivado y el operador no lo ha escrito; el origen se anuncia con `role="status"`.
+- **Segmento, no periodo:** un segmento es una **ventana de tiempo** con número consecutivo, inicio, fin opcional y estado; **no** es una mitad ni un periodo reglamentario, y un partido puede tener cualquier número, incluido uno. Crear uno con otro activo cierra el activo en su minuto; interrumpir guarda el motivo y el minuto y cierra el segmento, y reanudar exige un segmento nuevo.
+- **Acta cerrada:** el resultado confirmado y sus eventos son inmutables (triggers de la 016 y la 009) y no hay ruta de corrección ni de reapertura. La pantalla muestra «Acta cerrada: no se puede editar» (`role="status"`) y mantiene las acciones de escritura deshabilitadas.
+- **Sin cambios de contrato interno:** `engine_version` sigue en **2026.1**, `docs/contrato-reglas.md` no cambia y el esquema pasó a **027** con el motivo del walkover (la 017 no trae migración); la 017 no añade acciones auditadas ni eventos de outbox.
+
+## Walkover (W.O.)
+
+Declarar un walkover es un **cierre del acta** con `resolution_type: "walkover"`, `winner_team_id` y `reason`; no hay ruta, permiso ni estado nuevo. El contrato detallado está en `AGENTS.md` → «Walkover (spec 016)»; aquí se describe lo que observa el operador y el cliente.
+
+- **Cuándo se admite:** en los estados que ya admiten cierre (`scheduled`, `live`) y siempre con la **versión publicada**. `finished`, `cancelled`, `administrative_resolution` y `suspended` responden **409** `WALKOVER_STATE_NOT_ALLOWED`; un acta ya confirmada no se puede reescribir. La autorización es la misma del cierre: `CLOSE_MATCH_REPORT` **y** rol operativo (dueño, administrador u operador) **o** estar asignado en `match_officials`.
+- **No exige segmento ni planilla:** un equipo puede no presentarse. La rama no valida tiempos, sustituciones, doble amarilla, marcador contra eventos ni sanciones, así que un partido **sin ningún segmento** y con un equipo **sin jugadores** se puede cerrar. Si hay un segmento activo, queda `completed` en su minuto de inicio; los completados e interrumpidos no se tocan y no se crea ninguno.
+- **Motivo de catálogo:** `no_show`, `withdrawal`, `insufficient_players` o `sanction`. Es obligatorio, se guarda como **código** en `resolution_reason` (migración **027**) y no hay texto libre ni «otra»; un motivo ausente o fuera del catálogo, un walkover con eventos o sin ganador responden **422**.
+- **Marcador derivado:** el servidor lo toma de `walkover_score` de la configuración efectiva (`3-0` por defecto y el override de la fase) y lo escribe igual en el reglamentario y en el final, con los penales a nulo; la operación lo publica en `limits.walkover_score`. La pareja reglamentaria y el final son opcionales y, si llegan, deben coincidir con esa pareja (**409** `WALKOVER_SCORE_MISMATCH`); un marcador de penales responde **422** porque solo aplica a `penalties`; el ganador debe participar (**409** sin `code`) y una pareja configurada con `winner <= loser` **409** `WALKOVER_CONFIG_INCONSISTENT` —las tres sin escribir nada—. Guardar o publicar reglas con `winner <= loser` en `stage_defaults` o en el override de una fase es **422**.
+- **Efecto en clasificación y sanciones:** el partido queda `finished` y confirmado, cuenta como **jugado** con victoria o derrota, los puntos y los goles de la pareja en la tabla y el ganador avanza de llave. No se registran eventos, no se sirve ninguna suspensión de la plantilla y no se crea ninguna; la proyección por segmento no se reescribe. La auditoría guarda la resolución y el motivo, y se emiten los mismos tres eventos de outbox que un cierre normal (**MATCH_CLOSED**, **MATCH_UPDATED**, **STANDINGS_UPDATED**).
+- **Pantalla:** con la resolución prevista `walkover` el panel pide ganador y motivo, enseña el marcador efectivo en solo lectura y no muestra ni envía los seis campos; el botón de cerrar no se deshabilita por no haber segmento activo y un aviso (`role="status"`) explica que el W.O. no necesita segmento ni planilla. Cambiar a `walkover` no se bloquea por segmentos persistidos fuera del máximo (el W.O. no los valida), pero los eventos del borrador siguen avisándose y se rechazan en la validación previa.
+- **Sin cambios de contrato interno:** `engine_version` sigue en **2026.1**; `walkover_score` es configuración aditiva fuera del contrato cerrado y el motivo no se publica en ninguna proyección pública.
 
 ## Autorización y avance manual entre fases
 

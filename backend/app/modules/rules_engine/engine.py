@@ -228,6 +228,51 @@ def validate_effective_rules(config: Mapping[str, Any]) -> None:
         _validate_stage_minutes(f"stage_id {stage_id}", _merged_stage_rules(config, override))
 
 
+def _walkover_pair(effective: Mapping[str, Any]) -> tuple[Any, Any]:
+    score = effective.get("walkover_score")
+    if not isinstance(score, Mapping):
+        score = DEFAULT_STAGE_RULES["walkover_score"]
+    return score.get("winner"), score.get("loser")
+
+
+def validate_walkover_score(config: Mapping[str, Any]) -> None:
+    """Require a leading winner in the walkover pair of every scope (RF-011).
+
+    Deliberately **not** called from ``validate_rules_config``: that validator
+    also runs when closing a match report, when recalculating the standings and
+    when cloning a version, so revalidating here would break every resolution
+    and every table of a version published with a historical pair (and an
+    uncaught ``ValueError`` while cloning would be a 500). D-2 of the plan.
+    """
+
+    scopes = [("stage_defaults", _merged_stage_rules(config))]
+    overrides = config.get("stage_overrides") or {}
+    # Stable order (RNF-006): the first incoherent scope is always the same one.
+    for stage_id in sorted(overrides, key=str):
+        scopes.append((f"stage_id {stage_id}", _merged_stage_rules(config, overrides[stage_id])))
+
+    for scope, effective in scopes:
+        winner, loser = _walkover_pair(effective)
+        pair = f"{winner}-{loser}"
+        if (
+            type(winner) is not int
+            or type(loser) is not int
+            or winner < 0
+            or loser < 0
+        ):
+            raise ValueError(
+                "Configuración de reglas inválida: "
+                f"{scope}: el marcador de walkover requiere dos enteros no negativos "
+                f"(par {pair})"
+            )
+        if winner <= loser:
+            raise ValueError(
+                "Configuración de reglas inválida: "
+                f"{scope}: el marcador de walkover requiere un ganador por delante "
+                f"(par {pair})"
+            )
+
+
 def normalize_rules_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Emit a 3.3.0 config: explicit substitutions, promoted lock, no transfers."""
     config = deepcopy(dict(raw))

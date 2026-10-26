@@ -9,6 +9,7 @@ import {
   previewCounters,
   previewTeamState,
   readDraftEvent,
+  readDraftEvents,
   substitutionAvailability,
   substitutionFieldsFor,
   substitutionOptions,
@@ -27,6 +28,35 @@ const translationsSource = readFileSync(
   'utf8',
 );
 const eventTypes = ['goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul'] as const;
+
+// Spec 015 (RF-015): el identificador de cliente de un borrador es un UUID; los
+// borradores anteriores guardaban `event-<marca>-<índice>` y se descartan (D-9).
+const EVENT_ID = '9f1c1e2a-3b4c-4d5e-8f60-718293a4b5c6';
+const EVENT_ID_2 = '1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d';
+const EVENT_ID_3 = '7a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const EVENT_ID_4 = '8a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const P_SCORER = '2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const P_ASSIST = '3a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const TEAM_HOME = '4a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const TEAM_AWAY = '5a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const SEGMENT = '6b4c5d6e-7f80-4a9b-8c1d-2e3f4a5b6c7d';
+
+/** Evento de gol válido tal y como lo restaura el borrador. */
+function draftGoal(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    client_event_id: EVENT_ID,
+    event_type: 'goal',
+    team_id: TEAM_HOME,
+    beneficiary_team_id: null,
+    player_id: P_SCORER,
+    minute: 10,
+    added_minute: 0,
+    segment_id: SEGMENT,
+    player_out_id: null,
+    player_in_id: null,
+    ...overrides,
+  };
+}
 
 function team(overrides: Partial<TeamSubstitutionState> = {}): TeamSubstitutionState {
   return {
@@ -269,7 +299,7 @@ test('only substitutions carry the pair when the draft is serialized', () => {
 
 test('saves and restores the substitution pair of a draft event', () => {
   const draft = {
-    client_event_id: 'event-1',
+    client_event_id: EVENT_ID,
     event_type: 'substitution',
     team_id: 'home',
     beneficiary_team_id: null,
@@ -279,6 +309,7 @@ test('saves and restores the substitution pair of a draft event', () => {
     segment_id: 's1',
     player_out_id: 'p1',
     player_in_id: 'p4',
+    assist_player_id: null,
   };
 
   const restored = readDraftEvent(JSON.parse(JSON.stringify(draft)), eventTypes);
@@ -289,7 +320,7 @@ test('saves and restores the substitution pair of a draft event', () => {
   assert.equal(readDraftEvent({ ...draft, player_in_id: 'p1' }, eventTypes), null);
 
   const goal = {
-    client_event_id: 'event-2',
+    client_event_id: EVENT_ID_2,
     event_type: 'goal',
     team_id: 'home',
     beneficiary_team_id: null,
@@ -302,6 +333,7 @@ test('saves and restores the substitution pair of a draft event', () => {
     ...goal,
     player_out_id: null,
     player_in_id: null,
+    assist_player_id: null,
   });
   assert.equal(readDraftEvent({ ...goal, player_out_id: 'p2' }, eventTypes), null);
   assert.equal(readDraftEvent({ ...goal, event_type: 'unknown' }, eventTypes), null);
@@ -309,7 +341,7 @@ test('saves and restores the substitution pair of a draft event', () => {
 
 test('validates draft minutes against the effective match limits', () => {
   const goal = {
-    client_event_id: 'event-3',
+    client_event_id: EVENT_ID_3,
     event_type: 'goal',
     team_id: 'home',
     beneficiary_team_id: null,
@@ -398,4 +430,200 @@ test('keeps the substitution texts in Spanish and English parity', () => {
     assert.match(spanish, pattern, `${key} is missing in Spanish`);
     assert.match(english, pattern, `${key} is missing in English`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Restauración del borrador local (spec 015, T10; RF-013, RF-015, RNF-003)
+//
+// El borrador no es la fuente de verdad: lo que se guarda debe poder reenviarse
+// tal cual al cierre sin 422. Al restaurar se descarta **el evento** que ya no
+// cumple el contrato (D-9: no se reescribe su identificador), se conserva el
+// resto y se informa de cuántos se descartaron.
+// ---------------------------------------------------------------------------
+
+test('restores a draft goal with its assistant', () => {
+  const restored = readDraftEvent(draftGoal({ assist_player_id: P_ASSIST }), eventTypes);
+  assert.equal(restored?.assist_player_id, P_ASSIST);
+  assert.equal(restored?.player_id, P_SCORER);
+
+  const { events, dropped } = readDraftEvents([draftGoal({ assist_player_id: P_ASSIST })], eventTypes);
+  assert.equal(dropped, 0);
+  assert.deepEqual(events.map((event) => event.assist_player_id), [P_ASSIST]);
+});
+
+test('a draft event without an assistant keeps working as before', () => {
+  // Los borradores anteriores a la spec no traen el campo: se normaliza a nulo
+  // y el evento se conserva (RF-013).
+  assert.equal(readDraftEvent(draftGoal(), eventTypes)?.assist_player_id, null);
+  const { events, dropped } = readDraftEvents([draftGoal()], eventTypes);
+  assert.equal(dropped, 0);
+  assert.deepEqual(events[0], { ...draftGoal(), assist_player_id: null });
+});
+
+test('drops a draft event whose assistant is unusable', () => {
+  // Forma que no es UUID: el cierre respondería 422 (RF-015 aplica al asistente
+  // por la misma regla de identificadores).
+  assert.equal(readDraftEvent(draftGoal({ assist_player_id: 'p-2' }), eventTypes), null);
+  // Mismo jugador que el goleador: incoherencia estructural (RF-008).
+  assert.equal(readDraftEvent(draftGoal({ assist_player_id: P_SCORER }), eventTypes), null);
+
+  const { events, dropped } = readDraftEvents([
+    draftGoal(),
+    draftGoal({ client_event_id: EVENT_ID_2, assist_player_id: 'p-2' }),
+    draftGoal({ client_event_id: EVENT_ID_3, assist_player_id: P_SCORER }),
+  ], eventTypes);
+  assert.equal(dropped, 2);
+  assert.deepEqual(events.map((event) => event.client_event_id), [EVENT_ID]);
+});
+
+test('drops the draft event that carries an assistant in a type that does not admit it', () => {
+  const yellowCard = draftGoal({ event_type: 'yellow_card', assist_player_id: P_ASSIST });
+  assert.equal(readDraftEvent(yellowCard, eventTypes), null);
+
+  const { events, dropped } = readDraftEvents([
+    draftGoal({ assist_player_id: P_ASSIST }),
+    yellowCard,
+  ], eventTypes);
+  assert.equal(dropped, 1);
+  assert.deepEqual(events.map((event) => event.event_type), ['goal']);
+});
+
+test('drops a draft event with an identifier of the older drafts and counts it', () => {
+  // D-9: no se reescribe el identificador; el evento se descarta y se cuenta.
+  assert.equal(readDraftEvent(draftGoal({ client_event_id: 'event-1700000000-0' }), eventTypes), null);
+  assert.equal(readDraftEvent(draftGoal({ client_event_id: '' }), eventTypes), null);
+
+  const { events, dropped } = readDraftEvents([
+    draftGoal({ client_event_id: 'event-1700000000-0' }),
+    draftGoal({ client_event_id: EVENT_ID_2, minute: 20 }),
+    draftGoal({ client_event_id: 'event-1700000000-1' }),
+  ], eventTypes);
+  assert.equal(dropped, 2);
+  assert.deepEqual(events.map((event) => event.client_event_id), [EVENT_ID_2]);
+  // El orden del resto no cambia.
+  assert.equal(events[0]?.minute, 20);
+});
+
+test('drops a draft event whose metadata the server no longer accepts', () => {
+  // Clave no declarada (RF-002): dejaría de ser texto libre hacia el acta.
+  assert.equal(readDraftEvent(draftGoal({ metadata: { note: 'texto libre' } }), eventTypes), null);
+  // `metadata` que no es un objeto tampoco se puede reenviar.
+  assert.equal(readDraftEvent(draftGoal({ metadata: 'texto' }), eventTypes), null);
+  assert.equal(readDraftEvent(draftGoal({ metadata: ['red_card_type'] }), eventTypes), null);
+  // `red_card_type` fuera de una roja.
+  assert.equal(
+    readDraftEvent(draftGoal({ event_type: 'yellow_card', metadata: { red_card_type: 'direct_red' } }), eventTypes),
+    null,
+  );
+  // Clase de roja que no existe.
+  assert.equal(
+    readDraftEvent(draftGoal({ event_type: 'red_card', metadata: { red_card_type: 'orange' } }), eventTypes),
+    null,
+  );
+
+  // Lo válido se conserva: una roja con su clase y un `metadata` vacío.
+  assert.deepEqual(
+    readDraftEvent(draftGoal({ event_type: 'red_card', metadata: { red_card_type: 'double_yellow_red' } }), eventTypes)?.metadata,
+    { red_card_type: 'double_yellow_red' },
+  );
+  assert.deepEqual(readDraftEvent(draftGoal({ metadata: {} }), eventTypes)?.metadata, {});
+});
+
+test('drops a draft event whose fields belong to another type', () => {
+  // `beneficiary_team_id` solo aplica al autogol y con un equipo distinto.
+  assert.equal(readDraftEvent(draftGoal({ beneficiary_team_id: TEAM_AWAY }), eventTypes), null);
+  assert.equal(
+    readDraftEvent(draftGoal({ event_type: 'foul', beneficiary_team_id: TEAM_AWAY }), eventTypes),
+    null,
+  );
+  assert.equal(
+    readDraftEvent(draftGoal({ event_type: 'own_goal', beneficiary_team_id: TEAM_HOME }), eventTypes),
+    null,
+  );
+  assert.equal(
+    readDraftEvent(draftGoal({ event_type: 'own_goal', beneficiary_team_id: TEAM_AWAY }), eventTypes)?.beneficiary_team_id,
+    TEAM_AWAY,
+  );
+});
+
+test('drops every invalid event and reports a single count', () => {
+  const draft = [
+    draftGoal({ assist_player_id: P_ASSIST }),
+    draftGoal({ client_event_id: 'event-1700000000-0' }),
+    draftGoal({ client_event_id: EVENT_ID_2, metadata: { note: 'libre' } }),
+    draftGoal({ client_event_id: EVENT_ID_3, minute: 20 }),
+    draftGoal({ client_event_id: EVENT_ID_4, event_type: 'foul', minute: 30 }),
+  ];
+  const { events, dropped } = readDraftEvents(draft, eventTypes);
+  assert.equal(dropped, 2);
+  assert.deepEqual(events.map((event) => event.client_event_id), [EVENT_ID, EVENT_ID_3, EVENT_ID_4]);
+  assert.equal(readDraftEvents([], eventTypes).dropped, 0);
+  assert.equal(readDraftEvents(null, eventTypes).dropped, 0);
+  assert.equal(readDraftEvents('no es una lista', eventTypes).dropped, 0);
+  // Una entrada que no es un objeto también se descarta, sin romper la lectura.
+  const corrupted = readDraftEvents([null, 'texto', draftGoal()], eventTypes);
+  assert.equal(corrupted.dropped, 2);
+  assert.deepEqual(corrupted.events.map((event) => event.client_event_id), [EVENT_ID]);
+});
+
+test('a whole valid draft is restored unchanged and without warnings', () => {
+  const draft = [
+    draftGoal({ assist_player_id: P_ASSIST }),
+    draftGoal({
+      client_event_id: EVENT_ID_2,
+      event_type: 'own_goal',
+      beneficiary_team_id: TEAM_AWAY,
+      minute: 20,
+    }),
+    draftGoal({
+      client_event_id: EVENT_ID_3,
+      event_type: 'red_card',
+      metadata: { red_card_type: 'direct_red' },
+      minute: 30,
+    }),
+    draftGoal({
+      client_event_id: EVENT_ID_4,
+      event_type: 'substitution',
+      player_out_id: P_SCORER,
+      player_in_id: P_ASSIST,
+      minute: 60,
+    }),
+    draftGoal({ client_event_id: '5b4c5d6e-7f80-4a9b-8c1d-2e3f4a5b6c7d', event_type: 'foul', minute: 70 }),
+  ];
+  const { events, dropped } = readDraftEvents(draft, eventTypes);
+
+  assert.equal(dropped, 0);
+  assert.deepEqual(
+    events.map((event) => event.event_type),
+    ['goal', 'own_goal', 'red_card', 'substitution', 'foul'],
+  );
+  assert.deepEqual(
+    events.map((event) => event.minute),
+    [10, 20, 30, 60, 70],
+  );
+  assert.equal(events[0]?.assist_player_id, P_ASSIST);
+  assert.equal(events[1]?.beneficiary_team_id, TEAM_AWAY);
+  assert.deepEqual(events[2]?.metadata, { red_card_type: 'direct_red' });
+  assert.equal(events[3]?.player_out_id, P_SCORER);
+  assert.equal(events[3]?.player_in_id, P_ASSIST);
+  assert.equal(events[4]?.assist_player_id, null);
+});
+
+test('the report restores the draft through the counter and cleans the stored copy', () => {
+  // La pantalla no recorre ni sanea los eventos a mano: usa la utilidad pura.
+  assert.match(matchPageSource, /readDraftEvents\(/);
+  assert.doesNotMatch(matchPageSource, /readDraftEvent\(/, 'the screen still restores event by event');
+  assert.match(matchPageSource, /draftDroppedEvents/);
+  assert.match(matchPageSource, /match\.draftEventsDropped/);
+  // Lo descartado no vuelve: el borrador se reescribe (o se borra si no queda nada).
+  assert.match(matchPageSource, /if \(draftDroppedEvents\.value > 0\) persistDraft\(\);/);
+});
+
+test('the dropped-events notice exists in Spanish and English', () => {
+  const { spanish, english } = catalogSlices();
+  const pattern = /'match\.draftEventsDropped':/;
+  assert.match(spanish, pattern, 'match.draftEventsDropped is missing in Spanish');
+  assert.match(english, pattern, 'match.draftEventsDropped is missing in English');
+  assert.match(spanish, /'match\.draftEventsDropped':[^\n]*\{count\}/, 'the notice does not report the number');
+  assert.match(english, /'match\.draftEventsDropped':[^\n]*\{count\}/, 'the notice does not report the number');
 });

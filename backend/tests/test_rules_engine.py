@@ -12,6 +12,7 @@ from app.modules.rules_engine.engine import (
     validate_rules_config,
 )
 from app.modules.rules_engine.schemas import CreateTournamentRequest, TournamentRulesConfig
+from tests.event_ids import event_id
 
 
 def test_default_rules_are_valid():
@@ -152,7 +153,7 @@ def test_match_report_rejects_duplicate_client_event_ids():
     player_id = uuid4()
     segment_id = uuid4()
     event = MatchEventPayload(
-        client_event_id="same-event",
+        client_event_id=event_id("same-event"),
         event_type="yellow_card",
         team_id=team_id,
         player_id=player_id,
@@ -190,8 +191,11 @@ def test_regular_resolution_does_not_accept_an_administrative_reason():
         )
 
 
-def test_penalty_resolution_requires_a_tied_score_and_distinct_shootout_score():
-    with pytest.raises(ValueError, match="empatado"):
+def test_penalty_resolution_requires_both_final_scores():
+    # Spec 017 (T2): la coherencia numérica (empate tras la prórroga y tanda
+    # con ganador) pasa al dominio y responde 409; el DTO conserva la
+    # presencia de los dos marcadores finales, que sigue siendo 422.
+    with pytest.raises(ValueError, match="marcadores finales"):
         CloseMatchReportDTO(
             resolution_type="penalties",
             home_score_regular=1,
@@ -206,7 +210,7 @@ def test_match_event_goals_must_match_the_reported_regular_score():
     home = uuid4()
     away = uuid4()
     event = MatchEventPayload(
-        client_event_id="goal-1",
+        client_event_id=event_id("goal-1"),
         event_type="goal",
         team_id=home,
         player_id=uuid4(),

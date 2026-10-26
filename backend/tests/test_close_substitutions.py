@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from app.core.tenancy import AuthContext
 from app.modules.matches import router as matches_router
+from app.modules.matches.errors import ASSIST_PLAYER_INVALID
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
     CreateMatchSegmentRequest,
@@ -41,6 +42,7 @@ from app.modules.rules_engine.substitutions import (
     SubstitutionErrorCode,
     SubstitutionLimits,
 )
+from tests.event_ids import event_id
 
 ORGANIZATION_ID = UUID(int=9001)
 USER_ID = UUID(int=9002)
@@ -170,7 +172,8 @@ def payload(
     added_minute: int = 0,
 ) -> MatchEventPayload:
     return MatchEventPayload(
-        client_event_id=client_event_id,
+        # RF-015: la etiqueta se convierte en un UUID estable.
+        client_event_id=event_id(client_event_id),
         event_type="substitution",
         team_id=team,
         player_id=out_id,
@@ -179,6 +182,46 @@ def payload(
         minute=minute,
         added_minute=added_minute,
         segment_id=segment_id,
+    )
+
+
+def goal_payload(
+    player_id: UUID,
+    *,
+    assist_player_id: UUID | None = None,
+    minute: int,
+    team: UUID = HOME,
+    segment_id: UUID = SEGMENT_1,
+    client_event_id: str = "goal-1",
+) -> MatchEventPayload:
+    return MatchEventPayload(
+        client_event_id=event_id(client_event_id),
+        event_type="goal",
+        team_id=team,
+        player_id=player_id,
+        assist_player_id=assist_player_id,
+        minute=minute,
+        segment_id=segment_id,
+    )
+
+
+def red_card_payload(
+    player_id: UUID,
+    *,
+    minute: int,
+    red_card_type: str = "direct_red",
+    team: UUID = HOME,
+    segment_id: UUID = SEGMENT_1,
+    client_event_id: str = "red-1",
+) -> MatchEventPayload:
+    return MatchEventPayload(
+        client_event_id=event_id(client_event_id),
+        event_type="red_card",
+        team_id=team,
+        player_id=player_id,
+        minute=minute,
+        segment_id=segment_id,
+        metadata={"red_card_type": red_card_type},
     )
 
 
@@ -292,10 +335,22 @@ class RecordingSession:
 class CloseSession(RecordingSession):
     """Answers the reads the closing service issues before writing."""
 
-    def __init__(self, *, match=None, rosters=None, segments=None, active_segment=None, **kwargs):
+    def __init__(
+        self,
+        *,
+        match=None,
+        rosters=None,
+        segments=None,
+        active_segment=None,
+        teams=None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.match = match
         self.rosters = rosters if rosters is not None else []
+        # Equipos de la organización que el doble conoce (RF-014). Un id ausente
+        # se interpreta como «de otra organización».
+        self.teams = list(teams or [])
         self.segments = segments if segments is not None else [
             {"id": SEGMENT_1, "segment_number": 1, "minute_start": 0, "minute_end": None, "status": "active"}
         ]
@@ -314,6 +369,15 @@ class CloseSession(RecordingSession):
                         "stage_id": STAGE_ID,
                         "bracket_code": None,
                     }
+                ]
+            )
+        if "SELECT id" in sql and "FROM teams" in sql:
+            requested = {str(team) for team in params.get("team_ids") or []}
+            return Result(
+                rows=[
+                    {"id": team}
+                    for team in self.teams
+                    if str(team) in requested
                 ]
             )
         if "SELECT id, tournament_version_id" in sql and "FROM stages" in sql:
@@ -361,11 +425,12 @@ def match_row(config: dict | None = None, **overrides) -> dict:
     return row
 
 
-def build_session(*, config=None, rosters=None, segments=None, **overrides) -> CloseSession:
+def build_session(*, config=None, rosters=None, segments=None, teams=None, **overrides) -> CloseSession:
     return CloseSession(
         match=match_row(config, **overrides),
         rosters=rosters if rosters is not None else roster_rows() + roster_rows(team=AWAY),
         segments=segments,
+        teams=teams,
     )
 
 
@@ -381,7 +446,7 @@ async def close(session: CloseSession, report: CloseMatchReportDTO) -> dict:
 def test_substitution_event_requires_both_players():
     with pytest.raises(ValidationError, match="player_out_id y player_in_id"):
         MatchEventPayload(
-            client_event_id="contract-1",
+            client_event_id=event_id("contract-1"),
             event_type="substitution",
             team_id=HOME,
             player_id=starter(1),
@@ -393,7 +458,7 @@ def test_substitution_event_requires_both_players():
 def test_substitution_event_requires_the_incoming_player():
     with pytest.raises(ValidationError, match="player_out_id y player_in_id"):
         MatchEventPayload(
-            client_event_id="contract-2",
+            client_event_id=event_id("contract-2"),
             event_type="substitution",
             team_id=HOME,
             player_id=starter(1),
@@ -406,7 +471,7 @@ def test_substitution_event_requires_the_incoming_player():
 def test_substitution_event_rejects_the_same_player_leaving_and_entering():
     with pytest.raises(ValidationError, match="distintos"):
         MatchEventPayload(
-            client_event_id="contract-3",
+            client_event_id=event_id("contract-3"),
             event_type="substitution",
             team_id=HOME,
             player_id=starter(1),
@@ -420,7 +485,7 @@ def test_substitution_event_rejects_the_same_player_leaving_and_entering():
 def test_substitution_event_requires_player_id_to_match_the_outgoing_player():
     with pytest.raises(ValidationError, match="player_id debe coincidir"):
         MatchEventPayload(
-            client_event_id="contract-4",
+            client_event_id=event_id("contract-4"),
             event_type="substitution",
             team_id=HOME,
             player_id=starter(2),
@@ -434,7 +499,7 @@ def test_substitution_event_requires_player_id_to_match_the_outgoing_player():
 def test_a_regular_event_cannot_carry_substitution_players():
     with pytest.raises(ValidationError, match="solo aplican a una sustitución"):
         MatchEventPayload(
-            client_event_id="contract-5",
+            client_event_id=event_id("contract-5"),
             event_type="goal",
             team_id=HOME,
             player_id=starter(1),
@@ -452,10 +517,20 @@ def test_duplicate_client_event_ids_are_rejected_in_the_same_report():
         regular_report([event, event])
 
 
+def test_duplicate_client_event_ids_differing_only_in_case_are_rejected():
+    # La identidad del evento no distingue caja (RF-012): es el mismo UUID.
+    label = "duplicated-case"
+    lower = payload(starter(1), substitute(1), minute=30, client_event_id=label)
+    upper = lower.model_copy(update={"client_event_id": lower.client_event_id.upper()})
+
+    with pytest.raises(ValidationError, match="client_event_id duplicados"):
+        regular_report([lower, upper])
+
+
 def test_the_event_contract_is_accepted_and_keeps_backwards_compatibility():
     event = payload(starter(1), substitute(1), minute=30)
     goal = MatchEventPayload(
-        client_event_id="contract-6",
+        client_event_id=event_id("contract-6"),
         event_type="goal",
         team_id=HOME,
         player_id=starter(1),
@@ -520,7 +595,7 @@ async def test_close_rejects_a_player_from_another_team():
     report = regular_report(
         [
             MatchEventPayload(
-                client_event_id="other-team",
+                client_event_id=event_id("other-team"),
                 event_type="substitution",
                 team_id=AWAY,
                 player_id=starter(1),
@@ -546,7 +621,7 @@ async def test_a_goal_after_the_player_left_is_rejected_before_writing():
         [
             payload(starter(1), substitute(1), minute=60, client_event_id="leave-1"),
             MatchEventPayload(
-                client_event_id="goal-after-exit",
+                client_event_id=event_id("goal-after-exit"),
                 event_type="goal",
                 team_id=HOME,
                 player_id=starter(1),
@@ -571,7 +646,7 @@ async def test_a_card_before_the_player_entered_is_rejected_before_writing():
     report = regular_report(
         [
             MatchEventPayload(
-                client_event_id="card-before-entry",
+                client_event_id=event_id("card-before-entry"),
                 event_type="yellow_card",
                 team_id=HOME,
                 player_id=substitute(1),
@@ -769,7 +844,7 @@ async def test_an_identical_persisted_event_is_reused_without_inserting():
     session.handle = _idempotent_handle(
         session,
         {
-            "retry-identical": {
+            event_id("retry-identical"): {
                 "id": existing_id,
                 "event_type": "substitution",
                 "team_id": HOME,
@@ -780,6 +855,8 @@ async def test_an_identical_persisted_event_is_reused_without_inserting():
                 "minute": 30,
                 "added_minute": 0,
                 "segment_id": SEGMENT_1,
+                "assist_player_id": None,
+                "metadata": {},
             }
         },
     )
@@ -807,7 +884,7 @@ async def test_a_retry_with_the_same_client_id_and_different_data_is_immutable()
     session.handle = _idempotent_handle(
         session,
         {
-            "retry-conflict": {
+            event_id("retry-conflict"): {
                 "id": UUID(int=9501),
                 "event_type": "substitution",
                 "team_id": HOME,
@@ -818,6 +895,8 @@ async def test_a_retry_with_the_same_client_id_and_different_data_is_immutable()
                 "minute": 30,
                 "added_minute": 0,
                 "segment_id": SEGMENT_1,
+                "assist_player_id": None,
+                "metadata": {},
             }
         },
     )
@@ -837,6 +916,144 @@ async def test_a_retry_with_the_same_client_id_and_different_data_is_immutable()
         )
 
     assert not any(sql.startswith("INSERT INTO match_events") for sql in session.statements)
+
+
+@pytest.mark.asyncio
+async def test_a_retry_with_a_different_metadata_is_immutable():
+    # D-10: la comparación incluye `metadata`; antes se reutilizaba en silencio.
+    session = CloseSession(match=match_row(), rosters=roster_rows() + roster_rows(team=AWAY))
+    session.handle = _idempotent_handle(
+        session,
+        {
+            event_id("retry-metadata"): _red_card_row(metadata={"red_card_type": "direct_red"})
+        },
+    )
+    report = regular_report(
+        [
+            red_card_payload(
+                starter(1), minute=30, client_event_id="retry-metadata",
+                red_card_type="double_yellow_red",
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="inmutable"):
+        await _persist(session, report)
+
+    assert not any(sql.startswith("INSERT INTO match_events") for sql in session.statements)
+
+
+@pytest.mark.asyncio
+async def test_empty_and_null_metadata_are_the_same_persisted_event():
+    # `{}` y `None` son la misma información adicional (D-10): el reintento que
+    # omite la `metadata` reutiliza la fila que la guardó vacía.
+    session = CloseSession(match=match_row(), rosters=roster_rows() + roster_rows(team=AWAY))
+    existing_id = UUID(int=9510)
+    session.handle = _idempotent_handle(
+        session,
+        {event_id("retry-empty-metadata"): _goal_row(row_id=existing_id)},
+    )
+    report = regular_report(
+        [goal_payload(starter(2), minute=30, client_event_id="retry-empty-metadata")],
+        home=1,
+    )
+
+    persisted = await _persist(session, report)
+
+    assert [row["id"] for row in persisted] == [existing_id]
+    assert not any(sql.startswith("INSERT INTO match_events") for sql in session.statements)
+
+
+@pytest.mark.asyncio
+async def test_a_retry_with_a_different_assist_is_immutable():
+    # La asistencia entra en la comparación de idempotencia (RF-012).
+    session = CloseSession(match=match_row(), rosters=roster_rows() + roster_rows(team=AWAY))
+    session.handle = _idempotent_handle(
+        session,
+        {event_id("retry-assist"): _goal_row(assist_player_id=None)},
+    )
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2), assist_player_id=starter(3), minute=30,
+                client_event_id="retry-assist",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(ValueError, match="inmutable"):
+        await _persist(session, report)
+
+    assert not any(sql.startswith("INSERT INTO match_events") for sql in session.statements)
+
+
+@pytest.mark.asyncio
+async def test_a_retry_in_a_different_case_is_the_same_persisted_event():
+    # RF-015 acepta el UUID en mayúsculas y minúsculas; la escritura y la
+    # comparación usan la forma canónica, así que no se duplica la fila.
+    session = CloseSession(match=match_row(), rosters=roster_rows() + roster_rows(team=AWAY))
+    existing_id = UUID(int=9520)
+    session.handle = _idempotent_handle(
+        session,
+        {event_id("retry-case"): _goal_row(row_id=existing_id)},
+    )
+    goal = goal_payload(starter(2), minute=30, client_event_id="retry-case")
+    goal = goal.model_copy(update={"client_event_id": goal.client_event_id.upper()})
+    report = regular_report([goal], home=1)
+
+    persisted = await _persist(session, report)
+
+    assert [row["id"] for row in persisted] == [existing_id]
+    assert not any(sql.startswith("INSERT INTO match_events") for sql in session.statements)
+
+
+def _red_card_row(*, metadata: dict, row_id: UUID | None = None) -> dict:
+    return {
+        "id": row_id or UUID(int=9503),
+        "event_type": "red_card",
+        "team_id": HOME,
+        "beneficiary_team_id": None,
+        "player_id": starter(1),
+        "player_out_id": None,
+        "player_in_id": None,
+        "minute": 30,
+        "added_minute": 0,
+        "segment_id": SEGMENT_1,
+        "assist_player_id": None,
+        "metadata": metadata,
+    }
+
+
+def _goal_row(
+    *, assist_player_id: UUID | None = None, row_id: UUID | None = None
+) -> dict:
+    return {
+        "id": row_id or UUID(int=9530),
+        "event_type": "goal",
+        "team_id": HOME,
+        "beneficiary_team_id": None,
+        "player_id": starter(2),
+        "player_out_id": None,
+        "player_in_id": None,
+        "minute": 30,
+        "added_minute": 0,
+        "segment_id": SEGMENT_1,
+        "assist_player_id": assist_player_id,
+        "metadata": {},
+    }
+
+
+async def _persist(session, report):
+    return await CloseMatchReportService(session)._persist_events(
+        context(),
+        session.match,
+        report,
+        session.rosters,
+        [
+            {"id": SEGMENT_1, "segment_number": 1, "minute_start": 0, "minute_end": None, "status": "active"}
+        ],
+    )
 
 
 def _idempotent_handle(session: CloseSession, existing: dict[str, dict]):
@@ -861,6 +1078,11 @@ def _idempotent_handle(session: CloseSession, existing: dict[str, dict]):
                         "minute": event["minute"],
                         "added_minute": event["added_minute"],
                         "segment_id": UUID(str(event["segment_id"])),
+                        "assist_player_id": (
+                            UUID(str(event["assist_player_id"]))
+                            if event.get("assist_player_id")
+                            else None
+                        ),
                     }
                 ]
             )
@@ -1107,3 +1329,174 @@ async def test_operation_without_lineup_returns_empty_lists_and_the_notice(monke
         assert row["bench"] == []
         assert row["can_register"] is False
         assert row["reason"] == NO_LINEUP_NOTICE
+
+
+# ---------------------------------------------------------------------------
+# Assist and the single identifier rule (spec 015, T5: RF-003, RF-008, RF-014)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_translates_an_assist_from_the_other_team_to_the_coded_409():
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                assist_player_id=starter(3, AWAY),
+                minute=30,
+                client_event_id="assist-other-team",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 409
+    assert error.value.code == ASSIST_PLAYER_INVALID
+    assert isinstance(error.value.detail, str) and error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_translates_an_assist_outside_the_match_roster_to_the_coded_409():
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                assist_player_id=UUID(int=999),
+                minute=30,
+                client_event_id="assist-outsider",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 409
+    assert error.value.code == ASSIST_PLAYER_INVALID
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_accepts_a_goal_with_a_valid_assist():
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                assist_player_id=starter(3),
+                minute=30,
+                client_event_id="assist-valid",
+            )
+        ],
+        home=1,
+    )
+    service = CloseMatchReportService(session)
+
+    async def stop_before_persisting(*args, **kwargs):
+        raise StopExecution("persist")
+
+    service._persist_events = stop_before_persisting
+    with pytest.raises(StopExecution):
+        await service.execute(context(), MATCH_ID, report)
+
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_keeps_the_plain_409_for_a_scorer_outside_the_roster():
+    """El goleador conserva el mensaje de pertenencia y **no** lleva ``code``."""
+
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                UUID(int=999),
+                minute=30,
+                client_event_id="scorer-outsider",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 409
+    assert getattr(error.value, "code", None) is None
+    assert isinstance(error.value.detail, str) and error.value.detail
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_answers_404_for_a_segment_of_another_organization():
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                minute=30,
+                segment_id=UUID(int=7777),
+                client_event_id="foreign-segment",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 404
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_answers_404_for_a_team_of_another_organization():
+    session = build_session()
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                minute=30,
+                team=UUID(int=5555),
+                client_event_id="foreign-team",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 404
+    assert session.writes == []
+
+
+@pytest.mark.asyncio
+async def test_close_answers_409_for_a_team_of_the_organization_that_does_not_play():
+    other_team = UUID(int=5556)
+    session = build_session(teams=[other_team])
+    report = regular_report(
+        [
+            goal_payload(
+                starter(2),
+                minute=30,
+                team=other_team,
+                client_event_id="other-team-not-playing",
+            )
+        ],
+        home=1,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await matches_router.close_match(MATCH_ID, report, context(), session)
+
+    assert error.value.status_code == 409
+    assert "no participa" in str(error.value.detail)
+    assert session.writes == []

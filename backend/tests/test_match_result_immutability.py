@@ -45,6 +45,7 @@ from db_helpers import (
     set_tenant_context,
 )
 from scripts import seed_demo
+from tests.event_ids import event_id
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INIT_DIR = REPO_ROOT / "infra" / "postgres" / "init"
@@ -883,7 +884,7 @@ async def test_normal_close_confirms_the_result_and_then_freezes_it(db_session, 
         winner_team_id=match.home_team_id,
         events=[
             MatchEventPayload(
-                client_event_id="r03-close-1",
+                client_event_id=event_id("r03-close-1"),
                 event_type="goal",
                 team_id=match.home_team_id,
                 player_id=match.home_player_id,
@@ -891,7 +892,7 @@ async def test_normal_close_confirms_the_result_and_then_freezes_it(db_session, 
                 segment_id=match.segment_id,
             ),
             MatchEventPayload(
-                client_event_id="r03-close-2",
+                client_event_id=event_id("r03-close-2"),
                 event_type="goal",
                 team_id=match.home_team_id,
                 player_id=match.home_player_id,
@@ -899,7 +900,7 @@ async def test_normal_close_confirms_the_result_and_then_freezes_it(db_session, 
                 segment_id=match.segment_id,
             ),
             MatchEventPayload(
-                client_event_id="r03-close-3",
+                client_event_id=event_id("r03-close-3"),
                 event_type="goal",
                 team_id=match.away_team_id,
                 player_id=match.away_player_id,
@@ -1177,8 +1178,9 @@ async def test_seed_demo_still_closes_and_confirms_matches(
         try:
             await _apply_init(admin_connection)
             # The seed closes reports with the current application code, which
-            # writes the substitution pair added by 021.
-            await _apply_migrations(admin_connection, first=1, last=21)
+            # writes the substitution pair added by 021 and the assist added
+            # by 026.
+            await _apply_migrations(admin_connection, first=1, last=26)
         finally:
             await admin_connection.close()
 

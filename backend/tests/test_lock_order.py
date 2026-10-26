@@ -7,6 +7,7 @@ statements and that no write happens before the locks.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -20,6 +21,7 @@ from app.modules.advancement.service import AdvancementService
 from app.modules.matches.router import assign_match_official, remove_match_official
 from app.modules.matches.schemas import OfficialAssignmentRequest
 from app.modules.matches.service import CloseMatchReportService
+from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.standings.service import StandingsService
 from app.modules.tournaments import router as tournaments_router
 from app.modules.tournaments.router import (
@@ -56,6 +58,12 @@ RESET_ID = UUID("00000000-0000-4000-8000-0000000000f0")
 PLAYER_ID = uuid4()
 
 START_DATE = datetime(2026, 9, 18, 18, 0, tzinfo=timezone.utc)
+
+
+def close_rules_config() -> dict:
+    """Configuración de reglas completa: el cierre valida el resultado (paso 13)."""
+
+    return deepcopy(DEFAULT_RULES_CONFIG)
 
 
 class StopExecution(Exception):
@@ -467,7 +475,7 @@ class CloseSession(RecordingSession):
                         "stage_id": STAGE_ID,
                         "home_team_id": TEAM_A,
                         "away_team_id": TEAM_B,
-                        "rules_config": {},
+                        "rules_config": close_rules_config(),
                         "version_status": "published",
                     }
                 ]
@@ -483,7 +491,6 @@ class CloseSession(RecordingSession):
 async def test_close_locks_source_and_destinations_by_id_before_persisting_events():
     session = CloseSession()
     service = CloseMatchReportService(session)
-    captured: dict[str, list[str]] = {}
 
     async def no_rosters(context, match_id):
         return []
@@ -494,10 +501,6 @@ async def test_close_locks_source_and_destinations_by_id_before_persisting_event
     async def no_suspensions(context, tournament_id, player_ids):
         return None
 
-    async def stop_before_writing(context, match, dto, rosters, segments):
-        captured["statements"] = list(session.statements)
-        raise StopExecution("before _persist_events")
-
     service._load_match_rosters = no_rosters
     service._load_match_segments = no_segments
     service._validate_suspensions = no_suspensions
@@ -505,14 +508,33 @@ async def test_close_locks_source_and_destinations_by_id_before_persisting_event
     service._validate_segments = lambda *args, **kwargs: None
     service._validate_substitutions = lambda dto, match, rosters, limits: None
     service._validate_event_score_consistency = lambda *args, **kwargs: None
-    service._persist_events = stop_before_writing
 
-    dto = SimpleNamespace(resolution_type="regular", events=[])
+    # El resultado se calcula en el paso 13 (antes de persistir), así que el
+    # doble declara un desenlace decisivo: esta prueba solo mide el orden de
+    # bloqueo. Un walkover con el marcador de la configuración (3-0) y ganador
+    # no necesita eventos ni plantilla y evita el 409 de la gran final (GF1).
+    dto = SimpleNamespace(
+        resolution_type="walkover",
+        events=[],
+        home_score_regular=3,
+        away_score_regular=0,
+        home_score=None,
+        away_score=None,
+        home_penalties=None,
+        away_penalties=None,
+        winner_team_id=TEAM_A,
+        # RF-007: el motivo de catálogo viaja al acta y a la auditoría.
+        reason="no_show",
+    )
 
     with pytest.raises(StopExecution):
         await service.execute(context(), MATCH_ID, dto)
 
-    statements = captured["statements"]
+    # El walkover **no recorre el tronco** (spec 016): su rama escribe en el
+    # paso 14′ y el doble se detiene justo ahí, cuando todos los bloqueos ya se
+    # tomaron. La última sentencia registrada es esa primera escritura.
+    assert session.statements[-1].upper().startswith("UPDATE MATCHES")
+    statements = session.statements[:-1]
     stage_index = next(
         index for index, sql in enumerate(statements) if "FROM stages" in sql
     )
