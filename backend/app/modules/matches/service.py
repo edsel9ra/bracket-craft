@@ -25,6 +25,7 @@ from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
     compute_match_outcome,
+    drop_recorded_red_sanctions,
     effective_stage_rules,
     effective_substitutions,
     evaluate_suspensions,
@@ -869,12 +870,26 @@ class CloseMatchReportService:
             )
             await self._rewrite_segment_team_state(context, match, segments, limits)
 
+            # Sanciones (spec 018): solo los eventos de este acta originan. La
+            # absorción ocurre dentro de la función pura; **después** se aplica
+            # la unicidad por evento de roja —una sola lectura acotada a las
+            # rojas del acta, que no se ejecuta si no hay ninguna— y por último
+            # se insertan las que quedan.
             history = await self._load_discipline_history(context, match)
             suspensions = evaluate_suspensions(
                 match["rules_config"], persisted_events, history
             )
+            red_event_ids = [
+                event["id"] for event in persisted_events if event["event_type"] == "red_card"
+            ]
+            recorded_red_sanctions = await self._load_recorded_red_suspensions(
+                context, red_event_ids
+            )
+            suspensions = drop_recorded_red_sanctions(suspensions, recorded_red_sanctions)
             await self._serve_suspensions(context, match)
-            await self._insert_suspensions(context, match, suspensions)
+            created_suspensions = await self._insert_suspensions(
+                context, match, suspensions
+            )
             await self._recalculate_standings(context, match)
             await self._advance_bracket(context, match_id, match, outcome)
 
@@ -884,7 +899,7 @@ class CloseMatchReportService:
                 "tournament_version_id": str(match["tournament_version_id"]),
                 "outcome": outcome.__dict__,
                 "event_ids": [str(event["id"]) for event in persisted_events],
-                "suspensions": len(suspensions),
+                "suspensions": len(created_suspensions),
                 "request": dto.model_dump(mode="json"),
             }
             audit_action = (
@@ -1068,11 +1083,12 @@ class CloseMatchReportService:
             )
 
         # RF-009 y RNF-008: no se llama a `_validate_suspensions`,
-        # `_load_discipline_history`, `_serve_suspensions`,
-        # `_insert_suspensions`, `_rewrite_segment_team_state` ni
-        # `_persist_events`. Un partido que no se juega no cumple sanciones, no
-        # tiene eventos y no aporta información nueva a la proyección por
-        # segmento.
+        # `_load_discipline_history`, `_load_recorded_red_suspensions`,
+        # `_serve_suspensions`, `_insert_suspensions`,
+        # `_rewrite_segment_team_state` ni `_persist_events`. Un partido que no
+        # se juega no cumple sanciones, no tiene eventos y no aporta información
+        # nueva a la proyección por segmento (RF-013 de la spec 018: la lectura
+        # acotada a las rojas del acta tampoco se ejecuta en esta rama).
         await self._recalculate_standings(context, match)
         await self._advance_bracket(context, match_id, match, outcome)
 
@@ -1656,7 +1672,7 @@ class CloseMatchReportService:
                             :event_type, :minute, :added_minute, :client_event_id, CAST(:metadata AS jsonb))
                     RETURNING id, event_type, team_id, beneficiary_team_id, player_id,
                               player_out_id, player_in_id, assist_player_id,
-                              minute, added_minute, segment_id
+                              minute, added_minute, segment_id, metadata
                 """),
                 {
                     "organization_id": str(context.organization_id),
@@ -1679,9 +1695,19 @@ class CloseMatchReportService:
         return persisted
 
     async def _load_discipline_history(self, context, match):
+        """Historial disciplinario del ámbito que resuelve el `WHERE` (RF-008).
+
+        Devuelve también `match_id`, `match_date`, `minute` y `added_minute`
+        para que `order_discipline_history` (motor puro) sea total: la consulta
+        no ordena (D-8). El filtro de ámbito —fase y versión con el reinicio
+        activo— **no** cambia: el reinicio de fase se aplica aquí, antes de
+        contar (RF-008).
+        """
+
         result = await self.db.execute(
             text("""
-                SELECT me.id, me.player_id, me.event_type, me.metadata
+                SELECT me.id, me.player_id, me.event_type, me.metadata,
+                       me.match_id, m.match_date, me.minute, me.added_minute
                 FROM match_events me
                 JOIN matches m ON m.id = me.match_id AND m.organization_id = me.organization_id
                 WHERE me.organization_id = :organization_id
@@ -1704,6 +1730,34 @@ class CloseMatchReportService:
             },
         )
         return [dict(row) for row in result.mappings().all()]
+
+    async def _load_recorded_red_suspensions(self, context, red_event_ids) -> set[str]:
+        """Eventos de roja del acta que **ya** tienen una sanción registrada.
+
+        Una sola lectura acotada al conjunto de rojas del acta en cierre
+        (RNF-010): no depende del historial, del tamaño del torneo ni del número
+        de jugadores, y **no se ejecuta** cuando el acta no tiene rojas. Sin
+        filtro de `status`: una fila `served`, `cancelled` o `appealed` también
+        cuenta, porque la unicidad es por evento de roja y no por motivo
+        (RF-005, R-3). Corre dentro de la transacción del cierre, con RLS y
+        `organization_id` explícito (RNF-001).
+        """
+
+        if not red_event_ids:
+            return set()
+        result = await self.db.execute(
+            text("""
+                SELECT DISTINCT source_event_id
+                FROM player_suspensions
+                WHERE organization_id = :organization_id
+                  AND source_event_id = ANY(CAST(:red_event_ids AS uuid[]))
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "red_event_ids": [str(event_id) for event_id in red_event_ids],
+            },
+        )
+        return {str(row["source_event_id"]) for row in result.mappings().all()}
 
     async def _serve_suspensions(self, context, match) -> None:
         await self.db.execute(
@@ -1755,10 +1809,19 @@ class CloseMatchReportService:
             {"organization_id": str(context.organization_id)},
         )
 
-    async def _insert_suspensions(self, context, match, suspensions):
+    async def _insert_suspensions(self, context, match, suspensions) -> list[dict[str, Any]]:
+        """Inserta las sanciones derivadas y devuelve las filas **creadas**.
+
+        `ON CONFLICT (dedupe_key) DO NOTHING` sigue siendo la red de seguridad
+        (D-4) y `RETURNING id` distingue lo insertado de lo omitido: la
+        auditoría cuenta filas reales y no el tamaño de la lista derivada
+        (RF-012, D-6).
+        """
+
+        created: list[dict[str, Any]] = []
         for suspension in suspensions:
             dedupe_key = f"{match['tournament_id']}:{suspension['player_id']}:{suspension['source_event_id']}:{suspension['reason']}"
-            await self.db.execute(
+            result = await self.db.execute(
                 text("""
                     INSERT INTO player_suspensions
                         (organization_id, source_tournament_id, player_id, origin_match_id, source_event_id,
@@ -1766,6 +1829,7 @@ class CloseMatchReportService:
                     VALUES (:organization_id, :tournament_id, :player_id, :match_id, :source_event_id,
                             'match_event', :dedupe_key, :scope_type, :matches_suspended, :reason)
                     ON CONFLICT (dedupe_key) DO NOTHING
+                    RETURNING id
                 """),
                 {
                     "organization_id": str(context.organization_id),
@@ -1779,6 +1843,8 @@ class CloseMatchReportService:
                     "reason": suspension["reason"],
                 },
             )
+            created.extend(dict(row) for row in result.mappings().all())
+        return created
 
     async def _recalculate_standings(self, context, match):
         from app.modules.standings.service import StandingsService

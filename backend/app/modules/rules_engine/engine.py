@@ -1,5 +1,6 @@
 from copy import deepcopy
 from collections import defaultdict
+from collections.abc import Iterable, Sequence, Set as AbstractSet
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Mapping
@@ -466,19 +467,122 @@ def compute_match_outcome(
     return MatchOutcome(final_home, final_away, winner, home_penalties, away_penalties)
 
 
+def discipline_history_order_key(event: Mapping[str, Any]) -> tuple:
+    """Clave total y estable del historial disciplinario (RF-004, plan §4.5, D-8).
+
+    Ordena **solo** con datos persistidos, sin leer el reloj: la fecha de juego
+    llega ya resuelta en el evento. Un evento **sin fecha** va antes que
+    cualquiera con fecha; después manda el partido por su identificador y, dentro
+    del partido, el minuto, el minuto añadido y el identificador del evento, que
+    desempata de forma estable (RNF-003). El índice del acta no existe en el
+    historial y no se usa.
+
+    La clave tolera mappings parciales (``minute``/``added_minute``/``match_id``
+    ausentes) para que siga siendo total en cualquier entrada; la consulta del
+    cierre sí devuelve todos los campos.
+    """
+
+    match_date = event.get("match_date")
+    return (
+        match_date.timestamp() if match_date is not None else float("-inf"),
+        str(event.get("match_id")),
+        int(event.get("minute") or 0),
+        int(event.get("added_minute") or 0),
+        str(event.get("id")),
+    )
+
+
+def order_discipline_history(
+    events: Iterable[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """Ordena el historial con la clave total y estable (RF-004, RNF-003).
+
+    ``sorted`` es estable e idempotente: las mismas entradas dan el mismo orden y
+    reordenar lo ya ordenado no lo cambia. No escribe ni copia los eventos.
+    """
+
+    return sorted(events, key=discipline_history_order_key)
+
+
+def drop_recorded_red_sanctions(
+    suspensions: Sequence[Mapping[str, Any]],
+    recorded_event_ids: AbstractSet[UUID | str],
+) -> list[Mapping[str, Any]]:
+    """Quita las sanciones de un evento de roja que ya tiene una (RF-005, R-3).
+
+    ``recorded_event_ids`` son los eventos de roja del acta que ya están
+    registrados en ``player_suspensions``; una sanción nacida de uno de ellos es
+    de roja **sea cual sea su motivo** —también una heredada como
+    ``direct_red_card``—, y no se crea otra ni se reescribe la existente (RF-006).
+    Las demás sanciones del acta (la acumulación de otro jugador o de otra
+    jugada) se conservan intactas. No muta nada: devuelve las mismas mappings.
+    """
+
+    recorded = {str(event_id) for event_id in recorded_event_ids}
+    if not recorded:
+        return list(suspensions)
+    return [
+        suspension
+        for suspension in suspensions
+        if suspension.get("source_event_id") is None
+        or str(suspension["source_event_id"]) not in recorded
+    ]
+
+
 def evaluate_suspensions(
     config: dict[str, Any],
     current_events: list[dict[str, Any]],
     historical_events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """Deriva las sanciones del acta en cierre (spec 018: una jugada, una sanción).
+
+    ``current_events`` es el acta que se cierra, en su orden canónico (el de
+    ``_persist_events``): **solo** estos eventos originan sanciones y la lista
+    de salida conserva ese orden. El índice del payload no se usa aquí, solo el
+    orden de llegada.
+
+    ``historical_events`` es el historial disciplinario del jugador en el ámbito
+    que ya resolvió la consulta (el torneo, o la fase y la versión con el
+    reinicio de fase activo): **solo cuenta amarillas** y nunca origina una
+    sanción (RF-005). Se recorre en el orden total y estable de
+    ``order_discipline_history`` (fecha de juego, partido, minuto, minuto
+    añadido e identificador del evento); contar es conmutativo, así que una
+    permutación del historial no cambia el resultado, pero la clave fija de forma
+    determinista qué evento empareja cada umbral (RF-004, RNF-003).
+
+    **Absorción (RF-001, RF-002).** Se aplica **al final**, sobre la lista del
+    acta, para tumbar todos los umbrales que crucen las amarillas de un jugador
+    expulsado por doble amarilla en este acta —la primera o la última, y también
+    dos umbrales—. Se decide por jugador dentro del acta (D-5): el paso 8 de la
+    017 rechaza una amarilla posterior a la roja del mismo jugador, así que no
+    hay amarilla suya en este acta que no componga la expulsión. La roja directa
+    no absorbe: mantiene las dos sanciones (RF-009).
+
+    El tipo de roja sale de ``metadata.red_card_type`` del evento tal como está
+    registrado; ausente equivale a directa y nunca se infiere del número de
+    amarillas (RF-010). La duración de la jugada es la única de expulsión
+    configurada (``direct_red_suspension_matches``), aplicada una sola vez
+    (RF-003), y el contador de amarillas no se reinicia con la roja (RF-004).
+    """
+
     yellow_limit = config["discipline"]["yellow_card_limit"]
     direct_red_matches = config["discipline"]["direct_red_suspension_matches"]
     yellow_matches = config["discipline"]["yellow_card_suspension_matches"]
-    all_events = [*historical_events, *current_events]
-    yellows: defaultdict[UUID, int] = defaultdict(int)
-    result: list[dict[str, Any]] = []
 
-    for event in all_events:
+    # 1. El historial solo cuenta: sus amarillas alimentan el saldo del jugador
+    #    y ninguna de sus tarjetas (tampoco una roja) entra en la salida. Se
+    #    recorre en el orden total y estable del historial (RF-004).
+    yellows: defaultdict[UUID, int] = defaultdict(int)
+    for event in order_discipline_history(historical_events):
+        player_id = event.get("player_id")
+        if player_id and event["event_type"] == "yellow_card":
+            yellows[UUID(str(player_id))] += 1
+
+    # 2. El acta origina, en su orden canónico.
+    derived: list[dict[str, Any]] = []
+    double_yellow_players: set[UUID] = set()
+
+    for event in current_events:
         player_id = event.get("player_id")
         if not player_id:
             continue
@@ -486,7 +590,7 @@ def evaluate_suspensions(
         if event["event_type"] == "yellow_card":
             yellows[player_uuid] += 1
             if yellows[player_uuid] % yellow_limit == 0:
-                result.append({
+                derived.append({
                     "player_id": player_uuid,
                     "source_event_id": UUID(str(event["id"])),
                     "matches_suspended": yellow_matches,
@@ -496,7 +600,9 @@ def evaluate_suspensions(
         elif event["event_type"] == "red_card":
             metadata = event.get("metadata") or {}
             is_double_yellow = metadata.get("red_card_type") == "double_yellow_red"
-            result.append({
+            if is_double_yellow:
+                double_yellow_players.add(player_uuid)
+            derived.append({
                 "player_id": player_uuid,
                 "source_event_id": UUID(str(event["id"])),
                 "matches_suspended": direct_red_matches,
@@ -504,10 +610,16 @@ def evaluate_suspensions(
                 "reason": "double_yellow_red" if is_double_yellow else "direct_red_card",
             })
 
-    unique: dict[str, dict[str, Any]] = {}
-    for item in result:
-        unique[f"{item['player_id']}:{item['source_event_id']}:{item['reason']}"] = item
-    return list(unique.values())
+    # 3. Una jugada, una sanción: la expulsión por doble amarilla absorbe todos
+    #    los umbrales de acumulación de ese jugador en este acta.
+    return [
+        suspension
+        for suspension in derived
+        if not (
+            suspension["reason"] == "yellow_card_accumulation"
+            and suspension["player_id"] in double_yellow_players
+        )
+    ]
 
 
 def deterministic_tie_value(seed: str, team_id: UUID) -> str:

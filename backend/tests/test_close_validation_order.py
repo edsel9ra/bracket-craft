@@ -42,6 +42,7 @@ se ejercen como defectos más del paso 13.
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -245,6 +246,7 @@ class CloseOrderSession:
         suspended: bool = False,
         match_available: bool = True,
         existing_events: list[dict] | None = None,
+        recorded_red_suspensions: set[UUID] | None = None,
     ):
         self.match = match
         self.rosters = rosters
@@ -255,9 +257,12 @@ class CloseOrderSession:
         self.suspended = suspended
         self.match_available = match_available
         self.existing_events = list(existing_events or [])
+        # Eventos de roja que la base ya tiene sancionados (vacío por defecto).
+        self.recorded_red_suspensions = set(recorded_red_suspensions or ())
         self.statements: list[str] = []
         self.calls: list[tuple[str, dict]] = []
         self._event_rows: list[dict] = []
+        self._suspension_rows: list[dict] = []
 
     def begin(self):
         return Transaction()
@@ -321,6 +326,15 @@ class CloseOrderSession:
         if "SELECT id" in sql and "FROM teams" in sql:
             requested = {str(team_id) for team_id in params.get("team_ids") or []}
             return Result(rows=[{"id": team_id} for team_id in self.teams if str(team_id) in requested])
+        if "source_event_id = ANY" in sql:
+            requested = {str(event_id) for event_id in params.get("red_event_ids") or []}
+            return Result(
+                rows=[
+                    {"source_event_id": event_id}
+                    for event_id in sorted(self.recorded_red_suspensions)
+                    if str(event_id) in requested
+                ]
+            )
         if "FROM player_suspensions" in sql:
             if self.suspended:
                 return Result(rows=[{"player_id": self.rosters[0]["player_id"]}])
@@ -334,6 +348,8 @@ class CloseOrderSession:
             return Result(rows=[])
         if sql.startswith("INSERT INTO match_events"):
             return Result(rows=[self._persist_event_row(params)])
+        if sql.startswith("INSERT INTO player_suspensions"):
+            return Result(rows=[self._persist_suspension_row(params)])
         if sql.startswith(("INSERT", "UPDATE", "DELETE")):
             return Result()
         raise StopExecution(sql)
@@ -355,8 +371,23 @@ class CloseOrderSession:
             "minute": params["minute"],
             "added_minute": params["added_minute"],
             "segment_id": UUID(str(params["segment_id"])),
+            # La base devuelve `metadata` como objeto jsonb, no como texto: el
+            # tipo de roja se lee de la fila persistida (RF-010, plan §4.4).
+            "metadata": json.loads(params.get("metadata") or "{}"),
         }
         self._event_rows.append(row)
+        return row
+
+    def _persist_suspension_row(self, params: dict) -> dict:
+        """`ON CONFLICT DO NOTHING ... RETURNING id` con la fila creada."""
+
+        row = {
+            "id": UUID(int=9900 + len(self._suspension_rows)),
+            "player_id": UUID(str(params["player_id"])),
+            "source_event_id": UUID(str(params["source_event_id"])),
+            "reason": params["reason"],
+        }
+        self._suspension_rows.append(row)
         return row
 
 
@@ -668,6 +699,7 @@ def build_session(state: State) -> CloseOrderSession:
         suspended=state.session.get("suspended", False),
         match_available=state.session.get("match_available", True),
         existing_events=state.session.get("existing_events"),
+        recorded_red_suspensions=state.session.get("recorded_red_suspensions"),
     )
 
 
@@ -921,6 +953,108 @@ def assert_nothing_was_written(session: CloseOrderSession) -> None:
     clasificación, avance, auditoría u outbox: el paso 13 no escribe."""
 
     assert session.writes == [], session.writes
+
+
+# ---------------------------------------------------------------------------
+# Cableado de sanciones de la spec 018 (RF-005, RF-010, RF-012, RNF-010)
+# ---------------------------------------------------------------------------
+#
+# El doble aprende lo que la base devuelve en el cableado nuevo: `metadata` en
+# la fila del `INSERT INTO match_events` (el tipo de roja sale de ahí) y la
+# lectura acotada `WHERE source_event_id = ANY(...)` de `player_suspensions`.
+# Estas pruebas no sustituyen a `test_sanctions.py` ni a la suite con base:
+# fijan que el doble **cubre el cableado real** para que la matriz de
+# precedencia siga midiendo el orden de verdad.
+
+
+def persisted_event_id(index: int) -> UUID:
+    """Id que el doble asigna al n-ésimo evento persistido del acta."""
+
+    return UUID(int=9800 + index)
+
+
+def double_yellow_state() -> State:
+    """Acta válida: dos amarillas del mismo jugador y su roja por doble amarilla."""
+
+    state = base_state()
+    for minute in (10, 20):
+        _add_event(
+            state,
+            MatchEventPayload(
+                client_event_id=event_id(f"order-double-yellow-yellow-{minute}"),
+                event_type="yellow_card",
+                team_id=HOME,
+                player_id=starter(1),
+                minute=minute,
+                segment_id=SEGMENT_1,
+            ),
+        )
+    _add_event(
+        state,
+        MatchEventPayload(
+            client_event_id=event_id("order-double-yellow-red"),
+            event_type="red_card",
+            team_id=HOME,
+            player_id=starter(1),
+            minute=30,
+            segment_id=SEGMENT_1,
+            metadata={"red_card_type": "double_yellow_red"},
+        ),
+    )
+    return state
+
+
+@pytest.mark.asyncio
+async def test_a_double_yellow_close_writes_a_single_expulsion_suspension(monkeypatch):
+    """RF-010: el motivo de la roja sale del `metadata` de la fila persistida.
+
+    La acumulación de las dos amarillas se absorbe en la misma jugada (RF-001,
+    RF-002), así que la única fila creada es la de la expulsión y la auditoría
+    cuenta una (RF-012).
+    """
+
+    state = double_yellow_state()
+    session = build_session(state)
+    await close_without_side_effects(monkeypatch, session, build_report(state))
+
+    inserted = session.parameters("INSERT INTO player_suspensions")
+    assert [params["reason"] for params in inserted] == ["double_yellow_red"]
+    assert (
+        inserted[0]["matches_suspended"]
+        == rules_config()["discipline"]["direct_red_suspension_matches"]
+    )
+    audit = session.parameters("INSERT INTO administrative_audit_logs")[0]
+    assert json.loads(audit["payload"])["suspensions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_red_with_a_recorded_sanction_is_not_inserted_again(monkeypatch):
+    """RF-005: la unicidad es por evento de roja y no por motivo (R-3).
+
+    El doble ya devuelve la roja del acta como registrada: no se inserta nada y
+    la lectura acotada se hace una sola vez.
+    """
+
+    state = double_yellow_state()
+    state.session["recorded_red_suspensions"] = {persisted_event_id(2)}
+    session = build_session(state)
+    await close_without_side_effects(monkeypatch, session, build_report(state))
+
+    assert session.parameters("INSERT INTO player_suspensions") == []
+    reads = session.parameters("source_event_id = ANY")
+    assert len(reads) == 1
+    assert reads[0]["red_event_ids"] == [str(persisted_event_id(2))]
+
+
+@pytest.mark.asyncio
+async def test_the_recorded_red_read_is_skipped_without_red_cards(monkeypatch):
+    """RNF-010: sin rojas en el acta la lectura acotada no se ejecuta."""
+
+    state = valid_goal_state()
+    session = build_session(state)
+    await close_without_side_effects(monkeypatch, session, build_report(state))
+
+    assert session.parameters("source_event_id = ANY") == []
 
 
 @pytest.mark.asyncio
@@ -1658,11 +1792,17 @@ async def test_a_walkover_with_an_active_segment_closes_it_without_interrupting(
 
 @pytest.mark.asyncio
 async def test_the_walkover_branch_never_calls_the_forbidden_helpers(monkeypatch):
-    """D-6 y RNF-008: la rama no lee plantilla, contadores ni sanciones.
+    """D-6, RNF-008 y RF-013: la rama no lee plantilla, contadores ni sanciones.
 
     Se sustituyen los ayudantes —no se inspecciona el SQL— para que la prueba
     falle si alguien mueve una llamada por delante de la rama, aunque su
     sentencia cambie de texto.
+
+    ``_load_recorded_red_suspensions`` entra en la lista por **RF-013** (spec
+    018): el walkover sigue **sin generar ni servir** sanciones, así que la
+    lectura acotada a las rojas del acta —que la spec 018 añade al cierre
+    ordinario— tampoco puede ejecutarse en esta rama. Es una aserción que
+    **endurece** la garantía, no un cambio de expectativa.
     """
 
     forbidden = (
@@ -1676,6 +1816,7 @@ async def test_the_walkover_branch_never_calls_the_forbidden_helpers(monkeypatch
         "_validate_double_yellow",
         "_validate_suspensions",
         "_load_discipline_history",
+        "_load_recorded_red_suspensions",
         "_serve_suspensions",
         "_insert_suspensions",
         "_rewrite_segment_team_state",
