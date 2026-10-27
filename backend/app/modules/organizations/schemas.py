@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OrganizationSummaryResponse(BaseModel):
@@ -12,6 +12,8 @@ class OrganizationSummaryResponse(BaseModel):
 
 class OrganizationCreateRequest(BaseModel):
     """Alta explícita desde una sesión sin organización (RF-23, RF-24)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=2, max_length=100)
     slug: str = Field(min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")

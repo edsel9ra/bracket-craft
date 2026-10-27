@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.rules_engine.defaults import (
     DEFAULT_GAME_FORMAT,
@@ -17,6 +17,11 @@ from app.modules.rules_engine.engine import (
 
 
 class TournamentRulesConfig(BaseModel):
+    # Spec 019 (plan §6 D-2): solo se cierra el primer nivel; los bloques
+    # internos conservan su validador propio y ``transfers`` se sigue aceptando
+    # en la entrada.
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: str = "3.3.0"
     engine_version: str = "2026.1"
     game_format: str = DEFAULT_GAME_FORMAT
@@ -48,6 +53,8 @@ class TournamentRulesConfig(BaseModel):
 
 
 class CreateTournamentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=2, max_length=100)
     season: str = Field(min_length=1, max_length=20)
     start_date: date
@@ -57,4 +64,6 @@ class CreateTournamentRequest(BaseModel):
 
 
 class UpdateRulesConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     rules_config: TournamentRulesConfig

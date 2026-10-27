@@ -74,6 +74,7 @@ import { safeInternalRedirect } from '~/utils/navigation';
 import { positionLabel } from '~/utils/positions';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
+import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import {
   DEFAULT_MATCH_LIMITS,
   SUBSTITUTION_EVENT_TYPE,
@@ -1127,7 +1128,7 @@ async function interruptSegment() {
 async function assignOfficial() {
   if (!officialForm.organization_user_id) return;
   await runAction('official', async () => {
-    await request(`/matches/${matchId}/officials`, { method: 'POST', body: { ...officialForm } });
+    await request(`/matches/${matchId}/officials`, { method: 'POST', body: buildOfficialAssignmentBody(officialForm) });
     officialForm.organization_user_id = '';
     await refreshOperation();
   });

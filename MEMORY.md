@@ -2,40 +2,35 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Specs 015, 016, 017 y 018 cerradas e `implementadas`** (2026-10-25), con reviewer `APROBADO`; **las dos entregas están en `main`**: la tanda de operación de partidos (squash `48b6b98`, PR #12) y la 018 (squash `3bd1655`, PR #14), ambas con los cinco jobs de CI en verde, E2E incluido.
-- Esquema en **027**; `engine_version` sigue en **2026.1**; constitución **1.4.0** y `main` con cinco *required checks*. Última cerrada antes de la tanda: **014** (escudos).
-- **Pendiente de despliegue: migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback. La **027** (016) relaja `chk_administrative_resolution_reason`; la obligatoriedad del motivo es de la API.
+- **Spec 019 cerrada e `implementada` (2026-10-26)**, reviewer `APROBADO`; **pendiente de PR/merge a `main`** (commit local en la rama `019-endurecimiento-de-esquemas`, sin push). Las 015–018 están en `main` (squash `48b6b98`, PR #12; 018: `3bd1655`, PR #14), con los cinco jobs de CI en verde, E2E incluido.
+- Esquema en **027** (la 019 no trae migración); `engine_version` sigue en **2026.1**; constitución **1.4.0** y `main` con cinco *required checks*.
+- **Pendiente de despliegue: migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback. La 027 relaja `chk_administrative_resolution_reason`; la obligatoriedad del motivo es de la API.
 
-## Spec 018 — sanción única por doble amarilla (implementada y en main)
-- **Una jugada = una sanción:** se absorben **todos** los umbrales que crucen las amarillas del acta que compone la expulsión (la primera o la última, y dos umbrales); no se absorbe nada de otra jugada ni de un acta anterior. La roja **directa** + umbral conserva **dos** (fuera de alcance).
-- **Duración:** la de la sanción **por expulsión** (`direct_red_suspension_matches` de la versión publicada), aplicada **una vez**. Ninguna amarilla se descuenta y el contador no se reinicia con la roja.
-- **Etiqueta y origen:** la sanción se deriva del **tipo de roja registrado también en el cierre que la registra** (el `RETURNING` devuelve `metadata`); **solo los eventos del acta que se cierra** originan sanciones (el historial solo cuenta y empareja) y la unicidad es **por evento de roja con cualquier motivo**, con una lectura acotada que no se ejecuta sin rojas. El recuento auditado es `len(created)` (`RETURNING id`).
-- **Sin migración** (esquema **027**), **sin superficie nueva**, y excepción acotada a §3.2 declarada y aprobada (regla fija en el motor).
-- **Evidencia (T8, 2026-10-25):** sin base **1919 passed / 432 skipped**; con base, conjunto de siete archivos **348 passed** (195.0 s) —la suite completa con base es la de T5: **2350 passed**, 8m30s—; frontend **628 (627 pass / 1 skipped preexistente)**; `typecheck`/`build` **0** (build 34.9 s, `web` reiniciado); E2E **VERDE (0)**, `operation-flow` 31/31 hitos. Sin tocar `infra/postgres/` ni `frontend/`.
-- **Validación 2026-10-25: @reviewer APROBADO** (15/15 RF y 17/17 criterios; diferencial viejo-vs-nuevo sobre 6 144 casos sin sanciones nuevas fuera de RNF-004). Aplicados los tres puntos opcionales útiles: prueba de aislamiento de la lectura de rojas registradas (13 casos con base), cita del plan corregida y evidencia de sensibilidad de T1 registrada; quedan sin caso propio los casos límite 22 y 24; en `main` desde el 2026-10-26.
+## Spec 019 — endurecimiento de esquemas (implementada)
+- **Regla general `extra="forbid"`** en las **33 operaciones JSON / 34 modelos** (29 de nivel superior + 5 anidados): clave no declarada → **422** estructural (`detail` en lista, sin `code`, sin eco del valor). Corte **limpio**, sin ventana de gracia ni excepciones por ruta: el cliente que enviaba basura falla pronto en vez de ocultar el error hasta otro cambio.
+- **Fuera:** las **3 multipart** (`rosters/bulk`, foto, escudo), consulta, cabeceras y rutas sin cuerpo. **Se conservan abiertos** los 3 mapas abiertos de `rules_config` (desempate, overrides por fase, bloque deprecado) y `transfers` (aceptado y promovido); el primer nivel de `rules_config` sí se cierra.
+- **Precedencia por capas:** el 422 del cuerpo **gana** al 403 de permiso de ruta y al 404 de recurso ajeno (viven en el handler); middleware (400/413, origen/CSRF) y dependencias (401, 400 de organización, 403 de membresía/plataforma) conservan su código. La clave va en `loc` en los objetos que cierra el modelo; en bloques anidados de `rules_config` el camino va solo en el mensaje.
+- **Cliente:** cuatro constructores puros en `frontend/app/utils/requestBodies.ts` (solo campos declarados; el estado de UI no viaja). Sin migración, endpoint ni respuesta tocados.
+- **Evidencia (2026-10-26):** backend **2062 passed / 432 skipped** (repo en `/repo`); 019 + compat + catálogo **299 passed**; frontend **644 (643 pass / 1 skip)**. RNF-006 «parcial» solo porque el reviewer no ejecutó base/E2E/typecheck/build por su cuenta (evidencia en `tasks.md`).
+- **Lecciones:** un criterio de «barrido» necesita **garantía automatizada por bloque** (la laguna I-3 se cerró); una prueba con la dependencia **sustituida** no prueba el orden real (se añadió el caso con la dependencia real de membresía); `__pycache__` con rutas `/repo` contamina el contenedor `api` (usa `PYTHONDONTWRITEBYTECODE=1`).
 
-## Spec 017 — cierre de actas y segmentos (10/10 tareas)
-- **Orden único de validación de 14 pasos**: gana el defecto del paso anterior y un fallo no escribe nada; los **422 estructurales** prevalecen y no llevan `code`.
-- **8 → 9** (el error del asistente se retiene hasta terminar el paso 8), **422 → 409** en las cuatro incoherencias numéricas del marcador y `DOUBLE_YELLOW_INCONSISTENT` como único `code` nuevo.
-- **Resultado calculado antes de escribir** (paso 13) con los eventos de la petición; **`next_segment`** = `{segment_number, minute_start, derived}` y el cliente ya no calcula el número ni pisa el minuto editado. El **walkover** de esta spec se delegó íntegro a la 016.
+## Spec 018 — sanción única por doble amarilla (en main)
+- **Una jugada = una sanción:** se absorben **todos** los umbrales de amarillas del acta que componen la doble amarilla; la roja **directa** + umbral conserva **dos**. Duración = la de expulsión (`direct_red_suspension_matches`), una vez; ninguna amarilla se descuenta y el contador no se reinicia.
+- **Origen:** solo los eventos del acta que se cierra originan sanciones (el historial solo cuenta y empareja); unicidad **por evento de roja con cualquier motivo**; el tipo de roja se lee de `metadata` también en el cierre que la registra; el recuento auditado es `len(created)`. Sin migración; excepción acotada a §3.2 aprobada.
+- **Evidencia:** sin base 1919/432; con base 348; frontend 628; E2E VERDE. Reviewer APROBADO (15/15 RF); sin caso propio los casos límite 22 y 24.
 
-## Spec 016 — walkover (10/10 tareas)
-- **Rama propia tras el paso 5** de la 017: omite los pasos 6–12 y no carga plantilla ni bloquea jugadores; autorización, **la misma conjunción** del cierre.
-- **Motivo de catálogo** obligatorio en `resolution_reason`; **marcador derivado** de `walkover_score` (default 3-0, override por fase) publicado en `limits.walkover_score`; los tres **409 con `code`** y `winner <= loser` en **422** al guardar o publicar.
-- **Efecto:** tabla (los goles del W.O. **cuentan**), avance de llave, sin eventos ni sanciones, mismo outbox de tres eventos. La prueba de paridad del catálogo se **omite** en el contenedor `web`.
-- **Evidencia** (en los `tasks.md`): backend **1779/376** y **2155**; **1899/419** y **63**; frontend **610** y **627 + 1 skip**; `typecheck`/`build` 0; **E2E VERDE (0)**.
+## Specs 015–017 (resumen)
+- **017:** orden único de **14 pasos** (gana el defecto del paso anterior; los 422 estructurales prevalecen, sin `code`); 4 incoherencias numéricas **422 → 409**; `DOUBLE_YELLOW_INCONSISTENT`; resultado calculado antes de escribir; `next_segment` aditivo.
+- **016:** walkover como rama propia tras el paso 5 (omite 6–12); motivo de catálogo en `resolution_reason` (027); marcador derivado de `walkover_score` y publicado en `limits.walkover_score`; sin eventos ni sanciones.
+- **015:** catálogo cerrado de siete eventos y asistencia opcional del gol (026); la 019 generaliza su `extra="forbid"` a toda la API.
 
-## Defectos registrados
-- **Doble sanción (resuelto en la 018):** amarillas acumuladas + roja por doble amarilla sumaban **2 partidos** por la misma jugada; ahora es **uno** con la duración de expulsión.
-- **Etiqueta de sanción (resuelto en la 018):** el `INSERT` de eventos ya devuelve `metadata`, así que una roja recién registrada se etiqueta bien en su primer cierre (antes `direct_red_card`).
-- **Minuto de interrupción (resuelto, 2026-10-26):** ya no se pisa en cada refresco —utilidad pura `applyInterruptionMinute` con la causa del refresco y marcador `interruptionForm.minuteDirty` que solo fija el `@input` y se limpia al interrumpir— y el cuerpo del `POST /segments` se construye campo a campo, así que **`minuteDirty` no viaja** al servidor. Evidencia: frontend **636 (635 pass / 1 skipped)**, `typecheck`/`build` **0**, E2E **VERDE (0)** con `operation-flow` 31/31 hitos.
+## Defectos resueltos
+- Doble sanción y etiqueta de sanción (018); minuto de interrupción pisado en cada refresco (`applyInterruptionMinute`; el cuerpo del `POST /segments` se construye campo a campo).
 
-## Lecciones del proceso (operación de partidos)
-- T5 de la 015 citó un archivo de pruebas que no existía y se dio por completa: **los «hecho cuando» que citan archivos deben crearlos**.
-- T9 de la 015 perdió el botón «Añadir evento» sin que las pruebas de utilidad lo notaran: **toda interacción crítica necesita una prueba que la ejercite** (hoy hay guardián).
-- La documentación derivó **tres veces** hacia afirmaciones falsas (spec, plan, tasks): corregir un hecho exige revisar **todas** sus copias.
-- El **E2E sí cubre el acta** (`operation-flow`, 31 hitos). No lo omitas por una premisa: una premisa falsa dejó pasar una regresión real.
-- El reviewer detectó que «gana el paso anterior» se cumplía solo en el papel; las matrices de precedencia valen lo que valen sus mutaciones.
+## Lecciones del proceso
+- Los «hecho cuando» que citan archivos deben crearlos; toda interacción crítica necesita una prueba que la ejercite; las matrices de precedencia valen lo que valen sus mutaciones.
+- La documentación derivó **cuatro veces** hacia afirmaciones falsas (la última: la «ubicación de la clave» y una cita de ruta/RF): corregir un hecho exige revisar **todas** sus copias.
+- El **E2E sí cubre el acta** (`operation-flow`, 31 hitos): no lo omitas por una premisa.
 
 ## Entorno local
 - Backend `python:3.14-slim`; frontend en `web` (Node 24/pnpm 12.12.1); E2E en Playwright. El host no tiene `pytest` ni `node` con TS: usa los contenedores.

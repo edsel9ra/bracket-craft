@@ -68,6 +68,8 @@ WALKOVER_REASONS: tuple[str, ...] = (
 
 
 class OfficialAssignmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     organization_user_id: UUID
     official_role: OfficialRole
 
@@ -76,7 +78,10 @@ class MatchEventPayload(BaseModel):
     # Catálogo cerrado en la raíz (RF-002, D-4): una clave de primer nivel que
     # el tipo no declara es 422 en vez de ignorarse. El evento viaja completo a
     # la auditoría del cierre, así que una clave ignorada sería un canal de
-    # texto libre hacia el acta.
+    # texto libre hacia el acta. Con la spec 019 (RNF-007) la bandera `extra`
+    # con valor `forbid` ya no es una excepción justificada por el catálogo de
+    # la 015, sino la regla general de toda petición JSON; este modelo la
+    # conservaba antes de ella.
     model_config = ConfigDict(extra="forbid")
 
     # El identificador de cliente es un UUID (RF-015): si no tiene esa forma es
@@ -152,6 +157,8 @@ class MatchEventPayload(BaseModel):
 
 
 class CloseMatchReportDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     resolution_type: Literal["regular", "extra_time", "penalties", "walkover", "administrative"]
     # D-9: la pareja reglamentaria solo deja de ser obligatoria en `walkover`.
     # Con `0` como «no informado» un walkover 0-3 legítimo sería indistinguible
@@ -253,6 +260,8 @@ class MatchCloseResponse(BaseModel):
 
 
 class CreateMatchSegmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     segment_number: int = Field(ge=1)
     minute_start: int = Field(ge=0)
     # Opcional y aditivo (SG-1): con valor, el máximo es el de esa resolución;
@@ -261,6 +270,8 @@ class CreateMatchSegmentRequest(BaseModel):
 
 
 class InterruptMatchSegmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     reason: SegmentInterruptionReason
     minute: int = Field(ge=0)
     notes: str | None = Field(default=None, max_length=1000)
@@ -269,6 +280,8 @@ class InterruptMatchSegmentRequest(BaseModel):
 
 
 class MatchLineupEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     roster_id: UUID
     role: Literal["starter", "substitute"]
     position_slot: str | None = Field(default=None, max_length=20, pattern=r"^[A-Z0-9_]+$")
@@ -285,11 +298,15 @@ class MatchLineupEntry(BaseModel):
 
 
 class MatchTeamLineupConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     team_id: UUID
     formation_code: FormationCode
 
 
 class SaveMatchLineupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     segment_id: UUID
     entries: list[MatchLineupEntry] = Field(max_length=100)
     team_lineups: list[MatchTeamLineupConfig] = Field(default_factory=list, max_length=2)
@@ -306,6 +323,8 @@ class SaveMatchLineupRequest(BaseModel):
 
 
 class PublishMatchLineupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     segment_id: UUID
     team_id: UUID
     is_public: bool

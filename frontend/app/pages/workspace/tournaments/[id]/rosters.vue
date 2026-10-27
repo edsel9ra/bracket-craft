@@ -2,6 +2,7 @@
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { rosterReturnHref } from '~/utils/matchNavigation';
 import { safeInternalRedirect } from '~/utils/navigation';
+import { buildRosterPlayerBody } from '~/utils/requestBodies';
 import {
   latestPublishedVersion,
   rosterLockMatchday,
@@ -281,7 +282,7 @@ async function createPlayer() {
   try {
     await request(`/tournaments/${tournamentId}/rosters`, {
       method: 'POST',
-      body: { team_id: selectedTeamId.value, ...playerForm },
+      body: buildRosterPlayerBody({ team_id: selectedTeamId.value, ...playerForm }),
     });
     playerForm.first_name = '';
     playerForm.last_name = '';
