@@ -2,11 +2,11 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado
-- **Spec 019 cerrada e `implementada` (2026-10-26)**, reviewer `APROBADO`; **pendiente de PR/merge a `main`** (commit local en la rama `019-endurecimiento-de-esquemas`, sin push). Las 015–018 están en `main` (squash `48b6b98`, PR #12; 018: `3bd1655`, PR #14), con los cinco jobs de CI en verde, E2E incluido.
+- **Spec 019 cerrada e `implementada` (2026-10-26)**, reviewer `APROBADO`; **en `main`** (squash `06c3cec`, PR #17), con los cinco jobs de CI en verde, E2E incluido. Las 015–018 también están en `main` (squash `48b6b98`, PR #12; 018: `3bd1655`, PR #14), con la misma CI en verde.
 - Esquema en **027** (la 019 no trae migración); `engine_version` sigue en **2026.1**; constitución **1.4.0** y `main` con cinco *required checks*.
 - **Pendiente de despliegue: migrar 026 y 027 antes de la imagen** (el código escribe `assist_player_id` y el motivo del W.O.); ninguna tiene rollback. La 027 relaja `chk_administrative_resolution_reason`; la obligatoriedad del motivo es de la API.
 
-## Spec 019 — endurecimiento de esquemas (implementada)
+## Spec 019 — endurecimiento de esquemas (implementada y en main)
 - **Regla general `extra="forbid"`** en las **33 operaciones JSON / 34 modelos** (29 de nivel superior + 5 anidados): clave no declarada → **422** estructural (`detail` en lista, sin `code`, sin eco del valor). Corte **limpio**, sin ventana de gracia ni excepciones por ruta: el cliente que enviaba basura falla pronto en vez de ocultar el error hasta otro cambio.
 - **Fuera:** las **3 multipart** (`rosters/bulk`, foto, escudo), consulta, cabeceras y rutas sin cuerpo. **Se conservan abiertos** los 3 mapas abiertos de `rules_config` (desempate, overrides por fase, bloque deprecado) y `transfers` (aceptado y promovido); el primer nivel de `rules_config` sí se cierra.
 - **Precedencia por capas:** el 422 del cuerpo **gana** al 403 de permiso de ruta y al 404 de recurso ajeno (viven en el handler); middleware (400/413, origen/CSRF) y dependencias (401, 400 de organización, 403 de membresía/plataforma) conservan su código. La clave va en `loc` en los objetos que cierra el modelo; en bloques anidados de `rules_config` el camino va solo en el mensaje.
