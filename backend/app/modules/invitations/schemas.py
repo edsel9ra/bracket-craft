@@ -2,13 +2,15 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 InvitationRole = Literal["administrator", "operator", "referee", "viewer"]
 
 
 class CreateInvitationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     role_code: InvitationRole
 
@@ -41,6 +43,8 @@ class InvitationPreviewResponse(BaseModel):
 
 
 class AcceptInvitationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     password: str | None = Field(default=None, min_length=8, max_length=128)
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
 
@@ -72,8 +76,12 @@ class MemberResponse(BaseModel):
 
 
 class UpdateMemberRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role_code: InvitationRole
 
 
 class UpdateMemberActiveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     is_active: bool

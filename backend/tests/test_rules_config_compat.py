@@ -615,3 +615,282 @@ async def test_valid_configuration_is_accepted_at_the_api_boundary():
     config["max_players_per_team"] = 16
 
     assert await _patch_rules_status(config) == 200
+
+
+# --- Spec 019 (T2): RF-004 — primer nivel cerrado, bloque deprecado y mapa abierto ---
+
+
+async def test_undeclared_top_level_key_in_rules_config_is_422_at_the_api_boundary():
+    """RF-003/RF-004: an undeclared first-level key is 422, never dropped silently.
+
+    Before spec 019 the request model discarded it (200 with the key gone). The
+    422 comes from the Pydantic body model (``TournamentRulesConfig`` with
+    ``extra="forbid"``, nested in ``UpdateRulesConfigRequest``), the very layer
+    FastAPI uses to validate the body before the handler runs; the engine
+    (``RULES_SCHEMA``/``validate_rules_config``) is not in the request path.
+    """
+
+    config = _config_330()
+    config["zzz_undeclared_key"] = 1
+
+    assert await _patch_rules_status(config) == 422
+
+
+def test_undeclared_top_level_key_is_extra_forbidden_in_the_request_model():
+    """RF-001: even an explicit ``null`` is a value, not an absence."""
+
+    config = _config_330()
+    config["zzz_undeclared_key"] = None
+
+    with pytest.raises(ValidationError) as excinfo:
+        TournamentRulesConfig.model_validate(config)
+
+    extra_errors = [
+        error
+        for error in excinfo.value.errors()
+        if error["type"] == "extra_forbidden"
+        and list(error["loc"]) == ["zzz_undeclared_key"]
+    ]
+    assert extra_errors, [error["type"] for error in excinfo.value.errors()]
+
+
+async def test_deprecated_transfers_block_is_still_accepted_and_promoted():
+    """RF-004: the deprecated block is still accepted, open inside and promoted."""
+
+    config = _config_320()
+    config["transfers"]["roster_lock_matchday"] = 4
+    config["transfers"]["free_operator_note"] = "clave libre del bloque deprecado"
+
+    request = TournamentRulesConfig.model_validate(config)
+
+    assert request.roster_lock_matchday == 4
+    assert request.transfers is None
+    assert "transfers" not in request.model_dump(mode="json")
+
+    assert await _patch_rules_status(config) == 200
+
+
+def test_stage_overrides_index_is_still_an_open_map():
+    """RF-004: arbitrary per-stage index keys are tolerated by model and engine."""
+
+    config = _config_330()
+    index_keys = {str(uuid4()), "custom-operator-index"}
+    config["stage_overrides"] = {
+        key: {"extra_time_enabled": False} for key in index_keys
+    }
+
+    validate_rules_config(config)
+
+    request = TournamentRulesConfig.model_validate(config)
+    assert set(request.stage_overrides) == index_keys
+
+
+def test_key_inside_a_stage_override_is_still_rejected():
+    """RF-004 boundary: the open map is the index, not the override contents."""
+
+    config = _config_330()
+    config["stage_overrides"] = {str(uuid4()): {"zzz_internal_key": 1}}
+
+    with pytest.raises(ValidationError):
+        TournamentRulesConfig.model_validate(config)
+
+    with pytest.raises(ValueError, match="stage_overrides"):
+        validate_rules_config(config)
+
+
+# --- Spec 019 (cierre de I-3): RNF-006 — barrido de comportamiento por bloque ---
+#
+# RNF-006: por cada bloque alcanzable de ``rules_config`` se construye un cuerpo con
+# una clave extra y se exige el rechazo **con el validador propio** de la
+# configuración, excluyendo únicamente los tres mapas abiertos de RF-004.
+#
+# Qué capa cierra cada bloque (medido, no supuesto): ``TournamentRulesConfig`` declara
+# los bloques como ``dict[str, Any]``/``list[dict[str, Any]]``, así que la bandera
+# ``extra="forbid"`` solo cubre el primer nivel; quien cierra los bloques en ejecución
+# es el motor (``RULES_SCHEMA`` con ``additionalProperties: false``, invocado por
+# ``validate_rules_config``), y el modelo de petición los rechaza porque su
+# ``model_validator(mode="after")`` llama a ``normalize_rules_config`` →
+# ``validate_rules_config``. Por eso cada caso se comprueba en los tres pisos:
+# motor, modelo de petición y frontera HTTP (422 del caso límite 26).
+
+EXTRA_BLOCK_KEY = "zzz_undeclared_block_key"
+FREE_OPEN_KEY = "zzz_free_open_key"
+
+
+def _closed_block_paths(schema: dict, prefix: str = "") -> set[str]:
+    """Paths of every object that ``RULES_SCHEMA`` closes with ``additionalProperties: false``.
+
+    ``<root>`` is the first level; ``[]`` marks an array item and ``{}`` the *value*
+    of a map whose index stays open.
+    """
+
+    paths: set[str] = set()
+    additional = schema.get("additionalProperties")
+    if additional is False:
+        paths.add(prefix or "<root>")
+    for name, subschema in (schema.get("properties") or {}).items():
+        paths |= _closed_block_paths(subschema, f"{prefix}.{name}" if prefix else name)
+    items = schema.get("items")
+    if isinstance(items, dict):
+        paths |= _closed_block_paths(items, f"{prefix}[]")
+    if isinstance(additional, dict):
+        paths |= _closed_block_paths(additional, f"{prefix}{{}}")
+    return paths
+
+
+def _closed_block_container(config: dict, path: str) -> dict:
+    """Return the live mapping of the closed block ``path`` inside ``config``."""
+
+    if path == "<root>":
+        return config
+    if path == "ranking_pipeline[]":
+        return config["ranking_pipeline"][0]
+    if path.startswith("stage_overrides{}"):
+        overrides = config.setdefault("stage_overrides", {})
+        if not overrides:
+            overrides[str(uuid4())] = {"extra_time_enabled": False}
+        value = next(iter(overrides.values()))
+        if path == "stage_overrides{}.walkover_score":
+            return value.setdefault("walkover_score", {"winner": 3, "loser": 0})
+        return value
+    node = config
+    for token in path.split("."):
+        node = node[token]
+    return node
+
+
+def _block_path_segments(path: str) -> list[str]:
+    """Meaningful tokens of a derived path, to be found in the engine message."""
+
+    return [
+        segment
+        for segment in path.replace("{}", "").replace("[]", "").split(".")
+        if segment and segment != "<root>"
+    ]
+
+
+# Literal list of the closed blocks with a committed rejection case in this module.
+# ``test_every_closed_block_of_rules_schema_has_a_rejection_case`` compares it with the
+# paths derived from ``RULES_SCHEMA``, so a new closed block fails with an explicit
+# message instead of sneaking in without a case (RNF-006: "falla si un cuerpo o un
+# bloque nuevo no aplica la regla").
+CLOSED_BLOCK_PATHS = frozenset({
+    "<root>",
+    "points_system",
+    "ranking_pipeline[]",
+    "substitutions",
+    "discipline",
+    "discipline.fair_play_penalties",
+    "stage_defaults",
+    "stage_defaults.walkover_score",
+    "stage_overrides{}",
+    "stage_overrides{}.walkover_score",
+})
+
+
+def test_every_closed_block_of_rules_schema_has_a_rejection_case():
+    """RNF-006: no puede nacer un bloque cerrado sin su caso de rechazo."""
+
+    derived = _closed_block_paths(RULES_SCHEMA)
+    missing = sorted(derived - set(CLOSED_BLOCK_PATHS))
+    stale = sorted(set(CLOSED_BLOCK_PATHS) - derived)
+    assert not missing and not stale, (
+        "RNF-006: los bloques cerrados de RULES_SCHEMA y los probados en este módulo "
+        f"divergen. Bloques sin caso de rechazo: {missing or 'ninguno'}; "
+        f"casos sin bloque en el esquema: {stale or 'ninguno'}."
+    )
+
+
+@pytest.mark.parametrize("block", sorted(CLOSED_BLOCK_PATHS))
+async def test_extra_key_in_a_closed_block_is_rejected_by_its_own_validator(block: str):
+    """RNF-006/RF-002: one extra key per closed block, rejected by its own validator."""
+
+    config = deepcopy(DEFAULT_RULES_CONFIG)
+    _closed_block_container(config, block)[EXTRA_BLOCK_KEY] = 1
+
+    # 1) The own validator: RULES_SCHEMA closes the block and names the path.
+    with pytest.raises(ValueError) as engine_error:
+        validate_rules_config(config)
+    message = str(engine_error.value)
+    assert EXTRA_BLOCK_KEY in message
+    for segment in _block_path_segments(block):
+        assert segment in message, f"{block}: la ruta {segment!r} no aparece en {message!r}"
+
+    # 2) The request model rejects too, because it delegates to that validator
+    #    (the blocks stay ``dict[str, Any]``; the flag only closes the first level).
+    with pytest.raises(ValidationError) as model_error:
+        TournamentRulesConfig.model_validate(config)
+    assert EXTRA_BLOCK_KEY in str(model_error.value)
+
+    # 3) HTTP boundary: 422 (spec 019 case 26), written nowhere.
+    assert await _patch_rules_status(config) == 422
+
+
+# --- RF-004: los tres mapas abiertos, la única excepción del barrido ---
+
+
+def _free_key_in_tiebreak_params(config: dict) -> None:
+    """Open map 1: ``params`` of a ranking pipeline step accepts free keys."""
+
+    config["ranking_pipeline"][0]["params"][FREE_OPEN_KEY] = "valor libre"
+
+
+def _assert_tiebreak_params_survive(request: TournamentRulesConfig) -> None:
+    dumped = request.model_dump()
+    assert dumped["ranking_pipeline"][0]["params"][FREE_OPEN_KEY] == "valor libre"
+
+
+def _free_key_in_override_index(config: dict) -> None:
+    """Open map 2: the ``stage_overrides`` index (the value stays closed)."""
+
+    config["stage_overrides"] = {FREE_OPEN_KEY: {"extra_time_enabled": False}}
+
+
+def _assert_override_index_survives(request: TournamentRulesConfig) -> None:
+    assert FREE_OPEN_KEY in request.stage_overrides
+
+
+def _free_key_in_deprecated_transfers(config: dict) -> None:
+    """Open map 3: the content of the deprecated ``transfers`` block."""
+
+    config["transfers"] = {
+        FREE_OPEN_KEY: "valor libre del bloque deprecado",
+        "roster_lock_matchday": None,
+    }
+
+
+def _assert_transfers_accepted_not_written_back(request: TournamentRulesConfig) -> None:
+    # Accepted on input with free keys, never written back (RF-003).
+    assert request.transfers is None
+    assert FREE_OPEN_KEY not in request.model_dump()
+
+
+OPEN_MAP_CASES = (
+    ("ranking_pipeline[].params", _free_key_in_tiebreak_params, _assert_tiebreak_params_survive),
+    ("stage_overrides index", _free_key_in_override_index, _assert_override_index_survives),
+    ("transfers content", _free_key_in_deprecated_transfers, _assert_transfers_accepted_not_written_back),
+)
+
+
+@pytest.mark.parametrize(
+    ("open_map", "inject_free_key", "verify_survives"),
+    OPEN_MAP_CASES,
+    ids=[case[0] for case in OPEN_MAP_CASES],
+)
+async def test_the_three_open_maps_of_rf004_accept_a_free_key(
+    open_map: str,
+    inject_free_key,
+    verify_survives,
+):
+    """RF-004/RNF-006: the sweep excludes exactly these three open maps."""
+
+    config = deepcopy(DEFAULT_RULES_CONFIG)
+    inject_free_key(config)
+
+    # The own validator does not close them.
+    validate_rules_config(config)
+
+    request = TournamentRulesConfig.model_validate(config)
+    verify_survives(request)
+
+    assert await _patch_rules_status(config) == 200

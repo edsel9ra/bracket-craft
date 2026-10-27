@@ -7,6 +7,7 @@ import {
   type ReloadTrigger,
 } from '~/utils/realtimeReload';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
+import { buildTournamentDraftBody } from '~/utils/requestBodies';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -109,7 +110,7 @@ async function createTournament() {
   try {
     await request('/tournaments', {
       method: 'POST',
-      body: createForm,
+      body: buildTournamentDraftBody(createForm),
     });
     createForm.name = '';
     showCreateForm.value = false;

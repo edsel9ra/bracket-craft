@@ -21,6 +21,7 @@ import {
   type AssignableRoleCode,
 } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
+import { buildInviteMemberBody } from '~/utils/requestBodies';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -150,7 +151,7 @@ async function inviteMember() {
   try {
     const invitation = await request<Invitation>('/organizations/invitations', {
       method: 'POST',
-      body: { ...inviteForm },
+      body: buildInviteMemberBody(inviteForm),
     });
     generatedLink.value = invitation.invite_url || null;
     inviteForm.email = '';

@@ -1,9 +1,11 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=100)
@@ -12,6 +14,8 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
 
@@ -25,6 +29,8 @@ class TokenResponse(BaseModel):
 
 class GoogleStartRequest(BaseModel):
     """Inicio del flujo: ``redirect`` inválido se normaliza a ``None``, no es 422."""
+
+    model_config = ConfigDict(extra="forbid")
 
     flow: Literal["login", "link"] = "login"
     redirect: str | None = None

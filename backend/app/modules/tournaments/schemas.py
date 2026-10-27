@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 StageType = Literal[
@@ -15,6 +15,8 @@ StageType = Literal[
 
 
 class CreateStageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version_id: UUID
     name: str = Field(min_length=2, max_length=50)
     stage_type: StageType
@@ -22,6 +24,8 @@ class CreateStageRequest(BaseModel):
 
 
 class CreateTournamentTeamRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=2, max_length=100)
     short_code: str = Field(min_length=2, max_length=10, pattern=r"^[A-Za-z0-9_-]+$")
     logo_url: str | None = Field(default=None, max_length=2048)
@@ -37,6 +41,8 @@ class CreateTournamentTeamRequest(BaseModel):
 
 
 class BulkTournamentTeamItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=2, max_length=100)
     short_code: str = Field(min_length=2, max_length=10, pattern=r"^[A-Za-z0-9_-]+$")
     logo_url: str | None = Field(default=None, max_length=2048)
@@ -50,12 +56,16 @@ class BulkTournamentTeamItem(BaseModel):
 
 
 class BulkTournamentTeamRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     teams: list[BulkTournamentTeamItem] = Field(min_length=1, max_length=200)
     stage_id: UUID | None = None
     group_id: UUID | None = None
 
 
 class CreateRosterPlayerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     team_id: UUID
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
@@ -108,6 +118,8 @@ class RosterPlayerListResponse(RosterPlayerResponse):
 
 
 class UpdatePhotoConsentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     photo_consent: bool
 
 
@@ -119,6 +131,8 @@ class UpdateRosterStatusRequest(BaseModel):
     current 422 of the request validation.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     is_active: bool
 
 
@@ -129,6 +143,8 @@ class BulkRosterPlayerResponse(BaseModel):
 
 
 class CreateMatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version_id: UUID
     stage_id: UUID
     group_id: UUID | None = None
@@ -146,6 +162,8 @@ class CreateMatchRequest(BaseModel):
 
 
 class GenerateSingleEliminationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version_id: UUID
     stage_id: UUID
     start_date: datetime
@@ -199,6 +217,8 @@ class VersionSummaryResponse(BaseModel):
 
 
 class CreateDraftVersionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     source_version_id: UUID | None = None
 
 
@@ -258,6 +278,8 @@ class StageTeamsResponse(BaseModel):
 
 
 class AssignStageTeamsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     team_ids: list[UUID] = Field(min_length=1, max_length=64)
 
     @field_validator("team_ids")

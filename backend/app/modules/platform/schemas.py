@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlatformAccessResponse(BaseModel):
@@ -49,15 +49,21 @@ class PlatformMembershipResponse(BaseModel):
 
 
 class CreateMembershipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     user_id: UUID
     role_code: str = Field(pattern=r"^(owner|administrator|operator|referee|viewer)$")
 
 
 class SetActiveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     is_active: bool
 
 
 class OutboxReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     limit: int = Field(default=100, ge=1, le=1000)
 
 

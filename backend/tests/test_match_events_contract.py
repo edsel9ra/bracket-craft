@@ -260,3 +260,27 @@ def test_the_close_request_requires_uuid_client_event_ids():
 
     locations = [error["loc"] for error in excinfo.value.errors()]
     assert ("events", 0, "client_event_id") in locations
+
+
+# ---------------------------------------------------------------------------
+# No regresión del catálogo con el acta endurecida (spec 019, T3)
+# ---------------------------------------------------------------------------
+
+
+def test_the_close_request_keeps_the_declared_catalog_fields_valid():
+    # Spec 019 (RNF-007): endurecer CloseMatchReportDTO con extra="forbid" no
+    # convierte en «claves extra» los campos declarados del catálogo: la
+    # asistencia del gol y el metadata.red_card_type de la roja siguen siendo
+    # válidos dentro del cuerpo del cierre.
+    dto = CloseMatchReportDTO(
+        resolution_type="regular",
+        home_score_regular=2,
+        away_score_regular=1,
+        events=[
+            payload("goal", assist_player_id=ASSIST),
+            payload("red_card", metadata={"red_card_type": "double_yellow_red"}),
+        ],
+    )
+
+    assert dto.events[0].assist_player_id == ASSIST
+    assert dto.events[1].metadata == {"red_card_type": "double_yellow_red"}
