@@ -19,7 +19,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id, hash_password
 from app.main import api
 from app.modules.identity import router as identity_router
-from app.modules.organizations.ordering import ordered_organizations
+from app.modules.organizations.ordering import ordered_organizations, organization_sort_key
 
 
 ORG_ALFA_LOW = UUID("00000000-0000-0000-0000-000000000001")
@@ -130,6 +130,13 @@ def test_order_is_name_then_identifier_independent_of_storage_order():
 
     assert ids(forward) == EXPECTED_IDS
     assert ids(backward) == EXPECTED_IDS
+
+
+def test_organization_sort_key_name_then_identifier():
+    row_a = {"id": ORG_ALFA_LOW, "name": "Alfa"}
+    row_b = {"id": ORG_BETA, "name": "Beta"}
+    assert organization_sort_key(row_a) < organization_sort_key(row_b)
+    assert organization_sort_key(row_a) == ("Alfa", str(ORG_ALFA_LOW))
 
 
 def test_order_ties_break_by_identifier_not_by_insertion():

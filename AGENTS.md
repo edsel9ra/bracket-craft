@@ -8,17 +8,18 @@ Ante cualquier duda, consulta en este orden:
 
 1. `docs/constitution.md`: principios innegociables, reglas de implementación y criterios obligatorios. Tiene precedencia sobre cualquier otro documento.
 2. `README.md`: alcance del producto, flujo local, datos demo, seguridad y modelo de acceso público/privado.
-3. `docs/contrato-reglas.md`: contrato interno de reglas (`engine_version` 2026.1): códigos `GF1`/`GF2` y catálogo de formaciones. No es configurable.
-4. `specs/NNN-nombre/` (`spec.md`, `plan.md`, `tasks.md`): requisitos, diseño y tareas de cada funcionalidad desarrollada con SDD.
-5. `MEMORY.md`: estado y decisiones del trabajo SDD en curso.
-6. `docker-compose.yml` y `docker-compose.production.yml`: servicios, puertos, variables y diferencias entre desarrollo y producción.
-7. `.env.example`: variables de entorno y defaults **solo de desarrollo**.
-8. `infra/postgres/migrations/`: fuente de verdad del esquema de base de datos (migraciones numeradas).
-9. `backend/app/main.py`: registro de routers y punto de entrada de la API.
-10. `backend/app/modules/`: límites de cada funcionalidad del backend.
-11. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
-12. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (cinco jobs con permisos `contents: read`: `backend`, `frontend`, `infrastructure` y `security` en cada `push` y `pull_request`, y `e2e` en cada `pull_request` y solo en `push` a `main`).
-13. Documentación interactiva de la API en `http://localhost:8000/docs`.
+3. `docs/manual-usuario.md`: manual de usuario del producto (acceso y organización, creación de torneos, reglas, fases, equipos y plantillas, calendario, operación de partido y actas, consulta pública, verificación). Coherencia documental con README y AGENTS (RNF-006).
+4. `docs/contrato-reglas.md`: contrato interno de reglas (`engine_version` 2026.1): códigos `GF1`/`GF2` y catálogo de formaciones. No es configurable.
+5. `specs/NNN-nombre/` (`spec.md`, `plan.md`, `tasks.md`): requisitos, diseño y tareas de cada funcionalidad desarrollada con SDD.
+6. `MEMORY.md`: estado y decisiones del trabajo SDD en curso.
+7. `docker-compose.yml` y `docker-compose.production.yml`: servicios, puertos, variables y diferencias entre desarrollo y producción.
+8. `.env.example`: variables de entorno y defaults **solo de desarrollo**.
+9. `infra/postgres/migrations/`: fuente de verdad del esquema de base de datos (migraciones numeradas).
+10. `backend/app/main.py`: registro de routers y punto de entrada de la API.
+11. `backend/app/modules/`: límites de cada funcionalidad del backend.
+12. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
+13. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (cinco jobs con permisos `contents: read`: `backend`, `frontend`, `infrastructure` y `security` en cada `push` y `pull_request`, y `e2e` en cada `pull_request` y solo en `push` a `main`).
+14. Documentación interactiva de la API en `http://localhost:8000/docs`.
 
 Si este archivo contradice a la constitución, gana la constitución. Si contradice al código o a la CI, gana el código/CI. Actualiza este archivo en el mismo cambio.
 
