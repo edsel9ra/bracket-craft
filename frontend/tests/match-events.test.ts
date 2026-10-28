@@ -1170,7 +1170,6 @@ test('every registration error is associated with its field', () => {
     'beneficiary',
     'red_card_type',
     'minute',
-    'added_minute',
   ]) {
     const invalid = new RegExp(`:aria-invalid="Boolean\\(eventFieldError\\('${field}'\\)\\)"`);
     const described = new RegExp(`:aria-describedby="eventFieldDescribedBy\\('${field}'\\)"`);

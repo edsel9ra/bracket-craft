@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { googleErrorKey } from '~/utils/googleAuth';
 import { safeInternalRedirect } from '~/utils/navigation';
 
@@ -9,6 +10,9 @@ const { t } = useI18n();
 const isRegister = ref(route.query.mode === 'register');
 const email = ref('');
 const password = ref('');
+const formTouched = ref(false);
+const emailError = computed(() => formTouched.value && !email.value.trim() ? t('validation.required') : (formTouched.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()) ? t('validation.email') : null));
+const passwordError = computed(() => formTouched.value && !password.value ? t('validation.required') : (formTouched.value && isRegister.value && password.value.length < 8 ? t('validation.minLength', { min: 8 }) : null));
 const fullName = ref('');
 const organizationName = ref('');
 const organizationSlug = ref('');
@@ -85,6 +89,8 @@ async function startGoogle() {
 }
 
 async function submit() {
+  formTouched.value = true;
+  if (emailError.value || passwordError.value) return;
   try {
     if (isRegister.value) {
       await auth.register({
@@ -139,30 +145,34 @@ async function submit() {
         </p>
       </div>
 
-      <form class="auth-form" :aria-busy="auth.loading" @submit.prevent="submit">
-        <label>
-           {{ t('auth.email') }}
-           <input
-             v-model="email"
-             type="email"
-             autocomplete="email"
-             :aria-describedby="auth.error ? 'auth-error' : undefined"
-             :aria-invalid="auth.error ? 'true' : undefined"
-             required
-           />
-        </label>
-        <label>
-           {{ t('auth.password') }}
-           <input
-             v-model="password"
-             type="password"
-             :autocomplete="isRegister ? 'new-password' : 'current-password'"
-             :minlength="isRegister ? 8 : 1"
-             :aria-describedby="auth.error ? 'auth-error' : undefined"
-             :aria-invalid="auth.error ? 'true' : undefined"
-             required
-           />
-        </label>
+      <form class="auth-form" :aria-busy="auth.loading" novalidate @submit.prevent="submit">
+        <FormField :label="t('auth.email')" :error="emailError || auth.error" for-id="auth-email">
+          <template #default="{ id, ariaDescribedby, ariaInvalid }">
+            <input
+              :id="id"
+              v-model="email"
+              type="email"
+              autocomplete="email"
+              :aria-describedby="ariaDescribedby"
+              :aria-invalid="ariaInvalid"
+              required
+            />
+          </template>
+        </FormField>
+        <FormField :label="t('auth.password')" :error="passwordError || auth.error" for-id="auth-password">
+          <template #default="{ id, ariaDescribedby, ariaInvalid }">
+            <input
+              :id="id"
+              v-model="password"
+              type="password"
+              :autocomplete="isRegister ? 'new-password' : 'current-password'"
+              :minlength="isRegister ? 8 : 1"
+              :aria-describedby="ariaDescribedby"
+              :aria-invalid="ariaInvalid"
+              required
+            />
+          </template>
+        </FormField>
         <Transition name="panel-reveal" mode="out-in">
           <div v-if="isRegister" key="register-fields" class="register-fields">
             <label>
@@ -195,7 +205,7 @@ async function submit() {
             </label>
           </div>
         </Transition>
-        <div v-if="queryError || googleError || auth.error" id="auth-error" class="form-error" role="alert">
+        <div v-if="queryError || googleError || auth.error" id="auth-error" class="field-error" role="alert">
           {{ queryError || googleError || auth.error }}
         </div>
         <button class="button-primary" type="submit" :disabled="auth.loading">

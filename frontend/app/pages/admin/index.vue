@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isUnauthorized } from '~/utils/api';
 
 definePageMeta({ middleware: 'platform' });
@@ -166,12 +167,13 @@ await load();
          <article class="metric-card metric-card-accent"><span>{{ t('admin.recentEvents') }}</span><strong>{{ audit.length }}</strong><small>{{ t('admin.visibleActions') }}</small></article>
       </div>
       <div class="admin-toolbar">
-        <label>
-           {{ t('admin.search') }}
-            <input v-model="search" type="search" maxlength="100" :placeholder="t('admin.searchPlaceholder')" @keyup.enter="refresh" />
-          </label>
-          <button class="button-primary" type="button" :disabled="loading" @click="refresh">{{ t('common.refresh') }}</button>
-        </div>
+        <FormField :label="t('admin.search')" for-id="admin-search">
+          <template #default="{ id, ariaDescribedby }">
+            <input :id="id" v-model="search" type="search" maxlength="100" :placeholder="t('admin.searchPlaceholder')" :aria-describedby="ariaDescribedby" @keyup.enter="refresh" />
+          </template>
+        </FormField>
+        <button class="button-primary" type="button" :disabled="loading" @click="refresh">{{ t('common.refresh') }}</button>
+      </div>
         <div v-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="refresh">{{ t('common.retry') }}</button></div>
        <div v-if="loading" class="empty-state" role="status">{{ t('common.loading') }}</div>
       <template v-else>

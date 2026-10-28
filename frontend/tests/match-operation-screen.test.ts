@@ -347,9 +347,10 @@ test('every close field is a native control with its own label', () => {
     );
   }
 
-  // Cada campo va dentro de su `<label>`: el nombre accesible no depende de un
-  // `placeholder` ni de un texto suelto al lado.
-  const labels = panel.match(/<label\b[^>]*>/g) ?? [];
+  // Cada campo va dentro de su `<label>` (o `<FormField>`, que renderiza un
+  // `<label>`): el nombre accesible no depende de un `placeholder` ni de un
+  // texto suelto al lado.
+  const labels = (panel.match(/<label\b[^>]*>/g) ?? []).concat(panel.match(/<FormField\b[^>]*>/g) ?? []);
   assert.equal(
     labels.length,
     inputs.length + selects.length + textareas.length,

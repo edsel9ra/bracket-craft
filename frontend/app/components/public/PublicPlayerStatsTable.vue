@@ -127,11 +127,35 @@ function initials(row: PlayerStatRow): string {
 
 <style scoped>
 .player-stats-panel { min-width: 0; }
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+thead th {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+thead th:nth-child(n+4) { text-align: right; }
+tbody td {
+  padding: 12px;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(166, 170, 159, 0.12);
+  vertical-align: middle;
+}
+tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+tbody tr:hover { background: rgba(212, 243, 106, 0.06); }
+tbody td:first-child { color: var(--accent); font-weight: 800; text-align: center; width: 2.5rem; }
+tbody td:nth-child(n+4) { text-align: right; font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
 .stats-player { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .player-photo {
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   object-fit: cover;
   background: rgba(255, 255, 255, 0.06);
@@ -147,7 +171,7 @@ function initials(row: PlayerStatRow): string {
   font-weight: 700;
   text-transform: uppercase;
 }
-.stats-definitions { display: grid; gap: 4px; margin-top: 12px; }
-.stats-definition { margin: 0; font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; }
+.stats-definitions { display: grid; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.stats-definition { margin: 0; font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; color: var(--muted); }
 .load-more { display: block; margin: 16px auto 0; }
 </style>

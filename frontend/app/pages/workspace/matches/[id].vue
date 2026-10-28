@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constants/formations';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import {
@@ -1678,7 +1679,7 @@ onBeforeUnmount(() => {
           <strong>{{ match.away_score ?? '—' }}</strong>
         </div>
       </div>
-      <FormatWarning :format="matchGameFormat" message-key="format.notice.operation" />
+      <p v-if="matchGameFormat !== '11v11'" class="muted-note">{{ t('format.context', { format: matchGameFormat }) }}</p>
     </section>
 
     <section id="operacion" class="container operation-content">
@@ -1717,7 +1718,7 @@ onBeforeUnmount(() => {
             <span class="muted-note">{{ t('match.plannedResolutionHint') }}</span>
           </div>
           <div class="resolution-summary">
-            <label>{{ t('match.plannedResolution') }}
+            <label class="field">{{ t('match.plannedResolution') }}
               <select v-model="selectedResolution" :disabled="!canOperateMatch || isTerminal">
                 <option v-for="option in resolutionOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
               </select>
@@ -1742,11 +1743,19 @@ onBeforeUnmount(() => {
               <div class="soft-panel">
                 <h3>{{ t('match.gameSegments') }}</h3>
                 <div class="field-row">
-                  <label>{{ t('match.segmentNumber') }}<input v-model.number="segmentForm.segment_number" type="number" min="1" required /></label>
-                  <label>{{ t('match.startMinute') }}<input v-model.number="segmentForm.minute_start" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-describedby="segmentProposalHintText ? 'segment-proposal-hint' : undefined" @input="markSegmentMinuteDirty" /></label>
+                  <FormField :label="t('match.segmentNumber')" for-id="segment-number">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="segmentForm.segment_number" type="number" min="1" required :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField :label="t('match.startMinute')" for-id="segment-start-minute" :hint="segmentProposalHintText || undefined">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="segmentForm.minute_start" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-describedby="segmentProposalHintText ? 'segment-proposal-hint' : ariaDescribedby" @input="markSegmentMinuteDirty" />
+                    </template>
+                  </FormField>
                 </div>
                 <p v-if="segmentProposalHintText" id="segment-proposal-hint" class="field-hint" role="status">{{ segmentProposalHintText }}</p>
-                  <label>{{ t('match.activeSegment') }}
+                  <label class="field">{{ t('match.activeSegment') }}
                    <select v-model="selectedSegmentId" required :aria-invalid="Boolean(eventFieldError('segment'))" :aria-describedby="eventFieldDescribedBy('segment')">
                      <option value="" disabled>{{ t('match.selectSegment') }}</option>
                      <option v-for="segment in operation.segments" :key="segment.id" :value="segment.id">{{ t('match.segmentOption', { number: segment.segment_number, minute: segment.minute_start }) }} · {{ statusLabel(segment.status) }}</option>
@@ -1762,9 +1771,21 @@ onBeforeUnmount(() => {
                   <form v-if="canOperateMatch && activeSegment" class="interruption-form" @submit.prevent="interruptSegment">
                    <h3>{{ t('match.interruptSegment') }}</h3>
                    <p class="muted-note">{{ t('match.interruptionHint') }}</p>
-                   <label>{{ t('match.interruptReason') }}<select v-model="interruptionForm.reason"><option value="lighting_failure">{{ t('match.reasonLightingFailure') }}</option><option value="weather">{{ t('match.reasonWeather') }}</option><option value="pitch_invasion">{{ t('match.reasonPitchInvasion') }}</option><option value="other">{{ t('match.reasonOther') }}</option></select></label>
-                   <label>{{ t('match.interruptMinute') }}<input v-model.number="interruptionForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required @input="markInterruptionMinuteDirty" /></label>
-                   <label>{{ t('match.interruptNotes') }}<textarea v-model="interruptionForm.notes" maxlength="1000" :placeholder="t('match.interruptNotesPlaceholder')" /></label>
+                   <FormField :label="t('match.interruptReason')" for-id="interrupt-reason">
+                     <template #default="{ id, ariaDescribedby }">
+                       <select :id="id" v-model="interruptionForm.reason" :aria-describedby="ariaDescribedby"><option value="lighting_failure">{{ t('match.reasonLightingFailure') }}</option><option value="weather">{{ t('match.reasonWeather') }}</option><option value="pitch_invasion">{{ t('match.reasonPitchInvasion') }}</option><option value="other">{{ t('match.reasonOther') }}</option></select>
+                     </template>
+                   </FormField>
+                   <FormField :label="t('match.interruptMinute')" for-id="interrupt-minute">
+                     <template #default="{ id, ariaDescribedby }">
+                       <input :id="id" v-model.number="interruptionForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-describedby="ariaDescribedby" @input="markInterruptionMinuteDirty" />
+                     </template>
+                   </FormField>
+                   <FormField :label="t('match.interruptNotes')" for-id="interrupt-notes">
+                     <template #default="{ id, ariaDescribedby }">
+                       <textarea :id="id" v-model="interruptionForm.notes" maxlength="1000" :placeholder="t('match.interruptNotesPlaceholder')" :aria-describedby="ariaDescribedby" />
+                     </template>
+                   </FormField>
                    <button class="button-secondary" type="submit" :disabled="Boolean(busyAction) || isTerminal">{{ busyAction === 'interrupt-segment' ? t('common.processing') : t('match.interruptSegment') }}</button>
                  </form>
                  <div v-if="selectedInterruption" class="interruption-note">
@@ -1777,8 +1798,8 @@ onBeforeUnmount(() => {
               <div class="soft-panel">
                 <h3>{{ t('match.officials') }}</h3>
                 <form v-if="canManageTournaments" class="field-row official-row" @submit.prevent="assignOfficial">
-                  <label>{{ t('match.person') }}<select v-model="officialForm.organization_user_id" required><option value="" disabled>{{ t('match.selectOfficial') }}</option><option v-for="official in operation.eligible_officials" :key="official.organization_user_id" :value="official.organization_user_id">{{ official.full_name }} · {{ official.email }}</option></select></label>
-                  <label>{{ t('match.role') }}<select v-model="officialForm.official_role"><option v-for="role in officialRoles" :key="role.value" :value="role.value">{{ t(role.labelKey) }}</option></select></label>
+                  <label class="field">{{ t('match.person') }}<select v-model="officialForm.organization_user_id" required><option value="" disabled>{{ t('match.selectOfficial') }}</option><option v-for="official in operation.eligible_officials" :key="official.organization_user_id" :value="official.organization_user_id">{{ official.full_name }} · {{ official.email }}</option></select></label>
+                  <label class="field">{{ t('match.role') }}<select v-model="officialForm.official_role"><option v-for="role in officialRoles" :key="role.value" :value="role.value">{{ t(role.labelKey) }}</option></select></label>
                   <button class="button-secondary compact-button" type="submit" :disabled="Boolean(busyAction) || isTerminal">{{ t('match.assign') }}</button>
                  </form>
                 <ul v-if="operation.officials.length" class="compact-list">
@@ -1811,7 +1832,7 @@ onBeforeUnmount(() => {
                      {{ isTeamLineupPublic(team.team_id) ? t('match.lineupPublished') : t('match.lineupPrivate') }}
                    </span>
                  </div>
-                 <label>{{ t('match.formation') }}
+                 <label class="field">{{ t('match.formation') }}
                     <select :value="lineupFormations[team.team_id] || ''" :disabled="!canOperateMatch || !team.team_id || isTerminal || !selectedSegmentIsActive" @change="setFormation(team.team_id, $event)">
                      <option value="">{{ t('match.classicLineup') }}</option>
                      <option v-for="formation in FORMATION_OPTIONS" :key="formation" :value="formation">{{ formation }}</option>
@@ -1851,21 +1872,25 @@ onBeforeUnmount(() => {
              </div>
              <p v-if="draftDroppedEvents > 0" class="segment-warning" role="status">{{ t('match.draftEventsDropped', { count: draftDroppedEvents }) }}</p>
              <div v-if="canOperateMatch" class="event-form">
-              <label>{{ t('match.eventType') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.event_type" required :aria-invalid="Boolean(eventFieldError('event_type'))" :aria-describedby="eventFieldDescribedBy('event_type')"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select><small v-if="eventFieldError('event_type')" :id="eventFieldErrorId('event_type')" class="form-error" role="alert">{{ eventFieldError('event_type') }}</small></label>
+              <label class="field">{{ t('match.eventType') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.event_type" required :aria-invalid="Boolean(eventFieldError('event_type'))" :aria-describedby="eventFieldDescribedBy('event_type')"><option v-for="event in eventTypes" :key="event.value" :value="event.value">{{ t(event.labelKey) }}</option></select><small v-if="eventFieldError('event_type')" :id="eventFieldErrorId('event_type')" class="form-error" role="alert">{{ eventFieldError('event_type') }}</small></label>
               <p class="field-hint full-width" role="status">{{ eventTypeNotice }}</p>
-              <label>{{ t('setup.teams') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.team_id" required :aria-invalid="Boolean(eventFieldError('team'))" :aria-describedby="eventFieldDescribedBy('team')"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="eventFieldError('team')" :id="eventFieldErrorId('team')" class="form-error" role="alert">{{ eventFieldError('team') }}</small></label>
+              <label class="field">{{ t('setup.teams') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.team_id" required :aria-invalid="Boolean(eventFieldError('team'))" :aria-describedby="eventFieldDescribedBy('team')"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="eventFieldError('team')" :id="eventFieldErrorId('team')" class="form-error" role="alert">{{ eventFieldError('team') }}</small></label>
                <template v-if="eventOwnFields.includes('player_out')">
-                  <label>{{ t('match.playerOut') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_out_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_out')" :aria-invalid="Boolean(eventFieldError('player_out'))" :aria-describedby="eventFieldDescribedBy('player_out')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventOutgoingOptions" :key="`out-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_out')" :id="eventFieldErrorId('player_out')" class="form-error" role="alert">{{ eventFieldError('player_out') }}</small></label>
-                  <label>{{ t('match.playerIn') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_in_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_in')" :aria-invalid="Boolean(eventFieldError('player_in'))" :aria-describedby="eventFieldDescribedBy('player_in')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventIncomingOptions" :key="`in-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_in')" :id="eventFieldErrorId('player_in')" class="form-error" role="alert">{{ eventFieldError('player_in') }}</small></label>
+                  <label class="field">{{ t('match.playerOut') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_out_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_out')" :aria-invalid="Boolean(eventFieldError('player_out'))" :aria-describedby="eventFieldDescribedBy('player_out')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventOutgoingOptions" :key="`out-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_out')" :id="eventFieldErrorId('player_out')" class="form-error" role="alert">{{ eventFieldError('player_out') }}</small></label>
+                  <label class="field">{{ t('match.playerIn') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_in_id" :disabled="eventSubstitutionAvailability.disabled" :required="isEventFieldRequired(eventForm.event_type, 'player_in')" :aria-invalid="Boolean(eventFieldError('player_in'))" :aria-describedby="eventFieldDescribedBy('player_in')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="row in eventIncomingOptions" :key="`in-${row.player.roster_id}`" :value="row.player.player_id" :disabled="row.option.disabled">#{{ row.player.dorsal_number }} · {{ playerName(row.player) }}<template v-if="row.option.disabled"> · {{ substitutionMessage(row.option.reason) }}</template></option></select><small v-if="eventFieldError('player_in')" :id="eventFieldErrorId('player_in')" class="form-error" role="alert">{{ eventFieldError('player_in') }}</small></label>
                 </template>
                 <template v-else>
-                  <label>{{ t('match.player') }}<span v-if="isEventFieldRequired(eventForm.event_type, 'player')" class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_id" :required="isEventFieldRequired(eventForm.event_type, 'player')" :aria-invalid="Boolean(eventFieldError('player'))" :aria-describedby="eventFieldDescribedBy('player')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select><small v-if="eventFieldError('player')" :id="eventFieldErrorId('player')" class="form-error" role="alert">{{ eventFieldError('player') }}</small></label>
+                  <label class="field">{{ t('match.player') }}<span v-if="isEventFieldRequired(eventForm.event_type, 'player')" class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.player_id" :required="isEventFieldRequired(eventForm.event_type, 'player')" :aria-invalid="Boolean(eventFieldError('player'))" :aria-describedby="eventFieldDescribedBy('player')"><option value="" disabled>{{ t('match.select') }}</option><option v-for="player in eventPlayers" :key="player.roster_id" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select><small v-if="eventFieldError('player')" :id="eventFieldErrorId('player')" class="form-error" role="alert">{{ eventFieldError('player') }}</small></label>
                   <label v-if="eventOwnFields.includes('beneficiary')">{{ t('match.beneficiary') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.beneficiary_team_id" required :aria-invalid="Boolean(eventFieldError('beneficiary'))" :aria-describedby="eventFieldDescribedBy('beneficiary')"><option value="" disabled>{{ t('match.select') }}</option><option v-if="match.home_team_id && match.home_team_id !== eventForm.team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id && match.away_team_id !== eventForm.team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="eventFieldError('beneficiary')" :id="eventFieldErrorId('beneficiary')" class="form-error" role="alert">{{ eventFieldError('beneficiary') }}</small></label>
                   <label v-if="eventOwnFields.includes('assist')">{{ t('match.assist') }}<select v-model="eventForm.assist_player_id" :aria-invalid="Boolean(eventFieldError('assist'))" :aria-describedby="eventFieldDescribedBy('assist')"><option value="">{{ t('match.assistNone') }}</option><option v-for="player in eventAssistCandidates" :key="`assist-${player.roster_id}`" :value="player.player_id">#{{ player.dorsal_number }} · {{ playerName(player) }}</option></select><small v-if="eventFieldError('assist')" :id="eventFieldErrorId('assist')" class="form-error" role="alert">{{ eventFieldError('assist') }}</small></label>
                 </template>
                <label v-if="eventOwnFields.includes('red_card_type')">{{ t('match.redCardType') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="eventForm.red_card_type" :required="isEventFieldRequired(eventForm.event_type, 'red_card_type')" :aria-invalid="Boolean(eventFieldError('red_card_type'))" :aria-describedby="eventFieldDescribedBy('red_card_type')"><option value="direct_red">{{ t('match.directRed') }}</option><option value="double_yellow_red">{{ t('match.doubleYellowRed') }}</option></select><small v-if="eventFieldError('red_card_type')" :id="eventFieldErrorId('red_card_type')" class="form-error" role="alert">{{ eventFieldError('red_card_type') }}</small></label>
-               <label>{{ t('match.minute') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-invalid="Boolean(eventFieldError('minute'))" :aria-describedby="eventFieldDescribedBy('minute')" /><small v-if="eventFieldError('minute')" :id="eventFieldErrorId('minute')" class="form-error" role="alert">{{ eventFieldError('minute') }}</small></label>
-              <label>{{ t('match.addedMinute') }}<input v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" :aria-invalid="Boolean(eventFieldError('added_minute'))" :aria-describedby="eventFieldDescribedBy('added_minute')" /><small v-if="eventFieldError('added_minute')" :id="eventFieldErrorId('added_minute')" class="form-error" role="alert">{{ eventFieldError('added_minute') }}</small></label>
+               <label class="field">{{ t('match.minute') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-invalid="Boolean(eventFieldError('minute'))" :aria-describedby="eventFieldDescribedBy('minute')" /><small v-if="eventFieldError('minute')" :id="eventFieldErrorId('minute')" class="form-error" role="alert">{{ eventFieldError('minute') }}</small></label>
+              <FormField :label="t('match.addedMinute')" for-id="event-added-minute" :error="eventFieldError('added_minute') || null">
+                <template #default="{ id, ariaDescribedby, ariaInvalid }">
+                  <input :id="id" v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" :aria-invalid="ariaInvalid" :aria-describedby="ariaDescribedby" />
+                </template>
+              </FormField>
               <p v-if="eventForm.event_type === 'goal'" class="field-hint" role="status">{{ t('match.assistHint') }}</p>
               <p v-else-if="eventForm.event_type === 'foul'" class="field-hint" role="status">{{ t('match.foulInformative') }}</p>
                 <div v-if="eventForm.event_type === 'substitution'" class="substitution-preview" role="status">
@@ -1895,20 +1920,44 @@ onBeforeUnmount(() => {
                <template v-if="resolution === 'walkover'">
                  <!-- RF-012/D-7: el W.O. no necesita segmento ni planilla; se dice para que el botón habilitado no parezca un defecto. -->
                  <p class="muted-note full-width walkover-notice" role="status">{{ t('match.walkoverNoSegment') }}</p>
-                  <label>{{ t('match.winner') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverWinnerError)" :aria-describedby="walkoverWinnerDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="walkoverWinnerError" :id="WALKOVER_WINNER_ERROR_ID" class="form-error" role="alert">{{ walkoverWinnerError }}</small></label>
-                  <label>{{ t('match.walkoverReason') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.reason" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverReasonError)" :aria-describedby="walkoverReasonDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-for="option in walkoverReasonOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option></select><small v-if="walkoverReasonError" :id="WALKOVER_REASON_ERROR_ID" class="form-error" role="alert">{{ walkoverReasonError }}</small></label>
+                  <label class="field">{{ t('match.winner') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverWinnerError)" :aria-describedby="walkoverWinnerDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select><small v-if="walkoverWinnerError" :id="WALKOVER_WINNER_ERROR_ID" class="form-error" role="alert">{{ walkoverWinnerError }}</small></label>
+                  <label class="field">{{ t('match.walkoverReason') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><select v-model="closeForm.reason" required :disabled="!canOperateMatch || isTerminal" :aria-invalid="Boolean(walkoverReasonError)" :aria-describedby="walkoverReasonDescribedBy"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-for="option in walkoverReasonOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option></select><small v-if="walkoverReasonError" :id="WALKOVER_REASON_ERROR_ID" class="form-error" role="alert">{{ walkoverReasonError }}</small></label>
                  <!-- RF-005: la pareja efectiva la deriva el servidor; aquí solo se muestra, nunca se edita ni se envía. -->
                  <p class="muted-note full-width walkover-score" role="status">{{ t('match.walkoverScore') }}: {{ walkoverScore ? `${walkoverScore.winner}-${walkoverScore.loser}` : '—' }}</p>
                </template>
                <template v-else>
-               <label>{{ match.home_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-               <label>{{ match.away_team_name }} · {{ t('match.regularScore') }}<input v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
+               <FormField :label="`${match.home_team_name} · ${t('match.regularScore')}`" for-id="close-home-regular">
+                 <template #default="{ id, ariaDescribedby }">
+                   <input :id="id" v-model.number="closeForm.home_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                 </template>
+               </FormField>
+               <FormField :label="`${match.away_team_name} · ${t('match.regularScore')}`" for-id="close-away-regular">
+                 <template #default="{ id, ariaDescribedby }">
+                   <input :id="id" v-model.number="closeForm.away_score_regular" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                 </template>
+               </FormField>
               <template v-if="resolution !== 'regular'">
-                  <label>{{ match.home_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.home_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label>{{ match.away_team_name }} · {{ t('match.finalScore') }}<input v-model.number="closeForm.away_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label v-if="resolution === 'penalties'">{{ t('match.homePenalties') }}<input v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-                  <label v-if="resolution === 'penalties'">{{ t('match.awayPenalties') }}<input v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" /></label>
-                   <label>{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
+                  <FormField :label="`${match.home_team_name} · ${t('match.finalScore')}`" for-id="close-home-final">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="closeForm.home_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField :label="`${match.away_team_name} · ${t('match.finalScore')}`" for-id="close-away-final">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="closeForm.away_score" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField v-if="resolution === 'penalties'" :label="t('match.homePenalties')" for-id="close-home-penalties">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="closeForm.home_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField v-if="resolution === 'penalties'" :label="t('match.awayPenalties')" for-id="close-away-penalties">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="closeForm.away_penalties" type="number" min="0" required :disabled="!canOperateMatch || isTerminal" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                   <label class="field">{{ t('match.winner') }}<select v-model="closeForm.winner_team_id" required :disabled="!canOperateMatch || isTerminal"><option value="" disabled>{{ t('match.selectWinner') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></label>
                </template>
                 <label v-if="resolution === 'administrative'" class="full-width">{{ t('match.administrativeReason') }}<textarea v-model="closeForm.reason" maxlength="1000" required :disabled="!canOperateMatch || isTerminal" /></label>
                </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { rosterReturnHref } from '~/utils/matchNavigation';
 import { safeInternalRedirect } from '~/utils/navigation';
@@ -104,6 +105,31 @@ const playerForm = reactive({
   dorsal_number: 1,
   photo_consent: false,
 });
+
+const playerFormTouched = ref(false);
+const playerFormErrors = computed(() => {
+  const errors: Record<string, string | null> = {
+    first_name: null,
+    last_name: null,
+    national_id: null,
+    birth_date: null,
+    dorsal_number: null,
+  };
+  if (!playerFormTouched.value) return errors;
+  if (!playerForm.first_name.trim()) errors.first_name = t('validation.required');
+  else if (playerForm.first_name.trim().length < 2) errors.first_name = t('validation.minLength', { min: 2 });
+  if (!playerForm.last_name.trim()) errors.last_name = t('validation.required');
+  else if (playerForm.last_name.trim().length < 2) errors.last_name = t('validation.minLength', { min: 2 });
+  if (!playerForm.national_id.trim()) errors.national_id = t('validation.required');
+  if (!playerForm.birth_date) errors.birth_date = t('validation.required');
+  const dorsal = playerForm.dorsal_number;
+  if (dorsal === null || dorsal === undefined || Number.isNaN(dorsal)) errors.dorsal_number = t('validation.required');
+  else if (!Number.isInteger(dorsal)) errors.dorsal_number = t('validation.integer');
+  else if (dorsal < 1) errors.dorsal_number = t('validation.min', { min: 1 });
+  else if (dorsal > 999) errors.dorsal_number = t('validation.max', { max: 999 });
+  return errors;
+});
+const playerFormHasErrors = computed(() => Object.values(playerFormErrors.value).some(Boolean));
 
 const PAGE_SIZE = 200;
 const ROSTER_PAGE_SIZE = 1000;
@@ -276,6 +302,8 @@ watch(
 
 async function createPlayer() {
   if (!canManageTournaments.value || !selectedTeamId.value) return;
+  playerFormTouched.value = true;
+  if (playerFormHasErrors.value) return;
   busy.value = true;
   actionError.value = null;
   notice.value = null;
@@ -290,6 +318,7 @@ async function createPlayer() {
     playerForm.birth_date = '';
     playerForm.dorsal_number = 1;
     playerForm.photo_consent = false;
+    playerFormTouched.value = false;
     notice.value = t('tournament.rosters.created');
     await loadRoster();
   } catch (cause) {
@@ -348,6 +377,21 @@ function chooseRosterZip(event: Event) {
     return;
   }
   rosterZipFile.value = file;
+}
+
+function downloadRosterTemplate() {
+  const header = 'first_name,last_name,national_id,birth_date,dorsal_number,photo_filename';
+  const example = 'Juan,Pérez,12345678,2010-05-15,10,juan.jpg';
+  const csv = header + '\n' + example + '\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'plantilla-roster.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function clearRosterFiles(clearWarnings = true) {
@@ -463,7 +507,7 @@ await loadPage();
           </div>
           <template v-else>
             <div class="panel roster-toolbar">
-              <label>
+              <label class="field">
                 {{ t('setup.team') }}
                 <select v-model="selectedTeamId" @change="onTeamChange">
                   <option v-for="team in teams" :key="team.team_id" :value="team.team_id">
@@ -497,22 +541,39 @@ await loadPage();
             </p>
 
             <div class="roster-grid">
-              <form v-if="canManageTournaments" class="panel" :aria-busy="busy" @submit.prevent="createPlayer">
+              <form v-if="canManageTournaments" class="panel" :aria-busy="busy" novalidate @submit.prevent="createPlayer">
                 <div class="panel-heading">
                   <div><p class="eyebrow">{{ t('tournament.rosters.addEyebrow') }}</p><h2>{{ t('tournament.rosters.addTitle') }}</h2></div>
                 </div>
                 <p class="field-hint">{{ t('tournament.rosters.addCopy', { team: selectedTeam?.name || '' }) }}</p>
-                <div class="field-row">
-                  <label>{{ t('match.firstName') }}<input v-model="playerForm.first_name" required maxlength="100" /></label>
-                  <label>{{ t('match.lastName') }}<input v-model="playerForm.last_name" required maxlength="100" /></label>
+                <div class="field-grid">
+                  <FormField :label="t('match.firstName')" for-id="player-first-name" :error="playerFormErrors.first_name">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model="playerForm.first_name" required maxlength="100" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField :label="t('match.lastName')" for-id="player-last-name" :error="playerFormErrors.last_name">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model="playerForm.last_name" required maxlength="100" :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
                 </div>
-                <label>
-                  {{ t('match.document') }} <span class="field-hint">{{ t('match.encryptedOnServer') }}</span>
-                  <input v-model="playerForm.national_id" required maxlength="100" autocomplete="off" />
-                </label>
-                <div class="field-row">
-                  <label>{{ t('match.birthDate') }}<input v-model="playerForm.birth_date" type="date" required /></label>
-                  <label>{{ t('match.number') }}<input v-model.number="playerForm.dorsal_number" type="number" min="1" max="999" required /></label>
+                <FormField :label="t('match.document')" for-id="player-document" :hint="t('match.encryptedOnServer')" :error="playerFormErrors.national_id">
+                  <template #default="{ id, ariaDescribedby }">
+                    <input :id="id" v-model="playerForm.national_id" required maxlength="100" autocomplete="off" :aria-describedby="ariaDescribedby" />
+                  </template>
+                </FormField>
+                <div class="field-grid">
+                  <FormField :label="t('match.birthDate')" for-id="player-birth-date" :error="playerFormErrors.birth_date">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model="playerForm.birth_date" type="date" required :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
+                  <FormField :label="t('match.number')" for-id="player-number" :error="playerFormErrors.dorsal_number">
+                    <template #default="{ id, ariaDescribedby }">
+                      <input :id="id" v-model.number="playerForm.dorsal_number" type="number" min="1" max="999" required :aria-describedby="ariaDescribedby" />
+                    </template>
+                  </FormField>
                 </div>
                 <label class="checkbox-label"><input v-model="playerForm.photo_consent" type="checkbox" /> {{ t('match.imageConsent') }}</label>
                 <button class="button-primary" type="submit" :disabled="busy">{{ busy ? t('common.saving') : t('match.addPlayer') }}</button>
@@ -532,8 +593,12 @@ await loadPage();
                   <span v-if="rosterZipFile">{{ t('setup.selectedPhotosZip', { name: rosterZipFile.name }) }}</span>
                   <button v-if="rosterCsvFile || rosterZipFile" class="file-clear" type="button" @click="clearRosterFiles()">{{ t('setup.clearFiles') }}</button>
                 </div>
-                <p class="field-hint">{{ t('setup.rosterCsvHint') }}</p>
-                <button class="button-primary" type="submit" :disabled="busy || !rosterCsvFile">{{ busy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
+                <div class="template-download">
+                  <button type="button" class="button-secondary" @click="downloadRosterTemplate">{{ t('setup.downloadRosterTemplate') }}</button>
+                  <span class="field-hint">{{ t('setup.rosterTemplateColumns') }}</span>
+                </div>
+                <p v-if="!rosterCsvFile" class="field-error" role="alert">{{ t('setup.csvEmpty') }}</p>
+                <button class="button-primary import-submit" type="submit" :disabled="busy || !rosterCsvFile">{{ busy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
               </form>
             </div>
 
@@ -597,7 +662,28 @@ await loadPage();
 .roster-card-info { display: grid; gap: 3px; min-width: 0; }
 .roster-card-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
 .roster-card-info small { color: var(--muted); font-size: 0.72rem; }
-.photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 7px; }
+.photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 8px; }
+.template-download { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.checkbox-label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 0.82rem; cursor: pointer; }
+.checkbox-label input { width: 16px; height: 16px; accent-color: var(--accent); }
+.file-picker { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0.6rem 1rem; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+.file-picker:hover { border-color: var(--accent); color: var(--accent); }
+.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.player-status { min-height: 34px; padding: 6px 12px; }
+.roster-list button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+.roster-list button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.roster-list button:disabled { opacity: 0.45; cursor: not-allowed; }
 .roster-lock-notice { display: grid; gap: 4px; margin: 0; padding: 12px 14px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.82rem; }
 .roster-size-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: var(--muted); font-size: 0.82rem; }
 .roster-size-status strong { color: var(--ink); }
@@ -607,6 +693,18 @@ await loadPage();
 .player-status { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; }
 .player-status:hover { border-color: var(--accent); color: var(--accent); }
 .warning-list { display: grid; gap: 5px; margin: 0; padding: 10px 12px 10px 28px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 10px; color: #ffcb7a; font-size: 0.78rem; }
+.roster-grid .panel { padding: 24px; gap: 16px; }
+.roster-grid .field-grid { gap: 14px; align-items: end; }
+.roster-grid .button-primary { width: 100%; margin-top: 4px; }
+.roster-import-controls { align-items: end; gap: 12px; }
+.template-download { width: 100%; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.2); }
+.template-download .button-secondary { width: 100%; justify-content: center; }
+.import-submit { width: 100%; margin-top: 4px; }
+.roster-import-controls .file-picker { width: 100%; justify-content: center; }
+.roster-grid .field input { padding: 0.85rem 1rem; }
+.roster-grid .button-primary { min-height: 46px; font-size: 0.9rem; }
+.roster-import-controls { gap: 14px; }
+.roster-import-controls .button-secondary { min-height: 44px; }
 @media (max-width: 620px) {
   .roster-card { grid-template-columns: 42px minmax(0, 1fr); }
   .photo-actions { grid-column: 2; justify-self: start; justify-content: start; }

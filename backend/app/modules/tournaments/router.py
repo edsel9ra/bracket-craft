@@ -879,6 +879,29 @@ async def _update_version_rules_record(
             raise HTTPException(status_code=404, detail="Versión no encontrada")
         if version["status"] != "draft":
             raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
+        # Spec 024: rechazar cambio a formato no 11v11 si hay formación táctica publicada.
+        new_game_format = rules_config.get("game_format", "11v11")
+        if new_game_format != "11v11":
+            from app.modules.matches.errors import PublishedFormationMustBeUnpublished
+
+            published = await db.execute(
+                text("""
+                    SELECT 1
+                    FROM match_team_lineups mtl
+                    JOIN matches m ON m.id = mtl.match_id
+                    WHERE mtl.organization_id = :organization_id
+                      AND m.tournament_version_id = :version_id
+                      AND mtl.is_public = TRUE
+                    LIMIT 1
+                """),
+                {
+                    "organization_id": str(context.organization_id),
+                    "version_id": str(version_id),
+                },
+            )
+            if published.scalar_one_or_none() is not None:
+                raise PublishedFormationMustBeUnpublished()
+
         await db.execute(
             text("""
                 UPDATE tournament_versions

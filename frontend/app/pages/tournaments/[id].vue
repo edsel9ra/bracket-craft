@@ -96,6 +96,7 @@ const teamStatsOffset = ref(0);
 const playerStatsHasMore = ref(false);
 const teamStatsHasMore = ref(false);
 const statsLoadingMore = ref<'players' | 'teams' | null>(null);
+const statsTab = ref<'players' | 'teams'>('players');
 
 // Ámbito de las tablas de estadísticas (spec 022, RF-021): el valor inicial es
 // el torneo completo y ninguna fase se preselecciona, así que la primera
@@ -841,14 +842,15 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                </template>
              </template>
 
-             <PublicBracket
-               v-else-if="stagePresentation(selectedStage) === 'bracket'"
-               :matches="matchesForGroup(matches, selectedStage.id, selectedGroupId)"
-               @open-lineup="openLineup"
-             />
-             <button v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
-               {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-             </button>
+             <template v-else-if="stagePresentation(selectedStage) === 'bracket'">
+               <PublicBracket
+                 :matches="matchesForGroup(matches, selectedStage.id, selectedGroupId)"
+                 @open-lineup="openLineup"
+               />
+               <button v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
+                 {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
+               </button>
+             </template>
 
              <template v-else>
                <div v-if="!matchesForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
@@ -890,15 +892,41 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       </div>
     </Transition>
     <section v-if="tournament" class="container public-stats">
-      <div v-if="stageAwareLayout" class="stats-scope">
-        <label for="public-stats-scope">{{ t('public.statsScope') }}</label>
-        <select id="public-stats-scope" :value="statsStageId ?? ''" @change="selectStatsStage(($event.target as HTMLSelectElement).value)">
-          <option value="">{{ t('public.statsWholeTournament') }}</option>
-          <option v-for="stage in stages" :key="stage.id" :value="stage.id">{{ stage.name }}</option>
-        </select>
+      <div class="panel stats-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">{{ t('public.stats') }}</p>
+            <h2>{{ t('public.stats') }}</h2>
+          </div>
+        </div>
+        <div v-if="stageAwareLayout" class="stats-scope">
+          <label for="public-stats-scope">{{ t('public.statsScope') }}</label>
+          <select id="public-stats-scope" :value="statsStageId ?? ''" @change="selectStatsStage(($event.target as HTMLSelectElement).value)">
+            <option value="">{{ t('public.statsWholeTournament') }}</option>
+            <option v-for="stage in stages" :key="stage.id" :value="stage.id">{{ stage.name }}</option>
+          </select>
+        </div>
+        <div class="stats-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            class="stats-tab"
+            :class="{ 'stats-tab--active': statsTab === 'players' }"
+            :aria-selected="statsTab === 'players'"
+            @click="statsTab = 'players'"
+          >{{ t('public.playerStats') }}</button>
+          <button
+            type="button"
+            role="tab"
+            class="stats-tab"
+            :class="{ 'stats-tab--active': statsTab === 'teams' }"
+            :aria-selected="statsTab === 'teams'"
+            @click="statsTab = 'teams'"
+          >{{ t('public.teamStats') }}</button>
+        </div>
+        <PublicPlayerStatsTable v-if="statsTab === 'players'" :rows="playerStats" :has-more="playerStatsHasMore" :loading-more="statsLoadingMore === 'players'" @load-more="loadMorePlayerStats" />
+        <PublicTeamStatsTable v-else :rows="teamStats" :has-more="teamStatsHasMore" :loading-more="statsLoadingMore === 'teams'" @load-more="loadMoreTeamStats" />
       </div>
-      <PublicPlayerStatsTable :rows="playerStats" :has-more="playerStatsHasMore" :loading-more="statsLoadingMore === 'players'" @load-more="loadMorePlayerStats" />
-      <PublicTeamStatsTable :rows="teamStats" :has-more="teamStatsHasMore" :loading-more="statsLoadingMore === 'teams'" @load-more="loadMoreTeamStats" />
     </section>
     <PublicLineupModal
       :open="Boolean(selectedLineupMatch)"
@@ -984,4 +1012,9 @@ td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72
   .match-teams { grid-template-columns: 1fr; gap: 7px; text-align: center; }
   .match-team--away { justify-content: center; text-align: center; }
 }
+
+.stats-panel { min-width: 0; }
+.stats-tabs { display: flex; gap: 8px; margin: 0 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.stats-tab { padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-raised); color: var(--ink); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.stats-tab--active { border-color: var(--accent); color: var(--accent); }
 </style>

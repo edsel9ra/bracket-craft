@@ -227,3 +227,96 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Formularios: tokens y clases base compartidas */
+:root {
+  --field-gap: 0.5rem;
+  --field-label-size: 0.78rem;
+  --input-padding: 0.78rem 0.9rem;
+  --input-radius: 10px;
+  --input-bg: #0c0f0c;
+  --focus-ring: 0 0 0 4px var(--accent-glow);
+  --error-color: var(--danger);
+}
+
+.field {
+  display: grid;
+  gap: var(--field-gap);
+  color: var(--muted);
+  font-size: var(--field-label-size);
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: var(--field-label-size);
+  font-weight: 600;
+}
+
+.field-control input,
+.field-control select,
+.field-control textarea,
+.field input,
+.field select,
+.field textarea {
+  min-width: 0;
+  padding: var(--input-padding);
+  border: 1px solid var(--line);
+  border-radius: var(--input-radius);
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field-control input:focus,
+.field-control select:focus,
+.field-control textarea:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.field-control input[aria-invalid="true"],
+.field-control select[aria-invalid="true"],
+.field-control textarea[aria-invalid="true"],
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"],
+.field textarea[aria-invalid="true"] {
+  border-color: var(--error-color);
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.field-error {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--error-color);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.field-grid--cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .field-grid,
+  .field-grid--cols-3 {
+    grid-template-columns: 1fr;
+  }
+}

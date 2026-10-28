@@ -334,7 +334,7 @@ draft.applyAfterMount((stored) => {
 
       <template v-if="step === 'teams.details'">
         <p class="field-hint">{{ t('teams.wizard.detailsHint') }}</p>
-        <label>
+        <label class="field">
           {{ t('workspace.name') }}
           <input
             v-model="form.name"
@@ -346,7 +346,7 @@ draft.applyAfterMount((stored) => {
           />
           <span v-if="fieldError('name')" class="field-error" role="alert">{{ fieldError('name') }}</span>
         </label>
-        <label>
+        <label class="field">
           {{ t('setup.code') }}
           <input
             v-model="form.shortCode"
@@ -398,7 +398,7 @@ draft.applyAfterMount((stored) => {
               @click="clearCsvFile"
             >{{ t('setup.clearFile') }}</button>
           </div>
-          <label>
+          <label class="field">
             {{ t('teams.wizard.pasteCsv') }}
             <textarea
               v-model="form.bulkCsv"

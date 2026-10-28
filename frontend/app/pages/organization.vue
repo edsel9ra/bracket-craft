@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { organizationCreationErrorKey } from '~/utils/organizationCreation';
 import { safeInternalRedirect } from '~/utils/navigation';
 
@@ -23,6 +24,10 @@ const notice = ref<string | null>(null);
 const titleElement = ref<HTMLElement | null>(null);
 
 const normalizedSlug = computed(() => normalizeOrganizationSlug(slug.value));
+
+const formTouched = ref(false);
+const nameError = computed(() => formTouched.value && !name.value.trim() ? t('validation.required') : null);
+const slugError = computed(() => formTouched.value && !slug.value.trim() ? t('validation.required') : (formTouched.value && normalizedSlug.value.length < 2 ? t('validation.minLength', { min: 2 }) : null));
 
 function normalizeOrganizationSlug(value: string): string {
   return value
@@ -53,12 +58,15 @@ function failureStatus(cause: unknown): number | null {
 
 async function submit() {
   if (submitting.value) return;
+  formTouched.value = true;
+  if (nameError.value || slugError.value) return;
   submitting.value = true;
   errorMessage.value = null;
   notice.value = null;
   try {
     await auth.createOrganization({ name: name.value.trim(), slug: normalizedSlug.value });
     // El destino llegó validado (`?next=`): una sola navegación con reemplazo.
+    formTouched.value = false;
     await navigateTo(destination.value, { replace: true });
   } catch (cause) {
     const key = organizationCreationErrorKey(failureCode(cause), failureStatus(cause));
@@ -97,44 +105,46 @@ onMounted(() => {
       <h1 id="organization-title" ref="titleElement" tabindex="-1">{{ t('organization.title') }}</h1>
       <p class="organization-copy">{{ t('organization.description') }}</p>
 
-      <p v-if="errorMessage" id="organization-error" class="form-error" role="alert">
+      <p v-if="errorMessage" id="organization-error" class="field-error" role="alert">
         {{ errorMessage }}
       </p>
       <p v-if="notice" class="form-notice" role="status" aria-live="polite">{{ notice }}</p>
 
-      <form class="organization-form" :aria-busy="submitting" @submit.prevent="submit">
-        <label>
-          {{ t('organization.name') }}
-          <input
-            v-model="name"
-            type="text"
-            autocomplete="organization"
-            minlength="2"
-            maxlength="100"
-            required
-            :aria-invalid="errorMessage ? 'true' : undefined"
-            :aria-describedby="errorMessage ? 'organization-error' : undefined"
-          />
-        </label>
-        <label>
-          {{ t('organization.slug') }}
-          <input
-            id="organization-slug"
-            :value="slug"
-            type="text"
-            pattern="[a-z0-9\-]+"
-            minlength="2"
-            maxlength="100"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-            required
-            :aria-invalid="errorMessage ? 'true' : undefined"
-            :aria-describedby="errorMessage ? 'organization-error organization-slug-help' : 'organization-slug-help'"
-            @input="onSlugInput"
-          />
-          <small id="organization-slug-help" class="field-help">{{ t('organization.slugHelp') }}</small>
-        </label>
+      <form class="organization-form" :aria-busy="submitting" novalidate @submit.prevent="submit">
+        <FormField :label="t('organization.name')" :error="nameError || errorMessage" for-id="organization-name">
+          <template #default="{ id, ariaDescribedby, ariaInvalid }">
+            <input
+              :id="id"
+              v-model="name"
+              type="text"
+              autocomplete="organization"
+              minlength="2"
+              maxlength="100"
+              required
+              :aria-invalid="ariaInvalid"
+              :aria-describedby="ariaDescribedby"
+            />
+          </template>
+        </FormField>
+        <FormField :label="t('organization.slug')" :error="slugError || errorMessage" for-id="organization-slug" :hint="t('organization.slugHelp')">
+          <template #default="{ id, ariaDescribedby, ariaInvalid }">
+            <input
+              :id="id"
+              :value="slug"
+              type="text"
+              pattern="[a-z0-9\-]+"
+              minlength="2"
+              maxlength="100"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              required
+              :aria-invalid="ariaInvalid"
+              :aria-describedby="ariaDescribedby"
+              @input="onSlugInput"
+            />
+          </template>
+        </FormField>
 
         <button class="button-primary" type="submit" :disabled="submitting">
           {{ submitting ? t('organization.creating') : t('organization.create') }}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import type { StageFormat } from '~/constants/stageFormats';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
@@ -90,6 +91,9 @@ const error = ref<string | null>(null);
 const selectedVersionId = ref('');
 const selectedStageId = ref('');
 const matchForm = reactive({ home_team_id: '', away_team_id: '', matchday: 1, match_date: '' });
+const matchFormTouched = ref(false);
+const matchdayError = computed(() => matchFormTouched.value && (!matchForm.matchday || matchForm.matchday < 1) ? t('validation.required') : null);
+const matchDateError = computed(() => matchFormTouched.value && !matchForm.match_date ? t('validation.required') : null);
 const scheduleForm = reactive({
   start_date: '',
   round_interval_days: 7,
@@ -263,6 +267,8 @@ function syncStageQuery() {
 
 async function createMatch() {
   if (!selectedStageId.value || !selectedVersionId.value) return;
+  matchFormTouched.value = true;
+  if (matchdayError.value || matchDateError.value) return;
   if (!matchForm.match_date) {
     error.value = t('setup.matchDateRequired');
     return;
@@ -419,7 +425,7 @@ loading.value = false;
         <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><button class="button-secondary" type="button" @click="retryCalendar">{{ t('common.retry') }}</button></div>
         <template v-else>
           <div class="calendar-toolbar">
-            <label>
+            <label class="field">
               {{ t('setup.version') }}
               <select :value="selectedVersionId" @change="selectedVersionId = ($event.target as HTMLSelectElement).value">
                 <option v-for="version in versions" :key="version.id" :value="version.id">
@@ -427,7 +433,7 @@ loading.value = false;
                 </option>
               </select>
             </label>
-            <label>
+            <label class="field">
               {{ t('setup.stage') }}
               <select :value="selectedStageId" :disabled="!selectedVersionStages.length" @change="selectStage(($event.target as HTMLSelectElement).value)">
                 <option v-if="!selectedVersionStages.length" value="">{{ t('setup.selectStage') }}</option>
@@ -438,24 +444,36 @@ loading.value = false;
             </label>
           </div>
 
-          <form class="panel panel-wide" :aria-busy="saving || scheduleBusy" @submit.prevent="createMatch">
+          <form class="panel panel-wide" :aria-busy="saving || scheduleBusy" novalidate @submit.prevent="createMatch">
             <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
             <h2>{{ t('setup.scheduleMatch') }}</h2>
             <div class="match-form-grid">
-              <label>{{ t('setup.home') }}
-                <select v-model="matchForm.home_team_id" :disabled="!canManageTournaments">
-                  <option value="">{{ t('setup.noDefine') }}</option>
-                  <option v-for="team in selectedStageTeams" :key="`home-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
-                </select>
-              </label>
-              <label>{{ t('setup.away') }}
-                <select v-model="matchForm.away_team_id" :disabled="!canManageTournaments">
-                  <option value="">{{ t('setup.noDefine') }}</option>
-                  <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
-                </select>
-              </label>
-              <label>{{ t('setup.matchday') }}<input v-model.number="matchForm.matchday" :disabled="!canManageTournaments" type="number" min="1" required /></label>
-              <label>{{ t('setup.matchDateTime') }}<input v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required /></label>
+              <FormField :label="t('setup.home')" for-id="match-home">
+                <template #default="{ id, ariaDescribedby }">
+                  <select :id="id" v-model="matchForm.home_team_id" :disabled="!canManageTournaments" :aria-describedby="ariaDescribedby">
+                    <option value="">{{ t('setup.noDefine') }}</option>
+                    <option v-for="team in selectedStageTeams" :key="`home-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
+                  </select>
+                </template>
+              </FormField>
+              <FormField :label="t('setup.away')" for-id="match-away">
+                <template #default="{ id, ariaDescribedby }">
+                  <select :id="id" v-model="matchForm.away_team_id" :disabled="!canManageTournaments" :aria-describedby="ariaDescribedby">
+                    <option value="">{{ t('setup.noDefine') }}</option>
+                    <option v-for="team in availableAwayTeams" :key="`away-${team.team_id}`" :value="team.team_id">{{ team.name }}</option>
+                  </select>
+                </template>
+              </FormField>
+              <FormField :label="t('setup.matchday')" for-id="match-matchday" :error="matchdayError">
+                <template #default="{ id, ariaDescribedby }">
+                  <input :id="id" v-model.number="matchForm.matchday" :disabled="!canManageTournaments" type="number" min="1" required :aria-describedby="ariaDescribedby" />
+                </template>
+              </FormField>
+              <FormField :label="t('setup.matchDateTime')" for-id="match-date" :error="matchDateError">
+                <template #default="{ id, ariaDescribedby }">
+                  <input :id="id" v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required :aria-describedby="ariaDescribedby" />
+                </template>
+              </FormField>
               <button v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || scheduleBusy || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
             </div>
             <div v-if="selectedStage" class="schedule-generator">
@@ -464,13 +482,13 @@ loading.value = false;
                 <span class="muted-note">{{ t('setup.generatorDescription') }}</span>
               </div>
               <div class="schedule-generator-grid">
-                <label>{{ t('setup.generatorStart') }}<input v-model="scheduleForm.start_date" :disabled="!canManageTournaments" type="datetime-local" /></label>
-                <label>{{ t('setup.generatorRoundInterval') }}<input v-model.number="scheduleForm.round_interval_days" :disabled="!canManageTournaments" type="number" min="1" max="365" /></label>
-                <label>{{ t('setup.generatorMatchInterval') }}<input v-model.number="scheduleForm.match_interval_hours" :disabled="!canManageTournaments" type="number" min="1" max="168" /></label>
-                <label>{{ t('setup.generatorSeed') }}<input v-model="scheduleForm.seed" :disabled="!canManageTournaments" type="number" min="0" step="1" :placeholder="t('setup.generatorSeedOptional')" /></label>
+                <label class="field">{{ t('setup.generatorStart') }}<input v-model="scheduleForm.start_date" :disabled="!canManageTournaments" type="datetime-local" /></label>
+                <label class="field">{{ t('setup.generatorRoundInterval') }}<input v-model.number="scheduleForm.round_interval_days" :disabled="!canManageTournaments" type="number" min="1" max="365" /></label>
+                <label class="field">{{ t('setup.generatorMatchInterval') }}<input v-model.number="scheduleForm.match_interval_hours" :disabled="!canManageTournaments" type="number" min="1" max="168" /></label>
+                <label class="field">{{ t('setup.generatorSeed') }}<input v-model="scheduleForm.seed" :disabled="!canManageTournaments" type="number" min="0" step="1" :placeholder="t('setup.generatorSeedOptional')" /></label>
               </div>
               <div v-if="selectedStage.stage_type === 'round_robin' || selectedStage.stage_type === 'custom_group'" class="schedule-generator-options">
-                <label>{{ t('setup.generatorLegs') }}
+                <label class="field">{{ t('setup.generatorLegs') }}
                   <select v-model.number="scheduleForm.legs" :disabled="!canManageTournaments">
                     <option :value="2">{{ t('setup.generatorHomeAway') }}</option>
                     <option :value="1">{{ t('setup.generatorSingleLeg') }}</option>
@@ -489,10 +507,10 @@ loading.value = false;
                 </div>
               </div>
               <div v-if="selectedStage.stage_type === 'swiss'" class="schedule-generator-options">
-                <label>{{ t('setup.swissRounds') }}<input v-model.number="scheduleForm.swiss_rounds" :disabled="!canManageTournaments" type="number" min="1" max="64" /></label>
-                <label>{{ t('setup.swissRound') }}<input v-model.number="scheduleForm.swiss_round" :disabled="!canManageTournaments" type="number" min="1" :max="scheduleForm.swiss_rounds" /></label>
-                <label>{{ t('setup.swissHomeTarget') }}<input v-model.number="scheduleForm.swiss_home_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
-                <label>{{ t('setup.swissAwayTarget') }}<input v-model.number="scheduleForm.swiss_away_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
+                <label class="field">{{ t('setup.swissRounds') }}<input v-model.number="scheduleForm.swiss_rounds" :disabled="!canManageTournaments" type="number" min="1" max="64" /></label>
+                <label class="field">{{ t('setup.swissRound') }}<input v-model.number="scheduleForm.swiss_round" :disabled="!canManageTournaments" type="number" min="1" :max="scheduleForm.swiss_rounds" /></label>
+                <label class="field">{{ t('setup.swissHomeTarget') }}<input v-model.number="scheduleForm.swiss_home_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
+                <label class="field">{{ t('setup.swissAwayTarget') }}<input v-model.number="scheduleForm.swiss_away_target" :disabled="!canManageTournaments" type="number" min="0" :max="scheduleForm.swiss_rounds" /></label>
               </div>
               <p class="field-hint">{{ t('setup.generatorHint') }}</p>
               <div class="schedule-generator-actions">

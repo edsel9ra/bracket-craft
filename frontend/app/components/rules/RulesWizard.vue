@@ -16,6 +16,7 @@ import {
   rulesIssues,
   rulesSectionForStep,
   rulesServerIssues,
+  RULES_SECTIONS,
   rulesWizardStatuses,
   summaryFieldIssues,
   type RulesFieldIssue,
@@ -93,6 +94,7 @@ const { step, previous, next, goTo } = useWizardStep({
 });
 
 const jsonErrors = ref<RulesValidationError[]>([]);
+const showAdvanced = ref(false);
 const liveIssues = computed<RulesFieldIssue[]>(() => rulesIssues([
   ...validateRulesConfig(props.modelValue || DEFAULT_RULES_CONFIG),
   ...jsonErrors.value,
@@ -195,6 +197,26 @@ draft.applyAfterMount((stored) => {
 </script>
 
 <template>
+  <div class="rules-wizard-shell">
+    <div class="editor-mode" role="tablist" :aria-label="t('rules.editorMode')">
+      <button
+        class="mode-button"
+        :class="{ active: !showAdvanced }"
+        type="button"
+        role="tab"
+        :aria-selected="!showAdvanced"
+        @click="showAdvanced = false"
+      >{{ t('rules.visualMode') }}</button>
+      <button
+        class="mode-button"
+        :class="{ active: showAdvanced }"
+        type="button"
+        role="tab"
+        :aria-selected="showAdvanced"
+        @click="showAdvanced = true"
+      >{{ t('rules.jsonMode') }}</button>
+    </div>
+  <template v-if="!showAdvanced">
   <WizardShell
     wizard="rules"
     :title="t('rules.wizardTitle')"
@@ -224,7 +246,10 @@ draft.applyAfterMount((stored) => {
       :stages="stages"
       :disabled="disabled"
       :field-issues="currentIssues"
+      :show-mode-toggle="false"
+      :show-advanced="showAdvanced"
       @update:model-value="emit('update:modelValue', $event)"
+      @update:show-advanced="showAdvanced = $event"
       @validation="onEditorValidation"
     />
 
@@ -259,6 +284,20 @@ draft.applyAfterMount((stored) => {
 
     <p v-if="!disabled && !saveCheck.ok && !saveCheck.blockedBy.length" class="wizard-blocked">{{ blockedMessage }}</p>
   </WizardShell>
+  </template>
+  <RulesEditor
+    v-else
+    :model-value="modelValue"
+    :sections="RULES_SECTIONS"
+    :stages="stages"
+    :disabled="disabled"
+    :field-issues="[]"
+    :show-mode-toggle="false"
+    :show-advanced="true"
+    @update:model-value="emit('update:modelValue', $event)"
+    @validation="onEditorValidation"
+  />
+  </div>
 </template>
 
 <style scoped>
@@ -284,4 +323,8 @@ draft.applyAfterMount((stored) => {
   color: var(--danger);
   font-size: 0.85rem;
 }
+
+.editor-mode { display: inline-flex; width: fit-content; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(12, 15, 12, 0.45); margin-bottom: 12px; }
+.mode-button { padding: 8px 13px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
+.mode-button.active { background: var(--accent); color: var(--accent-ink); }
 </style>
