@@ -4,6 +4,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Estado
 - **Specs 020 y 021 implementadas y aprobadas** por el reviewer; **spec 022 en ronda de corrección** tras veredicto `CAMBIOS NECESARIOS` (17 bloqueantes). Cadena de esquema en **031** (026–031 pendientes de despliegue, sin rollback, *forward-fix*).
 - **022**: **T1–T22 cerradas**. Pruebas puras: **73/73 en verde** (`backend/tests/test_public_stats.py`); `vue-tsc --noEmit` y `nuxt build` OK; `compileall` OK. Auditoría frontend: el hallazgo alto de `serialize-javascript` (GHSA-m5mm-p8h7-m29v) resuelto con override `>=7.1.3` y lockfile regenerado; solo queda un bajo en `deepmerge`. Las suites opt-in con PostgreSQL, el frontend `pnpm test` y los jobs `security`/`e2e` siguen **no ejecutados** en este entorno (sin Docker/pytest/Node 24).
+- **023 T1–T9 cerradas** + opcionales del reviewer: AGENTS.md referencia `docs/manual-usuario.md` (RNF-006); T1 publica la lista de funciones del inventario backend no cubiertas (RF-028: `canonical_client_event_id`, `normalize_event_metadata`); RF-010 sigue declarado «no ejecutado» (riesgo operativo, sin pila aislada). Backend `pytest -q`: 2144 passed, 471 skipped, 0 failed. No se introdujo código de producto ni cambios de esquema.
 - Veredicto del reviewer **no re-ejecutado** tras las correcciones: pendiente para la siguiente vuelta (máximo 2 vueltas; esta es la primera).
 
 ## Spec 020 — consulta pública: navegación y acceso (implementada)

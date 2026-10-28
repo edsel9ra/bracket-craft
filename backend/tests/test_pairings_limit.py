@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.tournaments.pairings import max_meetings_per_pair
+from app.modules.tournaments.pairings import max_meetings_per_pair, pair_limit_detail
 
 
 @pytest.mark.parametrize(
@@ -42,3 +42,12 @@ def test_max_meetings_per_pair_by_format(
     stage_type: str, schedule_legs: int | None, expected: int | None
 ):
     assert max_meetings_per_pair(stage_type, schedule_legs) == expected
+
+
+def test_pair_limit_detail_singular_and_plural():
+    assert pair_limit_detail(
+        stage_name="Liga", home_team_name="A", away_team_name="B", max_meetings=1
+    ) == "La fase «Liga» ya alcanzó el máximo de 1 enfrentamiento por pareja entre «A» y «B»"
+    assert pair_limit_detail(
+        stage_name="Liga", home_team_name="A", away_team_name="B", max_meetings=2
+    ) == "La fase «Liga» ya alcanzó el máximo de 2 enfrentamientos por pareja entre «A» y «B»"

@@ -2,6 +2,12 @@
 
 Plataforma multi-tenant para crear y operar torneos de futbol con reglas configurables, fases componibles y resultados en tiempo real.
 
+## Documentación
+
+- Manual de usuario: [`docs/manual-usuario.md`](docs/manual-usuario.md) (flujos operativos reales: torneos, reglas, fases, equipos, plantillas, calendario, actas, consulta pública).
+- Guía para agentes: [`AGENTS.md`](AGENTS.md).
+- Constitución: [`docs/constitution.md`](docs/constitution.md).
+
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy Async y PostgreSQL.
