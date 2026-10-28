@@ -193,3 +193,40 @@ class WalkoverConfigInconsistent(HTTPException):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
         self.code = WALKOVER_CONFIG_INCONSISTENT
 
+
+
+FORMATION_NOT_SUPPORTED_FOR_FORMAT = "FORMATION_NOT_SUPPORTED_FOR_FORMAT"
+PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED = "PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED"
+
+FORMATION_NOT_SUPPORTED_FOR_FORMAT_DETAIL = (
+    "La operación no está soportada para el formato del torneo"
+)
+
+PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_DETAIL = (
+    "Existe una formación táctica publicada: despublícala antes de cambiar "
+    "el formato"
+)
+
+
+class FormationNotSupportedForFormat(HTTPException):
+    """409 de dominio: operación de formación táctica no soportada para el
+    formato del torneo (spec 024)."""
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail or FORMATION_NOT_SUPPORTED_FOR_FORMAT_DETAIL,
+        )
+        self.code = FORMATION_NOT_SUPPORTED_FOR_FORMAT
+
+
+class PublishedFormationMustBeUnpublished(HTTPException):
+    """409 de dominio: cambio de formato con formación táctica publicada
+    (spec 024)."""
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail or PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_DETAIL,
+        )
+        self.code = PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import {
   beginInvitationOperation,
@@ -53,6 +54,15 @@ const { request } = useApi();
 const { t, errorMessage, formatDateTime } = useI18n();
 const members = ref<Member[]>([]);
 const invitations = ref<Invitation[]>([]);
+const MEMBERS_PAGE_SIZE = 10;
+const membersVisible = ref(MEMBERS_PAGE_SIZE);
+const invitationsVisible = ref(MEMBERS_PAGE_SIZE);
+const pagedMembers = computed(() => members.value.slice(0, membersVisible.value));
+const pagedInvitations = computed(() => invitations.value.slice(0, invitationsVisible.value));
+const hasMoreMembers = computed(() => membersVisible.value < members.value.length);
+const hasMoreInvitations = computed(() => invitationsVisible.value < invitations.value.length);
+function loadMoreMembers() { membersVisible.value = Math.min(membersVisible.value + MEMBERS_PAGE_SIZE, members.value.length); }
+function loadMoreInvitations() { invitationsVisible.value = Math.min(invitationsVisible.value + MEMBERS_PAGE_SIZE, invitations.value.length); }
 const loading = ref(true);
 const saving = ref(false);
 const invitationOperation = ref<InvitationOperation>('idle');
@@ -60,6 +70,8 @@ const pageError = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const generatedLink = ref<string | null>(null);
 const inviteForm = reactive<{ email: string; role_code: MemberRole }>({ email: '', role_code: 'viewer' });
+const inviteTouched = ref(false);
+const inviteEmailError = computed(() => inviteTouched.value && !inviteForm.email.trim() ? t('validation.required') : (inviteTouched.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteForm.email.trim()) ? t('validation.email') : null));
 /** Los roles editables salen de la fuente única; `owner` no está entre ellos (RF-025). */
 const assignableRoles = ASSIGNABLE_ROLE_CODES;
 
@@ -112,6 +124,8 @@ async function loadData() {
     const [memberRows, invitationRows] = await fetchLists();
     members.value = memberRows;
     invitations.value = invitationRows;
+    membersVisible.value = MEMBERS_PAGE_SIZE;
+    invitationsVisible.value = MEMBERS_PAGE_SIZE;
   } catch (cause) {
     if (!(await redirectOnSessionFailure(cause))) pageError.value = errorMessage(cause, t('members.noLoad'));
   } finally {
@@ -130,6 +144,8 @@ async function refreshInvitationLists() {
     const [memberRows, invitationRows] = await fetchLists();
     members.value = memberRows;
     invitations.value = invitationRows;
+    membersVisible.value = MEMBERS_PAGE_SIZE;
+    invitationsVisible.value = MEMBERS_PAGE_SIZE;
   } catch (cause) {
     await redirectOnSessionFailure(cause);
   }
@@ -143,6 +159,8 @@ function invitationErrorMessage(cause: unknown, fallbackKey: string): string {
 }
 
 async function inviteMember() {
+  inviteTouched.value = true;
+  if (inviteEmailError.value) return;
   const operation = beginInvitationOperation(invitationOperation.value, 'creating');
   if (operation === null) return;
   invitationOperation.value = operation;
@@ -261,14 +279,21 @@ await loadData();
         <div v-else-if="pageError" class="form-error" role="alert">{{ pageError }}</div>
         <template v-else>
           <div class="members-grid">
-            <form class="panel" :aria-busy="invitationControlsDisabled(invitationOperation)" @submit.prevent="inviteMember">
+            <form class="panel" :aria-busy="invitationControlsDisabled(invitationOperation)" novalidate @submit.prevent="inviteMember">
               <div>
                 <p class="eyebrow">{{ t('members.inviteEyebrow') }}</p>
                 <h2>{{ t('members.inviteTitle') }}</h2>
               </div>
-              <label>{{ t('members.email') }}<input v-model="inviteForm.email" type="email" autocomplete="email" required /></label>
-              <label>{{ t('members.role') }}<select v-model="inviteForm.role_code"><option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option></select></label>
-              <p class="field-hint">{{ t('members.expiryHint') }}</p>
+              <FormField :label="t('members.email')" for-id="invite-email" :error="inviteEmailError">
+                <template #default="{ id, ariaDescribedby }">
+                  <input :id="id" v-model="inviteForm.email" type="email" autocomplete="email" required :aria-describedby="ariaDescribedby" />
+                </template>
+              </FormField>
+              <FormField :label="t('members.role')" for-id="invite-role" :hint="t('members.expiryHint')">
+                <template #default="{ id, ariaDescribedby }">
+                  <select :id="id" v-model="inviteForm.role_code" :aria-describedby="ariaDescribedby"><option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option></select>
+                </template>
+              </FormField>
               <button class="button-primary" type="submit" :disabled="invitationControlsDisabled(invitationOperation)">{{ isCreatingInvitation ? t('common.processing') : t('members.invite') }}</button>
               <div v-if="generatedLink" class="generated-link" role="status">
                 <strong>{{ t('members.generatedLink') }}</strong>
@@ -280,7 +305,7 @@ await loadData();
             <section class="panel">
               <div class="panel-heading"><div><p class="eyebrow">{{ t('members.pendingEyebrow') }}</p><h2>{{ t('members.invitations') }}</h2></div><span class="muted-note">{{ invitations.length }}</span></div>
               <ul v-if="invitations.length" class="resource-list">
-                <li v-for="invitation in invitations" :key="invitation.id">
+                <li v-for="invitation in pagedInvitations" :key="invitation.id">
                   <div><strong>{{ invitation.email }}</strong><small>{{ t(roleKey(invitation.role_code)) }} · {{ t(invitationStatusLabelKey(invitation.status)) }} · {{ formatDate(invitation.expires_at) }}</small></div>
                   <div class="row-actions">
                     <button v-for="action in invitationActionsFor(invitation.status)" :key="action" class="text-button" :class="{ danger: action === 'revoke' }" type="button" :disabled="invitationControlsDisabled(invitationOperation)" :aria-label="invitationAria(action, invitation)" @click="runInvitationAction(action, invitation)">{{ t(invitationActionLabelKey(action)) }}</button>
@@ -288,6 +313,7 @@ await loadData();
                 </li>
               </ul>
               <p v-else class="muted-note">{{ t('members.noInvitations') }}</p>
+              <button v-if="hasMoreInvitations" class="button-secondary load-more" type="button" @click="loadMoreInvitations">{{ t('common.loadMore') }}</button>
             </section>
           </div>
 
@@ -299,7 +325,7 @@ await loadData();
               <table class="member-table">
                 <thead><tr><th>{{ t('members.person') }}</th><th>{{ t('members.role') }}</th><th>{{ t('members.status') }}</th><th>{{ t('members.actions') }}</th></tr></thead>
                 <tbody>
-                  <tr v-for="member in members" :key="member.organization_user_id">
+                  <tr v-for="member in pagedMembers" :key="member.organization_user_id">
                     <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
                     <td>
                       <select :value="member.role_code" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
@@ -313,6 +339,7 @@ await loadData();
                 </tbody>
               </table>
             </div>
+            <button v-if="hasMoreMembers" class="button-secondary load-more" type="button" @click="loadMoreMembers">{{ t('common.loadMore') }}</button>
           </section>
         </template>
       </section>
@@ -356,4 +383,5 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .status-tag.inactive { color: var(--danger); }
 @media (max-width: 800px) { .members-grid { grid-template-columns: 1fr; } .members-hero, .members-content { width: min(100% - 28px, 620px); } }
 @media (max-width: 480px) { .panel { padding: 17px; } .resource-list li { align-items: start; flex-direction: column; } .row-actions { justify-content: start; } }
+.load-more { display: block; margin: 12px auto 0; }
 </style>

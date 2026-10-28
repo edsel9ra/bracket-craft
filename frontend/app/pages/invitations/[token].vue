@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FormField from '~/components/ui/FormField.vue';
 import { isNotFound, isUnauthorized } from '~/utils/api';
 import { roleKey, type AssignableRoleCode } from '~/utils/labels';
 import { safeInternalRedirect } from '~/utils/navigation';
@@ -110,8 +111,16 @@ await loadPreview();
         <form v-else class="invitation-form" @submit.prevent="accept">
           <p v-if="preview.requires_login" class="field-hint">{{ t('invitation.confirmAccount') }}</p>
           <template v-else>
-            <label>{{ t('invitation.fullName') }}<input v-model="fullName" type="text" autocomplete="name" minlength="2" maxlength="100" required /></label>
-            <label>{{ t('invitation.password') }}<input v-model="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
+            <FormField :label="t('invitation.fullName')" for-id="invitation-full-name">
+              <template #default="{ id, ariaDescribedby }">
+                <input :id="id" v-model="fullName" type="text" autocomplete="name" minlength="2" maxlength="100" required :aria-describedby="ariaDescribedby" />
+              </template>
+            </FormField>
+            <FormField :label="t('invitation.password')" for-id="invitation-password">
+              <template #default="{ id, ariaDescribedby }">
+                <input :id="id" v-model="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required :aria-describedby="ariaDescribedby" />
+              </template>
+            </FormField>
           </template>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
           <button class="button-primary invitation-action" type="submit" :disabled="submitting || !canAccept">{{ submitting ? t('common.processing') : t('invitation.accept') }}</button>

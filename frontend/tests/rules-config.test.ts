@@ -979,12 +979,11 @@ test('warns in the three surfaces only when the declared format is not 11v11', (
   );
 
   // Tres lugares: paso de reglas, resumen de configuración y operación/planilla.
-  assert.match(editorSource, /<FormatWarning/);
-  assert.match(editorSource, /format\.notice\.rules/);
-  assert.match(tournamentPageSource, /<FormatWarning/);
-  assert.match(tournamentPageSource, /format\.notice\.summary/);
-  assert.match(matchPageSource, /<FormatWarning/);
-  assert.match(matchPageSource, /format\.notice\.operation/);
+  // La advertencia genérica se retiró (spec 024); ahora se muestra información
+  // contextual veraz sobre el formato cuando no es 11v11.
+  assert.match(editorSource, /format\.context/);
+  assert.match(tournamentPageSource, /format\.context/);
+  assert.match(matchPageSource, /format\.context/);
 
   // La advertencia no bloquea: 7v7 con límites válidos se puede guardar.
   const config = cloneRulesConfig(DEFAULT_RULES_CONFIG);

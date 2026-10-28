@@ -43,6 +43,8 @@ from app.modules.invitations.router import router as invitations_router
 from app.modules.matches.errors import (
     AssistPlayerInvalid,
     DoubleYellowInconsistent,
+    FormationNotSupportedForFormat,
+    PublishedFormationMustBeUnpublished,
     ResolutionNotEnabled,
     WalkoverConfigInconsistent,
     WalkoverScoreMismatch,
@@ -759,6 +761,8 @@ api.add_exception_handler(DoubleYellowInconsistent, _coded_exception_handler)
 api.add_exception_handler(WalkoverStateNotAllowed, _coded_exception_handler)
 api.add_exception_handler(WalkoverScoreMismatch, _coded_exception_handler)
 api.add_exception_handler(WalkoverConfigInconsistent, _coded_exception_handler)
+api.add_exception_handler(FormationNotSupportedForFormat, _coded_exception_handler)
+api.add_exception_handler(PublishedFormationMustBeUnpublished, _coded_exception_handler)
 api.add_exception_handler(RosterSizeOutOfRange, _coded_exception_handler)
 api.add_exception_handler(OrganizationSlugTaken, _coded_exception_handler)
 api.add_exception_handler(CrestError, _coded_exception_handler)

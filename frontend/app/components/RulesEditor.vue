@@ -37,18 +37,25 @@ const props = withDefaults(defineProps<{
   sections?: readonly RulesSectionId[];
   /** Errores del paso actual, para asociarlos con su campo (RF-005). */
   fieldIssues?: readonly RulesFieldIssue[];
+  /** Muestra el selector de modo (visual/JSON) dentro del editor. */
+  showModeToggle?: boolean;
+  /** Modo avanzado controlado externamente (opcional). */
+  showAdvanced?: boolean;
 }>(), {
   modelValue: null,
   stages: () => [],
   disabled: false,
   sections: () => RULES_SECTIONS,
   fieldIssues: () => [],
+  showModeToggle: true,
+  showAdvanced: undefined,
 });
 
 const emit = defineEmits<{
   'update:modelValue': [value: RulesConfig];
   /** Errores del modo avanzado, para que el asistente los muestre por paso. */
   validation: [errors: RulesValidationError[]];
+  'update:showAdvanced': [value: boolean];
 }>();
 
 function shows(section: RulesSectionId): boolean {
@@ -60,7 +67,14 @@ const config = ref<RulesConfig>(normalizeForEditing(props.modelValue || DEFAULT_
 const advancedJson = ref(serializeRulesConfig(config.value));
 const advancedError = ref('');
 const validationErrors = ref<RulesValidationError[]>([]);
-const showAdvanced = ref(false);
+const internalShowAdvanced = ref(false);
+const showAdvanced = computed({
+  get() { return props.showAdvanced !== undefined ? Boolean(props.showAdvanced) : internalShowAdvanced.value; },
+  set(value: boolean) {
+    if (props.showAdvanced !== undefined) emit('update:showAdvanced', value);
+    else internalShowAdvanced.value = value;
+  },
+});
 const gameFormats = GAME_FORMAT_OPTIONS;
 const limitFieldErrors = ref<Record<'min_players_per_team' | 'max_players_per_team', boolean>>({
   min_players_per_team: false,
@@ -338,7 +352,7 @@ function removeOverride(stageId: string) {
 
 <template>
   <div class="rules-editor">
-    <div class="editor-mode" role="tablist" :aria-label="t('rules.editorMode')">
+    <div v-if="showModeToggle" class="editor-mode" role="tablist" :aria-label="t('rules.editorMode')">
       <button
         class="mode-button"
         :class="{ active: !showAdvanced }"
@@ -367,9 +381,9 @@ function removeOverride(stageId: string) {
             <p>{{ t('rules.pointsDescription') }}</p>
           </div>
           <div class="field-grid field-grid-three">
-            <label>{{ t('rules.winPoints') }}<input v-model.number="config.points_system.win" type="number" min="0" /></label>
-            <label>{{ t('rules.drawPoints') }}<input v-model.number="config.points_system.draw" type="number" min="0" /></label>
-            <label>{{ t('rules.lossPoints') }}<input v-model.number="config.points_system.loss" type="number" min="0" /></label>
+            <label class="field">{{ t('rules.winPoints') }}<input v-model.number="config.points_system.win" type="number" min="0" /></label>
+            <label class="field">{{ t('rules.drawPoints') }}<input v-model.number="config.points_system.draw" type="number" min="0" /></label>
+            <label class="field">{{ t('rules.lossPoints') }}<input v-model.number="config.points_system.loss" type="number" min="0" /></label>
           </div>
         </section>
 
@@ -407,16 +421,16 @@ function removeOverride(stageId: string) {
           <section v-if="shows('discipline')" class="editor-section">
             <div class="section-heading"><div><p class="eyebrow">03</p><h3>{{ t('rules.disciplineSection') }}</h3></div><p>{{ t('rules.disciplineDescription') }}</p></div>
             <div class="field-grid">
-              <label>{{ t('rules.yellowCardLimit') }}<input v-model.number="config.discipline.yellow_card_limit" type="number" min="1" /></label>
-              <label>{{ t('rules.yellowCardSuspensionMatches') }}<input v-model.number="config.discipline.yellow_card_suspension_matches" type="number" min="1" /></label>
-              <label>{{ t('rules.directRedSuspensionMatches') }}<input v-model.number="config.discipline.direct_red_suspension_matches" type="number" min="1" /></label>
+              <label class="field">{{ t('rules.yellowCardLimit') }}<input v-model.number="config.discipline.yellow_card_limit" type="number" min="1" /></label>
+              <label class="field">{{ t('rules.yellowCardSuspensionMatches') }}<input v-model.number="config.discipline.yellow_card_suspension_matches" type="number" min="1" /></label>
+              <label class="field">{{ t('rules.directRedSuspensionMatches') }}<input v-model.number="config.discipline.direct_red_suspension_matches" type="number" min="1" /></label>
             </div>
             <label class="checkbox-field"><input v-model="config.discipline.clear_yellows_on_stage_change" type="checkbox" /> {{ t('rules.clearYellowsOnStageChange') }}</label>
             <div class="subheading">{{ t('rules.fairPlayPenalties') }}</div>
             <div class="field-grid field-grid-three">
-              <label>{{ t('rules.fairPlayYellow') }}<input v-model.number="config.discipline.fair_play_penalties.yellow_card" type="number" min="0" /></label>
-              <label>{{ t('rules.fairPlayDoubleYellow') }}<input v-model.number="config.discipline.fair_play_penalties.double_yellow_red" type="number" min="0" /></label>
-              <label>{{ t('rules.fairPlayDirectRed') }}<input v-model.number="config.discipline.fair_play_penalties.direct_red" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.fairPlayYellow') }}<input v-model.number="config.discipline.fair_play_penalties.yellow_card" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.fairPlayDoubleYellow') }}<input v-model.number="config.discipline.fair_play_penalties.double_yellow_red" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.fairPlayDirectRed') }}<input v-model.number="config.discipline.fair_play_penalties.direct_red" type="number" min="0" /></label>
             </div>
           </section>
 
@@ -425,12 +439,12 @@ function removeOverride(stageId: string) {
             <label class="checkbox-field"><input v-model="config.stage_defaults.extra_time_enabled" type="checkbox" /> {{ t('rules.extraTime') }}</label>
             <label class="checkbox-field"><input v-model="config.stage_defaults.penalties_enabled" type="checkbox" /> {{ t('rules.penalties') }}</label>
             <div class="field-grid">
-              <label>{{ t('rules.regularTimeMinutes') }}<input v-model.number="config.stage_defaults.regular_time_minutes" type="number" min="1" max="179" /></label>
-              <label>{{ t('rules.extraTimeMinutes') }}<input :value="stageExtraMinutes()" type="number" min="2" max="180" :disabled="!config.stage_defaults.extra_time_enabled" @change="setStageExtraMinutes($event)" /><small v-if="!config.stage_defaults.extra_time_enabled" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
+              <label class="field">{{ t('rules.regularTimeMinutes') }}<input v-model.number="config.stage_defaults.regular_time_minutes" type="number" min="1" max="179" /></label>
+              <label class="field">{{ t('rules.extraTimeMinutes') }}<input :value="stageExtraMinutes()" type="number" min="2" max="180" :disabled="!config.stage_defaults.extra_time_enabled" @change="setStageExtraMinutes($event)" /><small v-if="!config.stage_defaults.extra_time_enabled" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
             </div>
             <div class="field-grid">
-              <label>{{ t('rules.walkoverWinnerScore') }}<input v-model.number="config.stage_defaults.walkover_score.winner" type="number" min="0" /></label>
-              <label>{{ t('rules.walkoverLoserScore') }}<input v-model.number="config.stage_defaults.walkover_score.loser" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.walkoverWinnerScore') }}<input v-model.number="config.stage_defaults.walkover_score.winner" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.walkoverLoserScore') }}<input v-model.number="config.stage_defaults.walkover_score.loser" type="number" min="0" /></label>
             </div>
           </section>
         </div>
@@ -440,7 +454,7 @@ function removeOverride(stageId: string) {
             <div><p class="eyebrow">05</p><h3>{{ t('rules.formatSection') }}</h3></div>
             <p>{{ t('rules.formatDescription') }}</p>
           </div>
-          <label>{{ t('rules.field.gameFormat') }}
+          <label class="field">{{ t('rules.field.gameFormat') }}
             <select
               :value="config.game_format"
               :aria-invalid="Boolean(fieldError('game_format'))"
@@ -458,7 +472,7 @@ function removeOverride(stageId: string) {
             role="alert"
           >{{ fieldError('game_format') }}</p>
           <div class="field-grid">
-            <label>{{ t('rules.field.minPlayers') }}
+            <label class="field">{{ t('rules.field.minPlayers') }}
               <input
                 :value="config.min_players_per_team"
                 type="number"
@@ -476,7 +490,7 @@ function removeOverride(stageId: string) {
                 role="alert"
               >{{ fieldError('min_players_per_team') }}</small>
             </label>
-            <label>{{ t('rules.field.maxPlayers') }}
+            <label class="field">{{ t('rules.field.maxPlayers') }}
               <input
                 :value="config.max_players_per_team"
                 type="number"
@@ -496,22 +510,22 @@ function removeOverride(stageId: string) {
             </label>
           </div>
           <p :id="RULES_FIELD_HINT_IDS.limits" class="muted-note">{{ t('rules.limitsHelp') }}</p>
-          <FormatWarning :format="config.game_format" message-key="format.notice.rules" />
+          <p v-if="config.game_format !== '11v11'" class="muted-note">{{ t('format.context', { format: config.game_format }) }}</p>
         </section>
 
         <div class="editor-columns" :class="{ 'editor-columns-single': !(shows('substitutions') && shows('registration')) }">
           <section v-if="shows('substitutions')" class="editor-section">
             <div class="section-heading"><div><p class="eyebrow">06</p><h3>{{ t('rules.substitutionsSection') }}</h3></div><p>{{ t('rules.substitutionsDescription') }}</p></div>
             <div class="field-grid">
-              <label>{{ t('rules.maxPerTeam') }}<input v-model.number="config.substitutions.max_per_team" type="number" min="0" /></label>
-              <label>{{ t('rules.maxWindows') }}<input v-model.number="config.substitutions.max_windows" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.maxPerTeam') }}<input v-model.number="config.substitutions.max_per_team" type="number" min="0" /></label>
+              <label class="field">{{ t('rules.maxWindows') }}<input v-model.number="config.substitutions.max_windows" type="number" min="0" /></label>
             </div>
             <label class="checkbox-field"><input v-model="config.substitutions.allow_reentry" type="checkbox" /> {{ t('rules.allowReentry') }}</label>
           </section>
 
           <section v-if="shows('registration')" class="editor-section">
             <div class="section-heading"><div><p class="eyebrow">07</p><h3>{{ t('rules.registrationSection') }}</h3></div><p>{{ t('rules.registrationDescription') }}</p></div>
-            <label>{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
+            <label class="field">{{ t('rules.rosterLockMatchday') }}<input v-model.number="config.roster_lock_matchday" type="number" min="1" :placeholder="t('rules.noRosterLock')" /></label>
           </section>
         </div>
 
@@ -526,10 +540,10 @@ function removeOverride(stageId: string) {
               <div v-if="overrideFor(stage.id)" class="field-grid override-fields">
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideBoolean(stage.id, 'extra_time_enabled', $event)" /> {{ t('rules.extraTime') }}</label>
                 <label class="checkbox-field"><input type="checkbox" :checked="overrideBoolean(stage.id, 'penalties_enabled')" @change="setOverrideBoolean(stage.id, 'penalties_enabled', $event)" /> {{ t('rules.penalties') }}</label>
-                <label>{{ t('rules.regularTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'regular_time_minutes')" type="number" min="1" max="179" @change="setOverrideMinutes(stage.id, 'regular_time_minutes', $event)" /></label>
-                <label>{{ t('rules.extraTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'extra_time_minutes')" type="number" min="2" max="180" :disabled="!overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideMinutes(stage.id, 'extra_time_minutes', $event)" /><small v-if="!overrideBoolean(stage.id, 'extra_time_enabled')" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
-                <label>{{ t('rules.walkoverWinnerScore') }}<input :value="overrideScore(stage.id, 'winner')" type="number" min="0" @change="setOverrideScore(stage.id, 'winner', $event)" /></label>
-                <label>{{ t('rules.walkoverLoserScore') }}<input :value="overrideScore(stage.id, 'loser')" type="number" min="0" @change="setOverrideScore(stage.id, 'loser', $event)" /></label>
+                <label class="field">{{ t('rules.regularTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'regular_time_minutes')" type="number" min="1" max="179" @change="setOverrideMinutes(stage.id, 'regular_time_minutes', $event)" /></label>
+                <label class="field">{{ t('rules.extraTimeMinutes') }}<input :value="overrideMinutes(stage.id, 'extra_time_minutes')" type="number" min="2" max="180" :disabled="!overrideBoolean(stage.id, 'extra_time_enabled')" @change="setOverrideMinutes(stage.id, 'extra_time_minutes', $event)" /><small v-if="!overrideBoolean(stage.id, 'extra_time_enabled')" class="muted-note">{{ t('rules.extraTimeMinutesDisabled') }}</small></label>
+                <label class="field">{{ t('rules.walkoverWinnerScore') }}<input :value="overrideScore(stage.id, 'winner')" type="number" min="0" @change="setOverrideScore(stage.id, 'winner', $event)" /></label>
+                <label class="field">{{ t('rules.walkoverLoserScore') }}<input :value="overrideScore(stage.id, 'loser')" type="number" min="0" @change="setOverrideScore(stage.id, 'loser', $event)" /></label>
                 <button class="remove-override" type="button" @click="removeOverride(stage.id)">{{ t('rules.removeStageOverride') }}</button>
               </div>
             </article>
@@ -540,7 +554,7 @@ function removeOverride(stageId: string) {
     </div>
 
     <div v-else class="rules-advanced">
-      <label>{{ t('rules.jsonMode') }}
+      <label class="field">{{ t('rules.jsonMode') }}
         <textarea v-model="advancedJson" rows="24" maxlength="30000" :disabled="disabled" :placeholder="t('rules.jsonPlaceholder')" />
       </label>
       <p v-if="advancedError" class="form-error" role="alert">{{ advancedError }}</p>

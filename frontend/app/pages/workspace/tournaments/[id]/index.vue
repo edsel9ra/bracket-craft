@@ -702,7 +702,7 @@ loading.value = false;
       <h1>{{ t('setup.headline') }}</h1>
       <p class="workspace-copy">{{ t('setup.copy') }}</p>
       <p class="format-summary">{{ t('setup.gameFormat', { format: declaredGameFormat }) }}</p>
-      <FormatWarning :format="declaredGameFormat" message-key="format.notice.summary" />
+      <p v-if="declaredGameFormat !== '11v11'" class="muted-note">{{ t('format.context', { format: declaredGameFormat }) }}</p>
     </section>
 
     <section class="container config-content">
@@ -713,7 +713,7 @@ loading.value = false;
             {{ t('setup.readOnlyMode') }}
           </p>
           <div class="config-toolbar">
-           <label>
+           <label class="field">
               {{ t('setup.version') }}
             <select :value="selectedVersionId" @change="onVersionChange">
               <option v-for="version in versions" :key="version.id" :value="version.id">
@@ -728,6 +728,11 @@ loading.value = false;
               {{ saving ? t('common.saving') : t('setup.createDraftVersion') }}
            </button>
           </div>
+
+          <div class="setup-checklist" :aria-label="t('setup.operationalChecklist')">
+           <div class="checklist-heading"><div><p class="eyebrow">{{ t('setup.beforePublish') }}</p><h2>{{ t('setup.operationalChecklist') }}</h2></div><span class="muted-note">{{ t('setup.rosterNote') }}</span></div>
+           <div class="checklist-items"><div v-for="check in setupChecks" :key="check.label" class="check-item" :class="{ valid: check.valid }"><span aria-hidden="true">{{ check.valid ? '✓' : '!' }}</span><strong>{{ check.label }}</strong><small>{{ check.detail }}</small></div></div>
+         </div>
 
            <form id="configuracion" class="panel panel-wide rules-panel" :aria-busy="saving" @submit.prevent="saveRules">
              <div class="panel-heading">
@@ -758,10 +763,6 @@ loading.value = false;
              <p v-if="rulesMinutesNotice" class="minutes-warning" role="status">{{ rulesMinutesNotice }}</p>
            </form>
 
-          <div class="setup-checklist" :aria-label="t('setup.operationalChecklist')">
-           <div class="checklist-heading"><div><p class="eyebrow">{{ t('setup.beforePublish') }}</p><h2>{{ t('setup.operationalChecklist') }}</h2></div><span class="muted-note">{{ t('setup.rosterNote') }}</span></div>
-           <div class="checklist-items"><div v-for="check in setupChecks" :key="check.label" class="check-item" :class="{ valid: check.valid }"><span aria-hidden="true">{{ check.valid ? '✓' : '!' }}</span><strong>{{ check.label }}</strong><small>{{ check.detail }}</small></div></div>
-         </div>
 
          <Transition name="content-fade" mode="out-in">
          <div key="configuration" class="config-grid">
@@ -787,7 +788,7 @@ loading.value = false;
 
             <!-- RF-003 / RF-021 (IN-1): único lugar que da de alta equipos.
                  El alta no pide fase: para inscribir se usa el asistente de fases. -->
-            <div id="equipos" class="panel teams-panel">
+            <div id="equipos" class="panel teams-panel panel-wide">
               <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
               <h2>{{ t('setup.nameTheField') }}</h2>
               <TeamsWizard

@@ -211,15 +211,15 @@ onBeforeUnmount(() => {
               <button class="close-button" type="button" :aria-label="t('common.close')" @click="showCreateForm = false">{{ t('common.close') }}</button>
            </div>
            <div class="creation-fields">
-             <label>
+             <label class="field">
                 {{ t('workspace.name') }}
                <input v-model="createForm.name" type="text" minlength="2" maxlength="100" required />
              </label>
-             <label>
+             <label class="field">
                 {{ t('workspace.season') }}
                <input v-model="createForm.season" type="text" maxlength="20" required />
              </label>
-             <label>
+             <label class="field">
                 {{ t('workspace.start') }}
                <input v-model="createForm.start_date" type="date" required />
              </label>

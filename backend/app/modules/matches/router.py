@@ -22,7 +22,7 @@ from app.modules.matches.audit import (
     publication_audit_action,
     record_match_audit,
 )
-from app.modules.matches.errors import ResolutionNotEnabled
+from app.modules.matches.errors import FormationNotSupportedForFormat, ResolutionNotEnabled
 from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
@@ -908,6 +908,11 @@ async def save_match_lineup(
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite cambios de planilla")
 
+        _rules_config = match.get("rules_config") or {}
+        _game_format = _rules_config.get("game_format") or "11v11"
+        if payload.team_lineups and _game_format != "11v11":
+            raise FormationNotSupportedForFormat()
+
         segment_result = await db.execute(
             text("""
                 SELECT status
@@ -1155,6 +1160,11 @@ async def publish_match_lineup(
         lineup = lineup_result.mappings().one_or_none()
         if lineup is None:
             raise HTTPException(status_code=409, detail="Guarda la formación antes de publicarla")
+
+        _rules_config = match.get("rules_config") or {}
+        _game_format = _rules_config.get("game_format") or "11v11"
+        if payload.is_public and _game_format != "11v11":
+            raise FormationNotSupportedForFormat()
 
         snapshot_result = await db.execute(
             text("""

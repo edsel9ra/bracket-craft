@@ -570,7 +570,7 @@ draft.applyAfterMount((stored) => {
       <p class="muted-note">{{ t('stage.wizard.calendarNotice') }}</p>
 
       <div class="stage-wizard-mode">
-        <label>
+        <label class="field">
           {{ t('stage.wizard.mode') }}
           <select :value="mode" :disabled="disabled || saving" @change="onModeChange">
             <option v-if="stages.length" value="existing">{{ t('stage.wizard.modeExisting') }}</option>
@@ -597,7 +597,7 @@ draft.applyAfterMount((stored) => {
           </dl>
         </div>
         <template v-else>
-          <label>
+          <label class="field">
             {{ t('workspace.name') }}
             <input
               v-model="form.name"
@@ -609,7 +609,7 @@ draft.applyAfterMount((stored) => {
             />
             <span v-if="fieldError('name')" class="field-error" role="alert">{{ fieldError('name') }}</span>
           </label>
-          <label>
+          <label class="field">
             {{ t('setup.type') }}
             <select
               v-model="form.stageType"
@@ -623,7 +623,7 @@ draft.applyAfterMount((stored) => {
             <span v-if="fieldError('stageType')" class="field-error" role="alert">{{ fieldError('stageType') }}</span>
             <span class="field-hint">{{ formatOptions.find((format) => format.value === form.stageType)?.description }}</span>
           </label>
-          <label>
+          <label class="field">
             {{ t('setup.order') }}
             <input
               v-model.number="form.stageOrder"
