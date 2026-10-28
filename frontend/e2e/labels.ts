@@ -291,21 +291,6 @@ export const E2E_LABELS = {
     es: 'El máximo de jugadores no puede ser menor que el mínimo.',
     en: 'The maximum number of players cannot be lower than the minimum.',
   },
-  formatWarningRules: {
-    key: 'format.notice.rules',
-    es: 'La planilla soportada es de once jugadores. La modalidad real de la alineación llegará con la spec de formaciones; esta advertencia no bloquea el guardado.',
-    en: 'The supported scoresheet is eleven-a-side. The real lineup modality will arrive with the formations spec; this warning does not block saving.',
-  },
-  formatWarningSummary: {
-    key: 'format.notice.summary',
-    es: 'El formato declarado no es 11v11: la planilla del torneo sigue siendo de once jugadores y la modalidad real de la alineación llegará con la spec de formaciones.',
-    en: 'The declared format is not 11v11: the tournament scoresheet remains eleven-a-side and the real lineup modality will arrive with the formations spec.',
-  },
-  formatWarningOperation: {
-    key: 'format.notice.operation',
-    es: 'Este partido declara un formato distinto de 11v11. La operación y la planilla siguen siendo de once jugadores; la modalidad real de la alineación llegará con la spec de formaciones.',
-    en: 'This match declares a format other than 11v11. The operation and the scoresheet remain eleven-a-side; the real lineup modality will arrive with the formations spec.',
-  },
   stageModeField: { key: 'stage.wizard.mode', es: 'Trabajar sobre', en: 'Work on' },
   stageModeCreate: { key: 'stage.wizard.modeCreate', es: 'Una fase nueva', en: 'A new stage' },
   stageConfirmCreate: { key: 'stage.wizard.confirmCreate', es: 'Crear fase', en: 'Create stage' },
