@@ -154,7 +154,7 @@ async function submit() {
               type="email"
               autocomplete="email"
               :aria-describedby="ariaDescribedby"
-              :aria-invalid="ariaInvalid"
+              :aria-invalid="ariaInvalid ? true : undefined"
               required
             />
           </template>
@@ -168,7 +168,7 @@ async function submit() {
               :autocomplete="isRegister ? 'new-password' : 'current-password'"
               :minlength="isRegister ? 8 : 1"
               :aria-describedby="ariaDescribedby"
-              :aria-invalid="ariaInvalid"
+              :aria-invalid="ariaInvalid ? true : undefined"
               required
             />
           </template>

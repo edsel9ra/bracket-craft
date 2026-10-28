@@ -121,7 +121,7 @@ onMounted(() => {
               minlength="2"
               maxlength="100"
               required
-              :aria-invalid="ariaInvalid"
+              :aria-invalid="ariaInvalid ? true : undefined"
               :aria-describedby="ariaDescribedby"
             />
           </template>
@@ -139,7 +139,7 @@ onMounted(() => {
               autocapitalize="none"
               spellcheck="false"
               required
-              :aria-invalid="ariaInvalid"
+              :aria-invalid="ariaInvalid ? true : undefined"
               :aria-describedby="ariaDescribedby"
               @input="onSlugInput"
             />

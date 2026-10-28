@@ -1888,7 +1888,7 @@ onBeforeUnmount(() => {
                <label class="field">{{ t('match.minute') }}<span class="required-mark" aria-hidden="true" :title="t('match.requiredField')">*</span><input v-model.number="eventForm.minute" type="number" min="0" :max="resolutionLimits.maxMinute" required :aria-invalid="Boolean(eventFieldError('minute'))" :aria-describedby="eventFieldDescribedBy('minute')" /><small v-if="eventFieldError('minute')" :id="eventFieldErrorId('minute')" class="form-error" role="alert">{{ eventFieldError('minute') }}</small></label>
               <FormField :label="t('match.addedMinute')" for-id="event-added-minute" :error="eventFieldError('added_minute') || null">
                 <template #default="{ id, ariaDescribedby, ariaInvalid }">
-                  <input :id="id" v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" :aria-invalid="ariaInvalid" :aria-describedby="ariaDescribedby" />
+                  <input :id="id" v-model.number="eventForm.added_minute" type="number" min="0" :max="resolutionLimits.addedMax" :aria-invalid="ariaInvalid ? true : undefined" :aria-describedby="ariaDescribedby" />
                 </template>
               </FormField>
               <p v-if="eventForm.event_type === 'goal'" class="field-hint" role="status">{{ t('match.assistHint') }}</p>
