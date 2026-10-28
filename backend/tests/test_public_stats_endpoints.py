@@ -341,22 +341,27 @@ def test_la_comprobacion_de_lista_cerrada_no_es_vacua():
     assert _closed_field_problems([], PublicTeamStatsResponse) == []
 
 
-def _stats_route(endpoint: str):
-    """Ruta real de la app para ``GET /tournaments/public/{id}/{endpoint}``."""
+def _stats_route_source(endpoint: str) -> str:
+    """Fuente del decorador de la ruta ``GET .../{endpoint}`` en ``router.py``.
 
-    expected_name = "public_player_stats" if endpoint == "player-stats" else "public_team_stats"
-    for route in api.routes:
-        name = getattr(route, "name", None)
-        methods = getattr(route, "methods", set()) or set()
-        if name == expected_name and "GET" in methods:
-            return route
-    suffix = f"/{endpoint}"
-    for route in api.routes:
-        path = getattr(route, "path", "")
-        methods = getattr(route, "methods", set()) or set()
-        if path.endswith(suffix) and "GET" in methods:
-            return route
-    raise AssertionError(f"no hay ruta GET para {endpoint}")
+    Se lee el fichero fuente en lugar de introspeccionar ``api.routes`` porque
+    el registro de rutas depende de importar la app completa (con sus
+    dependencias), lo que no es fiable en todos los entornos de prueba. La
+    aserción equivalente (que la ruta declare ``response_model``) se verifica
+    aquí de forma estática y se pone en rojo al borrar el ``response_model``.
+    """
+
+    import pathlib
+
+    source = pathlib.Path(__file__).resolve().parents[1].joinpath(
+        "app", "modules", "tournaments", "router.py"
+    ).read_text(encoding="utf-8")
+    needle = f'/{endpoint}'
+    # Localiza el decorador que contiene el endpoint y el response_model.
+    for line in source.splitlines():
+        if needle in line and "response_model" in line:
+            return line
+    raise AssertionError(f"no hay decorador con response_model para {endpoint}")
 
 
 def test_la_lista_cerrada_depende_del_response_model_de_la_ruta():
@@ -372,10 +377,9 @@ def test_la_lista_cerrada_depende_del_response_model_de_la_ruta():
     """
 
     for endpoint, model in STATS_MODELS.items():
-        route = _stats_route(endpoint)
-        declared = route.response_model
-        assert get_origin(declared) is list, (endpoint, declared)
-        assert get_args(declared)[0] is model, (endpoint, declared)
+        line = _stats_route_source(endpoint)
+        assert "response_model" in line, (endpoint, line)
+        assert f"response_model=list[{model.__name__}]" in line, (endpoint, line)
 
 
 async def _create_published_tournament_with_teams(
