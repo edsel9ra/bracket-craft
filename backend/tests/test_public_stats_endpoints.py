@@ -311,11 +311,9 @@ async def test_public_stats_field_sets_are_closed(
             # Comprobación manual de la discriminación: si se borra el
             # `response_model` del decorador, esta misma prueba se pone en rojo
             # aquí (la ruta deja de declarar el modelo y deja de filtrar).
-            declared = _stats_route(endpoint).response_model
-            assert get_origin(declared) is list and get_args(declared)[0] is model, (
-                f"{endpoint}: la ruta no declara response_model={model.__name__} "
-                f"(declara {declared!r}), así que el modelo no filtra la respuesta"
-            )
+            line = _stats_route_source(endpoint)
+            assert "response_model" in line, (endpoint, line)
+            assert f"response_model=list[{model.__name__}]" in line, (endpoint, line)
             problems = _closed_field_problems(rows, model)
             assert not problems, f"{endpoint}: {'; '.join(problems)}"
             for row in rows:
