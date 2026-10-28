@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resolveMatchOutcomeLabel } from '~/utils/publicTournament';
 import type { PublicMatch } from '~/utils/publicTournament';
 
 const props = defineProps<{
@@ -57,6 +58,15 @@ function scoreLabel(score: number | null): string {
 function isWinner(match: PublicMatch, teamId: string | null): boolean {
   return Boolean(teamId && match.winner_team_id === teamId);
 }
+
+function resolutionLabel(match: PublicMatch): string {
+  const outcome = resolveMatchOutcomeLabel(match);
+  if (outcome === 'walkover') return t('match.walkover');
+  if (outcome === 'penalties') return t('public.penalties');
+  if (outcome === 'extra_time') return t('match.overtime');
+  if (outcome === 'administrative') return t('match.administrative');
+  return '';
+}
 </script>
 
 <template>
@@ -82,6 +92,7 @@ function isWinner(match: PublicMatch, teamId: string | null): boolean {
               <strong>{{ scoreLabel(match.away_score) }}</strong>
             </div>
             <div class="bracket-match-footer">
+              <span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span>
               <span v-if="match.home_penalties !== null && match.away_penalties !== null">
                 {{ match.home_penalties }}-{{ match.away_penalties }} {{ t('public.penalties') }}
               </span>

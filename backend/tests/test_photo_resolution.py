@@ -555,6 +555,7 @@ async def test_public_matches_keeps_the_reference_payload(monkeypatch):
                     "team_id": str(HOME_TEAM_ID),
                     "team_name": "Home FC",
                     "formation_code": "4-3-3",
+                    "segment_number": None,
                     "crest_url": None,
                     "starters": [
                         {
@@ -583,6 +584,7 @@ async def test_public_matches_keeps_the_reference_payload(monkeypatch):
                     "team_id": str(AWAY_TEAM_ID),
                     "team_name": "Away FC",
                     "formation_code": "4-3-3",
+                    "segment_number": None,
                     "crest_url": None,
                     "starters": [
                         {

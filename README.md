@@ -67,7 +67,7 @@ El comando es idempotente, solo admite entornos de desarrollo/local y no forma p
 
 La portada y las rutas `/tournaments/{id}` son públicas. El Workspace de gestión está disponible en `/workspace` después de iniciar sesión y validar una organización activa.
 
-Las proyecciones públicas de torneos, tablas y partidos se sirven desde `/api/v1/tournaments/public`, `/api/v1/tournaments/public/{id}/standings` y `/api/v1/tournaments/public/{id}/matches`. Los partidos incluyen la planilla pública cuando existe; la formación táctica solo aparece después de publicarse explícitamente desde el Workspace.
+Las proyecciones públicas de torneos, tablas y partidos se sirven desde `/api/v1/tournaments/public`, `/api/v1/tournaments/public/{id}`, `/api/v1/tournaments/public/{id}/standings`, `/api/v1/tournaments/public/{id}/matches`, `/api/v1/tournaments/public/{id}/player-stats` y `/api/v1/tournaments/public/{id}/team-stats`. Los partidos incluyen la planilla pública cuando existe; la formación táctica solo aparece después de publicarse explícitamente desde el Workspace. Las dos últimas rutas son las tablas de estadísticas de jugadores y de equipos (spec 022), que incluyen la portería imbatida según la definición única documentada más abajo.
 
 La configuración local incluye un almacenamiento S3-compatible (SeaweedFS) con interfaz de archivos en `http://localhost:9001`. La importación de plantillas acepta CSV/TXT con `first_name`, `last_name`, `national_id`, `birth_date` y `dorsal_number`; `photo_filename` vincula imágenes JPG, PNG o WEBP incluidas en un ZIP opcional. La proyección pública solo devuelve `photo_url` cuando el roster tiene consentimiento de imagen.
 
@@ -580,6 +580,34 @@ $COMPOSE up -d api worker
 
 **No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-027) termina con el mismo esquema que una base migrada y `backend/tests/test_migration_027.py` lo comprueba (opt-in con PostgreSQL).
 
+## Migraciones 029, 030 y 031: estadísticas públicas y proyecciones públicas (runbook)
+
+Las tres son **aditivas**, van **después** de la 028 (spec 021, `segment_number` en la vista pública de alineaciones), **no reescriben datos** y **no tienen *backfill***:
+
+- **029 — `organization_id` en la proyección pública de torneos.** Recrea `public.v_public_tournaments` añadiendo `organization_id` como última columna de salida, para que el backend pueda fijar el contexto RLS del rol de aplicación al servir lecturas públicas de un torneo. Es una columna **interna**: no forma parte de ningún modelo de respuesta pública. No añade ni retira tablas, columnas de tablas base, filas, políticas, grants ni índices; `CREATE OR REPLACE VIEW` conserva `security_barrier`, propietario y privilegios.
+- **030 — vistas públicas de eventos, segmentos y plantillas.** Crea `public.v_public_match_events`, `public.v_public_match_segments` y `public.v_public_tournament_rosters`, las tres con `security_barrier`, `REVOKE ALL … FROM PUBLIC` y `GRANT SELECT` solo a `bracket_app`. Filtran por organización activa, torneo en estado público y versión publicada, y el aislamiento entre organizaciones sale de sus `JOIN`. Son las que leen las dos rutas de estadísticas para calcular las cifras.
+- **031 — proyección interna con todas las formaciones publicadas.** Crea `public.v_public_match_formations` (`security_barrier`, `REVOKE` de `PUBLIC` y `GRANT SELECT` solo a `bracket_app`), que devuelve por partido, segmento y equipo **todas** las formaciones tácticas con `is_public` verdadero —jugador, `position_slot`, titular y `segment_number`—, porque `v_public_match_lineups` solo devuelve la última formación publicada por equipo. Es una **proyección interna**: no es contrato público ni aparece en ningún modelo de respuesta; la lee `GET /api/v1/tournaments/public/{id}/player-stats` para el cálculo de la portería imbatida (con ella el cálculo recibe la formación del primer segmento y la del portero entrante).
+
+Ninguna toca `init/01` ni `init/02`, no añade políticas de RLS y no cambia `engine_version` (2026.1). Prepara una copia verificada y aplica las tres en orden; un pre-chequeo informativo confirma el eslabón anterior de la cadena:
+
+```sh
+export COMPOSE="docker compose -f docker-compose.yml -f docker-compose.production.yml"
+$COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$HOME/backup-pre029.dump"
+$COMPOSE exec -T db pg_restore -l < "$HOME/backup-pre029.dump" >/dev/null && echo "backup OK"
+$COMPOSE exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT max(version) FROM schema_migrations"'
+MIGRATION_TARGET=029 $COMPOSE run --rm db-migrate
+MIGRATION_TARGET=030 $COMPOSE run --rm db-migrate
+MIGRATION_TARGET=031 $COMPOSE run --rm db-migrate
+$COMPOSE build api
+$COMPOSE up -d api worker
+```
+
+**Orden de despliegue: 029 → 030 → 031 → código.** Las dos rutas nuevas leen `organization_id` de `v_public_tournaments` para fijar el contexto RLS y consultan las vistas de la 030: contra el esquema 028 fallan por columna o relación inexistente, así que primero las migraciones. Al ser aditivas, la imagen anterior convive con las tres sin cambios (no lee las vistas nuevas y no selecciona la columna nueva), de modo que no hace falta detener `api` ni `worker` durante la ventana; el runner aplica en orden numérico y valida el checksum de todos los archivos. La 031 la consume solo la ruta `player-stats` (cálculo de la portería imbatida), así que el código nuevo la necesita en el esquema: aplica la migración antes del despliegue.
+
+**Smoke:** `GET /docs`, una lectura pública de un torneo y, con datos, las dos tablas de estadísticas (`GET /api/v1/tournaments/public/{id}/player-stats` y `…/team-stats`), que deben responder con cifras y con `404` indistinguible para un torneo no visible; después, la operación de un partido del Workspace (`GET /matches/{id}/operation`) y una lectura de detalle, que no deben cambiar. Post-chequeo de catálogo: las cuatro vistas de la 030 y la 031 existen, tienen `security_barrier` y solo `bracket_app` conserva el `SELECT`.
+
+**No hay rollback**: cualquier defecto se corrige con una migración nueva (*forward-fix*). Restaurar el backup solo si se acepta perder los cambios posteriores. La cadena de volumen limpio (`init/00-03` → 001-031) termina con el mismo esquema que una base migrada; `backend/tests/test_migration_028.py` y `backend/tests/test_migration_031.py` lo comprueban (opt-in con PostgreSQL y `DATABASE_ADMIN_URL`), y las pruebas de migración de la **029** y la **030** están pendientes en esta ronda (spec 022, T1).
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
@@ -587,6 +615,45 @@ $COMPOSE up -d api worker
 - **Qué calcula:** `public_age` (edad derivada: `age_at_reference` más la diferencia de año entre el inicio del torneo y el año de referencia), junto con nombre, dorsal, equipo y `photo_url`. La calcula para el **rol de aplicación** (`bracket_app`): «público» significa respuesta de la API, no el acceso del rol de aplicación a la base.
 - **Qué no expone:** documentos de identidad ni fechas de nacimiento; la definición no selecciona `national_id_*` ni `birth_date_encrypted`. Conserva su protección: solo filas activas de torneos publicados, en juego o finalizados, y `photo_url` solo con consentimiento de imagen. Un jugador **retirado lógicamente** deja de listarse mientras esté inactivo (012, RC-1).
 - **Contrato público de jugadores:** sale de `v_public_match_lineups` en `GET /api/v1/tournaments/public/{id}/matches` (`player_id`, nombre, dorsal, rol, posición y `photo_url`), sin edad ni dato de identidad. `backend/tests/test_public_player_views.py` comprueba con base real que las respuestas públicas no incluyen edad, documento ni fecha de nacimiento y que ningún endpoint consume la proyección interna (opt-in con PostgreSQL; comando en `AGENTS.md`).
+
+## Matriz de acceso (público vs. privado)
+
+Spec 020 audita y documenta qué es público: la consulta pública es de **solo lectura**, no escribe datos y **no añade campos públicos nuevos** (RNF-001) en esa spec; solo reorganiza la navegación por fases y grupos y deja constancia de lo que ya se publica. La spec 021 añade aditivamente un único campo nuevo al contrato público: `segment_number` (entero, nullable) en `PublicTeamLineupResponse`, para etiquetar la formación con su segmento (RF-007, RF-015); no cambia permisos ni la matriz de acceso. La spec 022 añade **dos lecturas públicas** —`player-stats` y `team-stats`— y **un solo cambio no aditivo** (publicar el nombre de jugadores que participaron en partidos con resultado confirmado aunque no figuren en una alineación publicada, RF-033); no añade escrituras, permisos ni rutas nuevas fuera de esas dos lecturas.
+
+### Público (sin sesión, sin organización activa, sin credenciales)
+
+Lecturas anónimas sobre torneos **visibles públicamente** (versión publicada, estado publicado/en juego/finalizado, organización activa). Las rutas `/` y `/tournaments/{id}` son públicas.
+
+| Lectura | Ruta |
+|---|---|
+| Listado de torneos | `GET /api/v1/tournaments/public` |
+| Detalle del torneo (fases, equipos) | `GET /api/v1/tournaments/public/{id}` |
+| Clasificación (filtrable por `stage_id`, `group_id`) | `GET /api/v1/tournaments/public/{id}/standings` |
+| Partidos (con alineaciones publicadas) | `GET /api/v1/tournaments/public/{id}/matches` |
+| Estadísticas de jugadores (goles, amarillas, rojas, porterías imbatidas) | `GET /api/v1/tournaments/public/{id}/player-stats` |
+| Estadísticas de equipos (goles a favor/en contra, porterías imbatidas, fair play) | `GET /api/v1/tournaments/public/{id}/team-stats` |
+
+- Un torneo no visible responde el mismo `404` indistinguible de uno inexistente (RF-014).
+- Partidos visibles: programados, en juego, finalizados y de resolución administrativa; **suspendidos y cancelados no se publican**.
+- Fotos solo con **inscripción vigente** + consentimiento de imagen + foto cargada; `photo_url` es nulo en cualquier otro caso, incluido un jugador **retirado lógicamente** aunque su inscripción retirada tenga consentimiento y foto cargada, y también si falla la firma. Sin foto se muestran las iniciales, sin hueco ni imagen rota.
+- Formación táctica solo si se publicó explícitamente desde el Workspace; en otro caso, planilla; si hay formación sin publicar, no se publica ni formación ni planilla.
+- Las tablas de estadísticas deben cubrir por defecto el **torneo completo** —sin filtro de fase ni de grupo y sin preseleccionar la primera fase—, con el filtro por fase (o por grupo dentro de la fase) como acción **explícita** y **reversible**. Ese ámbito por defecto es la decisión de producto de la spec 022 (RF-021) y **sigue pendiente** en esta ronda de corrección (T15/T6): hoy la pantalla aún envía la primera fase al pedir las dos tablas.
+- Los campos de cada respuesta forman una **lista cerrada** (RF-015); la verificación automática falla ante cualquier campo fuera de la lista. La spec 020 no añade campos nuevos; la spec 021 añade aditivamente `segment_number` (entero, nullable) a `PublicTeamLineupResponse` (RF-007, RF-015). La spec 022 añade dos modelos nuevos, `PublicPlayerStatsResponse` y `PublicTeamStatsResponse`, que fijan el conjunto de campos de cada fila, y un **cambio no aditivo**: publicar nombres de jugadores que participaron en partidos con resultado confirmado aunque no figuren en una alineación publicada (RF-033); la plantilla inscrita sigue sin publicarse y no salen asistencias, sanciones ni suspensiones. Declarar esos dos modelos como `response_model` de sus rutas ya está hecho (spec 022, T5) y es lo que aplica el filtro de la lista cerrada; la prueba con datos reales que lo demuestra llega con T17.
+
+### Exige sesión (Workspace y administración)
+
+Todo lo demás requiere sesión válida, organización activa y el permiso correspondiente (RBAC por organización más `match_officials` por partido): Workspace (`/workspace`), administración global (`/admin`), operación de partidos, escrituras, invitaciones, miembros, etc.
+
+### Nunca sale en público (RF-016)
+
+Documentos de identidad, fecha de nacimiento, edad y año de referencia de la edad; la dirección externa heredada del escudo (`logo_url`); claves internas de almacenamiento (`crest_object_key` y claves de foto); el motivo de un walkover o de una resolución administrativa; sanciones y suspensiones; **la plantilla inscrita del equipo** (la lista de jugadores inscritos en el torneo), también en las tablas de estadísticas; la **asistencia** del gol (no se publica en ninguna proyección ni ruta pública); registros de auditoría; datos de miembros u organizaciones. Ningún torneo ni dato de otra organización se mezcla en una respuesta (RF-017). Ninguna escritura, cookie ni dependencia de sesión se añade a la consulta pública (RF-018).
+
+### Verificación automática
+
+- `backend/tests/test_public_field_allowlist.py` — lista cerrada de campos públicos (RF-015) y ausencia de campos sensibles (RF-016).
+- `backend/tests/test_public_access_matrix.py` — lecturas anónimas, `404` indistinguible, aislamiento entre dos organizaciones y parámetros de consulta fuera de rango → `422` con `detail` en lista y sin `code`. **Cubre el listado, el detalle, la clasificación, los partidos y, desde la spec 022 (T18), las dos tablas de estadísticas** (`player-stats` y `team-stats`) en la lectura anónima, el `404` indistinguible y el `422` de parámetros; el aislamiento **con datos** y la lista cerrada de esas dos rutas se verifican en `test_public_stats_endpoints.py`.
+- `backend/tests/test_public_stats_endpoints.py` (opt-in con PostgreSQL) — es donde vive la verificación de las dos rutas de estadísticas: torneo no visible → `404` indistinguible, aislamiento entre dos organizaciones con datos reales, `422` de parámetros fuera de rango y lista cerrada de campos de las dos respuestas.
+- `backend/tests/test_public_stats.py` (puro, sin base) — cálculo de las estadísticas y definición de la portería imbatida, con 58 pruebas (incluidas las tres estáticas que comprueban que la ruta de jugadores lee `v_public_match_formations` y no `v_public_match_lineups`); que haya **una prueba identificable por cada caso límite `CL-1` a `CL-12`** sigue pendiente en esta ronda (spec 022, T19).
 
 ## Alcance inicial
 
@@ -661,7 +728,7 @@ El cierre es una **operación atómica**: se valida completa y, si algo falla, n
 - **Propuesta de segmento:** `GET /api/v1/matches/{id}/operation` devuelve `next_segment` con `{segment_number, minute_start, derived}` o `null`, derivado de los segmentos e interrupciones ya persistidos: sin segmentos `{1, 0, true}`; último interrumpido, el minuto de su interrupción; último completado con fin, su fin; último activo sin interrupción o completado sin `minute_end`, `{n+1, null, false}` porque lo indica el operador; `null` en un partido terminal o con la versión no publicada, y `suspended` sí propone. Es un campo aditivo y de solo lectura: el `GET` no escribe, el servidor sigue validando número y minuto al crear y la pantalla ya no los calcula por su cuenta. La propuesta fija el número y prerrellena el minuto solo si es derivado y el operador no lo ha escrito; el origen se anuncia con `role="status"`.
 - **Segmento, no periodo:** un segmento es una **ventana de tiempo** con número consecutivo, inicio, fin opcional y estado; **no** es una mitad ni un periodo reglamentario, y un partido puede tener cualquier número, incluido uno. Crear uno con otro activo cierra el activo en su minuto; interrumpir guarda el motivo y el minuto y cierra el segmento, y reanudar exige un segmento nuevo.
 - **Acta cerrada:** el resultado confirmado y sus eventos son inmutables (triggers de la 016 y la 009) y no hay ruta de corrección ni de reapertura. La pantalla muestra «Acta cerrada: no se puede editar» (`role="status"`) y mantiene las acciones de escritura deshabilitadas.
-- **Sin cambios de contrato interno:** `engine_version` sigue en **2026.1**, `docs/contrato-reglas.md` no cambia y el esquema pasó a **027** con el motivo del walkover (la 017 no trae migración); la 017 no añade acciones auditadas ni eventos de outbox.
+- **Sin cambios de contrato interno:** `engine_version` sigue en **2026.1**, `docs/contrato-reglas.md` no cambia y el esquema pasó a **027** con el motivo del walkover (la 017 no trae migración); la 017 no añade acciones auditadas ni eventos de outbox. La cadena de esquema sigue después hasta **031** (028 de la spec 021 y 029–031 de la spec 022; runbook en «Migraciones 029, 030 y 031»).
 
 ## Disciplina y sanciones
 
@@ -685,6 +752,53 @@ Declarar un walkover es un **cierre del acta** con `resolution_type: "walkover"`
 - **Efecto en clasificación y sanciones:** el partido queda `finished` y confirmado, cuenta como **jugado** con victoria o derrota, los puntos y los goles de la pareja en la tabla y el ganador avanza de llave. No se registran eventos, no se sirve ninguna suspensión de la plantilla y no se crea ninguna; la proyección por segmento no se reescribe. La auditoría guarda la resolución y el motivo, y se emiten los mismos tres eventos de outbox que un cierre normal (**MATCH_CLOSED**, **MATCH_UPDATED**, **STANDINGS_UPDATED**).
 - **Pantalla:** con la resolución prevista `walkover` el panel pide ganador y motivo, enseña el marcador efectivo en solo lectura y no muestra ni envía los seis campos; el botón de cerrar no se deshabilita por no haber segmento activo y un aviso (`role="status"`) explica que el W.O. no necesita segmento ni planilla. Cambiar a `walkover` no se bloquea por segmentos persistidos fuera del máximo (el W.O. no los valida), pero los eventos del borrador siguen avisándose y se rechazan en la validación previa.
 - **Sin cambios de contrato interno:** `engine_version` sigue en **2026.1**; `walkover_score` es configuración aditiva fuera del contrato cerrado y el motivo no se publica en ninguna proyección pública.
+
+## Estadísticas públicas y portería imbatida
+
+Las tablas de estadísticas se sirven sin sesión desde `GET /api/v1/tournaments/public/{id}/player-stats` (jugadores) y `GET /api/v1/tournaments/public/{id}/team-stats` (equipos), con filtros opcionales `stage_id`/`group_id` y paginación `limit`/`offset` (tope 500). **Ámbito por defecto: el torneo completo** (decisión de producto de la spec 022, RF-021). La regla es que al pedir la tabla no se envíe ningún filtro de fase ni de grupo y que ninguna fase se preseleccione por ser la primera; filtrar por fase (y por grupo dentro de ella) es una acción **explícita** del usuario, se ofrece solo cuando el torneo tiene fases, es **reversible** a «todo el torneo» y un partido cuenta en la fase a la que pertenece. **Estado real:** la pantalla aún preselecciona la primera fase al pedir las dos tablas (corrección pendiente, T15). Solo contribuyen los partidos con **resultado confirmado** de un torneo visible públicamente; un partido programado, en juego, suspendido o cancelado no contribuye nunca, y un evento anulado heredado no se cuenta. Los eventos huérfanos (jugador, equipo o segmento inexistente o de otra organización) se excluyen sin fallar la respuesta ni excluir el partido. Las fotos se firman en un solo lote después de cerrar la transacción y degradan a `null` si falla la firma.
+
+- **Jugadores:** nombre, equipo, goles, tarjetas amarillas, tarjetas rojas y porterías imbatidas. Solo aparecen los jugadores con al menos un evento acreditado o con presencia en una alineación publicada en un partido con resultado confirmado. Un gol y un gol de penalti cuentan como gol del jugador; un autogol no. Las tarjetas incluyen las de un jugador que luego fue expulsado por doble amarilla. La asistencia no se publica y las sanciones y suspensiones no se publican. La estadística se agrega por jugador, sumando la de todos los equipos en los que estuvo inscrito (incluida retirada y reactivación en otro equipo). Un jugador retirado lógicamente aparece con su histórico completo y sin foto.
+- **Equipos:** equipo (con escudo), goles a favor, goles en contra, porterías imbatidas y puntos de juego limpio. Solo aparecen los equipos con al menos un partido con resultado confirmado. Un gol a favor cuenta goles, goles de penalti y autogoles del rival; en partidos resueltos fuera del campo (walkover) se cuentan los goles derivados de `walkover_score`. Un gol en contra cuenta goles y goles de penalti del rival más los autogoles propios. Los puntos de juego limpio se suman como los calcula la clasificación.
+- **Orden y posición:** jugadores por goles descendente, luego menos partidos disputados, luego apellido y luego identificador estable; equipos por goles a favor descendente, luego menos goles en contra, luego nombre y luego identificador estable. El orden es **total y estable**: dos consultas con los mismos datos devuelven el mismo orden. Las filas empatadas en **todos** los criterios visibles compartirán la misma posición, la numeración continuará después del grupo (1, 2, 2, 4) y el identificador estable solo decidirá el orden de presentación dentro del empate; esa **columna de posición no está implementada todavía** en esta ronda de corrección: ninguna de las dos respuestas incluye aún el campo `rank` y la pantalla no muestra la columna (spec 022, RF-006 y RF-022, pendientes).
+- **Fotos:** solo con **inscripción vigente** en ese torneo + consentimiento de imagen + foto cargada. Si falta cualquiera de las tres condiciones se muestran las **iniciales**, sin hueco ni imagen rota; si el navegador no consigue cargar la imagen, también iniciales. Un jugador **retirado lógicamente** (`is_active` falso) **nunca** publica foto —aunque su inscripción retirada tenga consentimiento y foto cargada—: aparece con sus iniciales y solo recupera la condición de foto si se reactiva su inscripción.
+
+### Portería imbatida — definición única (estadística derivada)
+
+La portería imbatida se atribuye a dos unidades independientes, con definiciones separadas. Su definición y su umbral de **60 minutos** son un **criterio fijo de una estadística derivada**, no configurable por torneo ni por versión (dos torneos deben ser comparables), pero **no son una regla de juego**: no se evalúan en el motor de reglas ni en el cierre del acta, no alteran resultados, marcadores, clasificación, actas, sanciones, suspensiones ni el avance de fases, y se calculan **solo al leer**. Por eso `engine_version` sigue en **2026.1**, el contrato interno de reglas (`docs/contrato-reglas.md`) no cambia y **no se declara ninguna excepción a la constitución** (la excepción acotada a §3.2 que se llegó a mencionar **se retiró**: el criterio no contradice ninguna regla de la constitución).
+
+- **Del equipo:** el partido tiene resultado confirmado; la resolución es reglamentaria, prórroga o penales (partido disputado); el equipo no recibió ningún gol (gol, gol de penalti y autogol del rival, incluidos los de prórroga; la tanda de penales no cuenta); sin condición de duración mínima. Los partidos resueltos fuera del campo (walkover o administrativa) no cuentan. Como máximo una por equipo y partido.
+- **Del portero:** el equipo tiene portería imbatida; el portero es **identificable** porque ocupa `GK` en una **formación táctica publicada** del equipo en el partido —**nunca se infiere un portero**—; fue **titular**: el portero inicial es el `GK` de la formación publicada del **primer segmento** y un portero **entrante** lo es si figura como `GK` en una formación publicada **posterior**, acreditado por la sustitución registrada en el acta; y jugó al menos 60 minutos (para un titular no sustituido, la duración efectiva del partido; para un sustituido, desde el inicio hasta el minuto de la sustitución; para un expulsado, desde el inicio hasta el minuto de la expulsión). Sin formación táctica publicada no se atribuye a ningún portero y la del equipo se conserva. Como máximo una por portero y partido.
+
+La fuente de la formación es, por tanto, **todas las formaciones tácticas publicadas** del partido —no solo la última por equipo—: la del **primer segmento** para identificar al portero titular y **cualquier formación publicada posterior** para el entrante. Un suplente que nunca figura como `GK` en una formación publicada no es portero identificable. Walkover y resolución administrativa no cuentan para portero ni para portería imbatida del equipo, aunque sí para las demás estadísticas de equipo (goles derivados incluidos). El motivo de walkover o de resolución administrativa nunca se publica.
+
+### Casos límite de la portería imbatida
+
+| # | Caso | Equipo | Portero |
+|---|---|---|---|
+| 1 | Partido disputado, 0 recibidos, formación publicada y portero titular con ≥ 60 min | Sí | Sí |
+| 2 | Partido disputado, 0 recibidos, portero sustituido a los 50 min | Sí | No (menos de 60 min) |
+| 3 | Partido disputado, 0 recibidos, portero expulsado a los 70 min | Sí | Sí (70 ≥ 60 min; la expulsión no reduce los minutos ya jugados) |
+| 4 | Partido disputado, el equipo recibió un gol y luego empató (1-1) | No | No |
+| 5 | Partido disputado, autogol de un jugador propio | No | No |
+| 6 | Partido disputado con goles solo en prórroga | Se evalúa con el marcador final (prórroga incluida) | Se evalúa con el marcador final (prórroga incluida) |
+| 7 | Partido con tanda de penales (marcador final empatado en juego) | Sí si no recibió gol en juego | Sí si cumple el resto |
+| 8 | Walkover (sin eventos, segmentos ni planilla) | No | No (sin portero identificable) |
+| 9 | Resolución administrativa | No | No |
+| 10 | Partido suspendido o cancelado | No contribuye (no es resultado confirmado) | No contribuye |
+| 11 | Partido terminado con menos minutos que el reglamentario pero con acta confirmada | Sí si no recibió gol | Sí si el portero jugó ≥ 60 min |
+| 12 | Equipo sin formación táctica publicada (solo planilla) | Sí si no recibió gol | No (sin portero identificable) |
+| 13 | Equipo con formación táctica sin publicar | Sí si no recibió gol | No (sin portero identificable) |
+| 14 | Dos porteros en el mismo partido (sustitución del portero) | Sí si no recibió gol | Se atribuye a cada uno que cumpla los criterios |
+| 15 | Portero que marca un gol (no autogol) | Sí si no recibió gol | Sí si cumple el resto |
+| 15b | Portero que marca un autogol | No (el autogol es gol recibido) | No |
+| 16 | Portero expulsado y reemplazado por un jugador de campo | Sí si no recibió gol | Solo si el portero titular cumplió los criterios antes de la expulsión |
+| 16b | Portero sustituto que figura como `GK` en una formación publicada posterior | Sí si no recibió gol | Sí si cumple los criterios |
+| 16c | Portero sustituto que no figura como `GK` en ninguna formación publicada | Sí si no recibió gol | No (no es portero identificable) |
+| 17 | Partido con dos inscripciones del mismo jugador en equipos distintos | Se atribuye por equipo y partido | Se agrega por jugador (suma de ambos equipos) |
+| 18 | Jugador retirado lógicamente | Su histórico no cambia | Su histórico no cambia |
+| 19 | Acta confirmada antes de la existencia de la asistencia o con identificadores de texto libre | Se lee sin error ni cifra inventada | Se lee sin error ni cifra inventada |
+
+La regla vigente se muestra en la interfaz junto a toda cifra que la use, en español e inglés. Un torneo no visible responde el mismo `404` indistinguible. La lista de campos públicos es cerrada: `backend/tests/test_public_field_allowlist.py` comprueba los modelos públicos de las lecturas de la spec 020 y `backend/tests/test_public_stats_endpoints.py` comprueba, con datos reales, la lista cerrada y el aislamiento de las dos rutas de estadísticas; `backend/tests/test_public_access_matrix.py` cubre hoy solo las cuatro lecturas anteriores (listado, detalle, clasificación y partidos) y **no** las de estadísticas.
 
 ## Autorización y avance manual entre fases
 

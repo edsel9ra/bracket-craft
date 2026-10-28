@@ -1,26 +1,11 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { FormationCode } from '~/constants/formations';
 import { positionLabel } from '~/utils/positions';
+import { isTacticalFormationValid, textualFormationLines, playerInitials } from '~/utils/publicLineup';
+import type { PublicLineupPlayer, PublicTeamLineup } from '~/utils/publicTournament';
 
-interface LineupPlayer {
-  player_id: string;
-  first_name: string;
-  last_name: string;
-  dorsal_number: number | null;
-  role: 'starter' | 'substitute';
-  position_slot: string | null;
-  photo_url: string | null;
-}
-
-interface TeamLineup {
-  team_id: string;
-  team_name: string;
-  formation_code: FormationCode | null;
-  crest_url: string | null;
-  starters: LineupPlayer[];
-  substitutes: LineupPlayer[];
-}
+type LineupPlayer = PublicLineupPlayer;
+type TeamLineup = PublicTeamLineup;
 
 interface MatchLineup {
   home: TeamLineup | null;
@@ -53,6 +38,7 @@ const { t, formatDateTime } = useI18n();
 const dialog = ref<HTMLDialogElement | null>(null);
 const dialogId = 'public-lineup-dialog';
 const titleId = 'public-lineup-dialog-title';
+const previousFocus = ref<HTMLElement | null>(null);
 
 function showDialog() {
   if (dialog.value && !dialog.value.open) dialog.value.showModal();
@@ -64,9 +50,14 @@ function hideDialog() {
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
+    previousFocus.value = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
     void nextTick(showDialog);
   } else {
     hideDialog();
+    void nextTick(() => {
+      previousFocus.value?.focus?.();
+      previousFocus.value = null;
+    });
   }
 });
 
@@ -94,7 +85,7 @@ function handleDialogClick(event: MouseEvent) {
 }
 
 function playerName(player: LineupPlayer): string {
-  return `${player.first_name} ${player.last_name}`;
+  return `${player.first_name} ${player.last_name}`.trim();
 }
 
 function lineupTeams(match: LineupMatch): TeamLineup[] {
@@ -103,13 +94,20 @@ function lineupTeams(match: LineupMatch): TeamLineup[] {
   );
 }
 
-function hasTacticalLineup(match: LineupMatch): boolean {
-  const teams = [match.lineup?.home, match.lineup?.away];
-  return teams.every((team) => Boolean(
-    team?.formation_code
-    && team.starters.length > 0
-    && team.starters.every((player) => Boolean(player.position_slot)),
-  ));
+function isTactical(team: TeamLineup): boolean {
+  return isTacticalFormationValid(team);
+}
+
+function segmentLabel(team: TeamLineup): string {
+  if (team.segment_number === null || team.segment_number === undefined) return '';
+  return t('public.segment', { n: team.segment_number });
+}
+
+function lineLabel(line: 'gk' | 'def' | 'mid' | 'att'): string {
+  if (line === 'gk') return t('public.line.gk');
+  if (line === 'def') return t('public.line.def');
+  if (line === 'mid') return t('public.line.mid');
+  return t('public.line.att');
 }
 
 function formatScore(match: LineupMatch): string {
@@ -176,65 +174,77 @@ function formatDate(value: string | null): string {
 
       <div class="lineup-dialog-content">
         <template v-if="match.lineup">
-          <section v-if="hasTacticalLineup(match)" class="lineup-section">
+          <section
+            v-for="team in lineupTeams(match)"
+            :key="team.team_id"
+            class="lineup-section"
+          >
             <div class="lineup-section-heading">
               <div>
-                <p class="eyebrow">{{ t('public.formationAvailable') }}</p>
-                <h3>{{ t('public.tacticalView') }}</h3>
+                <p class="eyebrow">
+                  {{ isTactical(team) ? t('public.tacticalFormation') : t('public.matchLineup') }}
+                </p>
+                <h3>{{ team.team_name }}</h3>
               </div>
-            </div>
-            <PublicMatchPitch
-              class="lineup-modal-pitch"
-              :home="match.lineup.home!"
-              :away="match.lineup.away!"
-              :show-bench="false"
-            />
-          </section>
-
-          <section class="lineup-section lineup-list-section">
-            <div class="lineup-section-heading">
-              <div>
-                <p class="eyebrow">{{ t('public.lineupView') }}</p>
-                <h3>{{ t('public.listView') }}</h3>
-              </div>
-              <span v-if="!hasTacticalLineup(match)" class="lineup-section-note">{{ t('public.classicLineup') }}</span>
+              <span v-if="isTactical(team) && segmentLabel(team)" class="lineup-section-note">
+                {{ segmentLabel(team) }}
+              </span>
             </div>
 
-            <div class="lineup-modal-lists">
-              <article v-for="team in lineupTeams(match)" :key="team.team_id" class="lineup-modal-team">
-                <div class="lineup-modal-team-heading">
-                  <div class="lineup-modal-team-title">
-                    <TeamCrest :team="{ name: team.team_name }" :crest-url="team.crest_url ?? null" surface="public" />
-                    <strong>{{ team.team_name }}</strong>
-                  </div>
-                  <span>{{ team.formation_code || t('public.classicLineup') }}</span>
+            <template v-if="isTactical(team)">
+              <TeamPitch :team="team" />
+              <details class="textual-equivalent">
+                <summary>{{ t('public.textualEquivalent') }}</summary>
+                <ol class="textual-equivalent-list">
+                  <li v-for="entry in textualFormationLines(team)" :key="entry.line" class="textual-equivalent-line">
+                    <strong>{{ lineLabel(entry.line) }}</strong>
+                    <ul>
+                      <li v-for="player in entry.players" :key="player.player_id">
+                        #{{ player.dorsal_number ?? '—' }} {{ playerName(player) }}
+                        <span v-if="player.position_slot"> ({{ positionLabel(player.position_slot, t) }})</span>
+                      </li>
+                    </ul>
+                  </li>
+                </ol>
+              </details>
+            </template>
+
+            <template v-else>
+              <div class="lineup-modal-roles">
+                <div>
+                  <small>{{ t('public.starters') }}</small>
+                  <template v-if="team.starters.length">
+                    <p v-for="player in team.starters" :key="`starter-${player.player_id}`" class="lineup-modal-player">
+                      <span class="lineup-modal-player-avatar" aria-hidden="true">
+                        <img v-if="player.photo_url" :src="player.photo_url" :alt="playerName(player)" loading="lazy" />
+                        <span v-else>{{ playerInitials(player) }}</span>
+                      </span>
+                      <b>#{{ player.dorsal_number ?? '—' }}</b>
+                      <span class="lineup-modal-player-name">{{ playerName(player) }}</span>
+                      <em v-if="player.position_slot">{{ positionLabel(player.position_slot, t) }}</em>
+                    </p>
+                  </template>
+                  <p v-else class="lineup-modal-empty">{{ t('public.noLineup') }}</p>
                 </div>
-                <div class="lineup-modal-roles">
-                  <div>
-                    <small>{{ t('public.starters') }}</small>
-                    <template v-if="team.starters.length">
-                      <p v-for="player in team.starters" :key="`starter-${player.player_id}`" class="lineup-modal-player">
-                        <b>#{{ player.dorsal_number ?? '—' }}</b>
-                        <span class="lineup-modal-player-name">{{ playerName(player) }}</span>
-                        <em v-if="player.position_slot">{{ positionLabel(player.position_slot, t) }}</em>
-                      </p>
-                    </template>
-                    <p v-else class="lineup-modal-empty">{{ t('public.noLineup') }}</p>
-                  </div>
-                  <div>
-                    <small>{{ t('public.substitutes') }}</small>
-                    <template v-if="team.substitutes.length">
-                      <p v-for="player in team.substitutes" :key="`substitute-${player.player_id}`" class="lineup-modal-player">
-                        <b>#{{ player.dorsal_number ?? '—' }}</b>
-                        <span class="lineup-modal-player-name">{{ playerName(player) }}</span>
-                      </p>
-                    </template>
-                    <p v-else class="lineup-modal-empty">{{ t('public.noLineup') }}</p>
-                  </div>
+                <div>
+                  <small>{{ t('public.substitutes') }}</small>
+                  <template v-if="team.substitutes.length">
+                    <p v-for="player in team.substitutes" :key="`substitute-${player.player_id}`" class="lineup-modal-player">
+                      <span class="lineup-modal-player-avatar" aria-hidden="true">
+                        <img v-if="player.photo_url" :src="player.photo_url" :alt="playerName(player)" loading="lazy" />
+                        <span v-else>{{ playerInitials(player) }}</span>
+                      </span>
+                      <b>#{{ player.dorsal_number ?? '—' }}</b>
+                      <span class="lineup-modal-player-name">{{ playerName(player) }}</span>
+                    </p>
+                  </template>
+                  <p v-else class="lineup-modal-empty">{{ t('public.noLineup') }}</p>
                 </div>
-              </article>
-            </div>
+              </div>
+            </template>
           </section>
+
+          <p v-if="!lineupTeams(match).length" class="lineup-modal-empty" />
         </template>
       </div>
     </div>
@@ -260,18 +270,6 @@ function formatDate(value: string | null): string {
 .lineup-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .lineup-section-heading h3 { margin: 7px 0 0; font-size: 1.45rem; letter-spacing: -0.05em; }
 .lineup-section-note { color: var(--muted); font-size: 0.76rem; }
-.lineup-modal-pitch { width: min(100%, 980px); margin: 0 auto; }
-.lineup-modal-pitch :deep(.pitch-player) { width: clamp(62px, 7vw, 80px); }
-.lineup-modal-pitch :deep(.pitch-player img), .lineup-modal-pitch :deep(.player-avatar) { width: 42px; height: 42px; line-height: 38px; }
-.lineup-modal-pitch :deep(.player-number) { font-size: 0.72rem; }
-.lineup-modal-pitch :deep(.pitch-player .player-name) { max-width: 104px; font-size: 0.72rem; }
-.lineup-modal-pitch :deep(.player-position) { font-size: 0.62rem; }
-.lineup-modal-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.lineup-modal-team { min-width: 0; padding: 18px; border: 1px solid rgba(166, 170, 159, 0.18); border-radius: 14px; background: rgba(12, 15, 12, 0.4); }
-.lineup-modal-team-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.lineup-modal-team-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.lineup-modal-team-heading strong { overflow-wrap: anywhere; font-size: 1rem; }
-.lineup-modal-team-heading span { flex: 0 0 auto; color: var(--accent); font-size: 0.72rem; }
 .lineup-modal-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; padding-top: 14px; }
 .lineup-modal-roles small { color: var(--muted); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 .lineup-modal-player { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; margin: 10px 0 0; color: var(--ink); font-size: 0.88rem; line-height: 1.3; }
@@ -279,6 +277,14 @@ function formatDate(value: string | null): string {
 .lineup-modal-player-name { overflow-wrap: anywhere; }
 .lineup-modal-player em { grid-column: 2; color: var(--muted); font-size: 0.68rem; font-style: normal; text-transform: uppercase; }
 .lineup-modal-empty { color: var(--muted); font-size: 0.8rem; }
+.lineup-modal-player-avatar { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: rgba(12, 15, 12, 0.5); color: var(--accent); font-size: 0.62rem; font-weight: 900; overflow: hidden; }
+.lineup-modal-player-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.textual-equivalent { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.35); }
+.textual-equivalent summary { cursor: pointer; color: var(--accent); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; }
+.textual-equivalent-list { margin: 10px 0 0; padding-left: 18px; }
+.textual-equivalent-line { margin: 6px 0; }
+.textual-equivalent-line strong { color: var(--ink); }
+.textual-equivalent-line ul { margin: 4px 0 0; padding-left: 16px; }
 @media (max-width: 700px) {
   .lineup-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 17px; }
   .lineup-dialog-shell { max-height: calc(100dvh - 20px); }
@@ -287,13 +293,7 @@ function formatDate(value: string | null): string {
   .lineup-dialog-title h2 b { display: none; }
   .lineup-close { padding: 8px 10px; }
   .lineup-dialog-content { padding: 20px 18px 26px; }
-  .lineup-modal-lists { grid-template-columns: 1fr; }
-}
-@media (max-width: 520px) {
-  .lineup-modal-pitch :deep(.pitch-player) { width: 56px; }
-  .lineup-modal-pitch :deep(.pitch-player img), .lineup-modal-pitch :deep(.player-avatar) { width: 34px; height: 34px; line-height: 30px; }
-  .lineup-modal-pitch :deep(.pitch-player .player-name) { max-width: 72px; font-size: 0.62rem; }
-  .lineup-modal-pitch :deep(.player-position) { font-size: 0.55rem; }
+  .lineup-modal-roles { grid-template-columns: 1fr; gap: 16px; }
 }
 @media (max-width: 420px) {
   .lineup-modal-roles { grid-template-columns: 1fr; gap: 16px; }
