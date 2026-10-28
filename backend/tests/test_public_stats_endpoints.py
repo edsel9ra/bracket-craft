@@ -98,6 +98,27 @@ async def _create_published_tournament(session: AsyncSession, tenant) -> tuple:
 
 
 @asynccontextmanager
+async def _publish_tournament(session: AsyncSession, tournament_id, version_id) -> None:
+    """Publica la versión y el torneo (necesario tras sembrar partidos)."""
+
+    await session.execute(
+        text("""
+            UPDATE tournament_versions
+            SET status = 'published', published_at = CURRENT_TIMESTAMP
+            WHERE id = :version_id
+        """),
+        {"version_id": str(version_id)},
+    )
+    await session.execute(
+        text("""
+            UPDATE tournaments
+            SET status = 'published', published_version_id = :version_id
+            WHERE id = :tournament_id
+        """),
+        {"tournament_id": str(tournament_id), "version_id": str(version_id)},
+    )
+
+
 async def _public_api(session):
     connection = await session.connection()
 
@@ -471,22 +492,9 @@ async def _create_published_tournament_with_teams(
         )
         team_ids.append(team_id)
 
-    await session.execute(
-        text("""
-            UPDATE tournament_versions
-            SET status = 'published', published_at = CURRENT_TIMESTAMP
-            WHERE id = :version_id
-        """),
-        {"version_id": str(version_id)},
-    )
-    await session.execute(
-        text("""
-            UPDATE tournaments
-            SET status = 'published', published_version_id = :version_id
-            WHERE id = :tournament_id
-        """),
-        {"tournament_id": str(tournament_id), "version_id": str(version_id)},
-    )
+    # La publicación se deja para el llamador: la estructura de una versión
+    # publicada es inmutable (trg_protect_published_structure, ZZ409), así que
+    # los partidos/eventos/formaciones deben sembrarse antes de publicar.
     return tournament_id, version_id, stage_id, team_ids
 
 
@@ -564,6 +572,7 @@ async def test_team_stats_rank_does_not_restart_when_paginating(db_session, tena
         home_score=2,
         away_score=0,
     )
+    await _publish_tournament(db_session, tournament_id, version_id)
     await clear_rls_context(db_session)
 
     path = f"/api/v1/tournaments/public/{tournament_id}/team-stats"
@@ -800,6 +809,7 @@ async def _seed_players_with_photos(session: AsyncSession, tenant):
         """),
         {"match_id": str(match_id)},
     )
+    await _publish_tournament(session, tournament_id, version_id)
     return tournament_id, result
 
 
@@ -1035,7 +1045,7 @@ async def _create_live_match_with_two_segments(session: AsyncSession, tenant):
             ).scalar_one()
         )
 
-    return tournament_id, match_id, home_team_id, segment_ids[0], segment_ids[1]
+    return tournament_id, version_id, match_id, home_team_id, segment_ids[0], segment_ids[1]
 
 
 async def _confirm_goalless_match(session: AsyncSession, match_id) -> None:
@@ -1062,7 +1072,7 @@ async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSe
     el entrante alcanza el umbral. El visitante no publica formación.
     """
 
-    tournament_id, match_id, home_team_id, first_segment, second_segment = (
+    tournament_id, version_id, match_id, home_team_id, first_segment, second_segment = (
         await _create_live_match_with_two_segments(session, tenant)
     )
 
@@ -1131,6 +1141,7 @@ async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSe
     )
 
     await _confirm_goalless_match(session, match_id)
+    await _publish_tournament(session, tournament_id, version_id)
     return tournament_id, {
         "gk_first": gk_first,
         "gk_second": gk_second,
@@ -1204,7 +1215,7 @@ async def _seed_ejected_goalkeeper_with_two_published_formations(session: AsyncS
     cálculo recibiría una única formación sin `GK` y no atribuiría nada.
     """
 
-    tournament_id, match_id, home_team_id, first_segment, second_segment = (
+    tournament_id, version_id, match_id, home_team_id, first_segment, second_segment = (
         await _create_live_match_with_two_segments(session, tenant)
     )
 
@@ -1269,6 +1280,7 @@ async def _seed_ejected_goalkeeper_with_two_published_formations(session: AsyncS
     )
 
     await _confirm_goalless_match(session, match_id)
+    await _publish_tournament(session, tournament_id, version_id)
     return tournament_id, {"gk": gk, "field_player": field_player}
 
 
@@ -1510,9 +1522,12 @@ async def _seed_organization_stats(
         },
     )
 
+    await _publish_tournament(session, tournament_id, version_id)
+
     return {
         "label": label,
         "tournament_id": tournament_id,
+        "version_id": version_id,
         "stage_id": stage_id,
         "winning_team_id": winning_team_id,
         "winning_team_name": winning_name,
