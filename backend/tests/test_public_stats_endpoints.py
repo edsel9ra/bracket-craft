@@ -344,10 +344,17 @@ def test_la_comprobacion_de_lista_cerrada_no_es_vacua():
 def _stats_route(endpoint: str):
     """Ruta real de la app para ``GET /tournaments/public/{id}/{endpoint}``."""
 
-    suffix = f"/tournaments/public/{{tournament_id}}/{endpoint}"
+    expected_name = "public_player_stats" if endpoint == "player-stats" else "public_team_stats"
+    for route in api.routes:
+        name = getattr(route, "name", None)
+        methods = getattr(route, "methods", set()) or set()
+        if name == expected_name and "GET" in methods:
+            return route
+    suffix = f"/{endpoint}"
     for route in api.routes:
         path = getattr(route, "path", "")
-        if path.endswith(suffix) and "GET" in getattr(route, "methods", set()):
+        methods = getattr(route, "methods", set()) or set()
+        if path.endswith(suffix) and "GET" in methods:
             return route
     raise AssertionError(f"no hay ruta GET para {endpoint}")
 
