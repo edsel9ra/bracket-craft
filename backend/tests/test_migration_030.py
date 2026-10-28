@@ -178,7 +178,7 @@ INSERT INTO public.rosters (
     ('{ROSTER_HOME}', '{ORG}', '{TOURNAMENT}', '{TEAM_HOME}', '{PLAYER_HOME}', 9,
      TRUE, '{HOME_PHOTO_KEY}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('{ROSTER_AWAY}', '{ORG}', '{TOURNAMENT}', '{TEAM_AWAY}', '{PLAYER_AWAY}', 4,
-     FALSE, '{AWAY_PHOTO_KEY}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+     FALSE, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 INSERT INTO public.match_rosters (
     id, organization_id, match_id, roster_id, player_id, team_id,

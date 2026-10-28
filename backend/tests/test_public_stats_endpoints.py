@@ -97,7 +97,6 @@ async def _create_published_tournament(session: AsyncSession, tenant) -> tuple:
     return tournament_id
 
 
-@asynccontextmanager
 async def _publish_tournament(session: AsyncSession, tournament_id, version_id) -> None:
     """Publica la versión y el torneo (necesario tras sembrar partidos)."""
 
@@ -119,6 +118,7 @@ async def _publish_tournament(session: AsyncSession, tournament_id, version_id) 
     )
 
 
+@asynccontextmanager
 async def _public_api(session):
     connection = await session.connection()
 
@@ -487,6 +487,21 @@ async def _create_published_tournament_with_teams(
             {
                 "organization_id": str(tenant.organization_id),
                 "tournament_id": str(tournament_id),
+                "team_id": str(team_id),
+            },
+        )
+        await session.execute(
+            text("""
+                INSERT INTO stage_teams
+                    (organization_id, tournament_id, tournament_version_id, stage_id, team_id)
+                VALUES
+                    (:organization_id, :tournament_id, :version_id, :stage_id, :team_id)
+            """),
+            {
+                "organization_id": str(tenant.organization_id),
+                "tournament_id": str(tournament_id),
+                "version_id": str(version_id),
+                "stage_id": str(stage_id),
                 "team_id": str(team_id),
             },
         )
