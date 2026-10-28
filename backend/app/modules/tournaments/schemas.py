@@ -401,6 +401,7 @@ class PublicTeamLineupResponse(BaseModel):
     team_id: UUID
     team_name: str
     formation_code: str | None = None
+    segment_number: int | None = None
     crest_url: str | None = None
     starters: list[PublicLineupPlayerResponse] = Field(default_factory=list)
     substitutes: list[PublicLineupPlayerResponse] = Field(default_factory=list)
@@ -440,3 +441,30 @@ class PublicMatchResponse(BaseModel):
     status: str
     resolution_type: str | None = None
     lineup: PublicMatchLineupResponse | None = None
+
+
+class PublicPlayerStatsResponse(BaseModel):
+    rank: int
+    player_id: UUID
+    first_name: str
+    last_name: str
+    team_name: str | None = None
+    team_id: UUID | None = None
+    goals: int = 0
+    yellow_cards: int = 0
+    red_cards: int = 0
+    clean_sheets: int = 0
+    matches_played: int = 0
+    photo_url: str | None = None
+
+
+class PublicTeamStatsResponse(BaseModel):
+    rank: int
+    team_id: UUID
+    team_name: str | None = None
+    short_code: str | None = None
+    crest_url: str | None = None
+    goals_for: int = 0
+    goals_against: int = 0
+    clean_sheets: int = 0
+    fair_play_points: int = 0
