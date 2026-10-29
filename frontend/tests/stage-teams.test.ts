@@ -695,7 +695,7 @@ test('hides the entry path that was not chosen and keeps its values', () => {
   assert.match(teamsWizardComponent, /showsEntryPathStep\('teams\.bulk'/);
   assert.match(
     teamsWizardComponent,
-    /goTo\(path === 'individual' \? 'teams\.individual' : 'teams\.bulk'\)/,
+    /goTo\(path === 'individual' \? 'teams\.details' : 'teams\.bulk'\)/,
   );
 });
 

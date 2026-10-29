@@ -306,8 +306,8 @@ test('computes the first, previous and next step and stops at both extremes', ()
   assert.equal(previousStepId('rules', 'rules.overrides'), 'rules.registration');
   assert.equal(nextStepId('rules', 'rules.overrides'), null);
 
-  assert.equal(nextStepId('teams', 'teams.individual'), 'teams.bulk');
-  assert.equal(previousStepId('teams', 'teams.review'), 'teams.bulk');
+  assert.equal(nextStepId('teams', 'teams.individual'), 'teams.review');
+  assert.equal(previousStepId('teams', 'teams.review'), 'teams.individual');
   assert.equal(nextStepId('phases', 'phases.unknown' as WizardStepId), null);
   assert.equal(previousStepId('phases', 'phases.unknown' as WizardStepId), null);
 });

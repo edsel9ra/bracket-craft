@@ -153,7 +153,7 @@ function choosePath(path: TeamEntryPath): void {
   errorText.value = null;
   // RF-011: la vía elegida es la que se muestra; la otra queda oculta y sus
   // valores se conservan para cuando el usuario vuelva a elegirla.
-  void goTo(path === 'individual' ? 'teams.individual' : 'teams.bulk');
+  void goTo(path === 'individual' ? 'teams.details' : 'teams.bulk');
 }
 
 async function loadCsvFile(event: Event): Promise<void> {

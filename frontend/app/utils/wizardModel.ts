@@ -327,25 +327,33 @@ export function canConfirm(
   return { ok: blockedBy.length === 0, blockedBy };
 }
 
-/** First step of an assistant, or `null` when it declares none. */
+/** First visible step of an assistant, or `null` when it declares none. */
 export function firstStepId(wizard: WizardKind): WizardStepId | null {
-  return declarations(wizard)[0]?.id ?? null;
+  return declarations(wizard).find((step) => step.showInIndex !== false)?.id ?? null;
 }
 
-/** Next step in declaration order, or `null` on the last one or an unknown id. */
+/** Next visible step in declaration order, skipping steps with `showInIndex === false`,
+ *  or `null` on the last one or an unknown id. */
 export function nextStepId(wizard: WizardKind, stepId: string): WizardStepId | null {
   const steps = declarations(wizard);
   const index = steps.findIndex((step) => step.id === stepId);
   if (index < 0) return null;
-  return steps[index + 1]?.id ?? null;
+  for (let i = index + 1; i < steps.length; i += 1) {
+    if (steps[i].showInIndex !== false) return steps[i].id;
+  }
+  return null;
 }
 
-/** Previous step in declaration order, or `null` on the first one or an unknown id. */
+/** Previous visible step in declaration order, skipping steps with `showInIndex === false`,
+ *  or `null` on the first one or an unknown id. */
 export function previousStepId(wizard: WizardKind, stepId: string): WizardStepId | null {
   const steps = declarations(wizard);
   const index = steps.findIndex((step) => step.id === stepId);
   if (index <= 0) return null;
-  return steps[index - 1]?.id ?? null;
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (steps[i].showInIndex !== false) return steps[i].id;
+  }
+  return null;
 }
 
 /** i18n key of the visible label of a step state. */
