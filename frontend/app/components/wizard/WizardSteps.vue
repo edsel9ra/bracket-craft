@@ -18,8 +18,11 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const list = ref<HTMLOListElement | null>(null);
+const visibleSteps = computed(() =>
+  props.steps.filter((step) => step.showInIndex === true || step.id === props.current),
+);
 const currentIndex = computed(() => {
-  const index = props.steps.findIndex((step) => step.id === props.current);
+  const index = visibleSteps.value.findIndex((step) => step.id === props.current);
   return index < 0 ? 0 : index;
 });
 
@@ -30,7 +33,7 @@ function focusStepAt(index: number) {
 }
 
 function onStepKeydown(event: KeyboardEvent, index: number) {
-  const last = props.steps.length - 1;
+  const last = visibleSteps.value.length - 1;
   let target: number;
   switch (event.key) {
     case 'ArrowRight':
@@ -58,10 +61,10 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
 <template>
   <nav class="wizard-steps" :aria-label="t('wizard.indexLabel')">
     <p class="wizard-step-count">
-      {{ t('wizard.stepCount', { current: currentIndex + 1, total: steps.length }) }}
+      {{ t('wizard.stepCount', { current: currentIndex + 1, total: visibleSteps.length }) }}
     </p>
     <ol ref="list" class="wizard-step-list">
-      <li v-for="(step, index) in steps" :key="step.id" class="wizard-step-item">
+      <li v-for="(step, index) in visibleSteps" :key="step.id" class="wizard-step-item">
         <button
           type="button"
           class="wizard-step-button"

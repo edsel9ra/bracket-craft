@@ -92,7 +92,7 @@ test('the workspace panel hides the write controls from a viewer and is accessib
     'the whole block must be behind canManageTournaments',
   );
   assert.match(actions, /type="file"/);
-  assert.match(actions, /crestActionKey/);
+  assert.match(actions, /photo-picker/);
   assert.match(actions, /crest\.remove/);
   assert.match(actions, /aria-invalid/);
   assert.match(actions, /aria-describedby/);

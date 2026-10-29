@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   TEAM_ENTRY_GROUP,
+  TEAM_WIZARD_STATES,
   canConfirm,
   firstStepId,
   nextStepId,
@@ -12,6 +13,12 @@ import {
   stepStateLabelKey,
   wizardStepStates,
   wizardSteps,
+  applyTeamWizardEvent,
+  beginTeamWizardOperation,
+  canTransitionTeamWizardState,
+  teamWizardControlsDisabled,
+  transitionTeamWizardState,
+  type TeamWizardState,
   type WizardErrors,
   type WizardKind,
   type WizardStepId,
@@ -101,6 +108,7 @@ test('declares the teams assistant with two exclusive alternative entry paths', 
   assert.deepEqual(
     steps.map((step) => [step.id, step.obligation]),
     [
+      ['teams.entry', 'required'],
       ['teams.details', 'required'],
       ['teams.individual', 'alternative'],
       ['teams.bulk', 'alternative'],
@@ -120,14 +128,13 @@ test('keeps a stable step order between calls', () => {
   );
 });
 
-test('marks a required step as incomplete until its fields are filled', () => {
-  assert.equal(stateOf('teams', 'teams.details'), 'incomplete');
-  assert.equal(stateOf('teams', 'teams.details', { name: 'Alpha' }), 'incomplete');
+test('treats the details fields as optional at the step level', () => {
+  assert.equal(stateOf('teams', 'teams.details'), 'complete');
+  assert.equal(stateOf('teams', 'teams.details', { name: 'Alpha' }), 'complete');
   assert.equal(stateOf('teams', 'teams.details', { name: 'Alpha', code: 'ALP' }), 'complete');
 });
 
 test('treats blank strings as a missing value', () => {
-  assert.equal(stateOf('teams', 'teams.details', { name: '   ', code: 'ALP' }), 'incomplete');
   assert.equal(stateOf('rules', 'rules.scoring', { scoring: '' }), 'incomplete');
 });
 
@@ -255,15 +262,16 @@ test('requires exactly one alternative path in the teams assistant', () => {
 
   const none = canConfirm('teams', statuses('teams', base));
   assert.equal(none.ok, false);
-  assert.deepEqual(none.blockedBy, ['teams.individual', 'teams.bulk']);
+  assert.deepEqual(none.blockedBy, ['teams.entry', 'teams.individual', 'teams.bulk']);
 
   const individual = canConfirm('teams', statuses('teams', {
     ...base,
+    entryPath: 'individual',
     individualRows: [{ first_name: 'Ana', last_name: 'Díaz' }],
   }));
   assert.deepEqual(individual, { ok: true, blockedBy: [] });
 
-  const bulk = canConfirm('teams', statuses('teams', { ...base, bulkCsv: 'name;code' }));
+  const bulk = canConfirm('teams', statuses('teams', { ...base, entryPath: 'bulk', bulkCsv: 'name;code' }));
   assert.deepEqual(bulk, { ok: true, blockedBy: [] });
 });
 
@@ -276,22 +284,22 @@ test('rejects two alternative paths chosen at once', () => {
   }));
 
   assert.equal(result.ok, false);
-  assert.deepEqual(result.blockedBy, ['teams.individual', 'teams.bulk']);
+  assert.deepEqual(result.blockedBy, ['teams.entry', 'teams.individual', 'teams.bulk']);
 });
 
-test('requires the details and a path for the teams assistant', () => {
+test('requires a path for the teams assistant', () => {
   const result = canConfirm('teams', statuses('teams', {
     individualRows: [{ first_name: 'Ana', last_name: 'Díaz' }],
   }));
 
   assert.equal(result.ok, false);
-  assert.deepEqual(result.blockedBy, ['teams.details']);
+  assert.deepEqual(result.blockedBy, ['teams.entry']);
 });
 
 test('computes the first, previous and next step and stops at both extremes', () => {
   assert.equal(firstStepId('rules'), 'rules.scoring');
   assert.equal(firstStepId('phases'), 'phases.identity');
-  assert.equal(firstStepId('teams'), 'teams.details');
+  assert.equal(firstStepId('teams'), 'teams.entry');
 
   assert.equal(previousStepId('rules', 'rules.scoring'), null);
   assert.equal(nextStepId('rules', 'rules.scoring'), 'rules.tiebreakers');
@@ -323,4 +331,48 @@ test('stepState only depends on the received values and errors', () => {
   assert.equal(stepState(step, {}), 'incomplete');
   assert.equal(stepState(step, { scoring: { win: 3 } }), 'complete');
   assert.equal(stepState(step, {}), 'incomplete');
+});
+
+test('defines the five team wizard states (T002)', () => {
+  assert.deepEqual([...TEAM_WIZARD_STATES], ['idle', 'validating', 'saving', 'error', 'success']);
+});
+
+test('transitions between team wizard states follow the lifecycle (T002)', () => {
+  assert.equal(transitionTeamWizardState('idle', 'validating'), 'validating');
+  assert.equal(transitionTeamWizardState('validating', 'saving'), 'saving');
+  assert.equal(transitionTeamWizardState('saving', 'success'), 'success');
+  assert.equal(transitionTeamWizardState('saving', 'error'), 'error');
+  assert.equal(transitionTeamWizardState('error', 'idle'), 'idle');
+
+  assert.equal(canTransitionTeamWizardState('idle', 'saving'), false);
+  assert.equal(transitionTeamWizardState('idle', 'saving'), null);
+});
+
+test('applies high-level events to the team wizard state (T002)', () => {
+  let state: TeamWizardState = 'idle';
+  state = applyTeamWizardEvent(state, 'validate');
+  assert.equal(state, 'validating');
+  state = applyTeamWizardEvent(state, 'save');
+  assert.equal(state, 'saving');
+  state = applyTeamWizardEvent(state, 'succeed');
+  assert.equal(state, 'success');
+  state = applyTeamWizardEvent(state, 'reset');
+  assert.equal(state, 'idle');
+
+  assert.equal(applyTeamWizardEvent('saving', 'fail'), 'error');
+  assert.equal(applyTeamWizardEvent('idle', 'succeed'), 'idle');
+});
+
+test('blocks controls while the team wizard is not idle (T002)', () => {
+  assert.equal(teamWizardControlsDisabled('idle'), false);
+  assert.equal(teamWizardControlsDisabled('validating'), true);
+  assert.equal(teamWizardControlsDisabled('saving'), true);
+  assert.equal(teamWizardControlsDisabled('error'), true);
+  assert.equal(teamWizardControlsDisabled('success'), true);
+});
+
+test('a second activation while busy starts no operation (T002)', () => {
+  assert.equal(beginTeamWizardOperation('idle', 'validating'), 'validating');
+  assert.equal(beginTeamWizardOperation('validating', 'saving'), null);
+  assert.equal(beginTeamWizardOperation('saving', 'idle'), null);
 });

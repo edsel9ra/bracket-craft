@@ -457,27 +457,36 @@ test('keeps the existing CSV limits: empty, header only and 200 rows', () => {
 });
 
 test('validates the team details with the current rules', () => {
-  assert.deepEqual(validateTeamValues({}), [
+  // Sin vía individual, name/shortCode no son obligatorios ni bloquean.
+  assert.deepEqual(validateTeamValues({}), []);
+  // En vía individual, son obligatorios.
+  assert.deepEqual(validateTeamValues({ entryPath: 'individual' }), [
     { stepId: 'teams.details', field: 'name', messageKey: 'teams.wizard.error.name' },
     { stepId: 'teams.details', field: 'shortCode', messageKey: 'teams.wizard.error.code' },
   ]);
-  assert.deepEqual(validateTeamValues({ name: ' Club Norte ', shortCode: 'CN' }), []);
+  assert.deepEqual(validateTeamValues({ entryPath: 'individual', name: ' Club Norte ', shortCode: 'CN' }), []);
+  assert.deepEqual(
+    validateTeamValues({ entryPath: 'individual', name: 'A', shortCode: 'CN' }).map((issue) => issue.field),
+    ['name'],
+  );
+  assert.deepEqual(
+    validateTeamValues({ entryPath: 'individual', name: 'Club Norte', shortCode: 'C' }).map((issue) => issue.field),
+    ['shortCode'],
+  );
+  assert.deepEqual(
+    validateTeamValues({ entryPath: 'individual', name: 'Club Norte', shortCode: 'C C' }).map((issue) => issue.field),
+    ['shortCode'],
+  );
+  // El error de formato se reporta aunque la vía no sea individual.
   assert.deepEqual(validateTeamValues({ name: 'A', shortCode: 'CN' }).map((issue) => issue.field), ['name']);
-  assert.deepEqual(
-    validateTeamValues({ name: 'Club Norte', shortCode: 'C' }).map((issue) => issue.field),
-    ['shortCode'],
-  );
-  assert.deepEqual(
-    validateTeamValues({ name: 'Club Norte', shortCode: 'C C' }).map((issue) => issue.field),
-    ['shortCode'],
-  );
+  assert.deepEqual(validateTeamValues({ name: 'Club Norte', shortCode: 'C' }).map((issue) => issue.field), ['shortCode']);
 });
 
 test('requires exactly one entry path: individual or bulk', () => {
   const details = { name: 'Club Norte', shortCode: 'CN' };
 
   const none = teamConfirmation(details, [], t);
-  assert.deepEqual(none, { ok: false, blockedBy: ['teams.individual', 'teams.bulk'] });
+  assert.deepEqual(none, { ok: false, blockedBy: ['teams.entry', 'teams.individual', 'teams.bulk'] });
 
   const individual = teamConfirmation({ ...details, entryPath: 'individual' }, [], t);
   assert.deepEqual(individual, { ok: true, blockedBy: [] });
@@ -494,6 +503,7 @@ test('requires exactly one entry path: individual or bulk', () => {
   assert.deepEqual(
     statuses.map((status) => [status.id, status.state]),
     [
+      ['teams.entry', 'complete'],
       ['teams.details', 'complete'],
       ['teams.individual', 'complete'],
       ['teams.bulk', 'alternative'],
@@ -557,8 +567,15 @@ test('survives a reload through the tab draft, without persistent storage', () =
   assert.deepEqual(parseTeamCsv(restored.bulkCsv), parseTeamCsv(values.bulkCsv));
   assert.deepEqual(validateTeamValues(restored), validateTeamValues(values));
 
-  // Un borrador ilegible no rompe el asistente: valores vacíos.
-  assert.deepEqual(restoreTeamValues(null), teamDraftValues({}));
+  // Un borrador ilegible no rompe el asistente: valores vacíos. La vía se
+  // infiere por defecto como individual (normalización legacy, RF-006).
+  assert.deepEqual(restoreTeamValues(null), {
+    name: '',
+    shortCode: '',
+    entryPath: 'individual',
+    bulkCsv: '',
+    bulkFileName: '',
+  });
 });
 
 test('summarizes the chosen path and the teams to register in the review', () => {
@@ -680,4 +697,93 @@ test('hides the entry path that was not chosen and keeps its values', () => {
     teamsWizardComponent,
     /goTo\(path === 'individual' \? 'teams\.individual' : 'teams\.bulk'\)/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Flujo completo del asistente de equipos (spec 027, T010, RF-013)
+// ---------------------------------------------------------------------------
+test('flujo completo: selección de modo → formulario → validación → revisión → confirmación (individual)', () => {
+  const values = { entryPath: 'individual', name: ' Club Norte ', shortCode: 'CN' };
+
+  // 1. Selección de modo
+  const statuses = teamWizardStatuses(values, [], t);
+  assert.equal(statuses.find((s) => s.id === 'teams.entry')?.state, 'complete');
+
+  // 2. Formulario + validación
+  const issues = validateTeamValues(values);
+  assert.deepEqual(issues, []);
+
+  // 3. Revisión
+  const review = reviewTeams(values);
+  assert.equal(review.path, 'individual');
+  assert.deepEqual(review.teams, [{ name: 'Club Norte', short_code: 'CN', logo_url: null }]);
+
+  // 4. Confirmación
+  const confirmation = teamConfirmation(values, issues, t);
+  assert.deepEqual(confirmation, { ok: true, blockedBy: [] });
+
+  // 5. Plan de creación
+  const plan = planTeamCreation({ tournamentId: 'tournament-1', values });
+  assert.equal(plan.mode, 'individual');
+  assert.equal(plan.steps.length, 1);
+});
+
+test('flujo completo: selección de modo → formulario → validación → revisión → confirmación (bulk)', () => {
+  const values = { entryPath: 'bulk', bulkCsv: csvWithHeader, bulkFileName: 'equipos.csv' };
+
+  const statuses = teamWizardStatuses(values, [], t);
+  assert.equal(statuses.find((s) => s.id === 'teams.entry')?.state, 'complete');
+  assert.equal(statuses.find((s) => s.id === 'teams.bulk')?.state, 'complete');
+
+  const issues = validateTeamValues(values);
+  assert.deepEqual(issues, []);
+
+  const review = reviewTeams(values);
+  assert.equal(review.path, 'bulk');
+  assert.equal(review.count, 2);
+
+  const confirmation = teamConfirmation(values, issues, t);
+  assert.deepEqual(confirmation, { ok: true, blockedBy: [] });
+
+  const plan = planTeamCreation({ tournamentId: 'tournament-1', values });
+  assert.equal(plan.mode, 'bulk');
+});
+
+test('flujo completo: sin modo elegido bloquea la confirmación en el paso de selección', () => {
+  const values = { name: 'Club Norte', shortCode: 'CN' };
+  const issues = validateTeamValues(values);
+  const confirmation = teamConfirmation(values, issues, t);
+  assert.equal(confirmation.ok, false);
+  assert.ok(confirmation.blockedBy.includes('teams.entry'));
+});
+
+test('flujo completo: CSV inválido bloquea la confirmación en la vía bulk', () => {
+  const values = { entryPath: 'bulk', bulkCsv: 'name,short_code\nA,CN' };
+  const issues = validateTeamValues(values);
+  assert.ok(issues.length > 0);
+  const confirmation = teamConfirmation(values, issues, t);
+  assert.equal(confirmation.ok, false);
+  assert.ok(confirmation.blockedBy.includes('teams.bulk'));
+});
+
+test('flujo completo: datos inválidos en vía individual bloquean en teams.details', () => {
+  const values = { entryPath: 'individual', name: 'A', shortCode: 'CN' };
+  const issues = validateTeamValues(values);
+  assert.ok(issues.length > 0);
+  const confirmation = teamConfirmation(values, issues, t);
+  assert.equal(confirmation.ok, false);
+  assert.ok(confirmation.blockedBy.includes('teams.details'));
+});
+
+test('flujo completo: cambio de modo conserva valores y revalida', () => {
+  const individual = { entryPath: 'individual', name: ' Club Norte ', shortCode: 'CN', bulkCsv: csvWithHeader };
+  assert.deepEqual(validateTeamValues(individual), []);
+
+  // Cambio a bulk: los valores individuales se conservan en el borrador.
+  const switched = { ...individual, entryPath: 'bulk' };
+  assert.equal(teamWizardValues(switched).bulkCsv, csvWithHeader);
+  // Validación de la vía bulk no requiere nombre/código.
+  assert.deepEqual(validateTeamValues(switched), []);
+  const confirmation = teamConfirmation(switched, validateTeamValues(switched), t);
+  assert.deepEqual(confirmation, { ok: true, blockedBy: [] });
 });

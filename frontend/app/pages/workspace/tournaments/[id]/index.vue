@@ -496,6 +496,9 @@ function onCrestFileSelected(teamId: string, event: Event): void {
   const input = event.target as HTMLInputElement;
   crestFiles[teamId] = input.files?.[0] ?? null;
   delete crestErrors[teamId];
+  if (!crestFiles[teamId]) return;
+  const team = teams.value.find((candidate) => candidate.team_id === teamId);
+  if (team) void uploadCrest(team);
 }
 
 function applyCrestRow(response: TeamCrestResponse): void {
@@ -962,11 +965,11 @@ loading.value = false;
                 @dirty-change="wizardDirty.teams = $event"
               />
               <p v-if="crestStatusMessage" class="muted-note" role="status">{{ crestStatusMessage }}</p>
-              <TransitionGroup name="card-list" tag="ul" class="resource-list">
+              <TransitionGroup name="card-list" tag="ul" class="team-crest-grid">
                 <li
                   v-for="team in teams"
                   :key="team.team_id"
-                  class="team-row"
+                  class="team-crest-card"
                   :aria-busy="crestBusyTeamId === team.team_id"
                 >
                   <TeamCrest
@@ -978,7 +981,7 @@ loading.value = false;
                   <span class="team-name">{{ team.name }}</span>
                   <small>{{ team.short_code }}</small>
                   <div v-if="canManageTournaments" class="crest-actions">
-                    <label :for="crestInputId(team.team_id)">{{ t('crest.fileLabel') }}</label>
+                    <label class="photo-picker crest-file-picker" :for="crestInputId(team.team_id)">{{ crestBusyTeamId === team.team_id ? t('crest.uploading') : (team.crest_url ? t('crest.replace') : t('crest.fileLabel')) }}
                     <input
                       :id="crestInputId(team.team_id)"
                       :key="crestInputVersions[team.team_id] ?? 0"
@@ -989,13 +992,7 @@ loading.value = false;
                       :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
                       @change="onCrestFileSelected(team.team_id, $event)"
                     >
-                    <button
-                      type="button"
-                      class="button-secondary"
-                      :disabled="crestBusyTeamId === team.team_id || !crestFiles[team.team_id]"
-                      :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
-                      @click="uploadCrest(team)"
-                    >{{ t(crestActionKey(Boolean(team.crest_url))) }}</button>
+                    </label>
                     <button
                       v-if="team.crest_url"
                       type="button"
@@ -1089,11 +1086,21 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .resource-list li.active { color: var(--accent); }
 .resource-list li.active button { background: rgba(212, 243, 106, 0.08); }
 .resource-list small { color: var(--muted); font-size: 0.7rem; }
-.resource-list li.team-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
-.team-name { color: var(--ink); font-size: 0.85rem; }
-.crest-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.team-crest-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 320px)); justify-content: center; gap: 14px; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; }
+.team-crest-card { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 16px; max-width: 320px; width: 100%; margin-inline: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(12, 15, 12, 0.3); }
+.team-crest-meta { display: grid; gap: 2px; min-width: 0; justify-items: center; }
+.team-crest-meta .team-name { color: var(--ink); font-size: 0.85rem; }
+.team-crest-meta small { color: var(--muted); font-size: 0.7rem; }
+.team-name { color: var(--ink); font-size: 0.85rem; overflow-wrap: anywhere; }
+.crest-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.crest-actions .photo-picker,
+.crest-actions .button-secondary { min-height: 40px; padding: 0.6rem 1rem; font-size: 0.78rem; border-radius: 10px; justify-content: center; }
 .crest-actions label { font-size: 0.72rem; }
 .crest-actions .form-error { flex-basis: 100%; margin: 0; }
+.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
+.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.photo-picker:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
 .empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
 .loading-state { display: flex; align-items: center; gap: 12px; }

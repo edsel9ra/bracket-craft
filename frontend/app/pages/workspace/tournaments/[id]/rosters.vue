@@ -655,12 +655,14 @@ await loadPage();
 .roster-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
 .roster-import-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; gap: 12px; }
 .selected-roster-files { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; }
-.roster-list { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
-.roster-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px; border-radius: 11px; background: rgba(12, 15, 12, 0.3); }
+.roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.roster-card { display: grid; grid-template-columns: 42px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 12px; padding: 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(12, 15, 12, 0.3); transition: border-color 180ms ease, background-color 180ms ease; }
+.roster-card .photo-actions { grid-column: 1 / -1; flex-direction: column; align-items: stretch; }
+.roster-card:hover { border-color: var(--accent); background: rgba(212, 243, 106, 0.04); }
 .roster-photo { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; }
 .roster-photo-empty { display: grid; place-items: center; background: rgba(212, 243, 106, 0.12); color: var(--accent); font-weight: 800; }
 .roster-card-info { display: grid; gap: 3px; min-width: 0; }
-.roster-card-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.roster-card-info strong { overflow: hidden; font-size: 0.82rem; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .roster-card-info small { color: var(--muted); font-size: 0.72rem; }
 .photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 8px; }
 .template-download { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -710,7 +712,8 @@ await loadPage();
 .roster-import-controls { gap: 14px; }
 .roster-import-controls .button-secondary { min-height: 44px; }
 @media (max-width: 620px) {
+  .roster-list { grid-template-columns: 1fr; }
   .roster-card { grid-template-columns: 42px minmax(0, 1fr); }
-  .photo-actions { grid-column: 2; justify-self: start; justify-content: start; }
+  .roster-card .photo-actions { grid-column: 1 / -1; justify-self: stretch; justify-content: stretch; }
 }
 </style>

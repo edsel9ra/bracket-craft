@@ -241,16 +241,30 @@ export function parseTeamCsv(text: unknown): TeamCsvParse {
 export function validateTeamValues(values: TeamWizardValues): TeamIssue[] {
   const issues: TeamIssue[] = [];
 
-  const name = normalizeTeamName(values.name);
-  if (!isNameValid(name)) {
+  const path = normalizeTeamEntryPath(values.entryPath);
+  const individual = path === 'individual';
+
+  const nameTrimmed = normalizeTeamName(values.name);
+  if (individual) {
+    if (!isNameValid(nameTrimmed)) {
+      issues.push({ stepId: DETAILS_STEP, field: 'name', messageKey: 'teams.wizard.error.name' });
+    }
+  } else if (nameTrimmed !== '' && !isNameValid(nameTrimmed)) {
     issues.push({ stepId: DETAILS_STEP, field: 'name', messageKey: 'teams.wizard.error.name' });
   }
-  if (!normalizeTeamCode(values.shortCode)) {
+
+  const codeRaw = typeof values.shortCode === 'string' ? values.shortCode : '';
+  const codeTrimmed = codeRaw.trim();
+  if (individual) {
+    if (!normalizeTeamCode(codeRaw)) {
+      issues.push({ stepId: DETAILS_STEP, field: 'shortCode', messageKey: 'teams.wizard.error.code' });
+    }
+  } else if (codeTrimmed !== '' && !TEAM_CODE_PATTERN.test(codeTrimmed)) {
     issues.push({ stepId: DETAILS_STEP, field: 'shortCode', messageKey: 'teams.wizard.error.code' });
   }
 
   // Solo la vía elegida valida: lo escrito en la otra se conserva sin bloquear.
-  if (normalizeTeamEntryPath(values.entryPath) === 'bulk') {
+  if (path === 'bulk') {
     for (const issue of parseTeamCsv(values.bulkCsv).issues) {
       issues.push({
         stepId: BULK_STEP,
@@ -277,6 +291,7 @@ export function teamWizardValues(values: TeamWizardValues): WizardValues {
   const bulkText = typeof values.bulkCsv === 'string' ? values.bulkCsv : '';
 
   return {
+    entryPath: path ?? undefined,
     name: name || undefined,
     code: code || undefined,
     individualRows: path === 'individual' && name && code
@@ -301,7 +316,37 @@ export function teamWizardStatuses(
   issues: readonly TeamIssue[] = [],
   t: WizardTranslate = identity,
 ): WizardStepStatus[] {
-  return wizardStepStates('teams', t, teamWizardValues(values), teamWizardErrors(issues));
+  const path = normalizeTeamEntryPath(values.entryPath);
+  const statuses = wizardStepStates('teams', t, teamWizardValues(values), teamWizardErrors(issues));
+
+  // RF-004: en vía masiva, el estado de `teams.details` se clasifica a partir
+  // de los campos `name`/`shortCode` (vacío/válido/inválido por formato), sin
+  // bloquear la confirmación.
+  if (path !== 'individual') {
+    return statuses.map((status) => {
+      if (status.id !== 'teams.details') return status;
+      const name = normalizeTeamName(values.name);
+      const codeRaw = typeof values.shortCode === 'string' ? values.shortCode : '';
+      const codeTrimmed = codeRaw.trim();
+      const nameFilled = name !== '';
+      const codeFilled = codeTrimmed !== '';
+      const nameError = issues.some((issue) => issue.stepId === 'teams.details' && issue.field === 'name');
+      const codeError = issues.some((issue) => issue.stepId === 'teams.details' && issue.field === 'shortCode');
+      let state: typeof status.state;
+      if (nameError || codeError) {
+        state = nameFilled || codeFilled ? 'error' : status.state;
+      } else if (nameFilled && codeFilled) {
+        state = 'complete';
+      } else if (nameFilled || codeFilled) {
+        state = 'incomplete';
+      } else {
+        state = 'omitted';
+      }
+      return { ...status, state };
+    });
+  }
+
+  return statuses;
 }
 
 /** Confirmación: datos y revisión completos y exactamente una vía elegida. */
@@ -310,7 +355,14 @@ export function teamConfirmation(
   issues: readonly TeamIssue[] = [],
   t: WizardTranslate = identity,
 ): ConfirmResult {
-  return canConfirm('teams', teamWizardStatuses(values, issues, t));
+  const result = canConfirm('teams', teamWizardStatuses(values, issues, t));
+  // En vía masiva, `teams.details` no bloquea la confirmación (RF-007).
+  const path = normalizeTeamEntryPath(values.entryPath);
+  if (path !== 'individual') {
+    const blockedBy = result.blockedBy.filter((id) => id !== 'teams.details');
+    return { ok: blockedBy.length === 0, blockedBy };
+  }
+  return result;
 }
 
 /** Resumen del paso de revisión. */
@@ -322,6 +374,15 @@ export interface TeamReview {
   readonly count: number;
   /** Claves i18n de los avisos que acompañan a la revisión. */
   readonly warningKeys: readonly string[];
+}
+
+/** Alias corto de `reviewTeams` (T006): genera el resumen de revisión. */
+export function review(state: TeamWizardValues | { readonly values?: TeamWizardValues } | null | undefined): TeamReview {
+  const values =
+    state && typeof state === 'object' && 'values' in state
+      ? ((state as { values?: TeamWizardValues }).values ?? {})
+      : (state ?? {});
+  return reviewTeams(values as TeamWizardValues);
 }
 
 export function reviewTeams(values: TeamWizardValues): TeamReview {
@@ -438,12 +499,37 @@ export function teamDraftValues(values: TeamWizardValues): Record<string, unknow
  * `parseTeamCsv` (determinista), así que el CSV vuelve con su texto, sus filas
  * y sus mensajes. Un borrador ilegible deja el asistente vacío.
  */
+/**
+ * Infiere la vía de alta de un borrador legacy que no declara `entryPath`
+ * válido (RF-006, spec 027). Las señales se calculan sobre los valores
+ * presentes, sin validar su formato.
+ */
+export function inferTeamEntryPath(source: Record<string, unknown>): TeamEntryPath {
+  const individualSignal =
+    (typeof source.name === 'string' && source.name.trim() !== '') ||
+    (typeof source.shortCode === 'string' && source.shortCode.trim() !== '');
+  const bulkSignal =
+    (typeof source.bulkCsv === 'string' && source.bulkCsv.trim() !== '') ||
+    (typeof source.bulkFileName === 'string' && source.bulkFileName.trim() !== '');
+
+  if (individualSignal && !bulkSignal) return 'individual';
+  if (bulkSignal && !individualSignal) return 'bulk';
+  // Ambas señales o ninguna: prioridad a la vía individual.
+  return 'individual';
+}
+
+/** Alias de compatibilidad para la normalización legacy (T005). */
+export const normalizeLegacyTeamValues = restoreTeamValues;
+export const normalizeLegacyTeams = restoreTeamValues;
+
 export function restoreTeamValues(saved: Record<string, unknown> | null | undefined): TeamWizardValues {
   const source = saved ?? {};
+  const declared = normalizeTeamEntryPath(source.entryPath);
+  const entryPath = declared ?? inferTeamEntryPath(source);
   return {
     name: typeof source.name === 'string' ? source.name : '',
     shortCode: typeof source.shortCode === 'string' ? source.shortCode : '',
-    entryPath: normalizeTeamEntryPath(source.entryPath),
+    entryPath,
     bulkCsv: typeof source.bulkCsv === 'string' ? source.bulkCsv : '',
     bulkFileName: typeof source.bulkFileName === 'string' ? source.bulkFileName : '',
   };

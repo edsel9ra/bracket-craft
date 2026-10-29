@@ -33,10 +33,15 @@ export type PhasesStepId =
   | 'phases.review';
 
 export type TeamsStepId =
+  | 'teams.entry'
   | 'teams.details'
   | 'teams.individual'
   | 'teams.bulk'
   | 'teams.review';
+
+/** Vías de alta del paso `teams.entry` (RF-001). */
+export type TeamsEntryPath = 'individual' | 'bulk';
+export type TeamEntryPath = TeamsEntryPath;
 
 export type WizardStepId = RulesStepId | PhasesStepId | TeamsStepId;
 
@@ -69,6 +74,8 @@ export interface StepDefinition {
   readonly obligation: StepObligation;
   readonly labelKey: string;
   readonly label: string;
+  /** Whether the step appears in the lateral index with a button. */
+  readonly showInIndex: boolean;
   /** Only for `alternative` steps: steps of the same group exclude each other. */
   readonly group?: string;
   readonly fields: readonly StepFieldDefinition[];
@@ -79,6 +86,7 @@ export interface WizardStepStatus {
   readonly obligation: StepObligation;
   readonly labelKey: string;
   readonly label: string;
+  readonly showInIndex: boolean;
   readonly group?: string;
   readonly state: StepState;
 }
@@ -98,6 +106,7 @@ interface StepDeclaration {
   readonly id: WizardStepId;
   readonly labelKey: string;
   readonly obligation: StepObligation;
+  readonly showInIndex?: boolean;
   readonly group?: string;
   readonly fields: readonly StepFieldDefinition[];
 }
@@ -131,15 +140,24 @@ const PHASES_STEPS: readonly StepDeclaration[] = [
 
 const TEAMS_STEPS: readonly StepDeclaration[] = [
   {
+    id: 'teams.entry',
+    labelKey: 'wizard.teams.entry',
+    obligation: 'required',
+    showInIndex: true,
+    fields: [requiredField('entryPath')],
+  },
+  {
     id: 'teams.details',
     labelKey: 'wizard.teams.details',
     obligation: 'required',
-    fields: [requiredField('name'), requiredField('code')],
+    showInIndex: true,
+    fields: [optionalField('name'), optionalField('code')],
   },
   {
     id: 'teams.individual',
     labelKey: 'wizard.teams.individual',
     obligation: 'alternative',
+    showInIndex: true,
     group: TEAM_ENTRY_GROUP,
     fields: [requiredField('individualRows')],
   },
@@ -147,10 +165,11 @@ const TEAMS_STEPS: readonly StepDeclaration[] = [
     id: 'teams.bulk',
     labelKey: 'wizard.teams.bulk',
     obligation: 'alternative',
+    showInIndex: false,
     group: TEAM_ENTRY_GROUP,
     fields: [requiredField('bulkCsv')],
   },
-  { id: 'teams.review', labelKey: 'wizard.teams.review', obligation: 'required', fields: [] },
+  { id: 'teams.review', labelKey: 'wizard.teams.review', obligation: 'required', showInIndex: true, fields: [] },
 ];
 
 const WIZARDS: Readonly<Record<WizardKind, readonly StepDeclaration[]>> = {
@@ -188,9 +207,11 @@ export function wizardSteps(wizard: WizardKind, t: WizardTranslate = identity): 
       obligation: step.obligation,
       labelKey: step.labelKey,
       label,
+      showInIndex: step.showInIndex ?? true,
       fields: step.fields,
     };
-    return step.group ? { ...base, group: step.group } : base;
+    const withGroup = step.group ? { ...base, group: step.group } : base;
+    return withGroup;
   });
 }
 
@@ -256,6 +277,7 @@ export function wizardStepStates(
       obligation: step.obligation,
       labelKey: step.labelKey,
       label: step.label,
+      showInIndex: step.showInIndex,
       state: stepState(step, values, errors),
     };
     return step.group ? { ...base, group: step.group } : base;
@@ -334,4 +356,126 @@ export function stepStateLabelKey(state: StepState): string {
 /** i18n key of the visible label of a step obligation. */
 export function obligationLabelKey(obligation: StepObligation): string {
   return OBLIGATION_KEYS[obligation];
+}
+
+/**
+ * Estados del asistente de equipos (spec 027, T002): ciclo de vida de una
+ * operación de alta (validación, guardado, éxito o error), además del estado
+ * inactivo. Son puros y no dependen de reloj ni de red.
+ */
+export type TeamWizardState = 'idle' | 'validating' | 'saving' | 'error' | 'success';
+export type TeamWizardStatus = TeamWizardState;
+export type TeamWizardOperation = TeamWizardState;
+export type TeamsWizardState = TeamWizardState;
+export type TeamsWizardStatus = TeamWizardState;
+export type TeamsWizardOperation = TeamWizardState;
+export type WizardTeamState = TeamWizardState;
+export type WizardTeamStatus = TeamWizardState;
+export type WizardTeamOperation = TeamWizardState;
+
+export const TEAM_WIZARD_STATES: readonly TeamWizardState[] = [
+  'idle',
+  'validating',
+  'saving',
+  'error',
+  'success',
+];
+export const TEAM_WIZARD_STATUSES: readonly TeamWizardState[] = TEAM_WIZARD_STATES;
+export const TEAM_WIZARD_OPERATIONS: readonly TeamWizardState[] = TEAM_WIZARD_STATES;
+export const TEAMS_WIZARD_STATES: readonly TeamWizardState[] = TEAM_WIZARD_STATES;
+
+const TEAM_WIZARD_TRANSITIONS: Readonly<Record<TeamWizardState, readonly TeamWizardState[]>> = {
+  idle: ['validating'],
+  validating: ['saving', 'error', 'idle'],
+  saving: ['success', 'error', 'idle'],
+  error: ['idle', 'validating'],
+  success: ['idle'],
+};
+
+export type TeamWizardEvent = 'validate' | 'save' | 'fail' | 'succeed' | 'reset';
+
+/** Indica si una transición de estado está permitida. */
+export function canTransitionTeamWizardState(
+  from: TeamWizardState,
+  to: TeamWizardState,
+): boolean {
+  return (TEAM_WIZARD_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/** Devuelve el estado destino si la transición está permitida; en caso contrario, `null`. */
+export function transitionTeamWizardState(
+  from: TeamWizardState,
+  to: TeamWizardState,
+): TeamWizardState | null {
+  return canTransitionTeamWizardState(from, to) ? to : null;
+}
+
+export function teamWizardStateTransition(
+  from: TeamWizardState,
+  to: TeamWizardState,
+): TeamWizardState | null {
+  return transitionTeamWizardState(from, to);
+}
+
+export function nextTeamWizardState(
+  from: TeamWizardState,
+  to: TeamWizardState,
+): TeamWizardState | null {
+  return transitionTeamWizardState(from, to);
+}
+
+export function teamsWizardStateTransition(
+  from: TeamWizardState,
+  to: TeamWizardState,
+): TeamWizardState | null {
+  return transitionTeamWizardState(from, to);
+}
+
+/** Aplica un evento de alto nivel al estado actual y devuelve el nuevo estado (o el mismo si no aplica). */
+export function applyTeamWizardEvent(
+  state: TeamWizardState,
+  event: TeamWizardEvent,
+): TeamWizardState {
+  switch (event) {
+    case 'validate':
+      return state === 'idle' ? 'validating' : state;
+    case 'save':
+      return state === 'validating' ? 'saving' : state;
+    case 'fail':
+      return state === 'validating' || state === 'saving' ? 'error' : state;
+    case 'succeed':
+      return state === 'saving' ? 'success' : state;
+    case 'reset':
+      return 'idle';
+    default:
+      return state;
+  }
+}
+
+export function teamWizardApplyEvent(state: TeamWizardState, event: TeamWizardEvent): TeamWizardState {
+  return applyTeamWizardEvent(state, event);
+}
+
+/** Los controles del asistente se bloquean mientras no está inactivo. */
+export function teamWizardControlsDisabled(state: TeamWizardState): boolean {
+  return state !== 'idle';
+}
+
+export function isTeamWizardBusy(state: TeamWizardState): boolean {
+  return state !== 'idle';
+}
+
+/** Guarda anti doble activación: solo arranca si el estado actual es `idle`. */
+export function beginTeamWizardOperation(
+  current: TeamWizardState,
+  next: TeamWizardState,
+): TeamWizardState | null {
+  return current === 'idle' ? next : null;
+}
+
+export function beginTeamsWizardOperation(
+  current: TeamWizardState,
+  next: TeamWizardState,
+): TeamWizardState | null {
+  return beginTeamWizardOperation(current, next);
 }

@@ -59,7 +59,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
 test('opens the first step when the address has no step', () => {
   assert.equal(defaultStepId('rules'), 'rules.scoring');
   assert.equal(defaultStepId('phases'), 'phases.identity');
-  assert.equal(defaultStepId('teams'), 'teams.details');
+  assert.equal(defaultStepId('teams'), 'teams.entry');
 
   for (const location of [
     LOCATION,
@@ -69,7 +69,7 @@ test('opens the first step when the address has no step', () => {
   ]) {
     assert.equal(stepFromAddress('rules', location), 'rules.scoring', location);
     assert.equal(stepFromAddress('phases', location), 'phases.identity', location);
-    assert.equal(stepFromAddress('teams', location), 'teams.details', location);
+    assert.equal(stepFromAddress('teams', location), 'teams.entry', location);
   }
 
   assert.equal(requestedStep('rules', null), null);

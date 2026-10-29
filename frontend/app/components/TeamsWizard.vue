@@ -248,7 +248,7 @@ async function confirm(): Promise<void> {
     notice.value = createdMessage(count);
     draft.clear();
     resetForm();
-    goTo('teams.details');
+    goTo('teams.entry');
     emit('saved');
   } catch (cause) {
     // RF-007: el rechazo no vacía el formulario ni cambia de paso.
@@ -303,36 +303,40 @@ draft.applyAfterMount((stored) => {
     >
       <p class="field-hint">{{ t('teams.wizard.description') }}</p>
 
-      <fieldset
-        v-if="step === 'teams.individual' || step === 'teams.bulk'"
-        class="team-entry-path"
-        :disabled="disabled || saving"
-      >
-        <legend>{{ t('teams.wizard.pathLegend') }}</legend>
-        <label class="checkbox-label">
-          <input
-            type="radio"
-            name="team-entry-path"
-            value="individual"
-            :checked="form.entryPath === 'individual'"
-            @change="choosePath('individual')"
-          />
-          <span>{{ t('teams.wizard.pathIndividual') }}</span>
-        </label>
-        <label class="checkbox-label">
-          <input
-            type="radio"
-            name="team-entry-path"
-            value="bulk"
-            :checked="form.entryPath === 'bulk'"
-            @change="choosePath('bulk')"
-          />
-          <span>{{ t('teams.wizard.pathBulk') }}</span>
-        </label>
-        <p class="field-hint">{{ t('teams.wizard.pathHint') }}</p>
-      </fieldset>
+      <template v-if="step === 'teams.entry'">
+        <template v-if="showsEntryPathStep('teams.entry', form.entryPath)">
+          <fieldset
+            class="team-entry-path"
+            :disabled="disabled || saving"
+          >
+            <legend>{{ t('teams.wizard.pathLegend') }}</legend>
+            <label class="checkbox-label">
+              <input
+                type="radio"
+                name="team-entry-path"
+                value="individual"
+                :checked="form.entryPath === 'individual'"
+                @change="choosePath('individual')"
+              />
+              <span>{{ t('teams.wizard.pathIndividual') }}</span>
+            </label>
+            <label class="checkbox-label">
+              <input
+                type="radio"
+                name="team-entry-path"
+                value="bulk"
+                :checked="form.entryPath === 'bulk'"
+                @change="choosePath('bulk')"
+              />
+              <span>{{ t('teams.wizard.pathBulk') }}</span>
+            </label>
+            <p class="field-hint">{{ t('teams.wizard.pathHint') }}</p>
+          </fieldset>
+        </template>
+        <p v-else class="field-hint">{{ t('teams.wizard.otherPathChosen') }}</p>
+      </template>
 
-      <template v-if="step === 'teams.details'">
+      <template v-else-if="step === 'teams.details'">
         <p class="field-hint">{{ t('teams.wizard.detailsHint') }}</p>
         <label class="field">
           {{ t('workspace.name') }}
