@@ -17,8 +17,10 @@ import {
   matchIdFromPath,
   tournamentSectionForPath,
   tournamentSectionHref,
+  type TournamentSection,
 } from '../app/utils/tournamentNavigation.ts';
 import { isSafeCsrfToken, normalizeOrganizationId, normalizeUuid } from '../app/utils/validation.ts';
+import { entryStepWrite, stepFromAddress, stepFromLocation } from '../app/utils/wizardStep.ts';
 
 test('accepts a same-origin internal path', () => {
   assert.equal(safeInternalRedirect('/workspace?tab=matches'), '/workspace?tab=matches');
@@ -414,4 +416,185 @@ test('tournament screens accept no identifiers outside the active tournament', (
   );
   // La vuelta valida el partido contra los partidos del torneo.
   assert.match(rostersPage, /matchIds: tournamentMatchIds\.value/);
+});
+
+// ---------------------------------------------------------------------------
+// Spec 025: orden, rótulos, ancla `#fases` y enlaces del recorrido
+// ---------------------------------------------------------------------------
+
+/** Rótulo de una clave en un idioma, leído del catálogo sin montar Vue. */
+function messageLabel(locale: 'es' | 'en', key: string): string {
+  const enStart = i18nCatalog.indexOf('\n  en: {');
+  assert.ok(enStart > 0, 'el catálogo debe declarar los bloques es y en');
+  const block = locale === 'es' ? i18nCatalog.slice(0, enStart) : i18nCatalog.slice(enStart);
+  const label = block.match(new RegExp(`'${key}': '([^']*)'`))?.[1];
+  assert.ok(label !== undefined, `falta ${key} en ${locale}`);
+  return label;
+}
+
+// RF-001: el orden del documento es Reglas → Equipos → Fases, y se comprueba
+// por la posición relativa de los tres asistentes, no solo por su presencia.
+test('the configuration presents rules, then teams, then stages', () => {
+  const positions = {
+    rules: configurationPage.indexOf('<RulesWizard'),
+    teams: configurationPage.indexOf('<TeamsWizard'),
+    stages: configurationPage.indexOf('<StageTeamsWizard'),
+  };
+  for (const [name, position] of Object.entries(positions)) {
+    assert.ok(position >= 0, `falta el asistente de ${name}`);
+  }
+  assert.ok(positions.rules < positions.teams, 'reglas debe preceder a equipos');
+  assert.ok(positions.teams < positions.stages, 'equipos debe preceder a fases');
+  // El orden de lectura sigue al del marcado: ningún tabindex positivo lo altera.
+  assert.doesNotMatch(configurationPage, /tabindex="[1-9]/);
+  // El bloque de equipos conserva su ancla y queda por delante del de fases.
+  assert.ok(
+    configurationPage.indexOf('id="equipos"') < positions.stages,
+    'el bloque de equipos debe preceder al asistente de fases',
+  );
+});
+
+// RF-003/RNF-004: la cadena exacta de los cuatro rótulos numerados en los dos
+// idiomas, sin huecos ni repeticiones.
+test('the four numbered section labels form one chain in both languages', () => {
+  const keys = [
+    'setup.rulesEyebrow',
+    'setup.teamsEyebrow',
+    'setup.stagesEyebrow',
+    'setup.calendarEyebrow',
+  ];
+  assert.deepEqual(keys.map((key) => messageLabel('es', key)), [
+    '01 · Reglas',
+    '02 · Equipos',
+    '03 · Fases',
+    '04 · Calendario',
+  ]);
+  assert.deepEqual(keys.map((key) => messageLabel('en', key)), [
+    '01 · Rules',
+    '02 · Teams',
+    '03 · Stages',
+    '04 · Schedule',
+  ]);
+
+  // La numeración es consecutiva y cada rótulo lleva dos dígitos y `·`.
+  for (const locale of ['es', 'en'] as const) {
+    const numbers = keys.map((key) => messageLabel(locale, key).match(/^(\d{2}) · \S/)?.[1]);
+    assert.deepEqual(numbers, ['01', '02', '03', '04'], locale);
+  }
+});
+
+// RF-006: la lista de verificación conserva sus cinco ítems y su contenido, y
+// solo cambia de orden: versión → equipos → fases → partidos → plantillas.
+test('the pre-publish checklist keeps its five items in the new order', () => {
+  const start = configurationPage.indexOf('const setupChecks = computed(() => [');
+  const end = configurationPage.indexOf(']);', start);
+  assert.ok(start >= 0 && end > start, 'no se encuentra setupChecks');
+  const block = configurationPage.slice(start, end);
+
+  const order = [
+    'setup.versionDraft',
+    'setup.teams',
+    'setup.stages',
+    'setup.matches',
+    'setup.rosters',
+  ].map((key) => [key, block.indexOf(`t('${key}')`)] as const);
+  for (const [key, position] of order) {
+    assert.ok(position >= 0, `el ítem ${key} falta en la checklist`);
+  }
+  for (let index = 1; index < order.length; index += 1) {
+    assert.ok(
+      order[index - 1]![1] < order[index]![1],
+      `${order[index - 1]![0]} debe preceder a ${order[index]![0]}`,
+    );
+  }
+
+  // Ni un ítem más ni uno menos: solo cambia su orden.
+  assert.equal(block.match(/\{ label:/g)?.length, 5, 'la checklist debe tener cinco ítems');
+  // El ítem «Equipos» sigue midiendo asignaciones de fase, no altas de equipo.
+  assert.match(block, /label: t\('setup\.teams'\), detail: t\('setup\.assigned', \{ count: draftAssignedStageTeamCount\.value \}\)/);
+});
+
+// RF-004/RF-003/RNF-003: el panel del asistente de fases es el ancla `#fases`,
+// pinta por primera vez su rótulo numerado y su título es enfocable.
+test('the phases panel is the #fases anchor and shows its numbered title', () => {
+  const panel = openingTag(stageTeamsWizard, '<section');
+  assert.match(panel, /id="fases"/, 'el panel de fases no lleva id="fases"');
+
+  const label = stageTeamsWizard.indexOf("t('setup.stagesEyebrow')");
+  assert.ok(label >= 0, 'el rótulo «03 · Fases» no se pinta en el panel');
+  assert.ok(
+    label < stageTeamsWizard.indexOf('<WizardShell'),
+    'el rótulo de la sección debe ir encima del asistente',
+  );
+  // El destino del ancla tiene título visible.
+  assert.match(stageTeamsWizard, /title="t\('stage\.wizard\.title'\)"/);
+
+  const heading = openingTag(wizardShell, '<h2');
+  assert.match(heading, /:id="headingId"/, 'el título del asistente no es el que etiqueta el panel');
+  assert.match(heading, /tabindex="-1"/, 'el título del bloque debe ser enfocable por teclado');
+});
+
+// RF-004/RF-005/RF-017: `#fases` resuelve sobre la configuración, no redirige,
+// no cambia de sección y no añade ninguna ruta ni entrada de índice.
+test('the #fases anchor resolves to the configuration section without a redirect', () => {
+  assert.equal(tournamentSectionForPath('/workspace/tournaments/t1', '#fases'), 'configuration');
+  assert.equal(tournamentSectionForPath('/workspace/tournaments/t1#fases'), 'configuration');
+  assert.equal(legacySectionRedirect('t1', '#fases'), null);
+  assert.equal(legacySectionRedirect('t1', '#fases', '?step=phases.identity'), null);
+  // La entrada de configuración conserva su destino actual.
+  assert.equal(
+    tournamentSectionHref('configuration', { tournamentId: 't1' }),
+    '/workspace/tournaments/t1#configuracion',
+  );
+});
+
+// RF-005: el índice conserva sus cuatro entradas de configuración más la de
+// operación condicionada, y no gana ninguna entrada «Fases».
+test('the tournament index keeps four configuration entries and never offers phases', () => {
+  const start = workspaceShell.indexOf('const tournamentLinks');
+  const end = workspaceShell.indexOf('async function resolvePlatformAccess');
+  assert.ok(start >= 0 && end > start, 'no se encuentra tournamentLinks');
+  const block = workspaceShell.slice(start, end);
+
+  const keys = [...block.matchAll(/\{ key: '([a-z]+)', label:/g)].map((match) => match[1] ?? '');
+  assert.deepEqual(keys, ['summary', 'configuration', 'calendar', 'rosters', 'operation']);
+
+  const context = { tournamentId: 't1' };
+  assert.deepEqual(
+    keys.filter((key) => tournamentSectionHref(key as TournamentSection, context) !== null),
+    ['summary', 'configuration', 'calendar', 'rosters'],
+  );
+  assert.equal(
+    tournamentSectionHref('operation', { ...context, matchId: 'm1' }),
+    '/workspace/matches/m1#operacion',
+  );
+  // El ancla `#fases` no tiene entrada propia en el índice.
+  assert.doesNotMatch(block, /fases/i, 'el índice del torneo no debe ofrecer una entrada de fases');
+});
+
+// RF-011/RF-012: abrir con `#fases` y sin paso normaliza la entrada una sola
+// vez con `replace`, conserva el fragmento y no produce una segunda escritura.
+test('normalizes the entry once, keeping the #fases fragment', () => {
+  const location = '/workspace/tournaments/t1#fases';
+
+  // El ancla no fija ni sustituye ningún paso: el asistente resuelve el suyo.
+  assert.equal(stepFromLocation(location), null);
+  assert.equal(stepFromAddress('phases', location), 'phases.identity');
+
+  const firstWrite = entryStepWrite(location, stepFromAddress('phases', location));
+  assert.ok(firstWrite, 'la entrada sin paso debe normalizarse una vez');
+  assert.deepEqual(firstWrite, {
+    mode: 'replace',
+    url: '/workspace/tournaments/t1?step=phases.identity#fases',
+  });
+
+  // Aplicada la escritura, la dirección ya nombra el paso: no hay una segunda.
+  const applied = firstWrite.url;
+  assert.equal(entryStepWrite(applied, stepFromAddress('phases', applied)), null);
+  assert.equal(stepFromAddress('phases', applied), 'phases.identity');
+
+  // Con un paso ya presente no se reescribe nada, y el ancla no se pierde.
+  const direct = '/workspace/tournaments/t1?step=teams.details#fases';
+  assert.equal(entryStepWrite(direct, stepFromAddress('teams', direct)), null);
+  assert.equal(stepFromAddress('teams', direct), 'teams.details');
 });

@@ -11,10 +11,13 @@
  *
  * Todas las llamadas pasan por `useApi()`. El modelo puro (`utils/stageWizard.ts`)
  * decide la secuencia, la validación y los mensajes; este componente solo
- * ejecuta y muestra.
+ * ejecuta y muestra. La cifra de composición sale de `utils/stageComposition.ts`
+ * —inscritos más seleccionados, sin recorte y sin cifra parcial mientras carga
+ * la lista de inscritos (spec 026, RF-010, RF-011, RF-014)—.
  */
 import { STAGE_FORMATS } from '~/constants/stageFormats';
-import { firstStageByOrder, nextStageOrder, openExistingStage, planStageCreation, planStageRetry, reviewStage, sortStagesByOrder, stageConfirmation, stageCreateFailure, stageSaveFailed, stageSaveSucceeded, stageTeamPath, stageTeamsPath, stagesPath, stageWizardStatuses, validateStageValues, MAX_STAGE_TEAMS, type StageCreateFailure, type StageIssue, type StageSaveResult, type StageWizardValues } from '~/utils/stageWizard';
+import { firstStageByOrder, nextStageOrder, openExistingStage, planStageCreation, planStageRetry, reviewStage, sortStagesByOrder, stageConfirmation, stageCreateFailure, stageSaveFailed, stageSaveSucceeded, stageTeamPath, stageTeamsPath, stagesPath, stageWizardStatuses, validateStageValues, type StageCreateFailure, type StageIssue, type StageSaveResult, type StageWizardValues } from '~/utils/stageWizard';
+import { compositionMessage, stageComposition } from '~/utils/stageComposition';
 import { availableStageTeams, normalizeStageTeamsResponse, pruneStageTeamSelection, sortStageTeams, type StageTeamSummary, type StageTeamsResponse } from '~/utils/stageTeams';
 import {
   ROSTER_STATE_OK,
@@ -74,6 +77,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   saved: [];
+  confirmed: [];
   reload: [];
   'dirty-change': [value: boolean];
 }>();
@@ -221,6 +225,34 @@ const createFailure = ref<StageCreateFailure | null>(null);
 const createdStageId = ref<string | null>(null);
 
 const assignedTeams = computed<StageTeamSummary[]>(() => stageTeams.value?.assigned ?? []);
+
+/**
+ * Cifra única de composición (spec 026, RF-010, RF-011, RF-012, RF-014): los
+ * equipos **inscritos** en la fase más los **seleccionados** en esta visita,
+ * contados una vez. Solo combina listas ya cargadas: no inscribe, no envía
+ * peticiones y no tiene estado de error propio. En «fase existente», mientras la
+ * lista de inscritos no ha cargado no hay cifra (ORD-14); en el alta se muestra
+ * con los seleccionados en cuanto el asistente tiene la lista de equipos.
+ */
+const composition = computed(() => stageComposition({
+  mode: mode.value,
+  assignedTeamIds: assignedTeams.value.map((team) => team.team_id),
+  selectedTeamIds: review.value.teamIds,
+  loading: teamsLoading.value,
+}));
+/** El mismo texto en el paso de composición y en el resumen de revisión. */
+const compositionText = computed(() => {
+  const message = compositionMessage(composition.value);
+  return t(message.key, message.params);
+});
+/**
+ * ORD-14 / RF-012: si la lectura de los inscritos de la fase falla, la lista no
+ * llegó a cargar y no hay cifra que mostrar; el error lo pinta el propio
+ * asistente. En el alta no hay lista de inscritos que esperar.
+ */
+const assignedListUnavailable = computed(() => (
+  mode.value === 'existing' && Boolean(teamsError.value)
+));
 const availableTeams = computed<StageTeamSummary[]>(() => {
   if (mode.value === 'existing') return availableStageTeams(stageTeams.value);
   return sortStageTeams(props.teams.map((team) => ({
@@ -359,6 +391,10 @@ async function assignTeams(
     draft.clear();
     if (assignMode !== 'existing') resetCreateForm();
     emit('saved');
+    // RF-003/RF-004: solo la confirmación efectiva (creación con inscripción
+    // completa o reintento que completa) abre el calendario; el guardado parcial
+    // y la composición de una fase existente no encadenan.
+    if (assignMode === 'create' || assignMode === 'retry') emit('confirmed');
     if (assignMode !== 'create') await loadStageTeams();
   } catch (cause) {
     partial.value = stageSaveFailed({ stageId, requestedTeamIds: teamIds, cause });
@@ -394,6 +430,7 @@ async function createStage(): Promise<void> {
       draft.clear();
       resetCreateForm();
       emit('saved');
+      emit('confirmed');
       return;
     }
     await assignTeams(stageId, assignStep.teamIds, 'create');
@@ -440,6 +477,7 @@ async function retryAssign(): Promise<void> {
     notice.value = 'stage.wizard.createdWithoutTeams';
     draft.clear();
     emit('saved');
+    emit('confirmed');
     return;
   }
   const targetStageId = assignStep.stageId;
@@ -556,7 +594,8 @@ draft.applyAfterMount((stored) => {
 </script>
 
 <template>
-  <section class="panel stage-wizard-panel" :aria-busy="saving || busy">
+  <section id="fases" class="panel stage-wizard-panel" :aria-busy="saving || busy">
+    <p class="eyebrow">{{ t('setup.stagesEyebrow') }}</p>
     <WizardShell
       wizard="phases"
       :title="t('stage.wizard.title')"
@@ -647,7 +686,8 @@ draft.applyAfterMount((stored) => {
         </p>
         <template v-else>
           <p class="field-hint">{{ t('setup.stageTeamsHint') }}</p>
-          <p class="muted-note">{{ t('stage.wizard.teamCount', { count: review.teamCount, max: MAX_STAGE_TEAMS }) }}</p>
+          <p v-if="composition.visible && !assignedListUnavailable" class="muted-note">{{ compositionText }}</p>
+          <p v-else-if="teamsLoading" class="muted-note" role="status">{{ t('common.loading') }}</p>
           <p v-if="fieldError('teamIds')" class="field-error" role="alert">{{ fieldError('teamIds') }}</p>
 
           <div v-if="mode === 'existing'" class="stage-team-group">
@@ -693,7 +733,6 @@ draft.applyAfterMount((stored) => {
             </p>
           </div>
 
-          <p v-if="teamsLoading" class="muted-note" role="status">{{ t('common.loading') }}</p>
           <p v-if="teamsError" class="form-error" role="alert">{{ teamsError }}</p>
         </template>
       </template>
@@ -705,7 +744,9 @@ draft.applyAfterMount((stored) => {
           <div><dt>{{ t('setup.order') }}</dt><dd>{{ review.stageOrder ?? '—' }}</dd></div>
           <div>
             <dt>{{ t('stage.wizard.composition') }}</dt>
-            <dd>{{ t('stage.wizard.teamCount', { count: review.teamCount, max: MAX_STAGE_TEAMS }) }}</dd>
+            <dd v-if="composition.visible && !assignedListUnavailable">{{ compositionText }}</dd>
+            <dd v-else-if="teamsLoading"><span role="status">{{ t('common.loading') }}</span></dd>
+            <dd v-else>—</dd>
           </div>
         </dl>
         <ul class="stage-warnings">

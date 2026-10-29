@@ -579,7 +579,9 @@ test('builds the creation bodies without a stage and plans one call per path', (
   assert.equal(bulkTeamsPath('tournament-1'), '/tournaments/tournament-1/teams/bulk');
   assert.equal(
     phasesAssistantHref('tournament-1'),
-    '/workspace/tournaments/tournament-1?step=phases.identity#configuracion',
+    // RF-013 (spec 025): el enlace cruzado apunta al ancla `#fases` y no
+    // escribe ningún paso en la dirección; el asistente resuelve el suyo.
+    '/workspace/tournaments/tournament-1#fases',
   );
 
   assert.deepEqual(buildTeamBody({ name: ' Club Norte ', shortCode: 'CN' }), {

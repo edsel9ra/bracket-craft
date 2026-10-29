@@ -368,9 +368,13 @@ export function bulkTeamsPath(tournamentId: string): string {
   return `/tournaments/${tournamentId}/teams/bulk`;
 }
 
-/** Dirección del asistente de fases, para inscribir después del alta (RF-003). */
+/**
+ * Dirección del asistente de fases, para inscribir después del alta (RF-003,
+ * spec 025 RF-013): apunta al ancla `#fases` y **no escribe ningún paso** en la
+ * dirección; el propio asistente resuelve su paso de entrada al montar.
+ */
 export function phasesAssistantHref(tournamentId: string): string {
-  return `/workspace/tournaments/${tournamentId}?step=phases.identity#configuracion`;
+  return `/workspace/tournaments/${tournamentId}#fases`;
 }
 
 /** Un paso del plan de alta: un equipo o la carga masiva. */
