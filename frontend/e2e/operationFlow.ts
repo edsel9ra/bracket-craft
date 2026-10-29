@@ -106,9 +106,9 @@ const PHASES_STEPS: readonly WizardStepTarget[] = [
 ].map(({ id, label }) => ({ id, label: labelText(label) }));
 
 const TEAMS_STEPS: readonly WizardStepTarget[] = [
+  { id: 'teams.entry', label: E2E_LABELS.teamsStepEntry },
   { id: 'teams.details', label: E2E_LABELS.teamsStepDetails },
   { id: 'teams.individual', label: E2E_LABELS.teamsStepIndividual },
-  { id: 'teams.bulk', label: E2E_LABELS.teamsStepBulk },
   { id: 'teams.review', label: E2E_LABELS.teamsStepReview },
 ].map(({ id, label }) => ({ id, label: labelText(label) }));
 
@@ -749,23 +749,15 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
     //     evita que la navegación anterior revierta el paso siguiente.
     const teamsWizard = sectionFor(page, labelText(E2E_LABELS.teamsWizard));
     await check('equipos-creados', async () => {
-      await teamsWizard
-        .getByRole('textbox', { name: namePattern(labelText(E2E_LABELS.workspaceName)) })
-        .fill('Copa E2E');
-      await teamsWizard
-        .getByRole('textbox', { name: namePattern(labelText(E2E_LABELS.teamCodeField)) })
-        .fill('CEE');
       const next = teamsWizard.getByRole('button', {
         name: labelText(E2E_LABELS.wizardNext),
         exact: true,
       });
-      await next.click();
-      await expectStepUrl(page, 'teams.individual');
+      // El asistente abre en el paso de modo de alta: se elige la vía masiva,
+      // que navega directamente al paso de carga CSV.
       await teamsWizard
         .getByRole('radio', { name: labelText(E2E_LABELS.teamPathBulk), exact: true })
         .check();
-      // Elegir la vía ya muestra su paso (RF-011), así que no se avanza otra vez:
-      // un «Siguiente» adicional llevaría a la revisión sin pasar por el CSV.
       await expectStepUrl(page, 'teams.bulk');
       await teamsWizard
         .getByRole('textbox', { name: namePattern(labelText(E2E_LABELS.teamCsvField)) })
@@ -788,7 +780,8 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
     await check('destino-fases-tras-alta-equipos', async () => {
       const phasesWizard = sectionFor(page, labelText(E2E_LABELS.phasesWizard));
       await expect(phasesWizard).toBeVisible({ timeout: MAX_MS.initialConnected });
-      await expectStepUrl(page, 'phases.identity');
+      // La cadena conserva la consulta (RF-007): el paso de la dirección no se
+      // reescribe; el asistente de fases muestra su paso de entrada por defecto.
       await expect(phasesWizard.locator('h3.wizard-step-title')).toHaveText(
         labelText(E2E_LABELS.phasesStepIdentity),
       );

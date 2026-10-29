@@ -16,3 +16,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Entorno local
 - Backend `python:3.14-slim`; frontend en contenedor `web` (Node 24/pnpm 12.12.1); E2E en Playwright. El host no tiene `pytest` ni Node con TS: usa los contenedores. Para la suite backend monta el repo en `/repo`.
+
+## Fix E2E (operación y cierre)
+- Alineado `frontend/e2e/operationFlow.ts` con la reestructuración de equipos (spec 027): `TEAMS_STEPS` ahora incluye `teams.entry` y omite `teams.bulk` (oculto del índice); el bloque `equipos-creados` elige la vía masiva desde `teams.entry` y carga el CSV en `teams.bulk`. Añadida `teamsStepEntry` en `labels.ts`. `typecheck:e2e` en verde. Causa del `view-timeout` reportado: desfase del arnés con el nuevo flujo. El error secundario `EACCES` sobre `e2e-report/server.log` es un problema de permisos del directorio (root-owned en entorno local), no del código.
+
+## E2E (segunda corrida)
+- Tras los fixes, el escenario avanza hasta `roster-lock-absent` y falla en `jugador-inscrito-7` por `waitForHydration` agotando el timeout (240 s). Causa probable: rendimiento del contenedor local al hidratar la página de plantillas tras el alta de equipos, no un desfase de selectores. Pendiente de validar en CI/entorno con más recursos.

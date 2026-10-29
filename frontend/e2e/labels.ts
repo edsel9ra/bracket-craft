@@ -190,6 +190,7 @@ export const E2E_LABELS = {
     es: 'Excepciones por fase',
     en: 'Per-stage exceptions',
   },
+  teamsStepEntry: { key: 'wizard.teams.entry', es: 'Modo de alta', en: 'Entry mode' },
   teamsStepDetails: { key: 'wizard.teams.details', es: 'Datos del equipo', en: 'Team details' },
   teamsStepIndividual: {
     key: 'wizard.teams.individual',
