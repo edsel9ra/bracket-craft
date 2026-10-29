@@ -73,6 +73,7 @@ import {
 } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { positionLabel } from '~/utils/positions';
+import { deriveLineupSource } from '~/utils/lineupSource';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
@@ -931,6 +932,7 @@ function syncTacticalEditor() {
   const formations: Record<string, FormationCode | ''> = {};
   const positions: Record<string, string> = {};
   const roles: Record<string, LineupRole | ''> = {};
+  const persistedTeams = new Set(rows.map((row) => row.team_id));
   for (const row of rows) {
     formations[row.team_id] = row.formation_code;
     if (row.player_id && row.position_slot) {
@@ -940,6 +942,33 @@ function syncTacticalEditor() {
     if (row.player_id) {
       const roster = operation.value?.rosters.find((entry) => entry.player_id === row.player_id && entry.team_id === row.team_id);
       if (roster) roles[roster.roster_id] = row.is_starter ? 'starter' : 'substitute';
+    }
+  }
+  // Precarga desde la fuente para equipos sin formacion persistida en el segmento
+  // seleccionado (spec 028, RF-001/RF-003/RF-010). La formacion persistida
+  // prevalece: deriveLineupSource devuelve null para esos equipos.
+  // RF-012/RF-013: se omite la precarga en partido terminal (incluido
+  // `suspended`) o en version no publicada (salvo borrador, que aplica la
+  // misma regla que publicada).
+  const isTerminalForPreload = ['finished', 'cancelled', 'administrative_resolution', 'suspended'].includes(match.value?.status || '');
+  const versionStatus = match.value?.version_status || '';
+  const allowPreload = !isTerminalForPreload && (versionStatus === 'published' || versionStatus === 'draft');
+  if (allowPreload) {
+    const source = deriveLineupSource(
+      (operation.value?.tactical_lineups || []) as any,
+      (operation.value?.rosters || []) as any,
+      selectedSegmentId.value,
+    );
+    for (const [teamId, src] of Object.entries(source || {})) {
+      if (!src || persistedTeams.has(teamId)) continue;
+      formations[teamId] = (src.formation_code || '') as FormationCode | '';
+      for (const rosterId of Object.keys(src.roles)) {
+        roles[rosterId] = src.roles[rosterId] ?? '';
+      }
+      for (const rosterId of Object.keys(src.positions)) {
+        const pos = src.positions[rosterId];
+        if (pos) positions[rosterId] = pos;
+      }
     }
   }
   lineupFormations.value = formations;
