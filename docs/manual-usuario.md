@@ -17,20 +17,27 @@ Manual operativo alineado con el comportamiento real del producto. Complementa `
 
 ## 3. Configurar reglas
 
+El recorrido de configuración de un torneo en borrador sigue el orden **Reglas → Equipos y plantillas → Fases → Calendario**, con la numeración visible «01 · Reglas», «02 · Equipos», «03 · Fases» y «04 · Calendario» (el `04` vive en la pantalla de calendario y la pantalla de plantillas no lleva número). Los apartados 3 a 6 de este manual cuentan esa misma secuencia. La configuración conserva las anclas `#resumen`, `#configuracion`, `#equipos` y `#fases`; `#fases` no añade ninguna entrada al índice del torneo —la sección activa sigue siendo Configuración— y es el destino de los enlaces equipos → fases y plantillas → fases, que no escriben ningún paso en la dirección: el propio asistente de fases resuelve su paso de entrada. Seguir esos enlaces no descarta el borrador de la pestaña de ningún asistente.
+
 - En `/workspace/tournaments/{id}` (ancla `#configuracion`) usa el asistente de reglas (`?step=`).
 - Configura puntuación, desempates, disciplina (tarjetas, suspensiones), sustituciones (`max_per_team`, `max_windows`, `allow_reentry`), ventana de inscripción (`roster_lock_matchday`), minutos (`regular_time_minutes`, `extra_time_minutes`), formato de juego (`game_format`: 5v5/7v7/9v9/11v11, declarativo) y límites de plantilla (`min_players_per_team`/`max_players_per_team`, 0 = sin límite).
 - Los minutos salen de `stage_defaults` con overrides por fase; el máximo efectivo es el reglamentario para `regular`/`walkover`/`administrative` y el de prórroga para `extra_time`/`penalties` cuando la prórroga está habilitada.
 - Guardar/publicar con `walkover_score.winner <= walkover_score.loser` se rechaza (422).
 - El asistente guarda el paso en la dirección (`?step=`) y los datos en el almacenamiento de sesión de la pestaña (`bc_wizard:…`). Recargar conserva; otra pestaña empieza desde el servidor.
 
-## 4. Configurar fases
+### Cadena de avance (spec 026)
 
-- En `/workspace/tournaments/{id}` (ancla `#configuracion`) usa el asistente de fases.
-- Tipos soportados: Round Robin, grupos, playoffs, Swiss (acotado: ≤64 equipos, presupuesto 50 000 evaluaciones, timeout 10 s).
-- Las vueltas de liga/grupos se persisten (`schedule_legs`: 1 o 2).
-- Sortear/regenerar calendario desde `/workspace/tournaments/{id}/calendar` con confirmación antes de reemplazar.
+La acción principal de cada sección abre la siguiente, **solo con guardado efectivo**: guardar las reglas abre **Equipos** (ancla `#equipos`); dar de alta equipos (individual o en lote) abre el asistente de **Fases** en su paso de entrada (identificación si la versión aún no tiene fases, composición si ya las tiene, con la identificación en solo lectura); confirmar una fase abre el **Calendario**. Con error, validación pendiente, guardado parcial o acción principal deshabilitada la pantalla se queda en la sección y muestra el error como hoy. El calendario es el final de la cadena: sus acciones no encadenan a otra sección. No viaja ningún mensaje de éxito entre secciones; el resultado se lee en la lista o el control propio del destino. La recarga posterior al guardado no condiciona el salto.
 
-## 5. Equipos y plantillas
+### Aviso de minutos y sus controles
+
+Si el cambio de minutos deja segmentos ya registrados o eventos del borrador fuera del máximo nuevo (spec 012, RF-035), el aviso aparece **solo cuando el guardado ya terminó con éxito**, con dos controles: **«Continuar»** (descarta el aviso y abre Equipos) y **«Quedarme»** (descarta el aviso, cancela el salto y deja editar las reglas). Ninguno guarda ni envía peticiones. Editar una regla, un guardado nuevo o fallido, un cambio de versión o de torneo, una recarga o cualquier navegación descartan el aviso y el salto sin ejecutarlo. En solo lectura no hay aviso, controles ni salto. (Spec 026, RF-015 y RF-016.)
+
+### Límite declarado
+
+En el modo «fase existente» con **0 equipos seleccionados** la acción principal sigue deshabilitada: no hay escritura ni salto, y el usuario continúa por el índice del torneo (resumen, configuración, calendario y plantillas; operación solo si hay un partido en contexto) o por cualquier enlace que la pantalla ya ofrezca. Es un límite explícito del recorrido, no un defecto. (Spec 026, RF-004 y ORD-7.)
+
+## 4. Equipos y plantillas
 
 - Equipos: asistente en `/workspace/tournaments/{id}` (ancla `#equipos`); alta individual y en lote con `stage_id`.
 - Plantillas: **única** pantalla `/workspace/tournaments/{id}/rosters` (`?team=`).
@@ -40,6 +47,17 @@ Manual operativo alineado con el comportamiento real del producto. Complementa `
   - El retiro es la única excepción al bloqueo por jornada; la reactivación se comporta como un alta.
   - Los límites de plantilla solo bloquean al inscribir en fase, al crear un equipo con `stage_id` y al abrir el primer segmento (409 `ROSTER_SIZE_OUT_OF_RANGE`); editar la plantilla nunca se bloquea por tamaño.
 - Escudos de equipo: una imagen por equipo, compartida entre torneos, gestionada con `MANAGE_TOURNAMENTS` desde el torneo donde está inscrito. Formatos JPG/PNG/WEBP estáticos, máximo 5 MiB (compartido con fotos). `logo_url` externo es respaldo mientras no haya escudo y se retira (`null`) con la primera carga confirmada; nunca se muestra en público.
+
+## 5. Configurar fases
+
+- En `/workspace/tournaments/{id}` (ancla `#fases`) usa el asistente de fases. El bloque de fases es el destino de los enlaces «Ir al asistente de fases» del alta de equipos y de la pantalla de plantillas; esos enlaces no fijan ningún paso en la dirección.
+- Tipos soportados: Round Robin, grupos, playoffs, Swiss (acotado: ≤64 equipos, presupuesto 50 000 evaluaciones, timeout 10 s).
+- Las vueltas de liga/grupos se persisten (`schedule_legs`: 1 o 2).
+
+### Cifra de composición (spec 026)
+
+El paso de composición y el resumen de revisión muestran **un solo total** de equipos **inscritos + seleccionados** (equipos distintos), en el patrón «N de 64 equipos» mientras el total no supere 64 y el **total real** por encima de 64. La cifra no inscribe, no desinscribe ni envía ninguna petición. En el modo «fase existente» no se muestra ninguna cifra mientras la lista de inscritos no haya cargado (se ve el estado de carga del asistente); en el alta de una fase nueva aparece con los seleccionados en cuanto hay lista de equipos. `64` es el máximo **por petición de inscripción**, no un tope total de la fase: una fase puede acumular más de 64 en varias visitas. Los avisos de composición vacía, de equipos disponibles y el bloqueo por límites de plantilla no cambian. (Spec 026, RF-010 a RF-014.)
+- Sortear/regenerar calendario desde `/workspace/tournaments/{id}/calendar` con confirmación antes de reemplazar.
 
 ## 6. Calendario
 

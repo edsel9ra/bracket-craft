@@ -782,6 +782,18 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       ).toBeVisible({ timeout: MAX_MS.initialConnected });
     });
 
+    // Tras el alta efectiva, la cadena (spec 026, RF-002) abre el bloque de
+    // fases con su paso de entrada, sin escribir `?step=`. Se comprueba el
+    // destino observable: bloque de fases a la vista y paso de entrada.
+    await check('destino-fases-tras-alta-equipos', async () => {
+      const phasesWizard = sectionFor(page, labelText(E2E_LABELS.phasesWizard));
+      await expect(phasesWizard).toBeVisible({ timeout: MAX_MS.initialConnected });
+      await expectStepUrl(page, 'phases.identity');
+      await expect(phasesWizard.locator('h3.wizard-step-title')).toHaveText(
+        labelText(E2E_LABELS.phasesStepIdentity),
+      );
+    });
+
     // 3b. Fase con los dos equipos, sin límites todavía.
     const phasesWizard = sectionFor(page, labelText(E2E_LABELS.phasesWizard));
     await check('fase-creada', async () => {
@@ -816,6 +828,20 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         phasesWizard.getByText(labelText(E2E_LABELS.stageCreatedAndAssigned), { exact: false }),
       ).toBeVisible({ timeout: MAX_MS.initialConnected });
     });
+
+    // Tras confirmar la fase, la cadena (spec 026, RF-003) abre el calendario
+    // con la fase nueva en su control de fase. Se comprueba el destino observable.
+    await check('calendario-tras-confirmar-fase', async () => {
+      await expect(page).toHaveURL(/\/workspace\/tournaments\/[^/]+\/calendar/);
+      const stageSelect = page
+        .getByRole('combobox', { name: namePattern(labelText(E2E_LABELS.stageField)) })
+        .first();
+      await expect(stageSelect).toBeVisible({ timeout: MAX_MS.initialConnected });
+      await expect(stageSelect.locator('option:checked')).toContainText(FLOW_STAGE);
+    });
+
+    // Volver a configuración con la espera que el arnés ya tiene.
+    await openSettled(page, `/workspace/tournaments/${encodeURIComponent(flowTournamentId)}`);
 
     // 3c. Teclado (RF-012, RNF-005, criterio 8): recorrido completo de los tres
     //     asistentes con Tab, Home, flechas y Enter; error de límites anunciado

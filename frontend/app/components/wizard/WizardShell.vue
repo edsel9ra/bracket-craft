@@ -90,7 +90,7 @@ watch(() => props.current, async (stepId) => {
 <template>
   <section class="wizard-shell" :aria-labelledby="headingId">
     <header class="wizard-shell-header">
-      <h2 :id="headingId" class="wizard-shell-title">{{ title }}</h2>
+      <h2 :id="headingId" class="wizard-shell-title" tabindex="-1">{{ title }}</h2>
     </header>
 
     <p v-if="readOnly" class="wizard-readonly" role="status">{{ t('wizard.readOnly') }}</p>
@@ -159,6 +159,12 @@ watch(() => props.current, async (stepId) => {
 .wizard-shell-title {
   margin: 0;
   font-size: clamp(1.25rem, 2vw, 1.6rem);
+}
+
+.wizard-shell-title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
 }
 
 .wizard-shell-body {

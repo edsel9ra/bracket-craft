@@ -199,7 +199,9 @@ test('aggregates several matches with a deterministic order', () => {
 // RF-035 / criterio 23: la página comprueba el impacto antes de enviar la
 // escritura, avisa sin borrar nada y solo pide confirmación por los segmentos
 // persistidos; los eventos del borrador dejan un aviso sin bloquear el guardado.
-test('the configuration page warns before saving the new minutes', () => {
+// Desde la spec 026 (RF-015, ORD-12) el texto se calcula antes, pero se muestra
+// solo cuando el guardado ya terminó con éxito.
+test('the configuration page shows the minutes warning after saving the new minutes', () => {
   assert.match(configurationPage, /minutesImpactBeforeSave/);
   assert.match(configurationPage, /await minutesImpactBeforeSave\(/);
   assert.match(configurationPage, /findMinutesOutside\(/);
@@ -215,7 +217,115 @@ test('the configuration page warns before saving the new minutes', () => {
 
 // RF-029/RNF-004: los avisos nuevos existen en español y en inglés.
 test('declares the minute warnings once per language', () => {
-  for (const key of ['rules.minutesWarning.confirm', 'rules.minutesWarning.events']) {
+  for (const key of [
+    'rules.minutesWarning.confirm',
+    'rules.minutesWarning.events',
+    'rules.minutesWarning.continue',
+    'rules.minutesWarning.stay',
+  ]) {
     assert.equal(catalogCount(key), 2, `${key} must exist in both catalogs`);
   }
+});
+
+/** Cuerpo de `saveRules`, entre su declaración y la carga inicial de la página. */
+function saveRulesBody(): string {
+  const start = configurationPage.indexOf('async function saveRules()');
+  const end = configurationPage.indexOf('const { data: initialConfiguration');
+  assert.ok(start >= 0 && end > start, 'no se encuentra saveRules');
+  return configurationPage.slice(start, end);
+}
+
+// RF-015, RF-016, ORD-12: el aviso se publica solo cuando el PATCH de reglas ha
+// terminado con éxito. Durante la petición no hay aviso y un guardado fallido no
+// deja aviso ni salto armado.
+test('publishes the notice only after the rules PATCH succeeds', () => {
+  const body = saveRulesBody();
+
+  const patch = body.indexOf('await request<VersionDetail>(`/tournaments/${tournamentId}/versions/${versionId}/rules`');
+  assert.ok(patch > 0, 'no se encuentra el PATCH de reglas');
+
+  // El texto se calcula antes (la confirmación previa de la 012), pero no se
+  // publica: durante la petición no hay aviso visible.
+  assert.equal(
+    body.slice(0, patch).includes('rulesMinutesNotice.value = minutesNotice'),
+    false,
+    'the notice must not be published before the request resolves',
+  );
+
+  const catchIndex = body.indexOf('} catch (cause) {', patch);
+  assert.ok(catchIndex > patch, 'no se encuentra el catch del guardado de reglas');
+  const successPath = body.slice(patch, catchIndex);
+  assert.match(successPath, /rulesMinutesNotice\.value = minutesNotice/, 'the notice is not published after a successful save');
+
+  // El salto se decide después de la escritura y solo con guardado efectivo, y
+  // el aviso lo retiene (RF-001, RF-015).
+  assert.ok(successPath.indexOf('advanceAfterSave(') > 0, 'the advance is not decided after the save');
+  assert.match(successPath, /effective: true/);
+  assert.match(successPath, /notice: Boolean\(minutesNotice\)/);
+  // RF-008: la recarga posterior no condiciona el salto.
+  assert.match(successPath, /void refreshConfiguration\(\)/);
+});
+
+// RF-004, RF-016, ORD-12: un guardado fallido se queda en Reglas y no deja
+// aviso, controles ni salto armado.
+test('a failed save leaves no minute warning and no armed jump', () => {
+  const body = saveRulesBody();
+  const catchIndex = body.indexOf('} catch (cause) {');
+  assert.ok(catchIndex > 0, 'no se encuentra el catch del guardado de reglas');
+
+  const failurePath = body.slice(catchIndex);
+  assert.match(failurePath, /clearPendingAdvance\(\)/, 'a failed save must clear the notice and the armed jump');
+  assert.doesNotMatch(failurePath, /rulesMinutesNotice\.value = minutesNotice/);
+  assert.doesNotMatch(failurePath, /advanceAfterSave\(/, 'a failed save must not decide a navigation');
+});
+
+// RF-017, RNF-003: se anuncia solo el texto del aviso; los dos controles quedan
+// fuera de la región anunciada, con etiqueta visible y sin repetir el guardado.
+test('keeps the two notice controls outside the announced region', () => {
+  const start = configurationPage.indexOf('v-if="rulesMinutesNotice"');
+  assert.ok(start > 0, 'no se encuentra el aviso de minutos');
+  const block = configurationPage.slice(start, configurationPage.indexOf('</template>', start));
+
+  assert.match(block, /<p class="minutes-warning" role="status">\{\{ rulesMinutesNotice \}\}<\/p>/);
+  const statusEnd = block.indexOf('</p>');
+  assert.ok(block.indexOf('rules.minutesWarning.continue') > statusEnd, '«Continuar» must stay outside role="status"');
+  assert.ok(block.indexOf('rules.minutesWarning.stay') > statusEnd, '«Quedarme» must stay outside role="status"');
+  assert.match(block, /<button type="button" class="button-secondary" @click="continueAfterNotice">/);
+  assert.match(block, /<button type="button" class="button-secondary" @click="stayAfterNotice">/);
+  assert.doesNotMatch(block, /saveRules/, 'the notice controls must not repeat the save');
+});
+
+// RF-007, RF-016, RNF-003: el destino y el formulario de reglas tienen título
+// enfocable, el foco acompaña al destino y vuelve a Reglas con «Quedarme», y el
+// aviso y su salto se descartan al editar, cambiar de versión o navegar.
+test('moves the focus to the destination and discards the pending advance', () => {
+  assert.match(configurationPage, /<h2 ref="teamsTitle" tabindex="-1">/);
+  assert.match(configurationPage, /<h2 ref="rulesTitle" tabindex="-1">/);
+  assert.match(configurationPage, /teamsTitle\.value\?\.focus\(\)/);
+  assert.match(configurationPage, /rulesTitle\.value\?\.focus\(\)/);
+  // El salto y su resolución salen de la utilidad pura, no de un segundo mecanismo.
+  assert.match(configurationPage, /advanceAfterSave\(/);
+  assert.match(configurationPage, /resolveNotice\(/);
+
+  const update = configurationPage.slice(
+    configurationPage.indexOf('function updateRulesConfig('),
+    configurationPage.indexOf('function clearPendingAdvance('),
+  );
+  assert.match(update, /clearPendingAdvance\(\)/, 'editing a rule must discard the notice and the jump');
+
+  const versionChange = configurationPage.slice(
+    configurationPage.indexOf('function onVersionChange('),
+    configurationPage.indexOf('onBeforeRouteLeave('),
+  );
+  assert.match(versionChange, /clearPendingAdvance\(\)/, 'changing version must discard the notice and the jump');
+
+  // Un cambio de paso de los asistentes solo reescribe `?step=`, así que la
+  // guarda exige que cambien la ruta o el fragmento para descartar el aviso.
+  assert.match(
+    configurationPage,
+    /onBeforeRouteUpdate\(\(to, from\) => \{[\s\S]*?to\.path !== from\.path \|\| to\.hash !== from\.hash[\s\S]*?clearPendingAdvance\(\)/,
+    'a same-section step rewrite must keep the notice; a section jump must discard it',
+  );
+  assert.match(configurationPage, /addEventListener\('hashchange', clearPendingAdvance\)/);
+  assert.match(configurationPage, /watch\(wizardResetToken, \(\) => clearPendingAdvance\(\)\)/);
 });

@@ -692,6 +692,10 @@ await loadPage();
 .roster-size-notice { margin: 0; padding: 11px 13px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.8rem; }
 .player-status { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; }
 .player-status:hover { border-color: var(--accent); color: var(--accent); }
+.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
+.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.photo-picker:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .warning-list { display: grid; gap: 5px; margin: 0; padding: 10px 12px 10px 28px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 10px; color: #ffcb7a; font-size: 0.78rem; }
 .roster-grid .panel { padding: 24px; gap: 16px; }
 .roster-grid .field-grid { gap: 14px; align-items: end; }

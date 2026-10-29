@@ -15,6 +15,12 @@ import { applyCrestResponse, crestActionKey, crestErrorMessageKey } from '~/util
 import { isRosterLockActive, latestPublishedVersion } from '~/utils/rosterLock';
 import { createMatchDraftStore } from '~/utils/matchDraft';
 import { findMinutesOutside, minutesLimits } from '~/utils/rulesMinutes';
+import {
+  advanceAfterSave,
+  resolveNotice,
+  type AdvanceDecision,
+  type AdvanceTarget,
+} from '~/utils/sectionAdvance';
 import type { ResolutionDraftEventInput, ResolutionSegmentInput } from '~/utils/matchResolution';
 import { createWizardDraftStore, type WizardStorage } from '~/utils/wizardDraft';
 import { resolveNavigation } from '~/utils/wizardStep';
@@ -87,6 +93,7 @@ interface MatchSummary {
 }
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const tournamentsStore = useTournamentsStore();
 const { request } = useApi();
@@ -126,6 +133,15 @@ const rulesError = ref<string | null>(null);
 const rulesServerDetail = ref<unknown[] | null>(null);
 /** Aviso de minutos (RF-035): registros que quedan fuera del nuevo máximo. */
 const rulesMinutesNotice = ref<string | null>(null);
+/**
+ * Salto a Equipos que un guardado efectivo de reglas deja armado porque el aviso
+ * de minutos aparece con sus controles (RF-015, ORD-9). Vive solo en la página:
+ * no se guarda en `sessionStorage`, así que una recarga lo descarta (RF-016).
+ */
+const pendingAdvance = ref<AdvanceTarget | null>(null);
+/** Títulos enfocables del formulario de reglas y del bloque de equipos (RF-007). */
+const rulesTitle = ref<HTMLElement | null>(null);
+const teamsTitle = ref<HTMLElement | null>(null);
 const CONFIG_PAGE_SIZE = 200;
 
 useHead({
@@ -197,10 +213,12 @@ function stageTeamCount(versionId: string, stageId: string): number {
 const draftAssignedStageTeamCount = computed(() => draftVersion.value
   ? draftVersionStages.value.reduce((count, stage) => count + stageTeamCount(draftVersion.value!.id, stage.id), 0)
   : 0);
+// Spec 025 (RF-006): la checklist se lee versión → equipos → fases → partidos →
+// plantillas, el mismo orden del documento. Textos y umbrales no cambian.
 const setupChecks = computed(() => [
   { label: t('setup.versionDraft'), detail: draftVersion.value ? t('setup.readyToEdit') : t('setup.createVersion'), valid: Boolean(draftVersion.value) },
-  { label: t('setup.stages'), detail: t('setup.configured', { count: draftVersionStages.value.length }), valid: draftVersionStages.value.length > 0 },
   { label: t('setup.teams'), detail: t('setup.assigned', { count: draftAssignedStageTeamCount.value }), valid: draftAssignedStageTeamCount.value >= 2 },
+  { label: t('setup.stages'), detail: t('setup.configured', { count: draftVersionStages.value.length }), valid: draftVersionStages.value.length > 0 },
   { label: t('setup.matches'), detail: t('setup.scheduled', { count: draftVersionMatches.value.length }), valid: draftVersionMatches.value.length > 0 },
   { label: t('setup.rosters'), detail: t('setup.players', { count: rosters.value.length }), valid: rosters.value.length > 0 },
 ]);
@@ -223,8 +241,83 @@ function updateRulesConfig(value: RulesConfig) {
   rulesConfig.value = value;
   rulesError.value = null;
   rulesServerDetail.value = null;
-  rulesMinutesNotice.value = null;
+  // RF-016: editar una regla oculta el aviso y cancela el salto armado.
+  clearPendingAdvance();
 }
+
+/**
+ * RF-016: descarta el aviso y el salto pendiente **sin ejecutarlo**. Ninguno de
+ * estos descartes escribe en el servidor ni cambia el resultado del guardado.
+ */
+function clearPendingAdvance(): void {
+  rulesMinutesNotice.value = null;
+  pendingAdvance.value = null;
+}
+
+/** Mueve el foco al título de la sección de destino (RF-007, RNF-003). */
+async function focusAdvanceTarget(target: AdvanceTarget): Promise<void> {
+  await nextTick();
+  if (target.hash === '#equipos') {
+    teamsTitle.value?.focus();
+    return;
+  }
+  if (target.hash === '#fases') {
+    // El título del asistente de fases es la cabecera enfocable del bloque.
+    document.getElementById('wizard-title-phases')?.focus();
+    return;
+  }
+  if (target.hash === '#configuracion') rulesTitle.value?.focus();
+  // El salto a otra ruta deja el foco en el documento de la pantalla de destino.
+}
+
+/**
+ * Ejecuta la decisión pura de avance (D-2): navega con la consulta actual —así
+ * el `?step=` presente no se añade ni se retira (RF-007)— o deja el salto
+ * armado cuando el aviso de minutos retiene la salida (RF-015). No traslada
+ * ningún mensaje de éxito al destino (RF-009).
+ */
+async function executeAdvance(decision: AdvanceDecision): Promise<void> {
+  if (decision.kind === 'stay') return;
+  if (decision.kind === 'wait') {
+    pendingAdvance.value = decision.target;
+    return;
+  }
+
+  const target = decision.target;
+  clearPendingAdvance();
+  await router.push({
+    path: target.path,
+    hash: target.hash ?? undefined,
+    query: target.keepQuery ? { ...route.query } : {},
+  });
+  await focusAdvanceTarget(target);
+}
+
+/**
+ * «Continuar» (RF-015): descarta el aviso y reanuda el salto ya armado. No
+ * guarda, no envía peticiones y, al limpiar el estado en el mismo tick, un
+ * segundo clic no navega otra vez.
+ */
+async function continueAfterNotice(): Promise<void> {
+  const target = pendingAdvance.value;
+  if (!target) return;
+  await executeAdvance(resolveNotice({ kind: 'wait', target }, 'continue'));
+}
+
+/**
+ * «Quedarme» (RF-015, RF-017): descarta el aviso, cancela el salto, conserva lo
+ * editado y devuelve el foco a un punto estable del formulario de reglas.
+ */
+async function stayAfterNotice(): Promise<void> {
+  const target = pendingAdvance.value;
+  if (!target) return;
+  const decision = resolveNotice({ kind: 'wait', target }, 'stay');
+  clearPendingAdvance();
+  if (decision.kind !== 'stay') return;
+  await nextTick();
+  rulesTitle.value?.focus();
+}
+
 
 function wizardStorageOrNull(): WizardStorage | null {
   if (!import.meta.client) return null;
@@ -290,7 +383,8 @@ function onVersionChange(event: Event): void {
   }
   if (effect.discardDraft) clearWizardDrafts(selectedVersionId.value);
   selectedVersionId.value = next;
-  rulesMinutesNotice.value = null;
+  // RF-016: cambiar de versión descarta el aviso y el salto armado.
+  clearPendingAdvance();
   if (effect.discardDraft) wizardResetToken.value += 1;
 }
 
@@ -313,9 +407,31 @@ onBeforeRouteLeave((to) => {
   return true;
 });
 
+// RF-016: una navegación dentro de la misma pantalla (entrada del índice,
+// ancla `#resumen`/`#configuracion`/`#equipos`/`#fases` o enlace cruzado ya
+// existente) retira el aviso y descarta el salto armado sin ejecutarlo; la
+// navegación que pidió el usuario sí ocurre. Un cambio de paso de los asistentes
+// solo reescribe `?step=`, así que no es una salida de la sección: el aviso
+// recién mostrado tras el guardado debe seguir a la vista (RF-015).
+onBeforeRouteUpdate((to, from) => {
+  if (to.path !== from.path || to.hash !== from.hash) clearPendingAdvance();
+  return true;
+});
+
+// RF-016: un ancla pulsada en la misma página no desmonta la pantalla, así que
+// el descarte es explícito también cuando el navegador solo cambia el fragmento.
+if (import.meta.client) {
+  onMounted(() => window.addEventListener('hashchange', clearPendingAdvance));
+  onBeforeUnmount(() => window.removeEventListener('hashchange', clearPendingAdvance));
+}
+
 watch(selectedVersionId, (versionId) => {
   syncRulesForVersion(versionId);
 });
+
+// RF-016: descartar el borrador (cambio de versión o de torneo aceptado)
+// descarta también el aviso y el salto armado.
+watch(wizardResetToken, () => clearPendingAdvance());
 
 function failureMessage(cause: unknown, fallback: string): string {
   return errorMessage(cause, fallback);
@@ -494,6 +610,39 @@ async function refreshConfiguration() {
   }
 }
 
+/**
+ * Alta de equipos efectiva (individual o en lote): abre el bloque de fases con
+ * `#fases` conservando la consulta actual y sin escribir `?step=` (RF-002,
+ * RF-007). Solo se ejecuta tras un alta exitosa: `TeamsWizard` solo emite
+ * `saved` en ese caso, así que una alta fallida o con validación pendiente no
+ * navega ni deja un salto armado. La recarga posterior no condiciona el salto.
+ */
+async function onTeamsSaved(): Promise<void> {
+  void refreshConfiguration();
+  await executeAdvance(advanceAfterSave({
+    section: 'teams',
+    effective: true,
+    notice: false,
+    tournamentId,
+  }));
+}
+
+/**
+ * Confirmación efectiva de una fase (creada sin composición, creada con
+ * inscripción completa o reintento que completa): abre el calendario sin
+ * consulta ni fragmento, sin crear partido, sortear ni escribir (RF-003,
+ * RF-004). El guardado parcial, el error y el retiro de equipo no llegan aquí.
+ */
+async function onStagesConfirmed(): Promise<void> {
+  void refreshConfiguration();
+  await executeAdvance(advanceAfterSave({
+    section: 'stages',
+    effective: true,
+    notice: false,
+    tournamentId,
+  }));
+}
+
 async function retryConfiguration() {
   loading.value = true;
   loadError.value = null;
@@ -603,6 +752,9 @@ async function minutesImpactBeforeSave(config: RulesConfig) {
 }
 
 async function saveRules() {
+  // RF-005: sin acción principal —observador o versión publicada— no hay
+  // guardado de reglas, así que tampoco hay aviso, controles ni salto.
+  if (!canManageTournaments.value) return;
   const versionId = selectedVersionId.value;
   const version = versions.value.find((candidate) => candidate.id === versionId);
   if (!version || version.status !== 'draft') {
@@ -613,7 +765,9 @@ async function saveRules() {
     rulesError.value = t('rules.error.noConfig');
     return;
   }
-  rulesMinutesNotice.value = null;
+  // RF-016: un guardado nuevo recalcula el aviso desde cero; nunca se acumulan
+  // dos avisos ni dos salidas pendientes.
+  clearPendingAdvance();
   // `v-model.number` leaves '' when the operator clears the field; normalize
   // it before validating so an empty registration matchday means `null`.
   if ((rulesConfig.value.roster_lock_matchday as unknown) === '') {
@@ -630,7 +784,10 @@ async function saveRules() {
   // RF-035: avisar de los registros que el nuevo máximo deja fuera, sin
   // borrarlos ni reescribirlos. Los segmentos persistidos piden decisión
   // explícita; los eventos del borrador dejan un aviso y no bloquean el guardado.
+  // El texto se calcula aquí, pero solo se **publica** si la escritura termina
+  // con éxito (ORD-12, RF-015): mientras la petición está en vuelo no se ve.
   const minutesImpact = await minutesImpactBeforeSave(rulesConfig.value);
+  let minutesNotice: string | null = null;
   if (minutesImpact.segments.length) {
     const message = t('rules.minutesWarning.confirm', {
       segments: minutesImpact.segments.length,
@@ -638,9 +795,9 @@ async function saveRules() {
       max: minutesImpact.maxMinute ?? 0,
     });
     if (import.meta.client && !window.confirm(message)) return;
-    rulesMinutesNotice.value = message;
+    minutesNotice = message;
   } else if (minutesImpact.events.length) {
-    rulesMinutesNotice.value = t('rules.minutesWarning.events', {
+    minutesNotice = t('rules.minutesWarning.events', {
       events: minutesImpact.events.length,
       max: minutesImpact.maxMinute ?? 0,
     });
@@ -659,10 +816,24 @@ async function saveRules() {
       return;
     }
     setRulesConfig(updated.rules_config);
-    await loadConfiguration();
-    if (selectedVersionId.value === versionId) syncRulesForVersion(versionId);
+    // ORD-12: el aviso y sus dos controles aparecen solo cuando el guardado ya
+    // terminó con éxito; si hubiera fallado, el `catch` no deja ninguno.
+    rulesMinutesNotice.value = minutesNotice;
+    // RF-008: la recarga posterior no condiciona el salto. Si falla, registra su
+    // error en la página y la sección de destino muestra su propio estado.
+    void refreshConfiguration();
+    // RF-001, RF-015: sin aviso el salto es inmediato; con aviso queda armado
+    // hasta que el usuario elija «Continuar» o «Quedarme».
+    await executeAdvance(advanceAfterSave({
+      section: 'rules',
+      effective: true,
+      notice: Boolean(minutesNotice),
+      tournamentId,
+    }));
   } catch (cause) {
     if (await redirectOnSessionFailure(cause)) return;
+    // RF-016: un guardado fallido no deja aviso, controles ni salto armado.
+    clearPendingAdvance();
     rulesServerDetail.value = serverValidationDetail(cause);
     rulesError.value = failureMessage(cause, t('setup.noRulesUpdate'));
   } finally {
@@ -736,7 +907,7 @@ loading.value = false;
 
            <form id="configuracion" class="panel panel-wide rules-panel" :aria-busy="saving" @submit.prevent="saveRules">
              <div class="panel-heading">
-               <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2>{{ t('setup.editRules') }}</h2></div>
+               <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2 ref="rulesTitle" tabindex="-1">{{ t('setup.editRules') }}</h2></div>
                <div class="rules-heading-actions">
                  <span v-if="activeVersion && !rulesEditable" class="muted-note">{{ t('rules.readOnlyVersion') }}</span>
                 <button v-if="canManageTournaments && rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
@@ -760,44 +931,34 @@ loading.value = false;
              />
              <p v-if="!rulesConfig && rulesEditable" class="muted-note">{{ t('setup.rulesLoadNote') }}</p>
              <p v-if="rulesError" class="form-error" role="alert">{{ rulesError }}</p>
-             <p v-if="rulesMinutesNotice" class="minutes-warning" role="status">{{ rulesMinutesNotice }}</p>
+             <!-- RF-017: se anuncia solo el texto del aviso; sus dos controles
+                  van fuera de la región anunciada y conservan el orden de
+                  lectura (texto primero, controles después). -->
+             <template v-if="rulesMinutesNotice">
+               <p class="minutes-warning" role="status">{{ rulesMinutesNotice }}</p>
+               <div class="minutes-warning-actions">
+                 <button type="button" class="button-secondary" @click="continueAfterNotice">{{ t('rules.minutesWarning.continue') }}</button>
+                 <button type="button" class="button-secondary" @click="stayAfterNotice">{{ t('rules.minutesWarning.stay') }}</button>
+               </div>
+             </template>
            </form>
 
 
          <Transition name="content-fade" mode="out-in">
          <div key="configuration" class="config-grid">
-            <!-- RF-002/RF-010 (AT-1): único lugar que crea fases e inscribe equipos.
-                 La creación y la inscripción son dos peticiones; si la segunda falla,
-                 la fase queda visible y el asistente permite reintentar sobre ella. -->
-            <StageTeamsWizard
-              class="panel-wide"
-              :tournament-id="tournamentId"
-              :version-id="selectedVersionId"
-              :stages="selectedVersionStages"
-              :teams="teams"
-              :roster-limits="selectedVersionRosterLimits"
-              :roster-counts="rosterCountsByTeam"
-              :lock-active="rosterLockActive"
-              :disabled="!canManageTournaments || activeVersion?.status !== 'draft'"
-              :busy="saving"
-              :reset-token="wizardResetToken"
-              @saved="refreshConfiguration"
-              @reload="refreshConfiguration"
-              @dirty-change="wizardDirty.phases = $event"
-            />
-
             <!-- RF-003 / RF-021 (IN-1): único lugar que da de alta equipos.
-                 El alta no pide fase: para inscribir se usa el asistente de fases. -->
+                 El alta no pide fase: para inscribir se usa el asistente de fases.
+                 Spec 025 (RF-001): el orden del documento es reglas → equipos → fases. -->
             <div id="equipos" class="panel teams-panel panel-wide">
               <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
-              <h2>{{ t('setup.nameTheField') }}</h2>
+              <h2 ref="teamsTitle" tabindex="-1">{{ t('setup.nameTheField') }}</h2>
               <TeamsWizard
                 :tournament-id="tournamentId"
                 :version-id="selectedVersionId"
                 :disabled="!canManageTournaments || activeVersion?.status !== 'draft'"
                 :busy="saving"
                 :reset-token="wizardResetToken"
-                @saved="refreshConfiguration"
+                @saved="onTeamsSaved"
                 @dirty-change="wizardDirty.teams = $event"
               />
               <p v-if="crestStatusMessage" class="muted-note" role="status">{{ crestStatusMessage }}</p>
@@ -853,6 +1014,28 @@ loading.value = false;
                 </li>
               </TransitionGroup>
             </div>
+
+            <!-- RF-002/RF-010 (AT-1): único lugar que crea fases e inscribe equipos.
+                 La creación y la inscripción son dos peticiones; si la segunda falla,
+                 la fase queda visible y el asistente permite reintentar sobre ella.
+                 Spec 025 (RF-001): el bloque de fases va después del de equipos. -->
+            <StageTeamsWizard
+              class="panel-wide"
+              :tournament-id="tournamentId"
+              :version-id="selectedVersionId"
+              :stages="selectedVersionStages"
+              :teams="teams"
+              :roster-limits="selectedVersionRosterLimits"
+              :roster-counts="rosterCountsByTeam"
+              :lock-active="rosterLockActive"
+              :disabled="!canManageTournaments || activeVersion?.status !== 'draft'"
+              :busy="saving"
+              :reset-token="wizardResetToken"
+              @saved="refreshConfiguration"
+              @confirmed="onStagesConfirmed"
+              @reload="refreshConfiguration"
+              @dirty-change="wizardDirty.phases = $event"
+            />
           </div>
          </Transition>
          <div v-if="error" class="form-error" role="alert">{{ error }}</div>
@@ -893,6 +1076,7 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .panel-wide { grid-column: 1 / -1; }
 .panel:hover { border-color: rgba(212, 243, 106, 0.32); }
 .panel h2 { margin: 0 0 10px; font-size: 1.6rem; letter-spacing: -0.05em; }
+.panel h2:focus { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 0.35rem; }
 .panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .panel-heading h2 { margin-bottom: 0; }
 .rules-heading-actions { display: flex; align-items: center; justify-content: end; gap: 10px; }
@@ -916,6 +1100,7 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
 .form-error { border-style: solid; border-color: #a45b5b; color: #ffb0a8; }
 .minutes-warning { margin: 0; padding: 11px 13px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.82rem; }
+.minutes-warning-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } }
 @media (max-width: 900px) { .checklist-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) { .container { width: min(100% - 28px, 620px); } .config-toolbar, .checklist-heading, .panel-heading { align-items: stretch; flex-direction: column; } .checklist-items { grid-template-columns: 1fr; } }
