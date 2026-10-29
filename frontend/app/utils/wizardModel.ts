@@ -339,7 +339,8 @@ export function nextStepId(wizard: WizardKind, stepId: string): WizardStepId | n
   const index = steps.findIndex((step) => step.id === stepId);
   if (index < 0) return null;
   for (let i = index + 1; i < steps.length; i += 1) {
-    if (steps[i].showInIndex !== false) return steps[i].id;
+    const candidate = steps[i];
+    if (candidate && candidate.showInIndex !== false) return candidate.id;
   }
   return null;
 }
@@ -351,7 +352,8 @@ export function previousStepId(wizard: WizardKind, stepId: string): WizardStepId
   const index = steps.findIndex((step) => step.id === stepId);
   if (index <= 0) return null;
   for (let i = index - 1; i >= 0; i -= 1) {
-    if (steps[i].showInIndex !== false) return steps[i].id;
+    const candidate = steps[i];
+    if (candidate && candidate.showInIndex !== false) return candidate.id;
   }
   return null;
 }
