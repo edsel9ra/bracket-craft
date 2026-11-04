@@ -14,6 +14,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "infra" / "scripts" / "assert_production_compose.py"
 
@@ -133,7 +135,7 @@ def _valid_config() -> dict[str, Any]:
             ),
             "api": _service(
                 volumes=[],
-                networks=deepcopy(internal),
+                networks=deepcopy(internal_and_edge),
                 command=[
                     "uvicorn",
                     "app.main:app",
@@ -158,7 +160,7 @@ def _valid_config() -> dict[str, Any]:
             ),
             "storage": _service(
                 volumes=[_named_volume("storage_data", "/data")],
-                networks=deepcopy(internal),
+                networks=deepcopy(internal_and_edge),
             ),
             "web": _service(
                 volumes=[],
@@ -379,24 +381,26 @@ def test_rejects_writable_infra_postgres_mount_in_db_migrate() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_requires_edge_network_only_on_web() -> None:
+@pytest.mark.parametrize("service", ["web", "api", "storage"])
+def test_requires_edge_network_on_proxy_services(service: str) -> None:
     config = _valid_config()
-    config["services"]["web"]["networks"] = _render_service_networks(["internal"])
+    config["services"][service]["networks"] = _render_service_networks(["internal"])
 
     errors = _errors(config)
 
-    assert any("web" in error and "edge" in error for error in errors)
+    assert any(service in error and "edge" in error for error in errors)
 
 
-def test_rejects_edge_network_on_api() -> None:
+@pytest.mark.parametrize("service", ["db", "db-migrate", "worker", "redis"])
+def test_rejects_edge_network_on_internal_services(service: str) -> None:
     config = _valid_config()
-    config["services"]["api"]["networks"] = _render_service_networks(
+    config["services"][service]["networks"] = _render_service_networks(
         ["internal", "edge"]
     )
 
     errors = _errors(config)
 
-    assert any("api" in error and "edge" in error for error in errors)
+    assert any(service in error and "edge" in error for error in errors)
 
 
 def test_rejects_service_left_on_default_network() -> None:

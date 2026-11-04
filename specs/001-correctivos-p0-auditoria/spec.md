@@ -124,13 +124,15 @@ MIENTRAS un torneo está publicado, EL SISTEMA sigue exponiendo la misma proyecc
 
 ### R02 — Configuración de producción y validación del merge
 
+> **Cambio posterior (2026-11-04, revisión del repositorio):** el navegador llama directamente a la API (`NUXT_PUBLIC_API_BASE`), a Socket.IO (`NUXT_PUBLIC_SOCKET_BASE`) y a las fotos (`STORAGE_PUBLIC_BASE_URL`), y `web` no hace de proxy. Con solo `web` en la red del proxy, esas tres rutas eran inalcanzables en producción. RF-006 se enmienda: `web`, `api` y `storage` se unen a la red externa del proxy; `db`, `redis`, `worker` y `db-migrate` siguen solo en la red interna y ningún servicio publica puertos. El enrutamiento lo configura el operador en el proxy.
+
 **RF-006. Producción no publica ningún puerto y separa red interna de red del proxy.**
-CUANDO se ejecuta la configuración combinada de producción, EL SISTEMA no publica en el host ningún puerto de ningún servicio, mantiene `db`, `redis`, `storage`, `api` y `worker` solo en la red interna del stack, y une únicamente `web` a la red externa del proxy.
+CUANDO se ejecuta la configuración combinada de producción, EL SISTEMA no publica en el host ningún puerto de ningún servicio, mantiene `db`, `redis`, `worker` y `db-migrate` solo en la red interna del stack, y une a la red externa del proxy únicamente `web`, `api` y `storage` (cambio posterior del 2026-11-04).
 *Criterios de aceptación:*
 - La configuración renderizada no contiene puertos publicados ni `host_ip` para ningún servicio: base de datos, Redis, almacenamiento, API, worker ni web.
 - La anulación se hace con la semántica de fusión de Compose (`!reset []`/`!override`), no confiando en que `ports: []` reemplace la secuencia de desarrollo.
-- Existe una red interna del stack donde están todos los servicios; `api`, `db`, `redis` y `storage` no se unen a ninguna red externa.
-- Existe una red externa ya existente para el proxy (por ejemplo `edge`/`proxy`), con nombre configurable por variable de entorno (por ejemplo `PROXY_NETWORK`), declarada como `external: true`; solo `web` se une a ella.
+- Existe una red interna del stack donde están todos los servicios; `db`, `redis`, `worker` y `db-migrate` no se unen a ninguna red externa.
+- Existe una red externa ya existente para el proxy (por ejemplo `edge`/`proxy`), con nombre configurable por variable de entorno (por ejemplo `PROXY_NETWORK`), declarada como `external: true`; solo `web`, `api` y `storage` se unen a ella.
 - `web` alcanza `api` por la red interna en SSR, sin puertos publicados.
 - La configuración de desarrollo conserva sus puertos locales como hasta ahora.
 - La creación o unión de la red del proxy se documenta como prerrequisito de despliegue a cargo del operador, fuera de este compose.
