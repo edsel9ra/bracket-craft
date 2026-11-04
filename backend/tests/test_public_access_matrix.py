@@ -354,10 +354,7 @@ async def test_two_tenants_do_not_mix_public_data(db_session, tenant_factory):
         second_detail = await client.get(f"/api/v1/tournaments/public/{second_tournament}")
         assert first_detail.status_code == 200
         assert second_detail.status_code == 200
-        first_team_names = {t["name"] for t in first_detail.json()["teams"]}
-        second_team_names = {t["name"] for t in second_detail.json()["teams"]}
         # The team registered in B must not appear in A's detail and vice versa.
-        # We compare by id sets instead of names (names are random).
         first_team_ids = {t["team_id"] for t in first_detail.json()["teams"]}
         second_team_ids = {t["team_id"] for t in second_detail.json()["teams"]}
         assert first_team_ids == {str(first_team)}

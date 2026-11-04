@@ -36,6 +36,9 @@ jobs:
             backend/requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Lint
+        working-directory: backend
+        run: ruff check .
       - name: Run unit tests without database
         working-directory: backend
         run: pytest -q

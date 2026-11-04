@@ -1,11 +1,9 @@
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 

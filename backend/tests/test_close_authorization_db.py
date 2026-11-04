@@ -35,7 +35,6 @@ from db_helpers import TenantContext, create_test_user, set_tenant_context
 from tests.test_substitutions import (
     ClosableMatch,
     committed_application,
-    context_for,
     report,
     seeded_match,
 )

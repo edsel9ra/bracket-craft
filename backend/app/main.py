@@ -21,7 +21,6 @@ from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 from app.core.access_log import access_log_record
 from app.core.config import get_settings
 from app.core.csrf import (
-    CSRF_HEADER_NAME,
     new_csrf_token,
     validate_csrf_token,
     validate_request_origin,

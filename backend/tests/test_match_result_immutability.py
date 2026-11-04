@@ -32,7 +32,6 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
-from app.core.database import set_rls_context
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload

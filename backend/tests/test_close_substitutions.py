@@ -37,7 +37,6 @@ from app.modules.matches.service import (
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.rules_engine.substitutions import (
     MatchEvent,
-    Segment,
     SubstitutionError,
     SubstitutionErrorCode,
     SubstitutionLimits,
