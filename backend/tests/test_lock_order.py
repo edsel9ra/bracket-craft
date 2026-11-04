@@ -23,7 +23,6 @@ from app.modules.matches.schemas import OfficialAssignmentRequest
 from app.modules.matches.service import CloseMatchReportService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.standings.service import StandingsService
-from app.modules.tournaments import router as tournaments_router
 from app.modules.tournaments.router import (
     create_match,
     create_stage,

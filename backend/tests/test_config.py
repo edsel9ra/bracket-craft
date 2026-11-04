@@ -22,7 +22,7 @@ def test_production_settings_reject_development_secrets():
 def test_production_settings_accept_explicit_secrets():
     settings = Settings(
         app_env="production",
-        database_url=f"postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
+        database_url="postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
         jwt_secret="production-secret-" + "x" * 48,
         player_data_key="production-player-key-" + "x" * 48,
         invitation_token_key="production-invitation-key-" + "x" * 48,

@@ -17,7 +17,7 @@ import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import asyncpg
 from sqlalchemy.engine import make_url

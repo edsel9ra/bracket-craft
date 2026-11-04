@@ -1224,7 +1224,7 @@ async def test_callback_revokes_only_the_presented_session_in_postgres(
     """RF-27/D-13 con base real: solo el ``jti`` presentado queda revocado."""
 
     use_settings(monkeypatch)
-    spy = configure_callback(monkeypatch)
+    configure_callback(monkeypatch)
     user_id = await create_test_user(db_session)
     presented = await create_user_session(db_session, user_id)
     other = await create_user_session(db_session, user_id)

@@ -41,7 +41,6 @@ export type TeamsStepId =
 
 /** Vías de alta del paso `teams.entry` (RF-001). */
 export type TeamsEntryPath = 'individual' | 'bulk';
-export type TeamEntryPath = TeamsEntryPath;
 
 export type WizardStepId = RulesStepId | PhasesStepId | TeamsStepId;
 

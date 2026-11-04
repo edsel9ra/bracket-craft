@@ -48,6 +48,7 @@ services:
     volumes: !reset []
     networks:
       - internal
+      - edge
 
   worker:
     environment:
@@ -68,6 +69,7 @@ services:
     ports: !reset []
     networks:
       - internal
+      - edge
 
   web:
     user: "node"
@@ -87,7 +89,7 @@ networks:
   # Red interna del stack: todos los servicios, sin exposición al host.
   internal:
   # Red externa del proxy, ya existente y creada por el operador fuera de este
-  # compose. Solo `web` se une a ella. El nombre se configura con PROXY_NETWORK.
+  # compose. Solo `web`, `api` y `storage` se unen a ella. El nombre se configura con PROXY_NETWORK.
   edge:
     external: true
     name: ${PROXY_NETWORK:-edge}

@@ -49,6 +49,10 @@ STACK_NETWORK = "internal"
 #: Red externa del proxy (nombre configurable con PROXY_NETWORK).
 PROXY_NETWORK = "edge"
 
+#: Servicios que el navegador alcanza a través del proxy: web, API/Socket.IO y
+#: el bucket público de fotos.
+PROXY_SERVICES = ("web", "api", "storage")
+
 #: Servicios que en producción ejecutan solo artefactos construidos.
 PRODUCTION_CODE_SERVICES = ("api", "worker", "web")
 #: Servicios que pueden conservar montajes de infraestructura de PostgreSQL.
@@ -164,7 +168,9 @@ def _validate_networks(name: str, service: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     networks = service.get("networks")
     actual = set(networks.keys()) if isinstance(networks, Mapping) else set()
-    expected = {STACK_NETWORK, PROXY_NETWORK} if name == "web" else {STACK_NETWORK}
+    expected = (
+        {STACK_NETWORK, PROXY_NETWORK} if name in PROXY_SERVICES else {STACK_NETWORK}
+    )
     unexpected = actual - expected
     missing = expected - actual
     if unexpected:

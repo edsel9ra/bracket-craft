@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 
 import asyncpg
-import pytest
 
 from migration_helpers import apply_migration, throwaway_database
 

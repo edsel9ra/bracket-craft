@@ -15,7 +15,6 @@ rutas— corren en ``pytest -q``.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import get_args, get_origin
 from uuid import uuid4
 
 import pytest
@@ -33,7 +32,6 @@ from app.modules.tournaments.schemas import (
 from assertion_messages import describe_response
 from db_helpers import (
     clear_rls_context,
-    create_tenant_owner,
     database_tests_enabled,
     insert_player,
     set_tenant_context,

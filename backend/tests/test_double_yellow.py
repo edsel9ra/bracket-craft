@@ -49,7 +49,7 @@ from app.modules.matches.errors import (
     DoubleYellowInconsistent,
 )
 from app.modules.matches.router import close_match
-from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
+from app.modules.matches.schemas import MatchEventPayload
 from app.modules.matches.service import double_yellow_violations
 from db_helpers import set_tenant_context
 from tests.event_ids import event_id
@@ -618,7 +618,7 @@ async def test_three_previous_yellows_are_rejected_without_writing(database_admi
         assert_nothing_was_written(await act_state(engine, match))
 
 
-async def test_yellows_of_another_player_do_not_count(database_admin_url):
+async def test_close_ignores_yellows_of_another_player(database_admin_url):
     async with committed_application(database_admin_url) as engine:
         context, match = await seeded_match(engine)
         player, other = match.home_starters[:2]

@@ -20,7 +20,7 @@ from app.modules.matches.errors import (
     WalkoverScoreMismatch,
     WalkoverStateNotAllowed,
 )
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
@@ -46,9 +46,7 @@ from app.modules.rules_engine.substitutions import (
     apply_substitution,
     build_on_field,
     canonical_event_order,
-    remaining_limits,
     segment_balances,
-    team_usage,
     validate_assist_player,
     validate_player_on_field,
     validate_roster_minutes,

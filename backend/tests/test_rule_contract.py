@@ -27,7 +27,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.advancement.service import AdvancementService
-from app.modules.matches import service as matches_service
 from app.modules.matches.formations import FORMATION_SLOTS, slots_for_formation
 from app.modules.matches.schemas import FormationCode, MatchTeamLineupConfig
 from app.modules.rule_contract import (

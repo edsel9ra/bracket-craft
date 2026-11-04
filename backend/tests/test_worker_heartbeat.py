@@ -40,6 +40,7 @@ class FakeSettings:
     """Ajustes mínimos que ``outbox.main`` consulta al arrancar."""
 
     app_env = "development"
+    redis_url = "redis://localhost:6379/0"
 
 
 class FakeClock:
@@ -226,7 +227,7 @@ async def test_loop_blocked_more_than_max_age_is_stale_and_recovers(
         real_publish()
         published.append(clock.now)
 
-    async def process_without_events():
+    async def process_without_events(_redis=None):
         # Sin eventos: la vuelta termina igualmente y el proceso sigue vivo.
         turns.append(1)
         return 0
@@ -289,7 +290,7 @@ async def test_worker_main_publishes_heartbeat_even_when_processing_fails(
         real_publish()
         published.append(clock.now)
 
-    async def failing_process_once():
+    async def failing_process_once(_redis=None):
         # Base de datos caída: ``claim_outbox_events`` lanza y la vuelta acaba
         # con error, pero el bucle sigue girando.
         failures.append(clock.now)

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from typing import Any, Iterable, Mapping, Sequence
-from uuid import UUID
 
 
 def _v(row: Any, key: str, default: Any = None) -> Any:

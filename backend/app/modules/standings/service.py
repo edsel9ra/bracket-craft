@@ -222,13 +222,13 @@ class StandingsService:
                 )
                 if h2h_stats is None:
                     return [bucket]
-                key_for = lambda item: (
-                    h2h_stats[item["team_id"]].points,
-                    h2h_stats[item["team_id"]].goal_diff,
-                    h2h_stats[item["team_id"]].goals_for,
-                )
+
+                def key_for(item):
+                    stats = h2h_stats[item["team_id"]]
+                    return (stats.points, stats.goal_diff, stats.goals_for)
             else:
-                key_for = lambda item: ranking_value(item, criterion)
+                def key_for(item):
+                    return ranking_value(item, criterion)
 
             buckets_by_key = defaultdict(list)
             for item in bucket:

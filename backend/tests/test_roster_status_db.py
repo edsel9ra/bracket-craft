@@ -45,9 +45,7 @@ from app.modules.tournaments.router import (
 from app.modules.tournaments.schemas import UpdateRosterStatusRequest
 from db_helpers import (
     TenantContext,
-    create_tenant_owner,
     insert_player,
-    set_tenant_context,
 )
 
 LIST_KEYS = {
