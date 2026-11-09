@@ -26,7 +26,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 ## Stack
 
 - Mantenimiento de auditoría: ejecutar `pnpm run lint` además de tests/typecheck/build.
-  CI añade `bandit -r app -ll -c pyproject.toml` y Gitleaks sobre `git archive HEAD`;
+  CI añade `bandit -r app -ll` y Gitleaks sobre `git archive HEAD`;
   excepciones específicas, nunca exclusiones globales de B608 ni del árbol de tests.
   Ver `docs/mantenimiento-auditoria.md`. Migración 032: revalidación de sockets en
   una llamada SQL con contexto RLS por entrada (`SECURITY INVOKER`). Rate limit y

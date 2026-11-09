@@ -23,7 +23,7 @@ masivo. Se excluyen solo reportes generados, además de los ignores de Nuxt.
 ## Bandit y secretos
 
 Bandit 1.9.4 se fija en `backend/requirements-dev.txt`, nunca en la imagen productiva.
-Comando desde `backend`: `bandit -r app -ll -c pyproject.toml`.
+Comando desde `backend`: `bandit -r app -ll`.
 Se revisaron los nueve B608: la interpolación usa exclusivamente columnas binarias
 del avance, sufijo de bloqueo constante, precedencia de roles con columna literal
 y expresión HMAC constante; los datos de la petición siguen ligados por parámetros.
