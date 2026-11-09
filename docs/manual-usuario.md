@@ -87,6 +87,10 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 
 ## 9. Verificación
 
+Los errores de validación de los campos aparecen debajo del control. La
+verificación automática incluye el enlace explícito de los componentes UI
+para evitar que un componente de error quede sin resolver y oculte el mensaje.
+
 - Suites puras: `cd backend && pytest -q` (sin `RUN_DATABASE_TESTS`), `cd frontend && pnpm test`, `node --test` donde aplique. Se ejecutaron y pasaron según los bloques A–G de la spec 023.
 - Suites opt-in (PostgreSQL): `RUN_DATABASE_TESTS=1 pytest -q` con `DATABASE_ADMIN_URL`; se declaran no ejecutadas si no hay entorno.
 - E2E: `pnpm run e2e`/`e2e:test` (Docker). En esta entrega el E2E falló por setup (`session.setup.ts`, «Workspace privado» no visible tras 30 s) y se declaró no ejecutado en verde (código de salida 2), sin modificar código.

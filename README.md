@@ -867,6 +867,11 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+Los errores bajo los campos se renderizan mediante `FormField` y `FieldError`.
+Los componentes de `components/ui` usados sin prefijo `Ui` se importan
+explícitamente; el guardián `frontend/tests/ui-component-imports.test.ts`
+revisa todas las plantillas para evitar componentes sin resolver en runtime.
+
 Las dependencias de ejecución y las de prueba se declaran en archivos separados. `backend/requirements-dev.txt` se instala en local y en CI y **nunca** entra en la imagen de producción, que instala solo `backend/requirements.txt`; la auditoría de dependencias cubre ambos archivos:
 
 ```sh

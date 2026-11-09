@@ -11,6 +11,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import FieldError from './FieldError.vue';
 
 const props = withDefaults(defineProps<{
   label?: string;

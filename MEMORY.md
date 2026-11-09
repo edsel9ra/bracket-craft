@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · Cambio posterior H12: `FormField` importa `FieldError` explícitamente; guardián estático recorre todas las plantillas y componentes UI para impedir nombres sin prefijo/import. No se encontraron otros casos en el barrido.
 - 2026-11-09 · Cambio posterior H2: producción exige `FORWARDED_ALLOW_IPS` (IP/CIDR de proxy confiable, sin default ni `*`), habilita cabeceras de proxy en Uvicorn y mantiene desarrollo sin cambios. Contratos de Compose/entorno y CI actualizados.
 - 2026-11-09 · Cambio posterior H1: cliente Socket.IO solo WebSocket; no requiere afinidad con varios workers. El proxy debe permitir upgrade, sin fallback a polling.
 - 2026-11-04 · Spec 001 (cambio posterior) · RF-006 enmendado: `api` y `storage` también se unen a la red del proxy, porque el navegador llama directamente a la API, a Socket.IO y a las fotos y `web` no hace de proxy. Aprobado por Edson.
