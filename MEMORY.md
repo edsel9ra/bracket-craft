@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · Revisión PR #25: gate E2E WebSocket directo con recuentos/esperas y liberación de `hold`, sin polling; comando API exec que preserva coma+espacio; validación de confianza rechaza cualquier red `/0`. Prueba del YAML real con Docker Compose en `test_production_compose_rendering.py`.
 - Verificación H1/H2/H12: backend `ruff` OK, `pytest -q` 2163 pass / 471 skip; frontend 777 pass / 0 fail, typecheck y build OK. Contratos de ambos perfiles Compose OK (52 variables); producción rechaza confianza del proxy ausente. Login recargado: errores visibles y sin aviso de `FieldError`. E2E completo y proxy multiworker real no ejecutados.
 - 2026-11-09 · Cambio posterior H12: `FormField` importa `FieldError` explícitamente; guardián estático recorre todas las plantillas y componentes UI para impedir nombres sin prefijo/import. No se encontraron otros casos en el barrido.
 - 2026-11-09 · Cambio posterior H2: producción exige `FORWARDED_ALLOW_IPS` (IP/CIDR de proxy confiable, sin default ni `*`), habilita cabeceras de proxy en Uvicorn y mantiene desarrollo sin cambios. Contratos de Compose/entorno y CI actualizados.

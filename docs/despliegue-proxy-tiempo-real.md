@@ -1,5 +1,19 @@
 # Proxy y tiempo real en producción
 
+## Corrección posterior del PR #25
+
+`api.command` usa lista exec: por ejemplo, `FORWARDED_ALLOW_IPS='192.0.2.10, 198.51.100.7'`
+se conserva como un solo argumento de Uvicorn, sin dividir la segunda IP por el espacio.
+El validador rechaza `*` y cualquier red con prefijo cero, tanto `0.0.0.0/0` como
+`::/0`, equivalentes con bits de host o máscara IPv4 cero. No son proxies de confianza acotados.
+
+El gate Playwright ya interceptaba WebSocket, pero sus contadores y la búsqueda de
+intentos previos solo contemplaban HTTP. Ahora contabiliza y espera ambos caminos:
+en `abort` cierra el socket sin conectar al servidor; en `hold` no conecta ni cierra
+hasta `releaseHeld`, que hace fallar el intento manual. El desbloqueo permite
+conectar al servidor real. El canal queda aislado de la API HTTP y de la sesión;
+no se vuelve a habilitar polling ni se rebajan las comprobaciones del escenario.
+
 ## Cambio posterior — auditoría H1/H2 (2026-11-09)
 
 El proxy debe enrutar `/api/v1` y `/socket.io/` a `api:8000` y permitir el

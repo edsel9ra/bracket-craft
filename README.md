@@ -4,6 +4,11 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 
 ## Documentación
 
+Corrección posterior del PR #25: el gate E2E cuenta y bloquea intentos WebSocket
+directos además de HTTP, sin reintroducir polling. El comando productivo de la API
+usa lista exec para preservar listas de proxies con coma y espacio; el validador
+rechaza `*` y cualquier red `/0`. Ver `docs/despliegue-proxy-tiempo-real.md`.
+
 - Manual de usuario: [`docs/manual-usuario.md`](docs/manual-usuario.md) (flujos operativos reales: torneos, reglas, equipos y plantillas, fases, calendario, actas, consulta pública).
 - Guía para agentes: [`AGENTS.md`](AGENTS.md).
 - Constitución: [`docs/constitution.md`](docs/constitution.md).

@@ -25,6 +25,12 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 ## Stack
 
+- Gate E2E de tiempo real: `channel.ts` contabiliza intentos HTTP y WebSocket;
+  `abort` cierra el socket interceptado sin conectar al servidor, `hold` lo retiene
+  hasta `releaseHeld`. Las esperas aceptan ambos transportes, sin exigir polling.
+  Producción usa `api.command` exec; probar coma+espacio con el YAML real y rechazar
+  confianza global tanto `*` como redes IPv4/IPv6 de prefijo `/0`.
+
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
 - **Componentes UI:** Nuxt autoimporta `components/ui/FieldError.vue` como `UiFieldError`. Para usar `<FieldError>` o `<FormField>` sin prefijo, importa explícitamente el componente; `frontend/tests/ui-component-imports.test.ts` recorre todas las plantillas para evitar errores de resolución silenciosos.
