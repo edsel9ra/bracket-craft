@@ -867,6 +867,8 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+Guía operativa del [proxy y tiempo real en producción](docs/despliegue-proxy-tiempo-real.md).
+
 Los errores bajo los campos se renderizan mediante `FormField` y `FieldError`.
 Los componentes de `components/ui` usados sin prefijo `Ui` se importan
 explícitamente; el guardián `frontend/tests/ui-component-imports.test.ts`
