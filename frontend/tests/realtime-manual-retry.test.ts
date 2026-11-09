@@ -25,6 +25,10 @@ const realtimeComposable = readFileSync(
 
 const NAMESPACES: RealtimeLabelNamespace[] = ['public', 'workspace', 'match'];
 
+test('el cliente usa solo WebSocket para mantener la sesión en un worker', () => {
+  assert.match(realtimeComposable, /io\(config\.public\.socketBase,\s*\{\s*transports:\s*\['websocket'\]/);
+});
+
 /**
  * Las tres vistas donde existe el control «Reintentar» (RF-003). Cada una debe
  * calcular su etiqueta con la función compartida y anunciar el estado manual.

@@ -153,6 +153,7 @@ jobs:
           NUXT_PUBLIC_SOCKET_BASE: http://localhost:8000
           NUXT_API_INTERNAL_BASE: http://api:8000/api/v1
           PROXY_NETWORK: edge
+          FORWARDED_ALLOW_IPS: 192.0.2.10
         run: |
           docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
