@@ -281,7 +281,7 @@ async def login(
         user = result.mappings().one_or_none()
         stored_hash = user["password_hash"] if user is not None else None
         password_valid = verify_password(payload.password, stored_hash or DUMMY_PASSWORD_HASH)
-        if user is None or stored_hash is None or not password_valid:
+        if user is None or not stored_hash or not password_valid:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
         await set_rls_context(db, None, user["id"])

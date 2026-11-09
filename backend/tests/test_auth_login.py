@@ -123,6 +123,7 @@ async def test_password_login_rejects_a_google_only_account_without_writing(
 @pytest.mark.parametrize("rows,expected_hash", [
     ([], DUMMY_PASSWORD_HASH),
     ([{"id": USER_ID, "password_hash": None}], DUMMY_PASSWORD_HASH),
+    ([{"id": USER_ID, "password_hash": ""}], DUMMY_PASSWORD_HASH),
     ([{"id": USER_ID, "password_hash": "hash-de-cuenta"}], "hash-de-cuenta"),
 ])
 async def test_login_always_verifies_a_hash_before_generic_rejection(client, monkeypatch, rows, expected_hash):
@@ -155,7 +156,7 @@ async def test_login_always_verifies_a_hash_before_generic_rejection(client, mon
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rows", [[], [{"id": USER_ID, "password_hash": None}]])
+@pytest.mark.parametrize("rows", [[], [{"id": USER_ID, "password_hash": None}], [{"id": USER_ID, "password_hash": ""}]])
 async def test_dummy_hash_match_can_never_create_a_session(client, monkeypatch, rows):
     database = FakeDatabase(rows)
 
