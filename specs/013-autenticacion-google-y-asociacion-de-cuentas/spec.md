@@ -1,5 +1,7 @@
 # Spec 013 — Autenticación con Google y asociación de cuentas
 
+**Cambio posterior (2026-11-09):** RF-29 conserva la semántica de sesión y revocación; la revalidación de sockets usa una llamada SQL por ciclo con contexto RLS por entrada (migración 032). El rate limit reutiliza Redis por proceso, manteniendo el rechazo 503 si Redis falla. Ver `docs/mantenimiento-auditoria.md`.
+
 Estado: implementada
 
 ## Contexto y objetivo

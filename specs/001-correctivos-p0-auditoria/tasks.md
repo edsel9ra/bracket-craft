@@ -1,5 +1,7 @@
 # Tareas 001 — Correctivos P0 de la auditoría
 
+**Cambio posterior (2026-11-09):** añadidos ESLint, Bandit y Gitleaks del árbol actual a CI; verificación local descrita en la entrega de mantenimiento, sin escanear historial.
+
 Spec: `specs/001-correctivos-p0-auditoria/spec.md`
 Plan: `specs/001-correctivos-p0-auditoria/plan.md`
 

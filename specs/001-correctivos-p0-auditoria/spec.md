@@ -1,5 +1,7 @@
 # Spec 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+**Cambio posterior (2026-11-09):** CI incorpora ESLint gradual, Bandit con supresiones específicas revisadas y Gitleaks sobre el árbol versionado actual. Ver `docs/mantenimiento-auditoria.md`; sin modificar los tags de acciones existentes.
+
 Estado: implementada y validada funcionalmente (2026-10-19); validación documental final completada (2026-10-22) y spec cerrada. Los commits de la entrega están materializados.
 
 ## Contexto y objetivo

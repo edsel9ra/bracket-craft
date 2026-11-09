@@ -1,5 +1,7 @@
 # Plan 008 — Higiene del bloque P2 (R18-R32)
 
+**Cambio posterior (2026-11-09):** cliente Redis perezoso con cierre en lifespan y función 032 `SECURITY INVOKER` para agrupar viajes API–BD de revalidación, sin eludir RLS. Tests en `test_redis_client.py` y `test_socket_revalidation*.py`.
+
 Spec: `specs/008-higiene-p2-auditoria/spec.md` (aprobada 2026-10-21).
 Estado del plan: aprobado e implementado; el trabajo se dividió en tres archivos de tareas (`tasks-a.md`, `tasks-b.md` y `tasks-c.md`, 22 tareas en total) y las 22 están completadas.
 

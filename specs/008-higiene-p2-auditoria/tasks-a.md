@@ -1,5 +1,7 @@
 # Tareas 008A — Infra/config (spec 008)
 
+**Cambio posterior (2026-11-09):** Redis compartido para rate limit/readiness, cierre en lifespan y revalidación de sockets en lote con RLS (migración 032), cubiertos por tests puros y opt-in PostgreSQL. Ver `docs/mantenimiento-auditoria.md`.
+
 **Cubre:** RF-002, RF-003, RF-011, RF-013, RF-014 (R19, R20, R28, R30, R31).
 
 **Dependencias:** 008B y 008C no dependen de esta entrega, salvo la documentación que consume T7. Dentro del archivo, cada tarea indica lo que requiere. Las tareas se ejecutan **en orden, una sola cada vez**; marca la casilla solo cuando «Hecho cuando» se cumpla.

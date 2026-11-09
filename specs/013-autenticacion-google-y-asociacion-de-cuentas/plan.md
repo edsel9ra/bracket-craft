@@ -1,5 +1,7 @@
 # Plan 013 — Autenticación con Google y asociación de cuentas
 
+**Cambio posterior (2026-11-09):** migración 032 de revalidación en lote con `SECURITY INVOKER`, sin privilegios elevados; cliente Redis compartido para rate limit/disponibilidad y cierre en lifespan.
+
 **Spec:** `specs/013-autenticacion-google-y-asociacion-de-cuentas/spec.md` (aprobada).
 **Estado del plan:** listo para tareas. No se implementa nada en esta fase.
 **Migración nueva:** `infra/postgres/migrations/024_google_identity_uniqueness.sql`.
