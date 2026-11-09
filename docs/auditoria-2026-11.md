@@ -1,0 +1,228 @@
+# Auditoría de noviembre de 2026
+
+## Resumen y alcance
+
+Auditoría del **2026-11-09**, contrastada con `main` en
+`6502d6b7eb4975d6feaa05060a6fb151d9f106b7`, después de integrar los PR
+[#25](https://github.com/edsel9ra/bracket-craft/pull/25),
+[#26](https://github.com/edsel9ra/bracket-craft/pull/26) y
+[#27](https://github.com/edsel9ra/bracket-craft/pull/27).
+Esta comprobación no introduce correcciones de código ni cambios de dependencias.
+
+Se revisaron código, configuración, documentación y pruebas automatizadas en
+contenedores Python 3.14 y Node 24, con pnpm 12.12.1. Los resultados corresponden
+al código de ese commit, no a un despliegue productivo. «Resuelto» indica que la
+corrección está presente y cubierta por las verificaciones indicadas; no sustituye
+la validación operativa con un proxy real y varios workers.
+
+## Hallazgos
+
+Las rutas y líneas siguientes corresponden al commit auditado. Las suites completas
+de la sección de verificación incluyen los tests citados, salvo los opt-in con BD.
+
+| ID | Severidad | Descripción | Estado | PR y evidencia (archivo:línea; test) |
+| --- | --- | --- | --- | --- |
+| H1 | Alta | Socket.IO con varios workers: cliente WebSocket exclusivo, relay Redis por proceso y gate E2E compatible con conexiones directas. | Resuelto | [#25](https://github.com/edsel9ra/bracket-craft/pull/25). `frontend/app/composables/useRealtime.ts:117`; `backend/app/main.py:479–500,568`; `frontend/e2e/channel.ts:180,227–234,277–285,447`. Tests: `frontend/tests/realtime-manual-retry.test.ts:29`, `realtime-channel-gate.test.ts:31,47,70`; `backend/tests/test_outbox_relay.py:168` y `test_outbox_resync.py:253`. |
+| H2 | Media | IP real tras proxy: cabeceras habilitadas, confianza obligatoria, comando exec y validación estricta de IP/CIDR. | Resuelto | [#25](https://github.com/edsel9ra/bracket-craft/pull/25). `docker-compose.production.yml:47–58`; `infra/scripts/assert_production_compose.py:49–55,473–487`. `backend/tests/test_production_compose_assertions.py:495–513` cubre `*`, `/0`, bits de host, IP/red válida y coma+espacio; `test_production_compose_rendering.py` verifica el YAML real cuando hay Docker Compose disponible. |
+| H3 | Media | Cabeceras de seguridad API y SSR. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security_headers.py:7–30`; conexión exterior en `backend/app/main.py:931`; `frontend/app/utils/securityHeaders.ts:1–9`, `frontend/nuxt.config.ts:1–5`. Tests: `backend/tests/test_security_headers.py:12,32,43,55` y `frontend/tests/security-headers.test.ts:8,18`. |
+| H4 | Media | Cadena de suministro CI: acciones fijadas por commit y Dependabot. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `.github/workflows/ci.yml:29–306`: 14 `uses:`, todos con SHA de 40 caracteres; `.github/dependabot.yml:1–23`: revisión semanal de github-actions, pip y npm, agrupando minor/patch. Tests: `backend/tests/test_workflow_pins.py:10,22`. |
+| H5 | Baja | Login ejecuta Argon2 incluso si falta usuario o contraseña almacenada. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security.py:17–18,26–27`; `backend/app/modules/identity/router.py:282–284`. Tests: `backend/tests/test_auth_login.py:24,123–129,160`: parámetros, llamada al verificador y prohibición de autenticar con el ficticio. Medición local orientativa más abajo. |
+| H6 | Baja | Advisories transitivos de frontend, incluidos los moderados de glob/minimatch. | Pendiente | Sin PR de actualización. `frontend/pnpm-lock.yaml`; `pnpm audit --prod --json` y `pnpm audit --json`: ambos detectan 1 bajo y 2 moderados. No hay test que certifique ausencia de advisories; el control es la consulta al registro. |
+| H7 | Baja | Detecciones históricas de Gitleaks en datos demo/artefactos npm. | Mitigado | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). **Historial sin reescribir (decisión del dueño)**. `.github/workflows/ci.yml:184–192` escanea `git archive HEAD`; `.gitleaks.toml:3–13` conserva reglas predeterminadas y permite tres literales dummy exactos. Comprobación CLI del árbol actual: sin fugas. No se volvió a escanear el historial en esta ronda. |
+| H8 | Baja | Cliente Redis compartido por proceso y cerrado al apagar. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `backend/app/core/redis_client.py:6–20`; consumidores en `backend/app/core/rate_limit.py:70`, `backend/app/main.py:907`; cierre en `backend/app/main.py:583`. Tests: `backend/tests/test_redis_client.py:14,33,40,53`. El relay mantiene su conexión independiente. |
+| H9 | Baja | Revalidación de sockets en lote, con registro del fallo. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `infra/postgres/migrations/032_socket_session_revalidation.sql:3–18` (`SECURITY INVOKER`); `backend/app/main.py:531–559`: una consulta por ciclo no vacío, cada 30 s; `logger.exception` en línea 545. Tests puros: `backend/tests/test_socket_revalidation.py:11,40`, incluyendo error sin desconexión masiva. Tests reales SQL en `test_socket_revalidation_db.py`, no ejecutados con BD en esta ronda. |
+| H10 | Mantenibilidad | Routers monolíticos, especialmente torneos. | Pendiente | Sin PR de refactorización. `wc -l backend/app/modules/*/router.py`: torneos 4887 líneas, partidos 1424, invitaciones 848, identidad 639. No hay test dedicado al tamaño; no se refactorizaron estos archivos en esta ronda. |
+| H11 | Documentación | Memoria con decisiones y resultados históricos diferenciados. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). Inspección `nl -ba MEMORY.md`: líneas 5–13 registran auditoría, 16 registra migración 032, 21–22 diferencian resultados históricos y corrigen «sin commitear». Sin test dedicado. La línea 10 recoge la verificación inicial H1/H2/H12, no una ejecución E2E de esta ronda. |
+| H12 | Media | Resolución de FieldError en FormField. | Resuelto | [#25](https://github.com/edsel9ra/bracket-craft/pull/25). `frontend/app/components/ui/FormField.vue:8,14` usa e importa explícitamente FieldError. Guardián `frontend/tests/ui-component-imports.test.ts:20,25,30,36`: casos válido, vacío, erróneo y barrido de plantillas. |
+
+### Controles adicionales de mantenimiento
+
+- **ESLint gradual — Mitigado, #27:** `frontend/eslint.config.mjs:5–17`
+  desactiva temporalmente **12 reglas**. `pnpm run lint` ejecuta
+  `nuxt prepare && eslint .`; CI lo exige en `.github/workflows/ci.yml:108`.
+  La adopción y las justificaciones están en `docs/mantenimiento-auditoria.md`.
+- **Bandit — Resuelto como control CI, #27:** versión **1.9.4** fijada en
+  `backend/requirements-dev.txt:5`; comando `bandit -r app -ll` en
+  `.github/workflows/ci.yml:181–183`. El umbral es medio/alto, no ausencia de
+  cualquier hallazgo: el informe conserva 13 bajos y 10 supresiones específicas.
+- **Gitleaks — Mitigado, #27:** imagen 8.30.1 fijada por digest; árbol versionado
+  actual exportado, sin historial ni archivos locales no versionados. No es una
+  limpieza retroactiva de secretos históricos. La comprobación real fue el CLI,
+  no un test unitario del escáner.
+
+## Verificación ejecutada
+
+Todos los comandos siguientes se ejecutaron contra el contenido de `main`
+`6502d6b`, antes de escribir este informe. No se ejecutó la suite opt-in con
+`RUN_DATABASE_TESTS=1`, ni se repitió el E2E completo, ni una revisión visual.
+
+### Backend y Bandit
+
+Contenedor `bc-audit-python-ready` (Python 3.14.10), repositorio montado en `/repo`,
+directorio `/repo/backend`:
+
+```sh
+ruff check . && pytest -q && bandit -r app -ll
+```
+
+```text
+All checks passed!
+2211 passed, 480 skipped, 3 warnings in 7.88s
+No issues identified.
+Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 10
+Low: 13
+Medium: 0
+High: 0
+```
+
+Cadena con salida **0**. Los tests parametrizados de H2 ejecutados incluyen
+rechazo de `192.0.2.10/24`, `0.0.0.0/0`, `::/0` y `*`, y aceptación de
+`192.0.2.0/24` y `192.0.2.10, 198.51.100.7`.
+Las tres advertencias pytest son deprecaciones existentes de
+`HTTP_413_REQUEST_ENTITY_TOO_LARGE`. Bandit emite advertencias
+`nosec encountered (B608), but no failed test` en expresiones SQL suprimidas;
+son avisos del escáner, no fallos del comando. `bandit --version` confirmó 1.9.4.
+
+### Frontend
+
+Contenedor `node:24`, pnpm 12.12.1, repositorio completo montado (incluye backend
+para el test del catálogo), directorio `/repo/frontend`:
+
+```sh
+pnpm install --frozen-lockfile && pnpm run lint && pnpm test
+```
+
+```text
+Lockfile is up to date, resolution step is skipped
+Done in 2.3s using pnpm v12.12.1
+$ nuxt prepare && eslint .
+◆ Types generated in .nuxt.
+ℹ tests 783
+ℹ pass 783
+ℹ fail 0
+ℹ skipped 0
+```
+
+Cadena con salida **0**. No se ejecutaron build/typecheck en esta ronda.
+
+### Dependencias frontend: H6 sigue pendiente
+
+Se ejecutaron `pnpm audit --prod --json` y `pnpm audit --json` desde frontend.
+Ambos terminaron con salida **1**, con la misma distribución:
+
+```text
+info: 0, low: 1, moderate: 2, high: 0, critical: 0
+deepmerge  low       GHSA-gcqx-w48m-w2h4  4.3.1
+glob       moderate  GHSA-3g3m-2fjr-6pw4  13.0.6
+minimatch  moderate  GHSA-g3hv-75wg-m249   10.2.6
+```
+
+Además de glob/minimatch, se observó **deepmerge de severidad baja**, no incluido
+en el listado inicial del encargo. No se actualizaron dependencias ni allowlists.
+Los advisories cambian con el registro; este es el resultado observado, no una
+garantía sobre ejecuciones futuras.
+
+### Infraestructura, pins y árbol sin secretos
+
+Desde la raíz, renderizado real de desarrollo y validador en Python 3.14:
+
+```sh
+docker compose --env-file .env.example config --format json | \
+  docker run --rm -i -v "$PWD:/repo:ro" -w /repo python:3.14-slim \
+  python infra/scripts/check_env_contract.py
+```
+
+```text
+OK: contrato de configuración cumplido (7 servicios, 52 variables documentadas, perfil: development)
+```
+
+Conteo con `re.findall(r'uses:\s*([^\s]+)', workflow)` y comprobación completa
+`re.fullmatch(r'[^@]+@[0-9a-f]{40}', referencia)`; conteo de valores `'off'`:
+
+```text
+uses=14, SHA40=14
+ESLint reglas off=12
+```
+
+Exportación `git archive HEAD` a un directorio vacío y ejecución del mismo escáner
+que CI, con salida **0**:
+
+```sh
+docker run --rm -v "$TREE:/repo:ro" \
+  zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+  dir /repo --config /repo/.gitleaks.toml --redact
+```
+
+```text
+scanned ~10616575 bytes (10.62 MB) in 1.38s
+no leaks found
+```
+
+`git rev-parse --is-shallow-repository` devolvió `false` y
+`git rev-list --max-parents=0 HEAD` conserva la raíz
+`8b3f15f638f52fbbf9045d2c5ec1177d084516f2`. No se reescribió historial en esta
+ronda. Las detecciones históricas y su aceptación proceden del encargo; no se
+volvieron a inspeccionar ni reproducir sus valores.
+
+### Medición orientativa de Argon2
+
+Script Python local que importa `hash_password`, `verify_password` y
+`DUMMY_PASSWORD_HASH`, genera un hash real con los parámetros actuales y verifica
+una contraseña incorrecta contra ambos. Diez muestras por hash, alternando orden;
+se comprobó respuesta `False` en las veinte llamadas. No imprime hashes ni claves.
+
+```text
+dummy: n=10, median_ms=61.46, min_ms=40.89, max_ms=85.24
+real: n=10, median_ms=54.69, min_ms=39.95, max_ms=81.82
+median_ratio_dummy_real=1.124
+```
+
+Ambos costes son del mismo orden en este contenedor, con variación apreciable.
+No es una prueba estadística de indistinguibilidad, ni mide login HTTP, consulta
+de usuarios, red o rate limit. El test determinista de H5 fija el uso del
+verificador y los parámetros, no la igualdad exacta de latencias.
+
+## Requisitos de despliegue
+
+1. Aplicar **migración 032 antes de arrancar la API actual**. La revalidación llama
+   a `public.revalidate_socket_sessions`; el test puro no comprueba que la función
+   ya exista en una BD de producción.
+2. Definir **`FORWARDED_ALLOW_IPS` obligatoria**, sin default global: solo IP válidas
+   o redes CIDR estrictas del proxy tal como las ve la API, sin bits de host,
+   `*` ni `/0`. Ejemplo: `192.0.2.0/24`, no `192.0.2.10/24`. El comando exec
+   preserva listas con coma y espacio. El proxy debe sanear `X-Forwarded-For` y
+   `X-Forwarded-Proto`; no confiar en redes de clientes.
+3. Permitir **upgrade WebSocket** hacia `/socket.io/`. El cliente no tiene
+   fallback a polling; si el proxy bloquea WebSocket, falla la conexión. El relay
+   Redis opera por proceso, sin manager compartido ni afinidad para polling.
+4. Servir por HTTPS antes de habilitar HSTS: API lo emite fuera de los entornos
+   de desarrollo definidos; Nuxt solo en producción. La política
+   `max-age=31536000; includeSubDomains` también compromete a los subdominios.
+   API/SSR añaden nosniff, DENY y Referrer-Policy; SSR añade la CSP mínima
+   `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`, sin restringir
+   scripts inline ni conexiones. OAuth conserva su referente más restrictivo.
+
+## Pendientes y riesgos aceptados
+
+- **H6 pendiente:** glob/minimatch moderados y deepmerge bajo siguen presentes,
+  incluso con `--prod`. Requieren revisión de actualizaciones y exposición; no se
+  deduce explotación en producción solo de la presencia en el grafo.
+- **H7 mitigado, historial sin reescribir (decisión del dueño):** el control actual
+  evita nuevas detecciones en el árbol exportado, pero no elimina contenido de
+  commits previos. Una allowlist de dummy no sería válida para credenciales reales.
+- **H10 pendiente:** torneos conserva 4887 líneas; siguientes routers más grandes
+  son partidos (1424), invitaciones (848) e identidad (639). El cambio de Redis o
+  sockets no equivale a una refactorización de esos módulos.
+- **ESLint:** las 12 reglas apagadas son deuda temporal, no una certificación de
+  tipado/estilo completo. Su detalle y motivos permanecen en el documento de
+  mantenimiento. Bandit `-ll` deja fuera los hallazgos bajos y conserva supresiones
+  locales revisadas; Gitleaks solo inspecciona el árbol actual.
+- **Límites de esta ronda:** no probado con proxy real y varios workers, sin
+  prueba de carga, sin E2E completo ni revisión visual, y sin ejecutar los tests
+  opt-in con PostgreSQL. No se verificó un despliegue productivo ni su migración.
+- Los resultados anteriores de `MEMORY.md` son históricos. Este informe registra
+  la verificación actual de `main`; no convierte las ejecuciones omitidas en
+  verificaciones satisfactorias.
+
+Logs y scripts auxiliares de esta sesión: `/home/ubuntu/audit-nov-verification/`
+(fuera del repositorio; no son un requisito de despliegue).
