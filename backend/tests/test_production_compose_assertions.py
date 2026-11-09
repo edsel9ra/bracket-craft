@@ -494,7 +494,8 @@ def test_accepts_shell_string_production_commands() -> None:
 
 @pytest.mark.parametrize("value", [None, "", "*", "192.0.2.10,*", "--workers",
                                   "0.0.0.0/0", "::/0", "192.0.2.10, ::/0",
-                                  "192.0.2.10/0", "2001:db8::/0", "0.0.0.0/0.0.0.0"])
+                                  "192.0.2.10/0", "2001:db8::/0", "0.0.0.0/0.0.0.0",
+                                  "192.0.2.10/24", "2001:db8::1/64", "proxy.internal", "999.0.0.1"])
 def test_rejects_missing_or_global_proxy_trust(value: str | None) -> None:
     config = _valid_config()
     command = config["services"]["api"]["command"]
@@ -504,7 +505,7 @@ def test_rejects_missing_or_global_proxy_trust(value: str | None) -> None:
     assert any("--forwarded-allow-ips" in error for error in _errors(config))
 
 
-@pytest.mark.parametrize("value", ["192.0.2.10", "172.30.0.0/24", "192.0.2.10,2001:db8::/64", "192.0.2.10, 198.51.100.7"])
+@pytest.mark.parametrize("value", ["192.0.2.10", "172.30.0.0/24", "192.0.2.0/24", "192.0.2.10,2001:db8::/64", "192.0.2.10, 198.51.100.7"])
 def test_accepts_explicit_proxy_addresses_and_ranges(value: str) -> None:
     config = _valid_config()
     command = config["services"]["api"]["command"]

@@ -2,6 +2,11 @@
 
 ## Corrección posterior del PR #25
 
+El validador solo admite IP válidas o CIDR en modo estricto, como Uvicorn:
+`192.0.2.10/24` se rechaza por tener bits de host; usar `192.0.2.0/24`.
+Un CIDR inválido queda como literal en Uvicorn y no confía en la IP del proxy;
+también se rechazan nombres y otros literales que no sean IP/CIDR.
+
 `api.command` usa lista exec: por ejemplo, `FORWARDED_ALLOW_IPS='192.0.2.10, 198.51.100.7'`
 se conserva como un solo argumento de Uvicorn, sin dividir la segunda IP por el espacio.
 El validador rechaza `*` y cualquier red con prefijo cero, tanto `0.0.0.0/0` como
