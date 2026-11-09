@@ -26,6 +26,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 ## Stack
 
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).
+- **Cabeceras HTTP:** el middleware ASGI exterior cubre API, errores y HTTP de Socket.IO; no modifica WebSocket ni lifespan. Añade nosniff, DENY y política de referente, preservando `no-referrer` OAuth. HSTS usa `DEVELOPMENT_ENVS` en API; Nitro lo activa solo en producción y añade CSP sin `script-src` ni `connect-src`. Pruebas: `test_security_headers.py` y `security-headers.test.ts`.
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
 - **Procesamiento:** Redis y worker asíncrono de outbox.
 - **Tiempo real:** Socket.IO. El estado visible de la conexión sale de una sola fuente (`status`): `connected`, `reconnecting`, `error` y el estado **manual** `retrying` («Reintentando…»/«Retrying…»), que solo activa la pulsación de «Reintentar» cuando inicia un intento nuevo; `idle` y `connecting` no muestran etiqueta.

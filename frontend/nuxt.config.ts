@@ -1,4 +1,9 @@
+import { securityHeaders } from './app/utils/securityHeaders';
+
 export default defineNuxtConfig({
+  routeRules: {
+    '/**': { headers: securityHeaders(process.env.NODE_ENV === 'production') },
+  },
   compatibilityDate: '2025-07-15',
   devtools: { enabled: process.env.NODE_ENV !== 'production' },
   app: {

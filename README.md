@@ -866,6 +866,16 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+### Cabeceras de seguridad HTTP
+
+API y SSR envían `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y
+`Referrer-Policy: strict-origin-when-cross-origin`. La API conserva el
+`no-referrer` más restrictivo del retorno OAuth. HSTS (`max-age=31536000;
+includeSubDomains`) se activa fuera de desarrollo en API y solo en producción
+en Nuxt. Producción requiere HTTPS en el dominio y sus subdominios.
+Nuxt añade la CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`:
+no restringe scripts inline ni conexiones; `/docs` y Socket.IO siguen operativos.
+
 Las dependencias de ejecución y las de prueba se declaran en archivos separados. `backend/requirements-dev.txt` se instala en local y en CI y **nunca** entra en la imagen de producción, que instala solo `backend/requirements.txt`; la auditoría de dependencias cubre ambos archivos:
 
 ```sh

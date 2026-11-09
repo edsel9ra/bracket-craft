@@ -1,5 +1,7 @@
 # Spec 013 — Autenticación con Google y asociación de cuentas
 
+> **Cambio posterior (2026-11-09, H3):** las respuestas HTTP incorporan cabeceras de seguridad generales y HSTS fuera de desarrollo. Se conserva el `Referrer-Policy: no-referrer` específico de los redirects OAuth, más restrictivo que el valor general. No cambian datos, cookies, códigos ni el flujo de Google.
+
 Estado: implementada
 
 ## Contexto y objetivo

@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · H3: cabeceras comunes en ASGI exterior y Nitro; HSTS fuera de desarrollo en API y solo producción en SSR. CSP mínima solo SSR; se conserva `no-referrer` OAuth y no se altera WebSocket/lifespan.
 - 2026-11-04 · Spec 001 (cambio posterior) · RF-006 enmendado: `api` y `storage` también se unen a la red del proxy, porque el navegador llama directamente a la API, a Socket.IO y a las fotos y `web` no hace de proxy. Aprobado por Edson.
 - **Specs 020–024 implementadas y aprobadas** por el reviewer. Cadena de esquema en **031** (migraciones 026–031 sin rollback, *forward-fix*).
 - **025 (recorrido de configuración) implementada y aprobada**: orden reglas → equipos → fases; rótulos «01 · Reglas»…«04 · Calendario» (es/en); ancla `#fases` (sin entrada en el índice, sección activa Configuración); `phasesAssistantHref` → `/workspace/tournaments/{id}#fases` sin `?step=`; manual renumerado (3 reglas, 4 equipos y plantillas, 5 fases, 6 calendario); README y AGENTS con las cuatro anclas. `pnpm test` 716 pass, typecheck y build OK. Sin cambios de backend/esquema.
