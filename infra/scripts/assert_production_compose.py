@@ -37,12 +37,22 @@ comparación de parche) cuando se usa ``--compose-version``.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 MINIMUM_COMPOSE_VERSION = "2.24.4"
+
+
+def _is_global_proxy(value: str) -> bool:
+    if value == "*":
+        return True
+    try:
+        return ipaddress.ip_network(value, strict=False).prefixlen == 0
+    except ValueError:
+        return False
 
 #: Red interna del stack.
 STACK_NETWORK = "internal"
@@ -471,10 +481,10 @@ def validate_production_config(config: Mapping[str, Any]) -> list[str]:
         if token == "--forwarded-allow-ips":
             forwarded.append(api_command[index + 1] if index + 1 < len(api_command) else "")
     if len(forwarded) != 1 or not forwarded[0].strip() or any(
-        not item.strip() or item.strip() == "*" or item.strip().startswith("--")
+        not item.strip() or _is_global_proxy(item.strip()) or item.strip().startswith("--")
         for value in forwarded for item in value.split(",")
     ):
-        errors.append("api: --forwarded-allow-ips exige proxies explícitos, sin *")
+        errors.append("api: --forwarded-allow-ips exige proxies explícitos, sin * ni redes /0")
 
     web_command = _command_tokens((services.get("web") or {}).get("command"))
     if web_command != WEB_PRODUCTION_COMMAND:

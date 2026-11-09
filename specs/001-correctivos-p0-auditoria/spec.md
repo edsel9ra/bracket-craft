@@ -1,5 +1,7 @@
 # Spec 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** `api.command` es lista exec para conservar listas `FORWARDED_ALLOW_IPS` con coma y espacio como un argumento. La confianza global rechazada incluye `*` y toda red `/0` IPv4/IPv6. Test contra JSON renderizado del YAML real, además de pruebas puras del validador.
+
 Estado: implementada y validada funcionalmente (2026-10-19); validación documental final completada (2026-10-22) y spec cerrada. Los commits de la entrega están materializados.
 
 ## Contexto y objetivo

@@ -1,5 +1,7 @@
 # Plan 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** comando exec y normalización CIDR con `ipaddress.ip_network(..., strict=False)` para rechazar todo prefijo cero; se mantienen las IP/redes explícitas y listas con espacios.
+
 > **Cambio posterior (2026-11-09, H1/H2):** el cliente fija WebSocket sin polling, conservando relay por proceso y transportes del servidor. Producción añade `--proxy-headers --forwarded-allow-ips=…` y exige `FORWARDED_ALLOW_IPS` solo en la API. El validador de Compose rechaza confianza vacía/global y el contrato de entorno verifica consumidor/documentación. Pruebas: guardián del transporte en frontend; casos de IP/CIDR, ausencia y `*` en infraestructura. No cambian datos, RLS, permisos, reglas, versiones ni secretos; se preservan los principios de la constitución y se verifica con las suites backend/frontend y ambos perfiles de Compose.
 
 Estado: aprobado, implementado y cerrado; validación documental final completada (2026-10-22)
