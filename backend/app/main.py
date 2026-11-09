@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 
 from app.core.access_log import access_log_record
+from app.core.redis_client import close_redis_client, get_redis_client
 from app.core.config import get_settings
 from app.core.csrf import (
     new_csrf_token,
@@ -594,6 +595,7 @@ async def lifespan(app: FastAPI):
             await revalidation_task
         except asyncio.CancelledError:
             pass
+        await close_redis_client()
 
 
 api = FastAPI(title="Bracket Craft API", version=PRODUCT_VERSION, lifespan=lifespan)
@@ -917,14 +919,12 @@ async def readiness() -> dict[str, object]:
     except Exception:
         checks["database"] = "error"
 
-    redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    redis = get_redis_client()
     try:
         await redis.ping()
         checks["redis"] = "ok"
     except Exception:
         checks["redis"] = "error"
-    finally:
-        await redis.aclose()
 
     if any(value != "ok" for value in checks.values()):
         raise HTTPException(
