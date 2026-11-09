@@ -866,6 +866,11 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+Las acciones de CI están fijadas a SHA completo del commit, con el tag
+resuelto como comentario (incluido Trivy v0.36.0). Dependabot revisa cada
+semana github-actions, pip (`backend/`) y npm (`frontend/`), agrupando
+minor/patch por ecosistema; los cambios major se revisan por separado.
+
 ### Cabeceras de seguridad HTTP
 
 API y SSR envían `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y

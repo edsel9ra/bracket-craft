@@ -1,5 +1,7 @@
 # Spec 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+> **Cambio posterior (2026-11-09, H4):** todas las acciones de CI se fijan al commit SHA completo resuelto desde sus tags actuales (desreferenciando tags anotados), con tag exacto como comentario. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. No cambian Python 3.14, Node 24, pnpm 12.12.1 ni Trivy v0.36.0.
+
 Estado: implementada y validada funcionalmente (2026-10-19); validación documental final completada (2026-10-22) y spec cerrada. Los commits de la entrega están materializados.
 
 ## Contexto y objetivo

@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · H4: acciones fijadas a commits resueltos de los tags vigentes mediante `git ls-remote` (pnpm v4 → v4.3.0; tags anotados desreferenciados). Dependabot semanal para acciones/pip/npm, minor/patch agrupados; versiones de runtime y Trivy sin cambios.
 - 2026-11-09 · H3: cabeceras comunes en ASGI exterior y Nitro; HSTS fuera de desarrollo en API y solo producción en SSR. CSP mínima solo SSR; se conserva `no-referrer` OAuth y no se altera WebSocket/lifespan.
 - 2026-11-04 · Spec 001 (cambio posterior) · RF-006 enmendado: `api` y `storage` también se unen a la red del proxy, porque el navegador llama directamente a la API, a Socket.IO y a las fotos y `web` no hace de proxy. Aprobado por Edson.
 - **Specs 020–024 implementadas y aprobadas** por el reviewer. Cadena de esquema en **031** (migraciones 026–031 sin rollback, *forward-fix*).

@@ -1,5 +1,7 @@
 # Plan 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+> **Cambio posterior (2026-11-09, H4):** pin de acciones por commit, procedencia documentada en `docs/seguridad-http-ci.md`, Dependabot semanal por ecosistema y guardián `test_workflow_pins.py`. `verify_version_sources.py` ya reconoce las acciones por nombre y no necesita cambiar para aceptar SHA. No se alteran principios de constitución, secretos, permisos, datos ni versiones de referencia.
+
 Estado: aprobado, implementado y cerrado; validación documental final completada (2026-10-22)
 
 Spec: `specs/001-correctivos-p0-auditoria/spec.md` (aprobada 2026-10-19)

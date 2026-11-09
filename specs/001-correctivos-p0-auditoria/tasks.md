@@ -1,5 +1,7 @@
 # Tareas 001 — Correctivos P0 de la auditoría
 
+> **Cambio posterior (2026-11-09, H4):** pins SHA y Dependabot cubiertos por `test_workflow_pins.py`; verificar `pytest -q` y `python infra/scripts/verify_version_sources.py --exclude-constitution`, conservando el resto de verificaciones Compose.
+
 Spec: `specs/001-correctivos-p0-auditoria/spec.md`
 Plan: `specs/001-correctivos-p0-auditoria/plan.md`
 
