@@ -15,6 +15,7 @@ from app.core.database import get_db
 
 
 password_hash = PasswordHash.recommended()
+DUMMY_PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$ih8SceeZzDJd+itzRRR8mA$Ph1UvtcV2HYKxt7SsbE0MRnKlhL9XvNIOPGHFH1ElZs"
 bearer = HTTPBearer(auto_error=False)
 
 

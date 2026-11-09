@@ -26,8 +26,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.14'
           cache: pip
@@ -91,11 +91,11 @@ jobs:
     name: Frontend checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 12.12.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: pnpm
@@ -120,7 +120,7 @@ jobs:
     name: Infrastructure checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Verify reference versions
         run: python3 infra/scripts/verify_version_sources.py --exclude-constitution
       - name: Validate migration script
@@ -156,6 +156,7 @@ jobs:
           NUXT_PUBLIC_SOCKET_BASE: http://localhost:8000
           NUXT_API_INTERNAL_BASE: http://api:8000/api/v1
           PROXY_NETWORK: edge
+          FORWARDED_ALLOW_IPS: 192.0.2.10
         run: |
           docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.production.yml config --format json \
@@ -167,8 +168,8 @@ jobs:
     name: Dependency and filesystem scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.14'
       - name: Install pip-audit
@@ -189,7 +190,7 @@ jobs:
           docker run --rm -v "$tree:/repo:ro" \
             zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             dir /repo --config /repo/.gitleaks.toml --redact
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 12.12.1
       - name: Audit frontend dependencies
@@ -199,7 +200,7 @@ jobs:
           trap 'rm -f "$AUDIT_JSON"' EXIT
           if pnpm --dir frontend audit --prod --json --audit-level low > "$AUDIT_JSON"; then status=0; else status=$?; fi
           PYTHONDONTWRITEBYTECODE=1 python3 infra/scripts/audit_frontend.py --input "$AUDIT_JSON" --pnpm-status "$status"
-      - uses: aquasecurity/trivy-action@v0.36.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -226,11 +227,11 @@ jobs:
       E2E_EMAIL: demo.owner@bracketcraft.dev
       E2E_PASSWORD: 'Demo1234!'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 12.12.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: pnpm
@@ -302,7 +303,7 @@ jobs:
       # cookies), de .auth/state.json ni de logs sin sanear.
       - name: Upload end-to-end artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-realtime-${{ github.run_id }}
           path: frontend/e2e-report

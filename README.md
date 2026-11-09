@@ -12,6 +12,12 @@ La migración **032** permite revalidar los sockets con una sola consulta por ci
 sin eludir RLS. El cliente Redis de rate limit y disponibilidad se comparte por proceso
 y se cierra al apagar la API; el relay mantiene su conexión independiente.
 
+Corrección posterior del PR #25: el gate E2E cuenta y bloquea intentos WebSocket
+directos además de HTTP, sin reintroducir polling. El comando productivo de la API
+usa lista exec para preservar listas de proxies con coma y espacio; el validador
+rechaza `*` y cualquier red `/0`. Ver `docs/despliegue-proxy-tiempo-real.md`.
+
+
 - Manual de usuario: [`docs/manual-usuario.md`](docs/manual-usuario.md) (flujos operativos reales: torneos, reglas, equipos y plantillas, fases, calendario, actas, consulta pública).
 - Guía para agentes: [`AGENTS.md`](AGENTS.md).
 - Constitución: [`docs/constitution.md`](docs/constitution.md).
@@ -201,8 +207,9 @@ Requisitos y comportamiento:
 
 - **Docker Compose 2.24.4 o superior.** El overlay usa `!reset`/`!override` para anular los puertos y los montajes de código; versiones anteriores fusionan las secuencias y dejarían la configuración de desarrollo activa.
 - **Red externa del proxy.** El operador debe crear la red antes de desplegar, fuera de este compose: `docker network create "${PROXY_NETWORK:-edge}"`. El perfil declara esa red como `external: true` con nombre configurable mediante `PROXY_NETWORK` (por defecto `edge`); el proxy alcanza `web` a través de ella.
+- **IP real y límite de autenticación.** Producción exige `FORWARDED_ALLOW_IPS` (sin default): lista de IP o rangos CIDR del proxy, separados por comas. Uvicorn arranca con `--proxy-headers --forwarded-allow-ips=…`; solo acepta cabeceras reenviadas desde esos pares y el rate limit usa la IP resultante. Configura la IP que ve la API como origen del proxy; si usas un CIDR, debe contener exclusivamente infraestructura confiable. Nunca uses `*` ni redes de clientes: permitiría falsificar la IP y eludir límites. El proxy debe sobrescribir/sanear `X-Forwarded-For` y `X-Forwarded-Proto`. Desarrollo no cambia; `.env.example` deja la variable vacía y hay que asignarla al desplegar.
 - **Sin puertos publicados.** Ningún servicio expone puertos en el host. Todos viven en la red interna `internal`; `web`, `api` y `storage` se unen además a la red del proxy y `db`, `redis` y `worker` no son accesibles desde fuera del stack.
-- **Enrutamiento del proxy (a cargo del operador).** El navegador llama directamente a tres orígenes, que el proxy debe enrutar: el sitio a `web:3000`; `NUXT_PUBLIC_API_BASE` (`/api/v1`) y `NUXT_PUBLIC_SOCKET_BASE` (`/socket.io/`, con soporte de WebSocket) a `api:8000`; y `STORAGE_PUBLIC_BASE_URL` (bucket público de fotos) a `storage:9000`. Con `API_WORKERS` mayor que 1, `/socket.io/` necesita afinidad de sesión (*sticky sessions*) para el transporte de long-polling. `NUXT_API_INTERNAL_BASE` apunta a `http://api:8000/api/v1` por la red interna.
+- **Enrutamiento del proxy (a cargo del operador).** El navegador llama directamente a tres orígenes, que el proxy debe enrutar: el sitio a `web:3000`; `NUXT_PUBLIC_API_BASE` (`/api/v1`) y `NUXT_PUBLIC_SOCKET_BASE` (`/socket.io/`, con soporte de WebSocket) a `api:8000`; y `STORAGE_PUBLIC_BASE_URL` (bucket público de fotos) a `storage:9000`. El cliente usa exclusivamente WebSocket, sin fallback a long-polling: con varios `API_WORKERS` no necesita afinidad de sesión. Cada proceso relaya Redis a sus propios clientes, sin manager compartido. El proxy debe permitir el upgrade de WebSocket; si lo bloquea, la conexión falla sin degradarse a polling. `NUXT_API_INTERNAL_BASE` apunta a `http://api:8000/api/v1` por la red interna.
 - **Solo artefactos construidos.** `api`, `worker` y `web` no montan código del host; ejecutan las imágenes construidas (`api` sin `--reload`, `web` con `node .output/server/index.mjs`). Se conservan `postgres_data`, `redis_data` y `storage_data` y los montajes de solo lectura de `./infra/postgres` en `db` y `db-migrate`.
 - **Secretos externos.** Los valores `:?` del overlay (contraseñas, claves, URLs y `SMTP_*`) deben inyectarse desde el entorno o un gestor de secretos.
 
@@ -874,6 +881,32 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+Guía operativa del [proxy y tiempo real en producción](docs/despliegue-proxy-tiempo-real.md).
+
+Los errores bajo los campos se renderizan mediante `FormField` y `FieldError`.
+Los componentes de `components/ui` usados sin prefijo `Ui` se importan
+explícitamente; el guardián `frontend/tests/ui-component-imports.test.ts`
+revisa todas las plantillas para evitar componentes sin resolver en runtime.
+
+El login verifica Argon2 también para cuentas inexistentes o sin contraseña,
+contra un hash ficticio precalculado con los mismos parámetros. Conserva el
+401 genérico, el 409 de registro y los límites de intentos. Esto elimina el
+atajo sin hashing, no garantiza tiempos idénticos de red o base de datos.
+
+Las acciones de CI están fijadas a SHA completo del commit, con el tag
+resuelto como comentario (incluido Trivy v0.36.0). Dependabot revisa cada
+semana github-actions, pip (`backend/`) y npm (`frontend/`), agrupando
+minor/patch por ecosistema; los cambios major se revisan por separado.
+
+### Cabeceras de seguridad HTTP
+
+API y SSR envían `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y
+`Referrer-Policy: strict-origin-when-cross-origin`. La API conserva el
+`no-referrer` más restrictivo del retorno OAuth. HSTS (`max-age=31536000;
+includeSubDomains`) se activa fuera de desarrollo en API y solo en producción
+en Nuxt. Producción requiere HTTPS en el dominio y sus subdominios.
+Nuxt añade la CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`:
+no restringe scripts inline ni conexiones; `/docs` y Socket.IO siguen operativos.
 Las dependencias de ejecución y las de prueba se declaran en archivos separados. `backend/requirements-dev.txt` se instala en local y en CI y **nunca** entra en la imagen de producción, que instala solo `backend/requirements.txt`; la auditoría de dependencias cubre ambos archivos:
 
 ```sh

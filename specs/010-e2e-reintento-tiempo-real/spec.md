@@ -1,5 +1,9 @@
 # Spec 010 — Prueba de extremo a extremo del reintento del tiempo real
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** el gate incluye intentos WebSocket directos en sus contadores y esperas; `abort` cierra sin conectar al servidor y `hold` retiene hasta la liberación explícita. El escenario no exige tráfico HTTP de polling como evidencia de bloqueo. Se conservan estados, atribución del clic y demás criterios.
+
+> **Cambio posterior (2026-11-09, auditoría H1):** el cliente conecta directamente por WebSocket, sin sondeo inicial ni elevación desde polling. Las referencias históricas a ambos transportes describen el comportamiento anterior. El bloqueo completo del canal ahora exige bloquear WebSocket; el interceptor HTTP se conserva como defensa si reaparece polling, sin exigir que haya peticiones de sondeo. No cambian estados, atribución del clic, recargas ni criterios de reintento. La suite E2E completa debe validarse aparte; no se declara ejecutada por el test unitario del transporte.
+
 Estado: implementada, validada por @reviewer y cerrada (2026-10-22).
 
 ## Contexto y objetivo

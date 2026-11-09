@@ -32,10 +32,24 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
   una llamada SQL con contexto RLS por entrada (`SECURITY INVOKER`). Rate limit y
   readiness comparten cliente Redis perezoso y lo cierran en el lifespan de la API.
 
+- **Login y enumeración temporal:** verificar siempre la contraseña; si no hay cuenta activa o hash, usar `DUMMY_PASSWORD_HASH` precalculado. Nunca autenticar por coincidencia con ese hash. `test_auth_login.py` fija parámetros Argon2 y llamadas al verificador; al cambiar parámetros de hashing hay que regenerar el ficticio. No modificar 401 genérico, 409 de registro ni rate limit.
+
+- **Cadena de suministro CI:** todas las acciones `uses:` se fijan al SHA completo del commit (no al objeto de tag anotado), con tag exacto en comentario. Resolver mediante `git ls-remote` y desreferenciar `^{}` cuando exista. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. Trivy conserva la versión v0.36.0 fijada por la constitución.
+
+- Gate E2E de tiempo real: `channel.ts` contabiliza intentos HTTP y WebSocket;
+  `abort` cierra el socket interceptado sin conectar al servidor, `hold` lo retiene
+  hasta `releaseHeld`. Las esperas aceptan ambos transportes, sin exigir polling.
+  Producción usa `api.command` exec; probar coma+espacio con el YAML real y rechazar
+  confianza global tanto `*` como redes IPv4/IPv6 de prefijo `/0`.
+
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).
+- **Cabeceras HTTP:** el middleware ASGI exterior cubre API, errores y HTTP de Socket.IO; no modifica WebSocket ni lifespan. Añade nosniff, DENY y política de referente, preservando `no-referrer` OAuth. HSTS usa `DEVELOPMENT_ENVS` en API; Nitro lo activa solo en producción y añade CSP sin `script-src` ni `connect-src`. Pruebas: `test_security_headers.py` y `security-headers.test.ts`.
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
+- **Componentes UI:** Nuxt autoimporta `components/ui/FieldError.vue` como `UiFieldError`. Para usar `<FieldError>` o `<FormField>` sin prefijo, importa explícitamente el componente; `frontend/tests/ui-component-imports.test.ts` recorre todas las plantillas para evitar errores de resolución silenciosos.
 - **Procesamiento:** Redis y worker asíncrono de outbox.
 - **Tiempo real:** Socket.IO. El estado visible de la conexión sale de una sola fuente (`status`): `connected`, `reconnecting`, `error` y el estado **manual** `retrying` («Reintentando…»/«Retrying…»), que solo activa la pulsación de «Reintentar» cuando inicia un intento nuevo; `idle` y `connecting` no muestran etiqueta.
+- **Transporte de tiempo real:** el cliente usa solo WebSocket, sin fallback a long-polling ni necesidad de afinidad con varios workers. El proxy debe permitir el upgrade; cada proceso relaya Redis a sus propios clientes. El servidor conserva los transportes admitidos para compatibilidad con otros clientes.
+- **Proxy de producción:** `FORWARDED_ALLOW_IPS` es obligatoria y contiene solo IP/CIDR de proxies de confianza (lista separada por comas, nunca `*`). Uvicorn usa `--proxy-headers --forwarded-allow-ips=…` para que el rate limit reciba la IP real; el proxy debe sanear las cabeceras reenviadas. Desarrollo no cambia. El contrato de entorno atribuye esta variable solo a la API de producción.
 - **Almacenamiento de archivos:** SeaweedFS con API S3 (fotos de jugadores). Antes: MinIO (repositorio archivado el 2026-04-25).
 - **Infraestructura:** Docker Compose.
 

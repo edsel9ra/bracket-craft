@@ -13,7 +13,7 @@
  *     natural es el `timeout: 10_000` del cliente; el escenario lo libera
  *     explícitamente mucho antes.
  *   - `abort`: falla de inmediato, que es lo que lleva la vista a error.
- * - `page.routeWebSocket` sobre la misma ruta: la elevación. En `pass` se
+ * - `page.routeWebSocket` sobre la misma ruta: conexión WebSocket directa o elevación. En `pass` se
  *   conecta al servidor real (`connectToServer`) y se cuenta como una conexión
  *   **establecida**; en `hold`/`abort` **nunca** se acepta el handshake, así
  *   que un intento bloqueado no puede convertirse en transporte.
@@ -74,9 +74,9 @@ export interface ChannelNavigationRecord {
 export interface ChannelCounts {
   /** Conexiones persistentes aceptadas por el servidor real. */
   readonly established: number;
-  /** Peticiones HTTP al canal (sondeo y elevación), incluidas las bloqueadas. */
+  /** Intentos HTTP y WebSocket al canal, incluidos los bloqueados. */
   readonly attempts: number;
-  /** Peticiones al canal retenidas o abortadas por el bloqueo. */
+  /** Intentos HTTP y WebSocket retenidos o abortados por el bloqueo. */
   readonly blocked: number;
   /** Peticiones retenidas ahora mismo (en vuelo, sin handshake aceptado). */
   readonly held: number;
@@ -158,6 +158,7 @@ class BrowserChannelGate implements ChannelGate {
   private readonly requestIndex = new Map<Request, MutableRequestRecord>();
   private readonly heldRoutes: Route[] = [];
   private readonly blockedHandshakes: WebSocketRoute[] = [];
+  private readonly attemptTimes: number[] = [];
   private readonly waiters: Waiter[] = [];
   private readonly navigationRecords: ChannelNavigationRecord[] = [];
   private readonly traceEntries: TraceEntry[] = [];
@@ -226,9 +227,9 @@ class BrowserChannelGate implements ChannelGate {
   counts(): ChannelCounts {
     return {
       established: this.establishedCount,
-      attempts: this.requestRecords.filter((record) => record.channel).length,
+      attempts: this.attemptTimes.length,
       blocked: this.blockedCount,
-      held: this.heldRoutes.length,
+      held: this.heldRoutes.length + this.blockedHandshakes.length,
       rejectedHandshakes: this.rejectedHandshakes,
     };
   }
@@ -275,15 +276,17 @@ class BrowserChannelGate implements ChannelGate {
   /** Libera lo retenido: cada intento falla y la vista vuelve a `error`. */
   async releaseHeld(): Promise<void> {
     const held = this.heldRoutes.splice(0, this.heldRoutes.length);
-    await Promise.allSettled(held.map((route) => route.abort('failed')));
+    const handshakes = this.blockedHandshakes.splice(0, this.blockedHandshakes.length);
+    await Promise.allSettled([
+      ...held.map((route) => route.abort('failed')),
+      ...handshakes.map((socket) => socket.close()),
+    ]);
   }
 
   /** Desbloqueo: canal vivo, intentos retenidos liberados y handshakes descartados. */
   async unblock(): Promise<void> {
     this.currentMode = 'pass';
     await this.releaseHeld();
-    const handshakes = this.blockedHandshakes.splice(0, this.blockedHandshakes.length);
-    await Promise.allSettled(handshakes.map((socket) => socket.close()));
   }
 
   async waitForEstablished(count: number, timeoutMs: number): Promise<number> {
@@ -301,10 +304,8 @@ class BrowserChannelGate implements ChannelGate {
   }
 
   waitForChannelRequestAfter(after: number, timeoutMs: number): Promise<number> {
-    const existing = this.requestRecords.find(
-      (record) => record.channel && record.at >= after,
-    );
-    if (existing) return Promise.resolve(existing.at);
+    const existing = this.attemptTimes.find((at) => at >= after);
+    if (existing !== undefined) return Promise.resolve(existing);
 
     return new Promise<number>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | null = null;
@@ -359,7 +360,7 @@ class BrowserChannelGate implements ChannelGate {
 
   async dispose(): Promise<void> {
     for (const unlisten of this.unlisteners.splice(0, this.unlisteners.length)) unlisten();
-    await this.releaseHeld().catch(() => undefined);
+    await this.unblock().catch(() => undefined);
     for (const waiter of this.waiters.splice(0, this.waiters.length)) {
       waiter.resolve(Number.NaN);
     }
@@ -377,6 +378,7 @@ class BrowserChannelGate implements ChannelGate {
   }
 
   private noteChannelActivity(at: number): void {
+    this.attemptTimes.push(at);
     if (at > this.lastChannelActivityAt) this.lastChannelActivityAt = at;
     const pending = this.waiters.filter((waiter) => waiter.after <= at);
     for (const waiter of pending) {
@@ -462,7 +464,12 @@ class BrowserChannelGate implements ChannelGate {
     // Sin `connectToServer()` no hay handshake aceptado: el intento se queda
     // sin transporte mientras dure el bloqueo.
     this.rejectedHandshakes += 1;
-    this.blockedHandshakes.push(socket);
+    this.blockedCount += 1;
+    if (this.currentMode === 'hold') {
+      this.blockedHandshakes.push(socket);
+    } else {
+      void socket.close().catch(() => undefined);
+    }
   }
 }
 

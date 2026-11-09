@@ -2,6 +2,12 @@
 
 **Cambio posterior (2026-11-09):** añadidos ESLint, Bandit y Gitleaks del árbol actual a CI; verificación local descrita en la entrega de mantenimiento, sin escanear historial.
 
+> **Cambio posterior (2026-11-09, H4):** pins SHA y Dependabot cubiertos por `test_workflow_pins.py`; verificar `pytest -q` y `python infra/scripts/verify_version_sources.py --exclude-constitution`, conservando el resto de verificaciones Compose.
+
+> **Cambio posterior (2026-11-09, revisión PR #25):** añadido test de Compose real con `FORWARDED_ALLOW_IPS='192.0.2.10, 198.51.100.7'`; tests negativos de `/0`, bits de host y máscara IPv4 cero. El test de renderizado requiere Docker Compose; las pruebas del validador siguen siendo puras.
+
+> **Cambio posterior (2026-11-09, H1/H2):** transporte WebSocket fijado por test frontend; confianza del proxy obligatoria en producción, sin default global, con tests del comando y contrato. Verificación: `cd backend && ruff check . && pytest -q`; `cd frontend && pnpm test && pnpm run typecheck && pnpm run build`; Compose renderizado de ambos perfiles contra los validadores de infraestructura.
+
 Spec: `specs/001-correctivos-p0-auditoria/spec.md`
 Plan: `specs/001-correctivos-p0-auditoria/plan.md`
 
