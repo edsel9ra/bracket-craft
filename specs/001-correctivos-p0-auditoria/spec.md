@@ -2,6 +2,7 @@
 
 > **Cambio posterior (2026-11-09, H4):** todas las acciones de CI se fijan al commit SHA completo resuelto desde sus tags actuales (desreferenciando tags anotados), con tag exacto como comentario. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. No cambian Python 3.14, Node 24, pnpm 12.12.1 ni Trivy v0.36.0.
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** `api.command` es lista exec para conservar listas `FORWARDED_ALLOW_IPS` con coma y espacio como un argumento. La confianza global rechazada incluye `*` y toda red `/0` IPv4/IPv6. Test contra JSON renderizado del YAML real, además de pruebas puras del validador.
 Estado: implementada y validada funcionalmente (2026-10-19); validación documental final completada (2026-10-22) y spec cerrada. Los commits de la entrega están materializados.
 
 ## Contexto y objetivo
@@ -129,6 +130,10 @@ MIENTRAS un torneo está publicado, EL SISTEMA sigue exponiendo la misma proyecc
 > **Cambio posterior (2026-11-04, revisión del repositorio):** el navegador llama directamente a la API (`NUXT_PUBLIC_API_BASE`), a Socket.IO (`NUXT_PUBLIC_SOCKET_BASE`) y a las fotos (`STORAGE_PUBLIC_BASE_URL`), y `web` no hace de proxy. Con solo `web` en la red del proxy, esas tres rutas eran inalcanzables en producción. RF-006 se enmienda: `web`, `api` y `storage` se unen a la red externa del proxy; `db`, `redis`, `worker` y `db-migrate` siguen solo en la red interna y ningún servicio publica puertos. El enrutamiento lo configura el operador en el proxy.
 
 **RF-006. Producción no publica ningún puerto y separa red interna de red del proxy.**
+
+> **Cambio posterior (2026-11-09, auditoría de producción H2):** producción exige `FORWARDED_ALLOW_IPS`, sin default, con las IP/CIDR del proxy de confianza. La API acepta cabeceras reenviadas solo desde esos pares, para que los límites por IP no agrupen a todos los usuarios bajo el proxy. No se permite confianza global `*`; el operador debe sanear las cabeceras en el proxy. El comando añade `--proxy-headers --forwarded-allow-ips=…`; desarrollo no cambia.
+
+> **Cambio posterior (2026-11-09, auditoría de producción H1):** el cliente Socket.IO usa exclusivamente WebSocket, sin fallback a long-polling ni afinidad de sesión con varios workers. El proxy debe permitir el upgrade; cada worker relaya Redis a sus propios clientes. El servidor conserva sus transportes para compatibilidad.
 CUANDO se ejecuta la configuración combinada de producción, EL SISTEMA no publica en el host ningún puerto de ningún servicio, mantiene `db`, `redis`, `worker` y `db-migrate` solo en la red interna del stack, y une a la red externa del proxy únicamente `web`, `api` y `storage` (cambio posterior del 2026-11-04).
 *Criterios de aceptación:*
 - La configuración renderizada no contiene puertos publicados ni `host_ip` para ningún servicio: base de datos, Redis, almacenamiento, API, worker ni web.

@@ -1,5 +1,9 @@
 # Plan 010 — Prueba de extremo a extremo del reintento del tiempo real
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** se adapta `channel.ts`: registro temporal de intentos HTTP/WebSocket, contadores unificados y cierre de WebSocket retenidos en `releaseHeld`. `routeWebSocket` ya existía; faltaban los recuentos y la búsqueda retrospectiva de actividad para el transporte directo. Tests de gate sin peticiones HTTP en `realtime-channel-gate.test.ts`.
+
+> **Cambio posterior (2026-11-09, H1):** `useRealtime.ts` fija `transports: ['websocket']`. `channel.ts` ya intercepta WebSocket y conserva su interceptor HTTP como defensa, aunque no se espera sondeo inicial. No se modifica el arnés ni se infiere un resultado E2E de las pruebas unitarias.
+
 Spec: `specs/010-e2e-reintento-tiempo-real/spec.md` (implementada, validada por @reviewer y cerrada el
 2026-10-22).
 Estado del plan: aprobado e implementado; validación cerrada el 2026-10-22 con las correcciones C1–C4; el

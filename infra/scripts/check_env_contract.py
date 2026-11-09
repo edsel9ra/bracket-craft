@@ -211,6 +211,7 @@ DEFAULT_CONTRACT = Contract(
         "storage": frozenset(),
     },
     production_only={
+        "api": frozenset({"FORWARDED_ALLOW_IPS"}),
         # Fuera de desarrollo el worker instancia ``Settings``, que exige las
         # claves de firma (ver ``backend/app/core/config.py``).
         "worker": frozenset({"JWT_SECRET", "PLAYER_DATA_KEY"}),
