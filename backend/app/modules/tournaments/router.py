@@ -1844,7 +1844,7 @@ async def _find_player_by_document(
               AND document_type = :document_type
               AND issuing_country = :issuing_country
               AND national_id_hmac = {_PLAYER_DOCUMENT_HMAC_SQL}
-        """),
+        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
         {
             "organization_id": str(organization_id),
             "document_type": payload.document_type,
@@ -1900,7 +1900,7 @@ async def _find_or_create_player_record(
             ON CONFLICT (organization_id, document_type, issuing_country, national_id_hmac)
             DO NOTHING
             RETURNING id
-        """),
+        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
         {
             "organization_id": str(organization_id),
             "first_name": payload.first_name,

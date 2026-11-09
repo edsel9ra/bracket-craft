@@ -126,7 +126,7 @@ async def _load_operation_match(
               ON at.id = m.away_team_id AND at.organization_id = m.organization_id
              WHERE m.id = :match_id AND m.organization_id = :organization_id
             """
-            + row_lock
+            + row_lock  # nosec B608 # sufijo constante FOR UPDATE OF m o vacío; valores ligados.
         ),
         {"match_id": str(match_id), "organization_id": str(context.organization_id)},
     )

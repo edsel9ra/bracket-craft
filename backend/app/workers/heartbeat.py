@@ -23,7 +23,7 @@ HEARTBEAT_MAX_AGE_SECONDS = 90
 HEARTBEAT_INTERVAL_SECONDS = 10
 
 #: Ruta escribible por el usuario ``app`` dentro del contenedor.
-DEFAULT_HEARTBEAT_PATH = "/tmp/bracket-craft-worker-heartbeat"
+DEFAULT_HEARTBEAT_PATH = "/tmp/bracket-craft-worker-heartbeat"  # nosec B108 # archivo de salud sin secretos en contenedor dedicado.
 
 HEARTBEAT_PATH_ENV = "WORKER_HEARTBEAT_PATH"
 
