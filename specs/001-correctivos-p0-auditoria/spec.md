@@ -127,6 +127,8 @@ MIENTRAS un torneo está publicado, EL SISTEMA sigue exponiendo la misma proyecc
 > **Cambio posterior (2026-11-04, revisión del repositorio):** el navegador llama directamente a la API (`NUXT_PUBLIC_API_BASE`), a Socket.IO (`NUXT_PUBLIC_SOCKET_BASE`) y a las fotos (`STORAGE_PUBLIC_BASE_URL`), y `web` no hace de proxy. Con solo `web` en la red del proxy, esas tres rutas eran inalcanzables en producción. RF-006 se enmienda: `web`, `api` y `storage` se unen a la red externa del proxy; `db`, `redis`, `worker` y `db-migrate` siguen solo en la red interna y ningún servicio publica puertos. El enrutamiento lo configura el operador en el proxy.
 
 **RF-006. Producción no publica ningún puerto y separa red interna de red del proxy.**
+
+> **Cambio posterior (2026-11-09, auditoría de producción H1):** el cliente Socket.IO usa exclusivamente WebSocket, sin fallback a long-polling ni afinidad de sesión con varios workers. El proxy debe permitir el upgrade; cada worker relaya Redis a sus propios clientes. El servidor conserva sus transportes para compatibilidad.
 CUANDO se ejecuta la configuración combinada de producción, EL SISTEMA no publica en el host ningún puerto de ningún servicio, mantiene `db`, `redis`, `worker` y `db-migrate` solo en la red interna del stack, y une a la red externa del proxy únicamente `web`, `api` y `storage` (cambio posterior del 2026-11-04).
 *Criterios de aceptación:*
 - La configuración renderizada no contiene puertos publicados ni `host_ip` para ningún servicio: base de datos, Redis, almacenamiento, API, worker ni web.

@@ -114,6 +114,7 @@ export function useRealtime() {
     setStatus('connecting');
 
     socket = io(config.public.socketBase, {
+      transports: ['websocket'],
       auth: usePublicScope
         ? { tournament_id: validPublicTournamentId }
         : { organization_id: validOrganizationId },

@@ -29,6 +29,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.
 - **Procesamiento:** Redis y worker asíncrono de outbox.
 - **Tiempo real:** Socket.IO. El estado visible de la conexión sale de una sola fuente (`status`): `connected`, `reconnecting`, `error` y el estado **manual** `retrying` («Reintentando…»/«Retrying…»), que solo activa la pulsación de «Reintentar» cuando inicia un intento nuevo; `idle` y `connecting` no muestran etiqueta.
+- **Transporte de tiempo real:** el cliente usa solo WebSocket, sin fallback a long-polling ni necesidad de afinidad con varios workers. El proxy debe permitir el upgrade; cada proceso relaya Redis a sus propios clientes. El servidor conserva los transportes admitidos para compatibilidad con otros clientes.
 - **Almacenamiento de archivos:** SeaweedFS con API S3 (fotos de jugadores). Antes: MinIO (repositorio archivado el 2026-04-25).
 - **Infraestructura:** Docker Compose.
 
