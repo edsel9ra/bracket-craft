@@ -541,6 +541,7 @@ async def revalidate_socket_sessions_cycle():
                 validations = result.mappings().all()
     except Exception:
         # A transient database outage must not disconnect every client.
+        logger.exception("No se pudo revalidar %s sockets", len(sessions))
         return
     for validation in validations:
         sid = validation["sid"]
