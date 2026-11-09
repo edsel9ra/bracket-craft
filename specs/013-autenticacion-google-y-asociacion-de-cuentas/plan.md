@@ -1,5 +1,7 @@
 # Plan 013 — Autenticación con Google y asociación de cuentas
 
+> **Cambio posterior (2026-11-09, H5):** `security.py` declara el hash ficticio precalculado; `identity/router.py` verifica antes del rechazo genérico. Tests comprueban cuenta inexistente/sin hash, hash real inválido, coincidencia ficticia no autenticable y paridad de parámetros. No cambian datos, permisos, RLS, registro ni límites; sin excepciones a la constitución.
+
 > **Cambio posterior (2026-11-09, H3):** middleware ASGI exterior, sin CSP en API, con `setdefault` para preservar `no-referrer` OAuth; Nitro aplica CSP mínima y HSTS de producción. Pruebas cubren errores HTTP, Swagger, Engine.IO y bypass WebSocket/lifespan. No cambian principios de constitución, RLS, datos ni permisos.
 
 **Spec:** `specs/013-autenticacion-google-y-asociacion-de-cuentas/spec.md` (aprobada).

@@ -25,6 +25,8 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 ## Stack
 
+- **Login y enumeración temporal:** verificar siempre la contraseña; si no hay cuenta activa o hash, usar `DUMMY_PASSWORD_HASH` precalculado. Nunca autenticar por coincidencia con ese hash. `test_auth_login.py` fija parámetros Argon2 y llamadas al verificador; al cambiar parámetros de hashing hay que regenerar el ficticio. No modificar 401 genérico, 409 de registro ni rate limit.
+
 - **Cadena de suministro CI:** todas las acciones `uses:` se fijan al SHA completo del commit (no al objeto de tag anotado), con tag exacto en comentario. Resolver mediante `git ls-remote` y desreferenciar `^{}` cuando exista. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. Trivy conserva la versión v0.36.0 fijada por la constitución.
 
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).

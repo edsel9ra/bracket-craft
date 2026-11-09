@@ -866,6 +866,11 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 
 ## Verificación
 
+El login verifica Argon2 también para cuentas inexistentes o sin contraseña,
+contra un hash ficticio precalculado con los mismos parámetros. Conserva el
+401 genérico, el 409 de registro y los límites de intentos. Esto elimina el
+atajo sin hashing, no garantiza tiempos idénticos de red o base de datos.
+
 Las acciones de CI están fijadas a SHA completo del commit, con el tag
 resuelto como comentario (incluido Trivy v0.36.0). Dependabot revisa cada
 semana github-actions, pip (`backend/`) y npm (`frontend/`), agrupando

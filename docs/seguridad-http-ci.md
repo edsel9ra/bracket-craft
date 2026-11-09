@@ -1,5 +1,18 @@
 # Endurecimiento HTTP y cadena de suministro
 
+## Cambio posterior H5 — login (2026-11-09)
+
+El login elimina el atajo de rechazar una cuenta inexistente o sin contraseña
+antes de ejecutar Argon2. Verifica contra un hash ficticio precalculado con
+Argon2id (`m=65536,t=3,p=4`), igual que `PasswordHash.recommended()` actual.
+No se genera un hash en cada petición ni durante el arranque. Si cambian los
+parámetros recomendados, el test obliga a regenerarlo. El hash no es una
+credencial y su coincidencia nunca autoriza una sesión.
+
+Se conserva el 401 genérico, el 409 de registro y el rate limit. Es mitigación
+del atajo temporal, no una garantía de latencia idéntica entre peticiones:
+consulta de base de datos, red y carga del proceso siguen variando.
+
 ## Cambio posterior H4 — acciones y dependencias (2026-11-09)
 
 Todos los `uses:` de los workflows apuntan a commits SHA completos. El

@@ -1,5 +1,7 @@
 # Spec 013 — Autenticación con Google y asociación de cuentas
 
+> **Cambio posterior (2026-11-09, H5, RF-30/RNF-9):** login verifica Argon2 también si la cuenta no existe o no tiene contraseña, usando un hash ficticio precalculado con los mismos parámetros. Nunca autentica mediante ese hash; conserva el 401 genérico, el 409 de registro y el rate limit. Se elimina el atajo de coste, sin prometer latencia idéntica.
+
 > **Cambio posterior (2026-11-09, H3):** las respuestas HTTP incorporan cabeceras de seguridad generales y HSTS fuera de desarrollo. Se conserva el `Referrer-Policy: no-referrer` específico de los redirects OAuth, más restrictivo que el valor general. No cambian datos, cookies, códigos ni el flujo de Google.
 
 Estado: implementada
