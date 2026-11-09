@@ -21,6 +21,7 @@ services:
   api:
     environment:
       APP_ENV: production
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS debe indicar las IP o redes del proxy de confianza}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:?PLAYER_DATA_KEY must be set}
       INVITATION_TOKEN_KEY: ${INVITATION_TOKEN_KEY:?INVITATION_TOKEN_KEY must be set}
@@ -43,7 +44,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:?SMTP_FROM must be set}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2} --no-access-log
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2} --no-access-log --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS debe indicar las IP o redes del proxy de confianza}
     ports: !reset []
     volumes: !reset []
     networks:

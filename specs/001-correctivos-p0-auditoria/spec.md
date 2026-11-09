@@ -128,6 +128,8 @@ MIENTRAS un torneo está publicado, EL SISTEMA sigue exponiendo la misma proyecc
 
 **RF-006. Producción no publica ningún puerto y separa red interna de red del proxy.**
 
+> **Cambio posterior (2026-11-09, auditoría de producción H2):** producción exige `FORWARDED_ALLOW_IPS`, sin default, con las IP/CIDR del proxy de confianza. La API acepta cabeceras reenviadas solo desde esos pares, para que los límites por IP no agrupen a todos los usuarios bajo el proxy. No se permite confianza global `*`; el operador debe sanear las cabeceras en el proxy. El comando añade `--proxy-headers --forwarded-allow-ips=…`; desarrollo no cambia.
+
 > **Cambio posterior (2026-11-09, auditoría de producción H1):** el cliente Socket.IO usa exclusivamente WebSocket, sin fallback a long-polling ni afinidad de sesión con varios workers. El proxy debe permitir el upgrade; cada worker relaya Redis a sus propios clientes. El servidor conserva sus transportes para compatibilidad.
 CUANDO se ejecuta la configuración combinada de producción, EL SISTEMA no publica en el host ningún puerto de ningún servicio, mantiene `db`, `redis`, `worker` y `db-migrate` solo en la red interna del stack, y une a la red externa del proxy únicamente `web`, `api` y `storage` (cambio posterior del 2026-11-04).
 *Criterios de aceptación:*

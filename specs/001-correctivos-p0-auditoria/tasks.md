@@ -1,5 +1,7 @@
 # Tareas 001 — Correctivos P0 de la auditoría
 
+> **Cambio posterior (2026-11-09, H1/H2):** transporte WebSocket fijado por test frontend; confianza del proxy obligatoria en producción, sin default global, con tests del comando y contrato. Verificación: `cd backend && ruff check . && pytest -q`; `cd frontend && pnpm test && pnpm run typecheck && pnpm run build`; Compose renderizado de ambos perfiles contra los validadores de infraestructura.
+
 Spec: `specs/001-correctivos-p0-auditoria/spec.md`
 Plan: `specs/001-correctivos-p0-auditoria/plan.md`
 

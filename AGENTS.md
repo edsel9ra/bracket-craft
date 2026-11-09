@@ -30,6 +30,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 - **Procesamiento:** Redis y worker asíncrono de outbox.
 - **Tiempo real:** Socket.IO. El estado visible de la conexión sale de una sola fuente (`status`): `connected`, `reconnecting`, `error` y el estado **manual** `retrying` («Reintentando…»/«Retrying…»), que solo activa la pulsación de «Reintentar» cuando inicia un intento nuevo; `idle` y `connecting` no muestran etiqueta.
 - **Transporte de tiempo real:** el cliente usa solo WebSocket, sin fallback a long-polling ni necesidad de afinidad con varios workers. El proxy debe permitir el upgrade; cada proceso relaya Redis a sus propios clientes. El servidor conserva los transportes admitidos para compatibilidad con otros clientes.
+- **Proxy de producción:** `FORWARDED_ALLOW_IPS` es obligatoria y contiene solo IP/CIDR de proxies de confianza (lista separada por comas, nunca `*`). Uvicorn usa `--proxy-headers --forwarded-allow-ips=…` para que el rate limit reciba la IP real; el proxy debe sanear las cabeceras reenviadas. Desarrollo no cambia. El contrato de entorno atribuye esta variable solo a la API de producción.
 - **Almacenamiento de archivos:** SeaweedFS con API S3 (fotos de jugadores). Antes: MinIO (repositorio archivado el 2026-04-25).
 - **Infraestructura:** Docker Compose.
 

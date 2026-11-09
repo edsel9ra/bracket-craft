@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · Cambio posterior H2: producción exige `FORWARDED_ALLOW_IPS` (IP/CIDR de proxy confiable, sin default ni `*`), habilita cabeceras de proxy en Uvicorn y mantiene desarrollo sin cambios. Contratos de Compose/entorno y CI actualizados.
 - 2026-11-09 · Cambio posterior H1: cliente Socket.IO solo WebSocket; no requiere afinidad con varios workers. El proxy debe permitir upgrade, sin fallback a polling.
 - 2026-11-04 · Spec 001 (cambio posterior) · RF-006 enmendado: `api` y `storage` también se unen a la red del proxy, porque el navegador llama directamente a la API, a Socket.IO y a las fotos y `web` no hace de proxy. Aprobado por Edson.
 - **Specs 020–024 implementadas y aprobadas** por el reviewer. Cadena de esquema en **031** (migraciones 026–031 sin rollback, *forward-fix*).

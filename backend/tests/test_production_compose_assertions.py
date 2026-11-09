@@ -145,6 +145,8 @@ def _valid_config() -> dict[str, Any]:
                     "8000",
                     "--workers",
                     "2",
+                    "--proxy-headers",
+                    "--forwarded-allow-ips=192.0.2.10",
                 ],
                 healthcheck=_healthcheck(),
             ),
@@ -482,11 +484,36 @@ def test_rejects_web_command_as_string_without_build() -> None:
 def test_accepts_shell_string_production_commands() -> None:
     config = _valid_config()
     config["services"]["api"]["command"] = (
-        "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+        "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 "
+        "--proxy-headers --forwarded-allow-ips=192.0.2.10"
     )
     config["services"]["web"]["command"] = "node .output/server/index.mjs"
 
     assert _errors(config) == []
+
+
+@pytest.mark.parametrize("value", [None, "", "*", "192.0.2.10,*", "--workers"])
+def test_rejects_missing_or_global_proxy_trust(value: str | None) -> None:
+    config = _valid_config()
+    command = config["services"]["api"]["command"]
+    command[:] = [token for token in command if not token.startswith("--forwarded-allow-ips=")]
+    if value is not None:
+        command.append(f"--forwarded-allow-ips={value}")
+    assert any("--forwarded-allow-ips" in error for error in _errors(config))
+
+
+@pytest.mark.parametrize("value", ["192.0.2.10", "172.30.0.0/24", "192.0.2.10,2001:db8::/64"])
+def test_accepts_explicit_proxy_addresses_and_ranges(value: str) -> None:
+    config = _valid_config()
+    command = config["services"]["api"]["command"]
+    command[-1:] = ["--forwarded-allow-ips", value]
+    assert _errors(config) == []
+
+
+def test_requires_proxy_headers_enabled() -> None:
+    config = _valid_config()
+    config["services"]["api"]["command"].remove("--proxy-headers")
+    assert any("--proxy-headers" in error for error in _errors(config))
 
 
 # ---------------------------------------------------------------------------

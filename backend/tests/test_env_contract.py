@@ -89,6 +89,14 @@ def test_self_test_detects_every_divergence() -> None:
     assert contract_module.main(["--self-test"]) == 0
 
 
+def test_proxy_trust_is_documented_and_required_only_for_production_api() -> None:
+    assert "FORWARDED_ALLOW_IPS" in _documented()
+    assert "FORWARDED_ALLOW_IPS" not in CONTRACT.required("api", False)
+    config = _config(production=True)
+    del config["services"]["api"]["environment"]["FORWARDED_ALLOW_IPS"]
+    assert any("FORWARDED_ALLOW_IPS" in error and "api" in error for error in _errors(config))
+
+
 def test_environment_contract_passes_for_development_and_production() -> None:
     assert _errors(_config(production=False), profile="development") == []
     assert _errors(_config(production=True), profile="production") == []
