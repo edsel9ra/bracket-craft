@@ -1,5 +1,7 @@
 # Tareas 010 — Prueba de extremo a extremo del reintento del tiempo real
 
+> **Cambio posterior (2026-11-09, revisión PR #25):** tests del gate para conexión directa, aborto, dos ciclos hold/liberación, recuperación y timeout sin actividad; verificación con `pnpm test`, `pnpm run typecheck:e2e` y escenario real sobre la pila. El resultado E2E se informa en la entrega, no se infiere de los tests puros.
+
 > **Cambio posterior (2026-11-09, H1):** el test de `realtime-manual-retry.test.ts` fija WebSocket exclusivo. Las tareas históricas sobre sondeo/elevación no implican que el cliente actual use polling; `channel.ts` conserva ambas defensas. En esta corrección se ejecutan unitarios, typecheck y build; el escenario E2E completo queda explícitamente no ejecutado.
 
 **Spec:** `specs/010-e2e-reintento-tiempo-real/spec.md` (aprobada 2026-10-22).
