@@ -527,51 +527,34 @@ async def relay_loop(redis_factory=Redis.from_url, stop: asyncio.Event | None = 
                 await redis.aclose()
 
 
+async def revalidate_socket_sessions_cycle():
+    sessions = dict(connected_socket_sessions)
+    if not sessions:
+        return
+    try:
+        async with SessionFactory() as db:
+            async with db.begin():
+                result = await db.execute(
+                    text("SELECT sid, is_valid FROM public.revalidate_socket_sessions(CAST(:sockets AS JSONB))"),
+                    {"sockets": json.dumps([dict(metadata, sid=sid) for sid, metadata in sessions.items()])},
+                )
+                validations = result.mappings().all()
+    except Exception:
+        # A transient database outage must not disconnect every client.
+        return
+    for validation in validations:
+        sid = validation["sid"]
+        if not validation["is_valid"] and connected_socket_sessions.get(sid) == sessions.get(sid):
+            try:
+                await sio.disconnect(sid)
+            except Exception:
+                continue
+
+
 async def _revalidate_socket_sessions():
     while True:
         await asyncio.sleep(SOCKET_REVALIDATION_SECONDS)
-        for sid, metadata in list(connected_socket_sessions.items()):
-            try:
-                async with SessionFactory() as db:
-                    async with db.begin():
-                        if metadata["scope"] == "public":
-                            result = await db.execute(
-                                text("SELECT 1 FROM v_public_tournaments WHERE id = :tournament_id"),
-                                {"tournament_id": metadata["tournament_id"]},
-                            )
-                            is_valid = result.scalar_one_or_none() is not None
-                        else:
-                            user_id = UUID(metadata["user_id"])
-                            organization_id = UUID(metadata["organization_id"])
-                            await set_rls_context(db, organization_id, user_id)
-                            session = await db.execute(
-                                text("""
-                                    SELECT 1
-                                    FROM public.users u
-                                    JOIN public.user_sessions s ON s.user_id = u.id
-                                    WHERE u.id = :user_id
-                                      AND u.is_active = TRUE
-                                      AND s.id = :session_id
-                                      AND s.revoked_at IS NULL
-                                      AND s.expires_at > CURRENT_TIMESTAMP
-                                      AND fn_verify_user_org_membership(:organization_id)
-                                """),
-                                {
-                                    "user_id": metadata["user_id"],
-                                    "session_id": metadata["session_id"],
-                                    "organization_id": metadata["organization_id"],
-                                },
-                            )
-                            if session.scalar_one_or_none() is None:
-                                is_valid = False
-                            else:
-                                role_fingerprint = await _load_role_fingerprint(db, organization_id, user_id)
-                                is_valid = role_fingerprint == metadata.get("role_fingerprint")
-                if not is_valid:
-                    await sio.disconnect(sid)
-            except Exception:
-                # A transient database outage must not disconnect every client.
-                continue
+        await revalidate_socket_sessions_cycle()
 
 
 @asynccontextmanager
