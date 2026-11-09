@@ -7,7 +7,7 @@ export default defineNuxtConfig({
       meta: [{ name: 'theme-color', content: '#0c0f0c' }],
     },
   },
-  modules: ['@pinia/nuxt'],
+  modules: ['@pinia/nuxt', '@nuxt/eslint'],
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
     apiInternalBase: process.env.NUXT_API_INTERNAL_BASE || process.env.API_INTERNAL_BASE || 'http://localhost:8000/api/v1',
