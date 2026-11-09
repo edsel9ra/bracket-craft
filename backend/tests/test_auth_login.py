@@ -145,7 +145,7 @@ async def test_login_always_verifies_a_hash_before_generic_rejection(client, mon
     monkeypatch.setattr(identity_router, "verify_password", verify)
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "ausente@example.test", "password": "prueba-contraseña"},
+        json={"email": "ausente@example.com", "password": "prueba-contraseña"},
         headers=await csrf_headers(client),
     )
     assert calls == [("prueba-contraseña", expected_hash)]
@@ -170,7 +170,7 @@ async def test_dummy_hash_match_can_never_create_a_session(client, monkeypatch, 
     monkeypatch.setattr(identity_router, "enforce_rate_limit", no_rate_limit)
     monkeypatch.setattr(identity_router, "verify_password", lambda value, hashed: True)
     response = await client.post(
-        "/api/v1/auth/login", json={"email": "ausente@example.test", "password": "prueba"},
+        "/api/v1/auth/login", json={"email": "ausente@example.com", "password": "prueba-contraseña"},
         headers=await csrf_headers(client),
     )
     assert response.status_code == 401
