@@ -1,0 +1,13 @@
+title = "Bracket Craft: árbol versionado"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Claves dummy públicas de CI y ejemplos, nunca válidas en producción"
+regexTarget = "secret"
+regexes = [
+  '''^dummy-jwt-secret-with-at-least-32-characters$''',
+  '''^dummy-player-key-with-at-least-32-characters$''',
+  '''^dummy-invitation-key-with-at-least-32-characters$''',
+]

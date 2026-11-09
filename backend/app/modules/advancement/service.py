@@ -103,7 +103,7 @@ class AdvancementService:
                       AND organization_id = :organization_id
                       AND status = 'scheduled'
                       AND {column} IS NULL
-                """),
+                """),  # nosec B608 # columna elegida entre home_team_id y away_team_id; valores ligados.
                 {
                     "team_id": str(team_id),
                     "target_match_id": str(link["target_match_id"]),

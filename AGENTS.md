@@ -25,6 +25,13 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 ## Stack
 
+- Mantenimiento de auditoría: ejecutar `pnpm run lint` además de tests/typecheck/build.
+  CI añade `bandit -r app -ll` y Gitleaks sobre `git archive HEAD`;
+  excepciones específicas, nunca exclusiones globales de B608 ni del árbol de tests.
+  Ver `docs/mantenimiento-auditoria.md`. Migración 032: revalidación de sockets en
+  una llamada SQL con contexto RLS por entrada (`SECURITY INVOKER`). Rate limit y
+  readiness comparten cliente Redis perezoso y lo cierran en el lifespan de la API.
+
 - **Login y enumeración temporal:** verificar siempre la contraseña; si no hay cuenta activa o hash, usar `DUMMY_PASSWORD_HASH` precalculado. Nunca autenticar por coincidencia con ese hash. `test_auth_login.py` fija parámetros Argon2 y llamadas al verificador; al cambiar parámetros de hashing hay que regenerar el ficticio. No modificar 401 genérico, 409 de registro ni rate limit.
 
 - **Cadena de suministro CI:** todas las acciones `uses:` se fijan al SHA completo del commit (no al objeto de tag anotado), con tag exacto en comentario. Resolver mediante `git ls-remote` y desreferenciar `^{}` cuando exista. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. Trivy conserva la versión v0.36.0 fijada por la constitución.
@@ -34,6 +41,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
   hasta `releaseHeld`. Las esperas aceptan ambos transportes, sin exigir polling.
   Producción usa `api.command` exec; probar coma+espacio con el YAML real y rechazar
   confianza global tanto `*` como redes IPv4/IPv6 de prefijo `/0`.
+
 - **Backend:** FastAPI, SQLAlchemy asíncrono y PostgreSQL (Python 3.14 en CI).
 - **Cabeceras HTTP:** el middleware ASGI exterior cubre API, errores y HTTP de Socket.IO; no modifica WebSocket ni lifespan. Añade nosniff, DENY y política de referente, preservando `no-referrer` OAuth. HSTS usa `DEVELOPMENT_ENVS` en API; Nitro lo activa solo en producción y añade CSP sin `script-src` ni `connect-src`. Pruebas: `test_security_headers.py` y `security-headers.test.ts`.
 - **Frontend:** Nuxt 4, Vue 3 y Pinia (Node 24 y pnpm 12.12.1 en CI). Layout Nuxt 4: el código de app vive en `frontend/app/`.

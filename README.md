@@ -4,10 +4,19 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 
 ## Documentación
 
+Mantenimiento de auditoría: `pnpm run lint` aplica ESLint/Nuxt con adopción gradual;
+CI ejecuta también Bandit y Gitleaks sobre el árbol versionado actual (no el historial).
+Las excepciones revisadas y los comandos se documentan en
+[`docs/mantenimiento-auditoria.md`](docs/mantenimiento-auditoria.md).
+La migración **032** permite revalidar los sockets con una sola consulta por ciclo,
+sin eludir RLS. El cliente Redis de rate limit y disponibilidad se comparte por proceso
+y se cierra al apagar la API; el relay mantiene su conexión independiente.
+
 Corrección posterior del PR #25: el gate E2E cuenta y bloquea intentos WebSocket
 directos además de HTTP, sin reintroducir polling. El comando productivo de la API
 usa lista exec para preservar listas de proxies con coma y espacio; el validador
 rechaza `*` y cualquier red `/0`. Ver `docs/despliegue-proxy-tiempo-real.md`.
+
 
 - Manual de usuario: [`docs/manual-usuario.md`](docs/manual-usuario.md) (flujos operativos reales: torneos, reglas, equipos y plantillas, fases, calendario, actas, consulta pública).
 - Guía para agentes: [`AGENTS.md`](AGENTS.md).

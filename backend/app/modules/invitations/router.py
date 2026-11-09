@@ -600,7 +600,7 @@ async def current_access(
                   AND ou.id = :organization_user_id
                 ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
                 LIMIT 1
-            """),
+            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
             {
                 "organization_id": str(context.organization_id),
                 "organization_user_id": str(context.organization_user_id),
@@ -651,7 +651,7 @@ async def list_members(
                 WHERE ou.organization_id = :organization_id
                 GROUP BY ou.id, u.id
                 ORDER BY u.full_name, u.email
-            """),
+            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
             {"organization_id": str(context.organization_id)},
         )
         return [dict(row) for row in result.mappings().all()]
@@ -683,7 +683,7 @@ async def update_member_role(
                 FROM organization_users ou
                 WHERE ou.id = :member_id AND ou.organization_id = :organization_id
                 FOR UPDATE OF ou
-            """),
+            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
             {"member_id": str(organization_user_id), "organization_id": str(context.organization_id)},
         )
         target = target_result.mappings().one_or_none()
@@ -766,7 +766,7 @@ async def update_member_status(
                 FROM organization_users ou
                 WHERE ou.id = :member_id AND ou.organization_id = :organization_id
                 FOR UPDATE OF ou
-            """),
+            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
             {"member_id": str(organization_user_id), "organization_id": str(context.organization_id)},
         )
         target = target_result.mappings().one_or_none()
@@ -839,7 +839,7 @@ async def _load_member(db: AsyncSession, organization_id: UUID, member_id: UUID)
             LEFT JOIN role_definitions rd ON rd.id = r.role_definition_id
             WHERE ou.id = :member_id AND ou.organization_id = :organization_id
             GROUP BY ou.id, u.id
-        """),
+        """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
         {"member_id": str(member_id), "organization_id": str(organization_id)},
     )
     member = result.mappings().one_or_none()

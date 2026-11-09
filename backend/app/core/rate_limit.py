@@ -1,10 +1,9 @@
 import hashlib
 
 from fastapi import HTTPException, Request, status
-from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from app.core.config import get_settings
+from app.core.redis_client import get_redis_client
 
 
 ATOMIC_RATE_LIMIT_SCRIPT = """
@@ -68,7 +67,7 @@ async def enforce_rate_limit(
 ) -> None:
     _validate_request_size(request, max_body_bytes)
     keys = build_rate_limit_keys(request, bucket, account_identifier, connection_identifier)
-    redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    redis = get_redis_client()
     try:
         exceeded = await redis.eval(
             ATOMIC_RATE_LIMIT_SCRIPT,
@@ -88,5 +87,3 @@ async def enforce_rate_limit(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="El control de acceso no está disponible temporalmente",
         ) from exc
-    finally:
-        await redis.aclose()

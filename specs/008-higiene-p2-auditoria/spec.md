@@ -1,5 +1,7 @@
 # Spec 008 — Higiene del bloque P2 de la auditoría (R18-R32)
 
+**Cambio posterior (2026-11-09):** rate limit y disponibilidad reutilizan cliente/pool Redis por proceso y lo cierran al apagar, conservando los rechazos por indisponibilidad. Revalidación de sockets en una llamada SQL por ciclo mediante migración 032, con contexto RLS individual y misma expulsión por cambios de permisos; sin desconexión por error transitorio. Ver `docs/mantenimiento-auditoria.md`.
+
 Estado: Implementada, validada por @reviewer y cerrada (2026-10-21).
 
 > **Bloque P2 (higiene)** de `docs/auditoria-2026-10-19.md`, acotado por decisión del usuario a los hallazgos **R18 a R32**. El plan de acción del informe incluye además **R11** en el P2; esta spec lo deja **fuera de alcance** de forma explícita. Los hallazgos R01-R17 pertenecen a las specs 001, 003, 004, 005, 006 y 007 y no se reabren aquí.

@@ -322,7 +322,7 @@ class FakeRedis:
 @pytest.mark.asyncio
 async def test_rate_limit_uses_ip_account_and_connection_keys(monkeypatch):
     redis = FakeRedis()
-    monkeypatch.setattr(rate_limit_module.Redis, "from_url", lambda *args, **kwargs: redis)
+    monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: redis)
     request = make_request()
 
     await enforce_rate_limit(
@@ -335,7 +335,7 @@ async def test_rate_limit_uses_ip_account_and_connection_keys(monkeypatch):
         max_body_bytes=100,
     )
 
-    assert redis.closed is True
+    assert redis.closed is False
     assert redis.eval_args[1] == 3
     keys = redis.eval_args[2:5]
     assert all("User@Example.COM" not in key for key in keys)
@@ -345,13 +345,13 @@ async def test_rate_limit_uses_ip_account_and_connection_keys(monkeypatch):
 @pytest.mark.asyncio
 async def test_rate_limit_returns_429_when_atomic_script_reports_exceeded(monkeypatch):
     redis = FakeRedis(result=1)
-    monkeypatch.setattr(rate_limit_module.Redis, "from_url", lambda *args, **kwargs: redis)
+    monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: redis)
 
     with pytest.raises(HTTPException) as failure:
         await enforce_rate_limit(make_request(), "login", 1, 60)
 
     assert failure.value.status_code == 429
-    assert redis.closed is True
+    assert redis.closed is False
 
 
 def storage_settings():
