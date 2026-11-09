@@ -1,5 +1,9 @@
 # Tareas — Spec 013 (autenticación con Google y asociación de cuentas)
 
+> **Cambio posterior (2026-11-09, H5):** mitigación de enumeración temporal y casos negativos en `test_auth_login.py`; verificar `ruff check . && pytest -q`. No se compara tiempo de pared: el observable determinista es la llamada al verificador con los mismos parámetros.
+
+> **Cambio posterior (2026-11-09, H3):** cabeceras y preservación OAuth fijadas en `test_security_headers.py`; configuración Nitro fijada en `security-headers.test.ts`. Verificar con backend `ruff check . && pytest -q` y frontend `pnpm test && pnpm run typecheck && pnpm run build`, más cabeceras HTTP reales.
+
 **30 tareas en 5 hitos.** La spec no se divide: un solo flujo de extremo a extremo no se puede entregar por mitades sin dejar un estado intermedio inseguro (un `start` sin `callback` o una vinculación sin la restricción de unicidad de la 024 rompería RF-13). Los hitos agrupan por objetivo verificable; cada tarea cabe en 20–30 minutos y **escribe primero su prueba** (Fase 5: rojo → mínimo código → verde). `Tn` es el identificador estable para marcar avance.
 
 **No se edita ninguna migración aplicada.** Todo cambio de esquema es la 024.

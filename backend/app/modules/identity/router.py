@@ -19,6 +19,7 @@ from app.core.csrf import CSRF_HEADER_NAME, new_csrf_token
 from app.core.database import get_db, set_rls_context
 from app.core.rate_limit import enforce_rate_limit
 from app.core.security import (
+    DUMMY_PASSWORD_HASH,
     bearer,
     clear_auth_cookie,
     create_user_session,
@@ -278,7 +279,9 @@ async def login(
             {"email": payload.email},
         )
         user = result.mappings().one_or_none()
-        if user is None or user["password_hash"] is None or not verify_password(payload.password, user["password_hash"]):
+        stored_hash = user["password_hash"] if user is not None else None
+        password_valid = verify_password(payload.password, stored_hash or DUMMY_PASSWORD_HASH)
+        if user is None or not stored_hash or not password_valid:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
         await set_rls_context(db, None, user["id"])

@@ -33,6 +33,7 @@ from app.core.database import (
 )
 from app.core.outbox import OUTBOX_STREAM
 from app.core.security import decode_access_token_claims
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.modules.crests.errors import CrestError
 from app.modules.crests.router import router as crests_router
 from app.modules.identity.errors import GoogleAuthError, google_error_body
@@ -943,4 +944,4 @@ api.include_router(matches_router, prefix="/api/v1")
 api.include_router(crests_router, prefix="/api/v1")
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=api)
-app = sio_app
+app = SecurityHeadersMiddleware(sio_app, app_env=settings.app_env)

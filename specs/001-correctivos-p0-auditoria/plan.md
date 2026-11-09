@@ -1,9 +1,10 @@
 # Plan 001 — Correctivos P0 de la auditoría técnica 2026-10-19
 
+> **Cambio posterior (2026-11-09, H4):** pin de acciones por commit, procedencia documentada en `docs/seguridad-http-ci.md`, Dependabot semanal por ecosistema y guardián `test_workflow_pins.py`. `verify_version_sources.py` ya reconoce las acciones por nombre y no necesita cambiar para aceptar SHA. No se alteran principios de constitución, secretos, permisos, datos ni versiones de referencia.
+
 > **Cambio posterior (2026-11-09, revisión PR #25):** comando exec y validación CIDR con `ipaddress.ip_network(..., strict=True)` para rechazar todo prefijo cero, bits de host y valores no IP/CIDR, en consonancia con Uvicorn; se mantienen las IP/redes explícitas y listas con espacios.
 
 > **Cambio posterior (2026-11-09, H1/H2):** el cliente fija WebSocket sin polling, conservando relay por proceso y transportes del servidor. Producción añade `--proxy-headers --forwarded-allow-ips=…` y exige `FORWARDED_ALLOW_IPS` solo en la API. El validador de Compose rechaza confianza vacía/global y el contrato de entorno verifica consumidor/documentación. Pruebas: guardián del transporte en frontend; casos de IP/CIDR, ausencia y `*` en infraestructura. No cambian datos, RLS, permisos, reglas, versiones ni secretos; se preservan los principios de la constitución y se verifica con las suites backend/frontend y ambos perfiles de Compose.
-
 Estado: aprobado, implementado y cerrado; validación documental final completada (2026-10-22)
 
 Spec: `specs/001-correctivos-p0-auditoria/spec.md` (aprobada 2026-10-19)

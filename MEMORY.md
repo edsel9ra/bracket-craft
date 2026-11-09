@@ -2,6 +2,9 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-09 · H5: login ejecuta Argon2 aunque no haya cuenta/hash; ficticio precalculado con parámetros recomendados, nunca autenticable. Tests fijan llamada, rechazo y paridad de parámetros. Sin cambios al registro ni rate limit.
+- 2026-11-09 · H4: acciones fijadas a commits resueltos de los tags vigentes mediante `git ls-remote` (pnpm v4 → v4.3.0; tags anotados desreferenciados). Dependabot semanal para acciones/pip/npm, minor/patch agrupados; versiones de runtime y Trivy sin cambios.
+- 2026-11-09 · H3: cabeceras comunes en ASGI exterior y Nitro; HSTS fuera de desarrollo en API y solo producción en SSR. CSP mínima solo SSR; se conserva `no-referrer` OAuth y no se altera WebSocket/lifespan.
 - 2026-11-09 · Revisión PR #25: gate E2E WebSocket directo con recuentos/esperas y liberación de `hold`, sin polling; comando API exec que preserva coma+espacio; validación de confianza rechaza cualquier red `/0`. Prueba del YAML real con Docker Compose en `test_production_compose_rendering.py`.
 - Verificación H1/H2/H12: backend `ruff` OK, `pytest -q` 2163 pass / 471 skip; frontend 777 pass / 0 fail, typecheck y build OK. Contratos de ambos perfiles Compose OK (52 variables); producción rechaza confianza del proxy ausente. Login recargado: errores visibles y sin aviso de `FieldError`. E2E completo y proxy multiworker real no ejecutados.
 - 2026-11-09 · Cambio posterior H12: `FormField` importa `FieldError` explícitamente; guardián estático recorre todas las plantillas y componentes UI para impedir nombres sin prefijo/import. No se encontraron otros casos en el barrido.

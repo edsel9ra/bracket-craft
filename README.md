@@ -879,6 +879,25 @@ Los componentes de `components/ui` usados sin prefijo `Ui` se importan
 explícitamente; el guardián `frontend/tests/ui-component-imports.test.ts`
 revisa todas las plantillas para evitar componentes sin resolver en runtime.
 
+El login verifica Argon2 también para cuentas inexistentes o sin contraseña,
+contra un hash ficticio precalculado con los mismos parámetros. Conserva el
+401 genérico, el 409 de registro y los límites de intentos. Esto elimina el
+atajo sin hashing, no garantiza tiempos idénticos de red o base de datos.
+
+Las acciones de CI están fijadas a SHA completo del commit, con el tag
+resuelto como comentario (incluido Trivy v0.36.0). Dependabot revisa cada
+semana github-actions, pip (`backend/`) y npm (`frontend/`), agrupando
+minor/patch por ecosistema; los cambios major se revisan por separado.
+
+### Cabeceras de seguridad HTTP
+
+API y SSR envían `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` y
+`Referrer-Policy: strict-origin-when-cross-origin`. La API conserva el
+`no-referrer` más restrictivo del retorno OAuth. HSTS (`max-age=31536000;
+includeSubDomains`) se activa fuera de desarrollo en API y solo en producción
+en Nuxt. Producción requiere HTTPS en el dominio y sus subdominios.
+Nuxt añade la CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`:
+no restringe scripts inline ni conexiones; `/docs` y Socket.IO siguen operativos.
 Las dependencias de ejecución y las de prueba se declaran en archivos separados. `backend/requirements-dev.txt` se instala en local y en CI y **nunca** entra en la imagen de producción, que instala solo `backend/requirements.txt`; la auditoría de dependencias cubre ambos archivos:
 
 ```sh
