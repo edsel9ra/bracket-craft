@@ -597,7 +597,7 @@ await loadPage();
                   <button type="button" class="button-secondary" @click="downloadRosterTemplate">{{ t('setup.downloadRosterTemplate') }}</button>
                   <span class="field-hint">{{ t('setup.rosterTemplateColumns') }}</span>
                 </div>
-                <p v-if="!rosterCsvFile" class="field-error" role="alert">{{ t('setup.csvEmpty') }}</p>
+                <p v-if="!rosterCsvFile" class="field-error" role="alert">{{ t('tournament.rosters.csvEmpty') }}</p>
                 <button class="button-primary import-submit" type="submit" :disabled="busy || !rosterCsvFile">{{ busy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
               </form>
             </div>
