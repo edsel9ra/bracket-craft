@@ -1,5 +1,7 @@
 # Plan 021 — Formaciones gráficas en la consulta pública
 
+> **Cambio posterior (2026-11-10):** `PublicLineupModal.vue` importa `./TeamPitch.vue` explícitamente (Nuxt lo registra como `PublicTeamPitch`). Se conservan el renderizado independiente, las fotos con consentimiento y el equivalente textual, sin cambios de API ni reglas. `frontend/tests/component-resolution.test.ts` fija la regresión del modal y audita las etiquetas PascalCase de `frontend/app` con los nombres de `nuxt prepare`, imports/bindings locales y globales documentados de Vue.
+
 ## Archivos y responsabilidades
 
 ### Base de datos
@@ -126,13 +128,3 @@ La decisión es independiente por equipo: la validez de uno no afecta al otro (R
 | RNF-004 (privacidad en registros) | Sí | Sin registros nuevos. |
 | RNF-005 (verificación) | Sí | Casos de ambos con formación, uno con formación y otro con planilla, formación incompleta, sin publicar, titular sin posición, conteo distinto, `formation_code` nulo con slot, cero titulares, walkover, consentimiento retirado. |
 | RNF-006 (documentación) | Sí | Se actualiza la lista cerrada de campos públicos (spec 020, RF-015) con `segment_number`. |
-
-## Cambio posterior: resolución de TeamPitch (2026-11-10)
-
-`PublicLineupModal.vue` importa explícitamente `./TeamPitch.vue`: Nuxt registra
-el componente de la subcarpeta como `PublicTeamPitch`, no como `TeamPitch`.
-Se conserva el renderizado independiente, las fotos con consentimiento y el
-equivalente textual, sin cambios de API ni reglas. La regresión estática del
-modal y el barrido de etiquetas PascalCase de `frontend/app` viven en
-`frontend/tests/component-resolution.test.ts`; usan los nombres reales generados
-por `nuxt prepare`, imports/bindings locales y los globales documentados de Vue.
