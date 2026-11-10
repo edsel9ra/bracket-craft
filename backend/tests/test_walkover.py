@@ -78,7 +78,7 @@ from app.modules.rules_engine.schemas import (
     TournamentRulesConfig,
     UpdateRulesConfigRequest,
 )
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.versions import (
     _create_draft_version_record,
     publish_version,
 )

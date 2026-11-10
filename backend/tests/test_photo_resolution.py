@@ -31,7 +31,8 @@ from app.core.storage import ObjectStorage, SignedUrls, StorageError
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.tournaments import photos as photos_module
-from app.modules.tournaments import router as tournaments_router
+from app.modules.tournaments import access as tournaments_access
+from app.modules.tournaments.routes import rosters as tournaments_router
 from app.modules.tournaments.photos import sign_photo_rows
 from app.modules.tournaments.roster_import import ImportedRosterRow, PhotoFile
 from app.modules.tournaments.schemas import CreateRosterPlayerRequest
@@ -891,7 +892,7 @@ def allow_management(monkeypatch):
     async def allow(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(tournaments_router, "require_permission", allow)
+    monkeypatch.setattr(tournaments_access, "require_permission", allow)
 
 
 def install_workspace_storage(monkeypatch, storage: WorkspaceStorage) -> None:
@@ -1484,7 +1485,7 @@ async def test_bulk_import_authorizes_before_uploading(monkeypatch):
     async def deny(*args, **kwargs):
         raise PermissionError("La membresía no permite gestionar el torneo")
 
-    monkeypatch.setattr(tournaments_router, "require_permission", deny)
+    monkeypatch.setattr(tournaments_access, "require_permission", deny)
 
     async with workspace_client(session) as client:
         response = await _bulk_request(client, session)
@@ -1573,7 +1574,7 @@ async def test_upload_photo_revalidates_permission_before_writing(monkeypatch):
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")
 
-    monkeypatch.setattr(tournaments_router, "require_permission", permission)
+    monkeypatch.setattr(tournaments_access, "require_permission", permission)
 
     async with workspace_client(session) as client:
         response = await client.post(
@@ -1800,7 +1801,7 @@ async def test_bulk_import_compensates_when_permission_is_revoked_in_the_write(
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")
 
-    monkeypatch.setattr(tournaments_router, "require_permission", permission)
+    monkeypatch.setattr(tournaments_access, "require_permission", permission)
 
     async with workspace_client(session) as client:
         response = await _bulk_request(client, session)

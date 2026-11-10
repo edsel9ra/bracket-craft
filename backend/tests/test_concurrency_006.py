@@ -33,14 +33,16 @@ from app.core.database import set_rls_context
 from app.core.tenancy import AuthContext
 from app.main import api
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.stages import (
     assign_stage_teams,
-    create_draft_version,
-    create_match,
     list_stage_teams,
-    publish_version,
     remove_stage_team,
 )
+from app.modules.tournaments.routes.versions import (
+    create_draft_version,
+    publish_version,
+)
+from app.modules.tournaments.routes.matches import create_match
 from app.modules.tournaments.schemas import (
     AssignStageTeamsRequest,
     CreateDraftVersionRequest,

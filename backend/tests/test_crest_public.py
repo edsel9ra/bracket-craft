@@ -25,7 +25,7 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.core.storage import SignedUrls
 from app.main import api
-from app.modules.tournaments import router as tournaments_router_module
+from app.modules.tournaments.routes import public as tournaments_router_module
 from db_helpers import TenantContext, set_tenant_context
 
 ORG = UUID("0f000000-0000-4000-8000-000000000001")

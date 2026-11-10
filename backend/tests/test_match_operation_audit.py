@@ -53,7 +53,7 @@ from app.modules.matches.schemas import (
     PublishMatchLineupRequest,
     SaveMatchLineupRequest,
 )
-from app.modules.tournaments.router import update_roster_player_status
+from app.modules.tournaments.routes.rosters import update_roster_player_status
 from app.modules.tournaments.schemas import UpdateRosterStatusRequest
 from db_helpers import (
     TenantContext,

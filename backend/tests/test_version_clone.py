@@ -22,8 +22,8 @@ import pytest
 
 from app.core.tenancy import AuthContext
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.tournaments.router import (
-    _create_draft_version_record,
+from app.modules.tournaments.routes.versions import _create_draft_version_record
+from app.modules.tournaments.routes.matches import (
     _draw_non_swiss_schedule,
     _load_draft_stage_context,
     _persist_bracket_schedule,

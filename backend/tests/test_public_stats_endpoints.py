@@ -266,7 +266,7 @@ async def test_public_stats_field_sets_are_closed(
 
     **Discriminación (comprobación manual, sin tocar el router desde la prueba).**
     Borra a mano `response_model=list[PublicPlayerStatsResponse]` (y el de
-    equipos) del decorador en `backend/app/modules/tournaments/router.py` y
+    equipos) del decorador en `backend/app/modules/tournaments/routes/public.py` y
     ejecuta `pytest -q tests/test_public_stats_endpoints.py`: se ponen en rojo
     esta prueba y `test_la_lista_cerrada_depende_del_response_model_de_la_ruta`,
     porque la ruta deja de declarar su modelo y el filtro deja de aplicarse.
@@ -359,7 +359,7 @@ def test_la_comprobacion_de_lista_cerrada_no_es_vacua():
 
 
 def _stats_route_source(endpoint: str) -> str:
-    """Fuente del decorador de la ruta ``GET .../{endpoint}`` en ``router.py``.
+    """Fuente del decorador de la ruta ``GET .../{endpoint}`` en ``routes/public.py``.
 
     Se lee el fichero fuente en lugar de introspeccionar ``api.routes`` porque
     el registro de rutas depende de importar la app completa (con sus
@@ -371,7 +371,7 @@ def _stats_route_source(endpoint: str) -> str:
     import pathlib
 
     source = pathlib.Path(__file__).resolve().parents[1].joinpath(
-        "app", "modules", "tournaments", "router.py"
+        "app", "modules", "tournaments", "routes", "public.py"
     ).read_text(encoding="utf-8")
     needle = f'/{endpoint}'
     # Localiza el decorador que contiene el endpoint y el response_model.
@@ -386,7 +386,7 @@ def test_la_lista_cerrada_depende_del_response_model_de_la_ruta():
 
     Comprobación manual de la discriminación: borra
     `response_model=list[...]` del decorador de la ruta en
-    `backend/app/modules/tournaments/router.py` y ejecuta
+    `backend/app/modules/tournaments/routes/public.py` y ejecuta
     `pytest -q tests/test_public_stats_endpoints.py`; esta prueba pasa a rojo
     porque la ruta deja de declarar el modelo (`response_model` vale `None`) y
     la lista cerrada deja de aplicarse. La prueba no modifica el router en

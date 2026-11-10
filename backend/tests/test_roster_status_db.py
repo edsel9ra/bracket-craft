@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.rosters import (
     ROSTER_LOCK_DETAIL,
     update_roster_player_status,
 )

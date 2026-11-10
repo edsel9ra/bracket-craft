@@ -481,6 +481,9 @@ specs/
 backend/                     API FastAPI (async SQLAlchemy)
   app/main.py                Registro de routers
   app/modules/               Límites por funcionalidad
+    tournaments/router.py    Fachada: incluye subrouters con prefijo/tags explícitos
+    tournaments/access.py    Acceso compartido, también consumido por crests
+    tournaments/routes/      Torneos, versiones, fases, equipos, plantillas, calendario y público
   scripts/                   Utilidades de desarrollo (seed_demo) y operativas (encrypt_birth_dates)
   tests/                     Pruebas pytest
 frontend/                    Nuxt 4 / Vue 3 / Pinia (código de app en frontend/app/)
@@ -509,6 +512,7 @@ docker-compose.production.yml  Perfil de producción
 - **Frontend:** toda llamada a la API pasa por `frontend/app/composables/useApi.ts`, que elige la URL base de servidor/cliente y lleva organización, cookies y CSRF.
 - **Formularios:** usan los tokens y clases base de `frontend/app/assets/css/main.css` (`.field`, `.field-grid`, `.field-error`, `.field-hint`) y los componentes `frontend/app/components/ui/FormField.vue` / `FieldError.vue`. Todo input con error lleva `aria-invalid="true"` y `aria-describedby` apuntando al hint y al error; los mensajes de validación se centralizan en i18n (`validation.*`) y el grid colapsa a una columna bajo 760px. El slot prop `ariaInvalid` de `FormField.vue` es `'true' | undefined`; al enlazarlo con `:aria-invalid` hay que normalizarlo a boolean (`ariaInvalid ? true : undefined`), porque `vue-tsc` exige `Booleanish`.
 - **Nuevos módulos backend:** crea el módulo bajo `backend/app/modules/` y registra su router en `backend/app/main.py`.
+- **Torneos (H10):** `router.py` solo registra, sin reexportar handlers/helpers. Cada subrouter usa `APIRouter()` sin prefijo/tags; la fachada aplica `/tournaments` y `tournaments` al incluir, en orden `tournaments`, `versions`, `stages`, `teams`, `rosters`, `matches`, `public`. Las rutas privadas preceden a las públicas para conservar los solapamientos. Importa y parchea cada símbolo en su módulo dueño; los permisos compartidos viven en `access.py`. Los logs de plantillas/calendario conservan el nombre `app.modules.tournaments.router`.
 - **Vistas públicas:** no agregues campos sensibles (documentos, fechas de nacimiento) a las proyecciones públicas.
 - **Sustituciones:** en un evento `substitution` deben venir `player_out_id` y `player_in_id` no nulos y distintos, con `player_id = player_out_id`; en cualquier otro tipo, ambos nulos. El incumplimiento estructural es **422** y las reglas de negocio (equipo, plantilla, campo/banca, reentrada, límites, ventanas, minutos) son **409**. La comprobación coincide con `chk_match_event_substitution_pair` (021).
 - **Actas cerradas inmutables:** el resultado confirmado lo protege `trg_protect_confirmed_match_result` (016) y los eventos de un acta confirmada no se editan ni se anulan (`trg_validate_match_event_context`, 009, bloquea `INSERT`/`UPDATE` en `finished`, `cancelled` y `administrative_resolution`). No existe API incremental de eventos ni de anulación (R11 fuera de alcance); `is_voided` es legado y no es una vía operativa. La 017 no añade ninguna ruta de corrección ni de reapertura: la operación muestra «Acta cerrada: no se puede editar» (`role="status"`) y mantiene las acciones de escritura deshabilitadas.

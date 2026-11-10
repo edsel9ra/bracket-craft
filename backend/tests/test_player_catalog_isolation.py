@@ -24,10 +24,10 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
-from app.modules.tournaments import router as tournaments_router
+from app.modules.tournaments.routes import rosters as tournaments_router
 from app.modules.tournaments.photos import sign_photo_rows
 from app.modules.tournaments.roster_import import RosterImportError, parse_roster_csv
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.rosters import (
     _create_roster_player_record,
     _load_roster_player_row,
 )

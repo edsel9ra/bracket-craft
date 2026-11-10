@@ -10,6 +10,8 @@ Auditoría del **2026-11-09**, contrastada con `main` en
 La comprobación inicial no introdujo correcciones de código ni cambios de dependencias.
 El seguimiento de H6 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/37), sobre `main` en `988a46b`,
 añade overrides acotados y las verificaciones descritas en su sección.
+El seguimiento de H10 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/38), sobre `main` en `5bf526c`,
+divide el router de torneos sin modificar el contrato OpenAPI ni la lógica.
 
 Se revisaron código, configuración, documentación y pruebas automatizadas en
 contenedores Python 3.14 y Node 24, con pnpm 12.12.1. Los resultados corresponden
@@ -33,7 +35,7 @@ de la sección de verificación incluyen los tests citados, salvo los opt-in con
 | H7 | Baja | Detecciones históricas de Gitleaks en datos demo/artefactos npm. | Mitigado | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). **Historial sin reescribir (decisión del dueño)**. `.github/workflows/ci.yml:184–192` escanea `git archive HEAD`; `.gitleaks.toml:3–13` conserva reglas predeterminadas y permite tres literales dummy exactos. Comprobación CLI del árbol actual: sin fugas. No se volvió a escanear el historial en esta ronda. |
 | H8 | Baja | Cliente Redis compartido por proceso y cerrado al apagar. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `backend/app/core/redis_client.py:6–20`; consumidores en `backend/app/core/rate_limit.py:70`, `backend/app/main.py:907`; cierre en `backend/app/main.py:583`. Tests: `backend/tests/test_redis_client.py:14,33,40,53`. El relay mantiene su conexión independiente. |
 | H9 | Baja | Revalidación de sockets en lote, con registro del fallo. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `infra/postgres/migrations/032_socket_session_revalidation.sql:3–18` (`SECURITY INVOKER`); `backend/app/main.py:531–559`: una consulta por ciclo no vacío, cada 30 s; `logger.exception` en línea 545. Tests puros: `backend/tests/test_socket_revalidation.py:11,40`, incluyendo error sin desconexión masiva. Tests reales SQL en `test_socket_revalidation_db.py`, no ejecutados con BD en esta ronda. |
-| H10 | Mantenibilidad | Routers monolíticos, especialmente torneos. | Pendiente | Sin PR de refactorización. `wc -l backend/app/modules/*/router.py`: torneos 4887 líneas, partidos 1424, invitaciones 848, identidad 639. No hay test dedicado al tamaño; no se refactorizaron estos archivos en esta ronda. |
+| H10 | Mantenibilidad | Router monolítico de torneos. | Resuelto | [Este PR](https://github.com/edsel9ra/bracket-craft/pull/38). `backend/app/modules/tournaments/router.py`: de 4887 a 22 líneas; helpers compartidos en `access.py` y siete subrouters en `routes/`. OpenAPI normalizado idéntico a `5bf526c`; mismo conjunto de rutas y orden de los cinco pares solapados. `backend/tests/test_tournament_routes_order.py` fija las 31 operaciones y la precedencia privada/pública. Tamaños y suites completas en el seguimiento H10. |
 | H11 | Documentación | Memoria con decisiones y resultados históricos diferenciados. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). Inspección `nl -ba MEMORY.md`: líneas 5–13 registran auditoría, 16 registra migración 032, 21–22 diferencian resultados históricos y corrigen «sin commitear». Sin test dedicado. La línea 10 recoge la verificación inicial H1/H2/H12, no una ejecución E2E de esta ronda. |
 | H12 | Media | Resolución de FieldError en FormField. | Resuelto | [#25](https://github.com/edsel9ra/bracket-craft/pull/25). `frontend/app/components/ui/FormField.vue:8,14` usa e importa explícitamente FieldError. Guardián `frontend/tests/ui-component-imports.test.ts:20,25,30,36`: casos válido, vacío, erróneo y barrido de plantillas. |
 
@@ -240,6 +242,98 @@ No es una prueba estadística de indistinguibilidad, ni mide login HTTP, consult
 de usuarios, red o rate limit. El test determinista de H5 fija el uso del
 verificador y los parámetros, no la igualdad exacta de latencias.
 
+### Reorganización de torneos: seguimiento de H10 resuelto
+
+En [este PR](https://github.com/edsel9ra/bracket-craft/pull/38) se extraen `access.py` y los subrouters de torneos,
+versiones, fases, equipos, plantillas, calendario y público. La fachada usa
+`APIRouter()` y aplica `prefix="/tournaments", tags=["tournaments"]` en cada
+`include_router`, en ese orden. El prefijo explícito evita el rechazo de FastAPI
+a las dos rutas raíz con path vacío. `main.py` no cambia; no hay consumidores
+del prefijo/tags de la fachada. `crests/service.py` importa `_ensure_tournament`
+desde `access.py`. La fachada no reexporta handlers ni helpers y no se introducen
+imports circulares.
+
+La comparación de AST y texto verifica que las **63 funciones/clases** movidas,
+incluidos decoradores y firmas, son idénticas a `main` en `5bf526c`. Solo se
+ajustan imports y registro; los módulos con logs conservan explícitamente
+`app.modules.tournaments.router`. Se migran los imports/monkeypatches de tests
+a los módulos dueños y los tres contratos estáticos de estadísticas/proyección
+interna a `routes/public.py`, sin relajar sus aserciones. Las specs históricas
+permanecen intactas.
+
+Se vuelca `api.openapi()` sin BD ni red y se compara con la base, normalizando
+ambos JSON con claves ordenadas. El inventario efectivo se compara como conjunto
+de path/métodos/nombre y se verifica el orden de todos los pares que se solapan:
+
+```text
+Movimiento mecánico: AST y texto de 63 funciones/clases idénticos, incluidos decoradores
+OpenAPI diff: ''
+Inventario efectivo (conjunto) diff: ''
+Orden de colisiones preservado: 5 pares
+Importación de api: OK
+```
+
+Se permite el nuevo orden global por subdominio; se conservan métodos, paths,
+operationIds, tags, modelos y demás contenido del OpenAPI normalizado. El nuevo
+test `test_tournament_routes_order.py` fija las 31 operaciones y comprueba mediante
+una petición ASGI que `GET /api/v1/tournaments/public/teams` sigue seleccionando
+`list_tournament_teams`, antes de la ruta pública.
+
+Con Python 3.14.10, `ruff check . && pytest -q -p no:cacheprovider` desde backend,
+salida **0**:
+
+```text
+All checks passed!
+2213 passed, 480 skipped, 3 warnings in 8.00s
+```
+
+No se ejecuta `ruff format`: el repositorio no lo configura ni lo usa en CI;
+formatear los cuerpos impediría verificar el movimiento textual mecánico.
+
+Suite completa con `RUN_DATABASE_TESTS=1`, PostgreSQL 17 aislado sin puertos
+publicados, rol de aplicación y rol administrador de pruebas, inicialización y
+las **32 migraciones** aplicadas como en CI. `pytest -q -p no:cacheprovider`,
+salida **0**:
+
+```text
+2688 passed, 5 skipped, 7 warnings in 217.53s (0:03:37)
+```
+
+Las advertencias corresponden a la deprecación de `HTTP_413_REQUEST_ENTITY_TOO_LARGE`
+y, con BD, a `SAWarning: transaction already deassociated from connection`.
+`bandit -r app -ll`, salida **0**:
+
+```text
+Test results:
+    No issues identified.
+Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 10
+Total issues (by severity):
+    Undefined: 0
+    Low: 13
+    Medium: 0
+    High: 0
+```
+
+Bandit conserva avisos `nosec encountered (B608), but no failed test`; no se
+añaden supresiones. `wc -l` de los archivos de la reorganización:
+
+```text
+   77 backend/app/modules/tournaments/access.py
+   22 backend/app/modules/tournaments/router.py
+    0 backend/app/modules/tournaments/routes/__init__.py
+ 1717 backend/app/modules/tournaments/routes/matches.py
+  514 backend/app/modules/tournaments/routes/public.py
+  948 backend/app/modules/tournaments/routes/rosters.py
+  585 backend/app/modules/tournaments/routes/stages.py
+  403 backend/app/modules/tournaments/routes/teams.py
+  104 backend/app/modules/tournaments/routes/tournaments.py
+  681 backend/app/modules/tournaments/routes/versions.py
+ 5051 total
+```
+
+El alcance de H10 aquí es torneos: no se han dividido los routers de partidos,
+invitaciones o identidad. No se ejecutan E2E ni pruebas visuales en este seguimiento.
+
 ## Requisitos de despliegue
 
 1. Aplicar **migración 032 antes de arrancar la API actual**. La revalidación llama
@@ -270,16 +364,14 @@ verificador y los parámetros, no la igualdad exacta de latencias.
 - **H7 mitigado, historial sin reescribir (decisión del dueño):** el control actual
   evita nuevas detecciones en el árbol exportado, pero no elimina contenido de
   commits previos. Una allowlist de dummy no sería válida para credenciales reales.
-- **H10 pendiente:** torneos conserva 4887 líneas; siguientes routers más grandes
-  son partidos (1424), invitaciones (848) e identidad (639). El cambio de Redis o
-  sockets no equivale a una refactorización de esos módulos.
 - **ESLint:** las 12 reglas apagadas son deuda temporal, no una certificación de
   tipado/estilo completo. Su detalle y motivos permanecen en el documento de
   mantenimiento. Bandit `-ll` deja fuera los hallazgos bajos y conserva supresiones
   locales revisadas; Gitleaks solo inspecciona el árbol actual.
-- **Límites de esta ronda:** no probado con proxy real y varios workers, sin
+- **Límites de la comprobación inicial:** no probado con proxy real y varios workers, sin
   prueba de carga, sin E2E completo ni revisión visual, y sin ejecutar los tests
-  opt-in con PostgreSQL. No se verificó un despliegue productivo ni su migración.
+  opt-in con PostgreSQL. El seguimiento H10 sí ejecuta la suite completa con BD
+  descrita más arriba. No se verificó un despliegue productivo ni su migración.
 - Los resultados anteriores de `MEMORY.md` son históricos. Este informe registra
-  la verificación actual de `main`; no convierte las ejecuciones omitidas en
-  verificaciones satisfactorias.
+  la comprobación inicial de `main` y los seguimientos H6/H10 por separado;
+  no convierte las ejecuciones omitidas en verificaciones satisfactorias.
