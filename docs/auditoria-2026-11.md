@@ -7,7 +7,9 @@ Auditoría del **2026-11-09**, contrastada con `main` en
 [#25](https://github.com/edsel9ra/bracket-craft/pull/25),
 [#26](https://github.com/edsel9ra/bracket-craft/pull/26) y
 [#27](https://github.com/edsel9ra/bracket-craft/pull/27).
-Esta comprobación no introduce correcciones de código ni cambios de dependencias.
+La comprobación inicial no introdujo correcciones de código ni cambios de dependencias.
+El seguimiento de H6 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/37), sobre `main` en `988a46b`,
+añade overrides acotados y las verificaciones descritas en su sección.
 
 Se revisaron código, configuración, documentación y pruebas automatizadas en
 contenedores Python 3.14 y Node 24, con pnpm 12.12.1. Los resultados corresponden
@@ -27,7 +29,7 @@ de la sección de verificación incluyen los tests citados, salvo los opt-in con
 | H3 | Media | Cabeceras de seguridad API y SSR. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security_headers.py:7–30`; conexión exterior en `backend/app/main.py:931`; `frontend/app/utils/securityHeaders.ts:1–9`, `frontend/nuxt.config.ts:1–5`. Tests: `backend/tests/test_security_headers.py:12,32,43,55` y `frontend/tests/security-headers.test.ts:8,18`. |
 | H4 | Media | Cadena de suministro CI: acciones fijadas por commit y Dependabot. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `.github/workflows/ci.yml:29–306`: 14 `uses:`, todos con SHA de 40 caracteres; `.github/dependabot.yml:1–23`: revisión semanal de github-actions, pip y npm, agrupando minor/patch. Tests: `backend/tests/test_workflow_pins.py:10,22`. |
 | H5 | Baja | Login ejecuta Argon2 incluso si falta usuario o contraseña almacenada. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security.py:17–18,26–27`; `backend/app/modules/identity/router.py:282–284`. Tests: `backend/tests/test_auth_login.py:24,123–129,160`: parámetros, llamada al verificador y prohibición de autenticar con el ficticio. Medición local orientativa más abajo. |
-| H6 | Baja | Advisories transitivos de frontend, incluidos los moderados de glob/minimatch. | Pendiente | Sin PR de actualización. `frontend/pnpm-lock.yaml`; `pnpm audit --prod --json` y `pnpm audit --json`: ambos detectan 1 bajo y 2 moderados. No hay test que certifique ausencia de advisories; el control es la consulta al registro. |
+| H6 | Baja | Advisories transitivos de frontend: glob/minimatch corregidos; deepmerge sin corrección publicada. | Mitigado | [Este PR](https://github.com/edsel9ra/bracket-craft/pull/37). `frontend/pnpm-workspace.yaml` y `frontend/pnpm-lock.yaml`: overrides a glob 14.0.4 y minimatch 11.0.5. `pnpm audit` conserva solo deepmerge 4.3.1 (bajo). Sin referencias identificables en `.output`; `frontend/Dockerfile:20` copia solo ese artefacto. Verificaciones y límites más abajo. |
 | H7 | Baja | Detecciones históricas de Gitleaks en datos demo/artefactos npm. | Mitigado | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). **Historial sin reescribir (decisión del dueño)**. `.github/workflows/ci.yml:184–192` escanea `git archive HEAD`; `.gitleaks.toml:3–13` conserva reglas predeterminadas y permite tres literales dummy exactos. Comprobación CLI del árbol actual: sin fugas. No se volvió a escanear el historial en esta ronda. |
 | H8 | Baja | Cliente Redis compartido por proceso y cerrado al apagar. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `backend/app/core/redis_client.py:6–20`; consumidores en `backend/app/core/rate_limit.py:70`, `backend/app/main.py:907`; cierre en `backend/app/main.py:583`. Tests: `backend/tests/test_redis_client.py:14,33,40,53`. El relay mantiene su conexión independiente. |
 | H9 | Baja | Revalidación de sockets en lote, con registro del fallo. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `infra/postgres/migrations/032_socket_session_revalidation.sql:3–18` (`SECURITY INVOKER`); `backend/app/main.py:531–559`: una consulta por ciclo no vacío, cada 30 s; `logger.exception` en línea 545. Tests puros: `backend/tests/test_socket_revalidation.py:11,40`, incluyendo error sin desconexión masiva. Tests reales SQL en `test_socket_revalidation_db.py`, no ejecutados con BD en esta ronda. |
@@ -103,24 +105,80 @@ $ nuxt prepare && eslint .
 ℹ skipped 0
 ```
 
-Cadena con salida **0**. No se ejecutaron build/typecheck en esta ronda.
+Cadena inicial con salida **0**. Build/typecheck no se ejecutaron en esa
+comprobación inicial; sí en el seguimiento de H6 descrito a continuación.
 
-### Dependencias frontend: H6 sigue pendiente
+### Dependencias frontend: seguimiento de H6 mitigado
 
-Se ejecutaron `pnpm audit --prod --json` y `pnpm audit --json` desde frontend.
-Ambos terminaron con salida **1**, con la misma distribución:
+La auditoría inicial detectó 1 advisory bajo y 2 moderados. En [este PR](https://github.com/edsel9ra/bracket-craft/pull/37)
+se añaden overrides acotados en `frontend/pnpm-workspace.yaml`: `glob@13` a
+`^14.0.2` y `minimatch@10` a `^11.0.1`. El lockfile resuelve **glob 14.0.4**
+(GHSA-3g3m-2fjr-6pw4 corregido) y **minimatch 11.0.5**
+(GHSA-g3hv-75wg-m249 corregido), sin cambiar las dependencias directas.
+Retirar los overrides cuando `@vercel/nft` y ESLint declaren glob >=14 y
+minimatch >=11, comprobando también los demás consumidores transitivos.
+
+Permanece **deepmerge 4.3.1**, severidad baja, GHSA-gcqx-w48m-w2h4:
+`pnpm audit --json` informa `patched_versions: null` y
+`patched_versions_unpublished: true`. En el grafo instalado solo entra por las
+herramientas de build: Nuxt → Nitro → `@rollup/plugin-node-resolve` → deepmerge.
+Antes de aplicar los overrides se construyó `main` en `988a46b`: no aparecen
+directorios llamados deepmerge, glob o minimatch, ni referencias textuales a esos
+nombres completos en `frontend/.output/`, ni en su manifiesto de dependencias
+runtime. La imagen de producción copia solo `.output`
+(`frontend/Dockerfile:20`), no el `node_modules` del build. Esta inspección estática
+no es una prueba formal de ausencia de código integrado/minificado, ni elimina
+el riesgo durante la construcción.
+
+Con Node 24 y pnpm 12.12.1, `pnpm audit` termina con salida **1**:
 
 ```text
-info: 0, low: 1, moderate: 2, high: 0, critical: 0
-deepmerge  low       GHSA-gcqx-w48m-w2h4  4.3.1
-glob       moderate  GHSA-3g3m-2fjr-6pw4  13.0.6
-minimatch  moderate  GHSA-g3hv-75wg-m249   10.2.6
+1 vulnerabilities found
+Severity: 1 low
 ```
 
-Además de glob/minimatch, se observó **deepmerge de severidad baja**, no incluido
-en el informe inicial de la auditoría. No se actualizaron dependencias ni allowlists.
-Los advisories cambian con el registro; este es el resultado observado, no una
-garantía sobre ejecuciones futuras.
+El único hallazgo es deepmerge. `pnpm audit --prod --json --audit-level low`
+también termina con salida **1**, con ese único advisory. Se ejecutó el filtro
+de CI, sin cambiar su política:
+
+```sh
+python3 infra/scripts/audit_frontend.py --input audit-prod.json --pnpm-status 1
+```
+
+Salida **0**:
+
+```text
+Sin hallazgos accionables (>= high con corrección publicada).
+Hallazgos no accionables visibles: 1
+- NO ACCIONABLE GHSA-gcqx-w48m-w2h4 paquete=deepmerge severidad=low versiones_afectadas=>=4.2.0 <=4.3.1 motivo=sin corrección publicada
+Dependencias auditadas: 523
+Informativos contabilizados: 0
+Resultado: OK
+```
+
+Verificación final del frontend con los overrides, cadena con salida **0**:
+
+```sh
+pnpm install --frozen-lockfile && pnpm run lint && pnpm test && pnpm run typecheck && pnpm run build
+```
+
+```text
+Lockfile is up to date, resolution step is skipped
+Done in 1.6s using pnpm v12.12.1
+$ nuxt prepare && eslint .
+◆ Types generated in .nuxt.
+ℹ tests 783
+ℹ pass 783
+ℹ fail 0
+ℹ skipped 0
+$ nuxt prepare && vue-tsc --noEmit
+◆ Types generated in .nuxt.
+◆ ✨ Build complete in 8.94s!
+```
+
+Estas verificaciones no detectaron incompatibilidades con los saltos transitivos;
+no se ejecutaron E2E ni pruebas funcionales del artefacto servido en este seguimiento.
+Los advisories cambian con el registro; estos resultados no garantizan ejecuciones futuras.
 
 ### Infraestructura, pins y árbol sin secretos
 
@@ -204,9 +262,11 @@ verificador y los parámetros, no la igualdad exacta de latencias.
 
 ## Pendientes y riesgos aceptados
 
-- **H6 pendiente:** glob/minimatch moderados y deepmerge bajo siguen presentes,
-  incluso con `--prod`. Requieren revisión de actualizaciones y exposición; no se
-  deduce explotación en producción solo de la presencia en el grafo.
+- **Deepmerge pendiente (H6 mitigado):** deepmerge 4.3.1 conserva el advisory bajo
+  GHSA-gcqx-w48m-w2h4 sin corrección publicada, incluso con `--prod`. Entra por
+  herramientas de build y no se identificó en `.output`; vigilar una corrección
+  upstream. Glob/minimatch ya están corregidos mediante overrides, que deben
+  retirarse cuando los padres declaren versiones corregidas compatibles.
 - **H7 mitigado, historial sin reescribir (decisión del dueño):** el control actual
   evita nuevas detecciones en el árbol exportado, pero no elimina contenido de
   commits previos. Una allowlist de dummy no sería válida para credenciales reales.
