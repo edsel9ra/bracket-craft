@@ -20,6 +20,7 @@ Ante cualquier duda, consulta en este orden:
 12. `frontend/app/composables/useApi.ts`: contrato de llamadas HTTP del frontend.
 13. `.github/workflows/ci.yml`: lista autoritativa de verificaciones (cinco jobs con permisos `contents: read`: `backend`, `frontend`, `infrastructure` y `security` en cada `push` y `pull_request`, y `e2e` en cada `pull_request` y solo en `push` a `main`).
 14. Documentación interactiva de la API en `http://localhost:8000/docs`.
+15. `docs/auditoria-2026-11.md`: informe fechado de H1–H12 tras integrar los PR #25–#27, con evidencias, verificaciones y riesgos pendientes; no sustituye las fuentes de verdad anteriores ni certifica un despliegue productivo.
 
 Si este archivo contradice a la constitución, gana la constitución. Si contradice al código o a la CI, gana el código/CI. Actualiza este archivo en el mismo cambio.
 

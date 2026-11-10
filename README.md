@@ -4,6 +4,8 @@ Plataforma multi-tenant para crear y operar torneos de futbol con reglas configu
 
 ## Documentación
 
+- Auditoría de noviembre de 2026: [`docs/auditoria-2026-11.md`](docs/auditoria-2026-11.md) (estado de H1–H12, verificaciones y pendientes tras integrar los PR #25–#27).
+
 Mantenimiento de auditoría: `pnpm run lint` aplica ESLint/Nuxt con adopción gradual;
 CI ejecuta también Bandit y Gitleaks sobre el árbol versionado actual (no el historial).
 Las excepciones revisadas y los comandos se documentan en
