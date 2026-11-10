@@ -10,7 +10,7 @@ Auditoría del **2026-11-09**, contrastada con `main` en
 La comprobación inicial no introdujo correcciones de código ni cambios de dependencias.
 El seguimiento de H6 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/37), sobre `main` en `988a46b`,
 añade overrides acotados y las verificaciones descritas en su sección.
-El seguimiento de H10 en [este PR](PR_H10_URL), sobre `main` en `5bf526c`,
+El seguimiento de H10 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/38), sobre `main` en `5bf526c`,
 divide el router de torneos sin modificar el contrato OpenAPI ni la lógica.
 
 Se revisaron código, configuración, documentación y pruebas automatizadas en
@@ -35,7 +35,7 @@ de la sección de verificación incluyen los tests citados, salvo los opt-in con
 | H7 | Baja | Detecciones históricas de Gitleaks en datos demo/artefactos npm. | Mitigado | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). **Historial sin reescribir (decisión del dueño)**. `.github/workflows/ci.yml:184–192` escanea `git archive HEAD`; `.gitleaks.toml:3–13` conserva reglas predeterminadas y permite tres literales dummy exactos. Comprobación CLI del árbol actual: sin fugas. No se volvió a escanear el historial en esta ronda. |
 | H8 | Baja | Cliente Redis compartido por proceso y cerrado al apagar. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `backend/app/core/redis_client.py:6–20`; consumidores en `backend/app/core/rate_limit.py:70`, `backend/app/main.py:907`; cierre en `backend/app/main.py:583`. Tests: `backend/tests/test_redis_client.py:14,33,40,53`. El relay mantiene su conexión independiente. |
 | H9 | Baja | Revalidación de sockets en lote, con registro del fallo. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `infra/postgres/migrations/032_socket_session_revalidation.sql:3–18` (`SECURITY INVOKER`); `backend/app/main.py:531–559`: una consulta por ciclo no vacío, cada 30 s; `logger.exception` en línea 545. Tests puros: `backend/tests/test_socket_revalidation.py:11,40`, incluyendo error sin desconexión masiva. Tests reales SQL en `test_socket_revalidation_db.py`, no ejecutados con BD en esta ronda. |
-| H10 | Mantenibilidad | Router monolítico de torneos. | Resuelto | [Este PR](PR_H10_URL). `backend/app/modules/tournaments/router.py`: de 4887 a 22 líneas; helpers compartidos en `access.py` y siete subrouters en `routes/`. OpenAPI normalizado idéntico a `5bf526c`; mismo conjunto de rutas y orden de los cinco pares solapados. `backend/tests/test_tournament_routes_order.py` fija las 31 operaciones y la precedencia privada/pública. Tamaños y suites completas en el seguimiento H10. |
+| H10 | Mantenibilidad | Router monolítico de torneos. | Resuelto | [Este PR](https://github.com/edsel9ra/bracket-craft/pull/38). `backend/app/modules/tournaments/router.py`: de 4887 a 22 líneas; helpers compartidos en `access.py` y siete subrouters en `routes/`. OpenAPI normalizado idéntico a `5bf526c`; mismo conjunto de rutas y orden de los cinco pares solapados. `backend/tests/test_tournament_routes_order.py` fija las 31 operaciones y la precedencia privada/pública. Tamaños y suites completas en el seguimiento H10. |
 | H11 | Documentación | Memoria con decisiones y resultados históricos diferenciados. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). Inspección `nl -ba MEMORY.md`: líneas 5–13 registran auditoría, 16 registra migración 032, 21–22 diferencian resultados históricos y corrigen «sin commitear». Sin test dedicado. La línea 10 recoge la verificación inicial H1/H2/H12, no una ejecución E2E de esta ronda. |
 | H12 | Media | Resolución de FieldError en FormField. | Resuelto | [#25](https://github.com/edsel9ra/bracket-craft/pull/25). `frontend/app/components/ui/FormField.vue:8,14` usa e importa explícitamente FieldError. Guardián `frontend/tests/ui-component-imports.test.ts:20,25,30,36`: casos válido, vacío, erróneo y barrido de plantillas. |
 
@@ -244,7 +244,7 @@ verificador y los parámetros, no la igualdad exacta de latencias.
 
 ### Reorganización de torneos: seguimiento de H10 resuelto
 
-En [este PR](PR_H10_URL) se extraen `access.py` y los subrouters de torneos,
+En [este PR](https://github.com/edsel9ra/bracket-craft/pull/38) se extraen `access.py` y los subrouters de torneos,
 versiones, fases, equipos, plantillas, calendario y público. La fachada usa
 `APIRouter()` y aplica `prefix="/tournaments", tags=["tournaments"]` en cada
 `include_router`, en ese orden. El prefijo explícito evita el rechazo de FastAPI
