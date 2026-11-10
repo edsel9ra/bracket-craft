@@ -8,7 +8,7 @@ Auditoría del **2026-11-09**, contrastada con `main` en
 [#26](https://github.com/edsel9ra/bracket-craft/pull/26) y
 [#27](https://github.com/edsel9ra/bracket-craft/pull/27).
 La comprobación inicial no introdujo correcciones de código ni cambios de dependencias.
-El seguimiento de H6 en [este PR](PR_H6_URL), sobre `main` en `988a46b`,
+El seguimiento de H6 en [este PR](https://github.com/edsel9ra/bracket-craft/pull/37), sobre `main` en `988a46b`,
 añade overrides acotados y las verificaciones descritas en su sección.
 
 Se revisaron código, configuración, documentación y pruebas automatizadas en
@@ -29,7 +29,7 @@ de la sección de verificación incluyen los tests citados, salvo los opt-in con
 | H3 | Media | Cabeceras de seguridad API y SSR. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security_headers.py:7–30`; conexión exterior en `backend/app/main.py:931`; `frontend/app/utils/securityHeaders.ts:1–9`, `frontend/nuxt.config.ts:1–5`. Tests: `backend/tests/test_security_headers.py:12,32,43,55` y `frontend/tests/security-headers.test.ts:8,18`. |
 | H4 | Media | Cadena de suministro CI: acciones fijadas por commit y Dependabot. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `.github/workflows/ci.yml:29–306`: 14 `uses:`, todos con SHA de 40 caracteres; `.github/dependabot.yml:1–23`: revisión semanal de github-actions, pip y npm, agrupando minor/patch. Tests: `backend/tests/test_workflow_pins.py:10,22`. |
 | H5 | Baja | Login ejecuta Argon2 incluso si falta usuario o contraseña almacenada. | Resuelto | [#26](https://github.com/edsel9ra/bracket-craft/pull/26). `backend/app/core/security.py:17–18,26–27`; `backend/app/modules/identity/router.py:282–284`. Tests: `backend/tests/test_auth_login.py:24,123–129,160`: parámetros, llamada al verificador y prohibición de autenticar con el ficticio. Medición local orientativa más abajo. |
-| H6 | Baja | Advisories transitivos de frontend: glob/minimatch corregidos; deepmerge sin corrección publicada. | Mitigado | [Este PR](PR_H6_URL). `frontend/pnpm-workspace.yaml` y `frontend/pnpm-lock.yaml`: overrides a glob 14.0.4 y minimatch 11.0.5. `pnpm audit` conserva solo deepmerge 4.3.1 (bajo). Sin referencias identificables en `.output`; `frontend/Dockerfile:20` copia solo ese artefacto. Verificaciones y límites más abajo. |
+| H6 | Baja | Advisories transitivos de frontend: glob/minimatch corregidos; deepmerge sin corrección publicada. | Mitigado | [Este PR](https://github.com/edsel9ra/bracket-craft/pull/37). `frontend/pnpm-workspace.yaml` y `frontend/pnpm-lock.yaml`: overrides a glob 14.0.4 y minimatch 11.0.5. `pnpm audit` conserva solo deepmerge 4.3.1 (bajo). Sin referencias identificables en `.output`; `frontend/Dockerfile:20` copia solo ese artefacto. Verificaciones y límites más abajo. |
 | H7 | Baja | Detecciones históricas de Gitleaks en datos demo/artefactos npm. | Mitigado | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). **Historial sin reescribir (decisión del dueño)**. `.github/workflows/ci.yml:184–192` escanea `git archive HEAD`; `.gitleaks.toml:3–13` conserva reglas predeterminadas y permite tres literales dummy exactos. Comprobación CLI del árbol actual: sin fugas. No se volvió a escanear el historial en esta ronda. |
 | H8 | Baja | Cliente Redis compartido por proceso y cerrado al apagar. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `backend/app/core/redis_client.py:6–20`; consumidores en `backend/app/core/rate_limit.py:70`, `backend/app/main.py:907`; cierre en `backend/app/main.py:583`. Tests: `backend/tests/test_redis_client.py:14,33,40,53`. El relay mantiene su conexión independiente. |
 | H9 | Baja | Revalidación de sockets en lote, con registro del fallo. | Resuelto | [#27](https://github.com/edsel9ra/bracket-craft/pull/27). `infra/postgres/migrations/032_socket_session_revalidation.sql:3–18` (`SECURITY INVOKER`); `backend/app/main.py:531–559`: una consulta por ciclo no vacío, cada 30 s; `logger.exception` en línea 545. Tests puros: `backend/tests/test_socket_revalidation.py:11,40`, incluyendo error sin desconexión masiva. Tests reales SQL en `test_socket_revalidation_db.py`, no ejecutados con BD en esta ronda. |
@@ -110,7 +110,7 @@ comprobación inicial; sí en el seguimiento de H6 descrito a continuación.
 
 ### Dependencias frontend: seguimiento de H6 mitigado
 
-La auditoría inicial detectó 1 advisory bajo y 2 moderados. En [este PR](PR_H6_URL)
+La auditoría inicial detectó 1 advisory bajo y 2 moderados. En [este PR](https://github.com/edsel9ra/bracket-craft/pull/37)
 se añaden overrides acotados en `frontend/pnpm-workspace.yaml`: `glob@13` a
 `^14.0.2` y `minimatch@10` a `^11.0.1`. El lockfile resuelve **glob 14.0.4**
 (GHSA-3g3m-2fjr-6pw4 corregido) y **minimatch 11.0.5**
@@ -142,7 +142,7 @@ también termina con salida **1**, con ese único advisory. Se ejecutó el filtr
 de CI, sin cambiar su política:
 
 ```sh
-python3 infra/scripts/audit_frontend.py --input /home/ubuntu/h6-logs/final-audit-prod.json --pnpm-status 1
+python3 infra/scripts/audit_frontend.py --input audit-prod.json --pnpm-status 1
 ```
 
 Salida **0**:
