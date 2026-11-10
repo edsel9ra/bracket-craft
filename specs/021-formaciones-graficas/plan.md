@@ -1,5 +1,7 @@
 # Plan 021 — Formaciones gráficas en la consulta pública
 
+> **Cambio posterior (2026-11-10):** `PublicLineupModal.vue` importa `./TeamPitch.vue` explícitamente (Nuxt lo registra como `PublicTeamPitch`). Se conservan el renderizado independiente, las fotos con consentimiento y el equivalente textual, sin cambios de API ni reglas. `frontend/tests/component-resolution.test.ts` fija la regresión del modal y audita las etiquetas PascalCase de `frontend/app` con los nombres de `nuxt prepare`, imports/bindings locales y globales documentados de Vue.
+
 ## Archivos y responsabilidades
 
 ### Base de datos

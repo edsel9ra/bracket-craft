@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import TeamPitch from './TeamPitch.vue';
 import { positionLabel } from '~/utils/positions';
 import { isTacticalFormationValid, textualFormationLines, playerInitials } from '~/utils/publicLineup';
 import type { PublicLineupPlayer, PublicTeamLineup } from '~/utils/publicTournament';
