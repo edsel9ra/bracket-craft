@@ -58,7 +58,7 @@ Todos los comandos siguientes se ejecutaron contra el contenido de `main`
 
 ### Backend y Bandit
 
-Contenedor `bc-audit-python-ready` (Python 3.14.10), repositorio montado en `/repo`,
+Contenedor con Python 3.14.10, repositorio montado en `/repo`,
 directorio `/repo/backend`:
 
 ```sh
@@ -118,7 +118,7 @@ minimatch  moderate  GHSA-g3hv-75wg-m249   10.2.6
 ```
 
 Además de glob/minimatch, se observó **deepmerge de severidad baja**, no incluido
-en el listado inicial del encargo. No se actualizaron dependencias ni allowlists.
+en el informe inicial de la auditoría. No se actualizaron dependencias ni allowlists.
 Los advisories cambian con el registro; este es el resultado observado, no una
 garantía sobre ejecuciones futuras.
 
@@ -161,7 +161,7 @@ no leaks found
 `git rev-parse --is-shallow-repository` devolvió `false` y
 `git rev-list --max-parents=0 HEAD` conserva la raíz
 `8b3f15f638f52fbbf9045d2c5ec1177d084516f2`. No se reescribió historial en esta
-ronda. Las detecciones históricas y su aceptación proceden del encargo; no se
+ronda. Las detecciones históricas y su aceptación proceden de la auditoría inicial; no se
 volvieron a inspeccionar ni reproducir sus valores.
 
 ### Medición orientativa de Argon2
@@ -223,6 +223,3 @@ verificador y los parámetros, no la igualdad exacta de latencias.
 - Los resultados anteriores de `MEMORY.md` son históricos. Este informe registra
   la verificación actual de `main`; no convierte las ejecuciones omitidas en
   verificaciones satisfactorias.
-
-Logs y scripts auxiliares de esta sesión: `/home/ubuntu/audit-nov-verification/`
-(fuera del repositorio; no son un requisito de despliegue).
