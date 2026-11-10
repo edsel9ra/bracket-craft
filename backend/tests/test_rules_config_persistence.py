@@ -22,10 +22,8 @@ from app.modules.rules_engine.schemas import (
     CreateTournamentRequest,
     UpdateRulesConfigRequest,
 )
-from app.modules.tournaments.router import (
-    _update_version_rules_record,
-    create_tournament,
-)
+from app.modules.tournaments.routes.versions import _update_version_rules_record
+from app.modules.tournaments.routes.tournaments import create_tournament
 
 ORGANIZATION_ID = uuid4()
 USER_ID = uuid4()

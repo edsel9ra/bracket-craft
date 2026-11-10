@@ -30,8 +30,9 @@ from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.tournaments import router as tournaments_router
-from app.modules.tournaments.router import _active_roster_lock_matchday
+from app.modules.tournaments import access as tournaments_access
+from app.modules.tournaments.routes import rosters as tournaments_router
+from app.modules.tournaments.routes.rosters import _active_roster_lock_matchday
 from app.modules.tournaments.roster_import import ImportedRosterRow, PhotoFile
 from app.modules.tournaments.schemas import CreateRosterPlayerRequest
 
@@ -321,7 +322,7 @@ def allow_management(monkeypatch):
     async def allow(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(tournaments_router, "require_permission", allow)
+    monkeypatch.setattr(tournaments_access, "require_permission", allow)
 
 
 def install_storage(monkeypatch, storage: RosterStorage) -> None:

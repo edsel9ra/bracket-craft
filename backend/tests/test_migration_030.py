@@ -522,7 +522,7 @@ def test_030_plantillas_es_interna_y_solo_la_lee_la_ruta_publica():
     La spec 022 y ``AGENTS.md`` documentan que ``v_public_tournament_rosters`` la
     leen las dos rutas de estadísticas para calcular las cifras, así que la
     comprobación estática posible es que **ninguna otra superficie** de la API la
-    consulta: su única referencia en ``backend/app`` está en el router de torneos
+    consulta: su única referencia en ``backend/app`` está en el módulo de rutas públicas
     y dentro de una ruta pública, nunca en el Workspace ni en la administración.
     """
 
@@ -537,7 +537,7 @@ def test_030_plantillas_es_interna_y_solo_la_lee_la_ruta_publica():
         f"debe existir la lectura de {ROSTERS_VIEW} en las rutas de estadísticas"
     )
 
-    router = app_modules / "modules" / "tournaments" / "router.py"
+    router = app_modules / "modules" / "tournaments" / "routes" / "public.py"
     assert references == [router], (
         f"{ROSTERS_VIEW} es interna de las rutas públicas: solo puede referenciarse "
         f"en {router.relative_to(app_modules)}; también aparece en "

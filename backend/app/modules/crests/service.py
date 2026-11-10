@@ -46,7 +46,7 @@ from app.modules.crests.errors import (
 )
 from app.modules.crests.resolver import sign_crest_rows
 from app.modules.crests.validation import CrestFile, crest_object_key
-from app.modules.tournaments.router import _ensure_tournament
+from app.modules.tournaments.access import _ensure_tournament
 from app.modules.tournaments.schemas import TeamCrestResponse
 
 CREST_MANAGEMENT_PERMISSION = "MANAGE_TOURNAMENTS"

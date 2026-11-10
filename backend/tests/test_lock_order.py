@@ -23,15 +23,17 @@ from app.modules.matches.schemas import OfficialAssignmentRequest
 from app.modules.matches.service import CloseMatchReportService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.standings.service import StandingsService
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.matches import (
     create_match,
-    create_stage,
-    create_tournament_team,
-    create_tournament_teams_bulk,
     draw_stage_schedule,
     generate_single_elimination_matches,
-    publish_version,
 )
+from app.modules.tournaments.routes.stages import create_stage
+from app.modules.tournaments.routes.teams import (
+    create_tournament_team,
+    create_tournament_teams_bulk,
+)
+from app.modules.tournaments.routes.versions import publish_version
 from app.modules.tournaments.schemas import (
     BulkTournamentTeamItem,
     BulkTournamentTeamRequest,

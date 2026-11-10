@@ -22,7 +22,7 @@ from app.modules.tournaments.roster_status import (
     ROSTER_SIZE_OUT_OF_RANGE,
     RosterSizeOutOfRange,
 )
-from app.modules.tournaments.router import (
+from app.modules.tournaments.routes.stages import (
     assign_stage_teams,
     list_stage_teams,
     remove_stage_team,

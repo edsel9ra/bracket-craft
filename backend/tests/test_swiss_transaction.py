@@ -22,7 +22,8 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
-from app.modules.tournaments import router as tournaments_router
+from app.modules.tournaments import access as tournaments_access
+from app.modules.tournaments.routes import matches as tournaments_router
 from app.modules.tournaments.schemas import GenerateSingleEliminationRequest
 from app.modules.tournaments.scheduling import (
     SwissPairing,
@@ -297,7 +298,7 @@ def allow_management(monkeypatch):
     async def allow(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(tournaments_router, "require_permission", allow)
+    monkeypatch.setattr(tournaments_access, "require_permission", allow)
 
 
 def payload(**overrides) -> dict:
@@ -557,7 +558,7 @@ async def test_revoked_management_permission_in_the_write_phase_is_a_403(
         if len(calls) == 2:
             raise PermissionError("La membresía ya no permite gestionar el torneo")
 
-    monkeypatch.setattr(tournaments_router, "require_permission", permission)
+    monkeypatch.setattr(tournaments_access, "require_permission", permission)
 
     response = await post_draw(session)
 

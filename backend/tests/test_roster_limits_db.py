@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from starlette.requests import Request
 
 import app.modules.tournaments.photos as photos_module
-import app.modules.tournaments.router as tournaments_router
+import app.modules.tournaments.routes.rosters as tournaments_router
 from app.core.storage import SignedUrls
 from app.core.tenancy import AuthContext
 from app.main import api
@@ -68,16 +68,18 @@ from app.modules.tournaments.roster_status import (
     ROSTER_SIZE_OUT_OF_RANGE,
     RosterSizeOutOfRange,
 )
-from app.modules.tournaments.router import (
-    assign_stage_teams,
+from app.modules.tournaments.routes.stages import assign_stage_teams
+from app.modules.tournaments.routes.rosters import (
     create_roster_player,
     create_roster_players_bulk,
-    create_tournament_team,
-    create_tournament_teams_bulk,
-    list_versions,
     update_roster_photo_consent,
     upload_roster_player_photo,
 )
+from app.modules.tournaments.routes.teams import (
+    create_tournament_team,
+    create_tournament_teams_bulk,
+)
+from app.modules.tournaments.routes.versions import list_versions
 from app.modules.tournaments.schemas import (
     AssignStageTeamsRequest,
     BulkTournamentTeamItem,

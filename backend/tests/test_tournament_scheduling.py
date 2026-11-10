@@ -8,7 +8,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.tenancy import AuthContext
-from app.modules.tournaments.router import create_match, draw_stage_schedule
+from app.modules.tournaments.routes.matches import (
+    create_match,
+    draw_stage_schedule,
+)
 from app.modules.tournaments.schemas import (
     CreateMatchRequest,
     GenerateSingleEliminationRequest,

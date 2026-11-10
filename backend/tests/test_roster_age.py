@@ -24,7 +24,7 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
-from app.modules.tournaments import router as tournaments_router
+from app.modules.tournaments.routes import rosters as tournaments_router
 from app.modules.tournaments.schemas import (
     BulkRosterPlayerResponse,
     RosterPlayerListResponse,
@@ -452,10 +452,10 @@ def test_write_responses_keep_the_contract_without_age():
                 return route
         raise AssertionError(f"No existe la ruta {method} {path}")
 
-    listing = _route("/tournaments/{tournament_id}/rosters", "GET")
-    create = _route("/tournaments/{tournament_id}/rosters", "POST")
-    bulk = _route("/tournaments/{tournament_id}/rosters/bulk", "POST")
-    photo = _route("/tournaments/{tournament_id}/rosters/{roster_id}/photo", "POST")
+    listing = _route("/{tournament_id}/rosters", "GET")
+    create = _route("/{tournament_id}/rosters", "POST")
+    bulk = _route("/{tournament_id}/rosters/bulk", "POST")
+    photo = _route("/{tournament_id}/rosters/{roster_id}/photo", "POST")
 
     assert listing.response_model == list[RosterPlayerListResponse]
     assert create.response_model is RosterPlayerResponse

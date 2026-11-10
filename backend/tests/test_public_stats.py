@@ -16,7 +16,7 @@ from app.modules.tournaments.public_stats import (
     team_stats_rank_key,
 )
 
-ROUTER = Path(__file__).resolve().parents[1] / "app/modules/tournaments/router.py"
+ROUTER = Path(__file__).resolve().parents[1] / "app/modules/tournaments/routes/public.py"
 
 
 def _match(**overrides):

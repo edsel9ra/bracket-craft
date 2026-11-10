@@ -27,10 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.tenancy import AuthContext
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from app.modules.tournaments.router import (
-    _create_draft_version_record,
-    _draw_non_swiss_schedule,
-)
+from app.modules.tournaments.routes.versions import _create_draft_version_record
+from app.modules.tournaments.routes.matches import _draw_non_swiss_schedule
 from app.modules.tournaments.schemas import GenerateSingleEliminationRequest
 from migration_helpers import apply_migration, throwaway_database
 
