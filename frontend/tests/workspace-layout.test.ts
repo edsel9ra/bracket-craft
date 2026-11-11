@@ -11,7 +11,7 @@ const source = (file: string) => readFileSync(new URL(`../app/${file}`, import.m
 test('LY-1 places lists before creation forms and scopes header shortcuts to usable forms', () => {
   for (const [file, list, id, permission] of [
     ['members.vue', 'class="member-table"', 'invite-member', '!loading && !pageError'],
-    ['tournaments/[id]/calendar.vue', 'id="operacion"', 'match-entry', '!loading && !loadError && canManageTournaments'],
+    ['tournaments/[id]/calendar.vue', 'id="operacion"', 'match-entry', "!loading && !loadError && canManageTournaments && activeVersion?.status === 'draft' && selectedStageId"],
     ['tournaments/[id]/rosters.vue', 'class="roster-list"', 'player-entry', '!loading && !loadError && teams.length && canManageTournaments'],
   ]) {
     const page = source(`pages/workspace/${file}`);

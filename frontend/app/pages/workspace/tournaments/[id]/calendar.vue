@@ -421,7 +421,7 @@ loading.value = false;
     <main id="main-content" class="workspace-shell">
       <PageHeader class="container" :title="t('tournament.calendar.title')">
         <template #context>{{ tournamentLabel }}</template>
-        <template v-if="!loading && !loadError && canManageTournaments" #actions>
+        <template v-if="!loading && !loadError && canManageTournaments && activeVersion?.status === 'draft' && selectedStageId" #actions>
           <a class="button-secondary" href="#match-entry" @click="focusFormAnchor">{{ t('tournament.calendar.addAction') }}</a>
         </template>
       </PageHeader>
