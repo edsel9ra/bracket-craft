@@ -10,6 +10,19 @@ export interface ConfirmRequest {
   options: ConfirmOptions;
 }
 
+export function singleFlightConfirm(confirm: (options: ConfirmOptions) => Promise<boolean>) {
+  let pending = false;
+  return async (options: ConfirmOptions): Promise<boolean> => {
+    if (pending) return false;
+    pending = true;
+    try {
+      return await confirm(options);
+    } finally {
+      pending = false;
+    }
+  };
+}
+
 export function createConfirmQueue(onChange: (request: ConfirmRequest | null) => void = () => {}) {
   let sequence = 0;
   type Pending = { request: ConfirmRequest; resolve: (value: boolean) => void };

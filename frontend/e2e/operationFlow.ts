@@ -1143,8 +1143,8 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         exact: true,
       });
       await expect(publish).toBeVisible({ timeout: MAX_MS.initialConnected });
-      page.once('dialog', (dialog) => void dialog.accept());
       await publish.click();
+      await page.getByRole('dialog').getByRole('button', { name: labelText(E2E_LABELS.confirmPublish), exact: true }).click();
       await expect(publish).toHaveCount(0, { timeout: MAX_MS.initialConnected });
       await expect(
         versionSelect
@@ -1452,8 +1452,8 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         name: labelText(E2E_LABELS.closeReport),
         exact: true,
       });
-      page.once('dialog', (dialog) => void dialog.accept());
       await close.click();
+      await page.getByRole('dialog').getByRole('button', { name: labelText(E2E_LABELS.confirmCloseReport), exact: true }).click();
       await expect(
         page.getByRole('button', { name: labelText(E2E_LABELS.reportClosed), exact: true }),
       ).toBeVisible({ timeout: MAX_MS.initialConnected });

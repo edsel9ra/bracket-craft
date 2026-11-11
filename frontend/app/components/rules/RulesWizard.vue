@@ -72,6 +72,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const auth = useAuthStore();
 
 const workingConfig = computed<RulesConfig>(() => normalizeRulesConfig(props.modelValue || DEFAULT_RULES_CONFIG));
@@ -137,10 +138,10 @@ function persistDraft(): void {
  * elimina el borrador de la pestaña. Es la misma operación que ejecuta la
  * página al aceptar un cambio de versión o de torneo.
  */
-function discardChanges(): void {
+async function discardChanges(): Promise<void> {
   if (props.disabled || !dirty.value) return;
   const accepted = import.meta.client
-    ? window.confirm(t('wizard.navigation.confirmDiscard'))
+    ? await confirm({ title: t('confirm.discardChanges.title'), message: t('wizard.navigation.confirmDiscard'), confirmLabel: t('confirm.discardChanges.action'), tone: 'danger' })
     : true;
   const effect = resolveNavigation('discard', dirty.value, accepted);
   if (!effect.proceed) return;

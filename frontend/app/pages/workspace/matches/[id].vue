@@ -272,6 +272,7 @@ const route = useRoute();
 const auth = useAuthStore();
 const { request } = useApi();
 const { t, statusLabel, formatDateTime, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const realtime = useRealtime();
 const matchId = String(route.params.id);
 
@@ -542,10 +543,10 @@ function eventMinuteMessage(validation: EventMinuteValidation): string {
  * borrador se pide confirmación y se avisa sin borrar nada. El valor vigente no
  * se escribe en el servidor ni en el borrador local.
  */
-function changeResolution(next: ResolutionType): void {
-  resolutionFallback.value = false;
+async function changeResolution(next: ResolutionType): Promise<void> {
   const effective = normalizeResolution(operationLimits.value, next);
   if (effective === resolution.value) {
+    resolutionFallback.value = false;
     resolutionChangeNotice.value = null;
     return;
   }
@@ -558,17 +559,19 @@ function changeResolution(next: ResolutionType): void {
     { resolution: effective },
   );
   if (outcome.outcome === 'blocked') {
+    resolutionFallback.value = false;
     // P2: no se corrige ningún segmento guardado; se pide resolver primero.
     resolutionChangeNotice.value = { key: outcome.messageKey, params: outcome.messageParams };
     actionError.value = t(outcome.messageKey, outcome.messageParams);
     return;
   }
   if (outcome.outcome === 'confirm') {
+    if (import.meta.client && !(await confirm({ title: t('confirm.changeResolution.title'), message: t(outcome.messageKey, outcome.messageParams), confirmLabel: t('confirm.changeResolution.action'), tone: 'primary' }))) return;
     resolutionChangeNotice.value = { key: outcome.messageKey, params: outcome.messageParams };
-    if (import.meta.client && !window.confirm(t(outcome.messageKey, outcome.messageParams))) return;
   } else {
     resolutionChangeNotice.value = null;
   }
+  resolutionFallback.value = false;
   selectResolution(effective, operationLimits.value);
 }
 
@@ -576,6 +579,14 @@ const selectedResolution = computed<ResolutionType>({
   get: () => resolution.value,
   set: (next) => changeResolution(next),
 });
+
+async function onResolutionChange(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const next = select.value as ResolutionType;
+  select.value = resolution.value;
+  await changeResolution(next);
+  select.value = resolution.value;
+}
 
 const eventSubstitutionTeam = computed(() => teamSubstitutionState(substitutionState.value, eventForm.team_id));
 const eventSubstitutionAvailability = computed(() => substitutionAvailability(eventSubstitutionTeam.value));
@@ -765,8 +776,8 @@ function persistDraft() {
   }
 }
 
-function discardDraft() {
-  if (!import.meta.client || !window.confirm(t('match.discardDraft'))) return;
+async function discardDraft() {
+  if (!import.meta.client || !(await confirm({ title: t('confirm.discardDraft.title'), message: t('match.discardDraft'), confirmLabel: t('confirm.discardDraft.action'), tone: 'danger' }))) return;
   draftEvents.value = [];
   Object.assign(closeForm, defaultCloseForm);
   eventForm.player_out_id = '';
@@ -1429,7 +1440,7 @@ onBeforeRouteLeave((to) => {
   // los restaura al volver, así que avisar de una pérdida que no ocurre sería
   // falso. Cualquier otro destino mantiene la confirmación.
   if (to.path === rostersHref.value) return true;
-  return window.confirm(t('match.unsavedLeave'));
+  return confirm({ title: t('confirm.leaveMatch.title'), message: t('match.unsavedLeave'), confirmLabel: t('confirm.leaveMatch.action'), tone: 'danger' });
 });
 
 async function closeMatch() {
@@ -1461,9 +1472,9 @@ async function closeMatch() {
       resolution: resolutionLabel(resolution.value),
       planned: resolutionLabel(plannedResolution.value),
     };
-    if (!window.confirm(t(decision.messageKey, params))) return;
+    if (!(await confirm({ title: t('confirm.closeReport.title'), message: t(decision.messageKey, params), confirmLabel: t('confirm.closeReport.action'), tone: 'danger' }))) return;
     if (!closeResolutionDecision({ ...closeInput, confirmed: true }).send) return;
-  } else if (import.meta.client && !window.confirm(t('match.confirmClosePrompt'))) {
+  } else if (import.meta.client && !(await confirm({ title: t('confirm.closeReport.title'), message: t('match.confirmClosePrompt'), confirmLabel: t('confirm.closeReport.action'), tone: 'danger' }))) {
     return;
   }
   await runAction('close', async () => {
@@ -1750,7 +1761,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="resolution-summary">
             <label class="field">{{ t('match.plannedResolution') }}
-              <select v-model="selectedResolution" :disabled="!canOperateMatch || isTerminal">
+              <select :value="selectedResolution" :disabled="!canOperateMatch || isTerminal" @change="onResolutionChange">
                 <option v-for="option in resolutionOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
               </select>
             </label>
