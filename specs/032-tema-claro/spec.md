@@ -1,8 +1,8 @@
 # Spec 032 — Tema claro opcional
 
-Estado: aprobada
+Estado: aprobada — T1–T9 implementadas; cierre T10 pendiente de CI y aprobación del usuario.
 
-Fecha: 2026-11-11. Spec y clarificación aprobadas por el usuario: D1–D4, todas opción A. Esta entrega registra las respuestas y propone plan/tareas para revisión; no inicia implementación. La [auditoría de tema claro](../../docs/auditoria-tema-claro-032.md) conserva inventario, paleta y 158 pares calculados.
+Fecha: 2026-11-11. Spec, clarificación, plan y tareas aprobados por el usuario: D1–D4, todas opción A, y LY-1. PR A (#53) y PR B (#54) fusionados; PR C implementa la aceptación local T7–T9. La spec no se declara globalmente implementada hasta CI y aprobación humana (T10 sin cerrar). Evidencias y límites en [verificacion.md](verificacion.md). La [auditoría de tema claro](../../docs/auditoria-tema-claro-032.md) conserva inventario, paleta y 158 pares calculados.
 
 ## Contexto y objetivo
 

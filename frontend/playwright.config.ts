@@ -42,13 +42,13 @@ export default defineConfig({
     },
     {
       name: 'public',
-      testMatch: /(?:realtime-public|public-polish)\.spec\.ts/,
+      testMatch: /(?:realtime-public|public-polish|theme-public)\.spec\.ts/,
       dependencies: ['setup'],
       use: { storageState },
     },
     {
       name: 'workspace',
-      testMatch: /realtime-workspace\.spec\.ts/,
+      testMatch: /(?:realtime-workspace|theme-workspace)\.spec\.ts/,
       dependencies: ['setup'],
       use: { storageState },
     },
