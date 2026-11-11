@@ -58,3 +58,16 @@ test('administrative resolution retains its existing requirement for an active s
     assert.equal(primaryAction({ ...base, status, resolution: 'administrative', activeSegment: false })?.id, 'startSegment');
   }
 });
+
+test('suspended matches without an active segment focus the enabled segment action, not events or an inadmissible walkover close', () => {
+  for (const resolution of ['regular', 'administrative', 'walkover'] as const) {
+    for (const closeReady of [false, true]) {
+      assert.deepEqual(primaryAction({ ...base, status: 'suspended', resolution, activeSegment: false, closeReady, lineupDirty: true, draftEvents: 2 }), {
+        id: 'startSegment', labelKey: 'match.startNextSegment', mode: 'focus', target: '#seccion-campo',
+      });
+    }
+  }
+  assert.equal(primaryAction({ ...base, status: 'suspended', activeSegment: false, canOperate: false }), null);
+  assert.equal(primaryAction({ ...base, status: 'suspended', activeSegment: false, isTerminal: true }), null);
+  assert.equal(primaryAction({ ...base, status: 'suspended' })?.id, 'addEvent');
+});

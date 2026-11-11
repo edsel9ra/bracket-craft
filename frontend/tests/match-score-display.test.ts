@@ -3,7 +3,7 @@ import test from 'node:test';
 import { matchScoreDisplay } from '../app/utils/matchScoreDisplay.ts';
 
 test('unstarted matches have a neutral marker, including a live status without a segment', () => {
-  for (const status of ['scheduled', 'live', 'interrupted']) {
+  for (const status of ['scheduled', 'live', 'interrupted', 'suspended']) {
     assert.deepEqual(matchScoreDisplay({ status, segments: [], score: { home: null, away: null } }), {
       kind: 'pending', home: null, away: null, labelKey: 'match.scorePending',
     });
@@ -11,7 +11,7 @@ test('unstarted matches have a neutral marker, including a live status without a
 });
 
 test('started segments display zeroes without goals and retain reported goals', () => {
-  for (const status of ['scheduled', 'live', 'interrupted']) {
+  for (const status of ['scheduled', 'live', 'interrupted', 'suspended']) {
     const input = { status, segments: [{ minute_start: 0 }], score: { home: null, away: null } };
     assert.deepEqual(matchScoreDisplay(input), { kind: 'live', home: 0, away: 0, labelKey: 'match.scoreLive' });
     assert.equal(matchScoreDisplay({ ...input, score: { home: 3, away: 0 } }).home, 3);
