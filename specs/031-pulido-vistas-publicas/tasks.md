@@ -22,19 +22,19 @@ Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de docume
 
 ## PR B — Tablas y acceso público (T5–T8)
 
-- [ ] **T5. Priorizar las tres columnas móviles y conservar tablas/estadísticas completas.** RF-013–016; RNF-001, RNF-003–006. Después de PR A. 30 min.
+- [x] **T5. Priorizar las tres columnas móviles y conservar tablas/estadísticas completas.** RF-013–016; RNF-001, RNF-003–006. Después de PR A. 30 min.
   - Hecho cuando: Posición/Jugador/Goles o Posición/Equipo/GF son las columnas iniciales, identidad sticky y resto consultable; Goles se presenta antes de Equipo en jugadores sin quitar columna ni alterar filas. Recuentos indican filas mostradas y criterio actual consultable; props/eventos, foto/iniciales, rank/empates, orden servidor y load-more intactos. Tests estáticos existentes conservados/ampliados; visibilidad geométrica se mide en T10.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-stats.test.ts && pnpm run typecheck`.
 
-- [ ] **T6. Acceso de teclado, pista y equipo sticky en clasificación.** RF-017; RNF-002–005. 20 min.
+- [x] **T6. Acceso de teclado, pista y equipo sticky en clasificación.** RF-017; RNF-002–005. 20 min.
   - Hecho cuando: la tabla pública usa `HorizontalScroll` explícitamente importado, región nombrada con foco y pista; identidad de equipo sticky con fondo adecuado, caption/cabeceras/celdas intactos. Tests impiden restaurar `.table-scroll` sin foco o introducir overflow de documento; comprobación axe real de la corrección en T10.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-navigation.test.ts && pnpm run lint`.
 
-- [ ] **T7. Anclas tempranas, ejemplo de portada y reflow de lista de partidos.** RF-002–004, RF-018; RNF-003, RNF-005/006. 25 min.
+- [x] **T7. Anclas tempranas, ejemplo de portada y reflow de lista de partidos.** RF-002–004, RF-018; RNF-003, RNF-005/006. 25 min.
   - Hecho cuando: portada accede a torneos y detalle a resultados/estadísticas antes de recorrer equipos; destinos identificables no tapados, anclas sin JS y sin rutas/consultas nuevas. Registro/documentación y equipos siguen disponibles. Marcador fijo rotulado ejemplo, sin afirmación «En vivo»; equipos largos/estado/fecha/score y controles de partidos no se solapan. Textos ES/EN y tests presentes.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-navigation.test.ts tests/public-tournament.test.ts && pnpm run typecheck`.
 
-- [ ] **T8. Proteger ámbito, paginación, privacidad de presentación y diálogo existentes.** RF-001, RF-010/011, RF-013/014, RF-016, RF-019; RNF-001/006. Depende de T4–T7. 20 min.
+- [x] **T8. Proteger ámbito, paginación, privacidad de presentación y diálogo existentes.** RF-001, RF-010/011, RF-013/014, RF-016, RF-019; RNF-001/006. Depende de T4–T7. 20 min.
   - Hecho cuando: tests existentes de público comprueban ámbito inicial torneo completo, cambio/restauración explícitos en ambas tablas, posiciones compartidas y continuación, vacíos/errores existentes, placeholders, foto ausente/fallida y formación solo publicada con segmento/equivalente textual. Ningún cambio de backend/API/permisos ni cálculo local de ganadores/rank; no se reimplementan T15/T16. Las pruebas de foco y red anónima se completan en T9/T10.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-navigation.test.ts tests/public-stats.test.ts tests/public-lineup.test.ts tests/public-tournament.test.ts && pnpm run typecheck`.
 
@@ -52,8 +52,8 @@ Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de docume
 ## Reglas de entrega
 
 - PR A → PR B → PR C, en dependencia; cada PR conserva suites existentes verdes y evidencia de su superficie, no difiere fallos conocidos al siguiente. La pasada completa de aceptación se repite en T10 sobre el conjunto final.
-- El usuario autorizó implementar PR A en la misma rama, sin abrir PR. PR B/C requieren su siguiente encargo.
-- Mantener la spec en aprobada hasta validación del conjunto y autorización explícita de cierre. Solo T1–T4 están ejecutadas.
+- El usuario autorizó PR A y después PR B desde main actualizado en `devin/1794415336-spec-031-tablas-navegacion`, sin abrir PR. PR C requiere su siguiente encargo.
+- Mantener la spec en aprobada hasta validación del conjunto y autorización explícita de cierre. T1–T8 ejecutadas; T9/T10 pendientes.
 
 ## Evidencia PR A — 2026-11-11
 
@@ -64,3 +64,14 @@ Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de docume
 - Teclado: scroll con flecha, diálogo de formación/Escape/retorno de foco, actualización de trazos al redimensionar y reduced-motion comprobados (`031-a-interactions.json`). Sin animación añadida ni excepciones 029 nuevas.
 - Composiciones antes/después revisadas: `/home/ubuntu/ui-audit/031-a-pr/{demo-8,4,8,16,5}-{desktop,mobile}.png`. Datos y geometría en `031-a-{before,after}/measurements.json`. Fixtures retirados: cuatro torneos/33 equipos y un torneo E2E/dos equipos/dos jugadores; contadores finales cero en `031-a-cleanup{,-e2e}.log`. Demo y fixtures anteriores conservados.
 - No se han ejecutado T5–T10 ni la aceptación global de portada/estadísticas/clasificación; permanece pendiente el arreglo de clasificación de PR B y el gate CI de PR.
+
+## Evidencia PR B — 2026-11-11
+
+- T5–T8: rojo antes del código, 36/14/6/75 tests focales verdes. Revisión posterior añadió guardas de caption/contexto originales y cabecera Posición sin corte de palabra. Logs `031-b-t{5,6,7,8}-{red,green}.log`, `031-b-review-red.log` y `031-b-header-red.log`, bajo `/home/ubuntu/ui-audit/`.
+- Suite final: 871 tests, 869 pass, 0 fail, 2 skip; Node 24.22.2/pnpm 12.12.1. Test/typecheck/lint/build/typecheck:e2e salida 0 (`031-b-final-checks{,-css}.log`). E2E existente `operation-flow`: 2 passed (45.8s), configuración externa de Chromium, sin modificar escenario/configuración del repo.
+- Veinte vistas reales por pasada a 1440×900/390×844: portada, detalle, bracket, ambas estadísticas, fase, formación gráfica/textual, clasificación y partidos. Después: cero violaciones axe 4.10.3, errores de página y overflow de documento. `scrollable-region-focusable`: dos apariciones antes, cero después. JSON, peticiones y campos en `031-b-{before,after}/`.
+- Móvil: jugadores 767,30→752/278 px, Posición/Jugador→Posición/Jugador/Goles; equipos 523,72→528/278 px, las tres prioridades conservadas. Clasificación 760/320 px con pista, foco, fondo opaco y equipo sticky (desviación 0 px al extremo). Desktop: 8/6/11 columnas completas.
+- Portada: acceso nuevo Y=602,89/487,99 (desktop/móvil); tarjetas Y=876,89/1130,45→876,89/1202,74, sin prometer adelantar las tarjetas. Selector del detalle Y=819,86/1117,06→585,86/504,06; accesos Y=498,36/332,25. Marcador rotulado «Marcador de ejemplo».
+- Matriz observada de seis lecturas, queries y campos idéntica, incluidos orden/rank. Cuatro scripts idénticos a main salvo import de la tabla extraída (`031-b-scripts.json`); ninguna escritura ni cambio de API/backend/permisos/useApi. Doce comprobaciones reales adicionales: ocho anclas sin JS, foco/sticky en ambas resoluciones y continuación 50→96 jugadores respetando empates (`031-b-interactions{,-normal.log,.json}`).
+- Composiciones etiquetadas/revisadas en `031-b-pr/`; sin excepciones 029 nuevas. Dos fixtures E2E creados y retirados (cuatro equipos/cuatro jugadores en total), contadores finales cero en `031-b-cleanup-e2e{,-first}.log`. Demo y fixtures anteriores conservados.
+- Limitación: el arnés extra con respuestas simuladas de equipos no completó los casos de paginación/vacío/error; no se cuentan como verificados en navegador. El devserver emitió `[NUXT_E1001] A composable that requires access to the Nuxt instance was called outside of a plugin, Nuxt hook, Nuxt middleware, or Vue setup function.` Entorno Docker comprobado: Node 24.22.2/Nuxt 4.6.4, volúmenes independientes del build; reinicio local no eliminó el aviso. No se cambió lógica fuera del alcance para ocultarlo. Vacío/error y continuación de ambas tablas mantienen cobertura unitaria; T9/T10 y CI de PR quedan pendientes.

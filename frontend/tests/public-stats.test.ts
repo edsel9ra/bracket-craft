@@ -63,6 +63,29 @@ const DEFINITION_KEYS = [
   'public.statsExclusions',
 ] as const;
 
+test('031 RF-015: the initial columns prioritize position, identity and goals without removing metrics', () => {
+  const headings = (source: string) => [...source.slice(source.indexOf('<thead>'), source.indexOf('</thead>')).matchAll(/t\('([^']+)'\)/g)].map(match => match[1]);
+  assert.deepEqual(headings(PLAYER_TABLE), ['public.position', 'public.player', 'public.goals', 'public.team', 'public.yellowCards', 'public.redCards', 'public.cleanSheets', 'public.played']);
+  assert.deepEqual(headings(TEAM_TABLE), ['public.position', 'setup.teams', 'public.goalsFor', 'public.goalsAgainst', 'public.cleanSheets', 'public.fairPlayPoints']);
+  const body = PLAYER_TABLE.slice(PLAYER_TABLE.indexOf('<tbody>'));
+  assert.ok(body.indexOf('{{ row.goals }}') < body.indexOf('{{ row.team_name }}'));
+  for (const source of [PLAYER_TABLE, TEAM_TABLE]) {
+    assert.match(source, /table-layout:\s*fixed/);
+    assert.match(source, /thead th:first-child\s*\{[^}]*white-space:\s*nowrap/);
+    assert.match(source, /overflow-wrap:\s*anywhere/);
+    assert.match(source, /position:\s*sticky/);
+    assert.match(source, /public\.rowsShown/);
+  }
+});
+
+test('031 RF-014/016: visible row counts and current ordering are explained in both languages', () => {
+  for (const key of ['public.rowsShown', 'public.playerStatsOrder', 'public.teamStatsOrder']) {
+    assert.equal(I18N.split(`'${key}':`).length - 1, 2, key);
+  }
+  assert.match(PLAYER_TABLE, /public\.playerStatsOrder/);
+  assert.match(TEAM_TABLE, /public\.teamStatsOrder/);
+});
+
 test('RF-031: both stats tables show the clean-sheet legend beside the figure', () => {
   for (const source of [PLAYER_TABLE, TEAM_TABLE]) {
     assert.match(source, /stats-definition/, 'legend paragraph missing');

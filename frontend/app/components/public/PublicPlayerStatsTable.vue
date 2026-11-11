@@ -72,7 +72,7 @@ function initials(row: PlayerStatRow): string {
         <p class="eyebrow">{{ t('public.stats') }}</p>
         <h2>{{ t('public.playerStats') }}</h2>
       </div>
-      <span class="muted">{{ t('public.playersCount', { count: rows.length }) }}</span>
+      <span class="muted">{{ t('public.rowsShown', { count: rows.length }) }}</span>
     </div>
     <StateMessage v-if="!rows.length" kind="empty" class="empty-state compact">{{ t('public.noPlayerStats') }}</StateMessage>
     <HorizontalScroll v-else :label="t('public.playerStats')">
@@ -82,8 +82,8 @@ function initials(row: PlayerStatRow): string {
           <tr>
             <th scope="col">{{ t('public.position') }}</th>
             <th scope="col">{{ t('public.player') }}</th>
-            <th scope="col">{{ t('public.team') }}</th>
             <th scope="col">{{ t('public.goals') }}</th>
+            <th scope="col">{{ t('public.team') }}</th>
             <th scope="col">{{ t('public.yellowCards') }}</th>
             <th scope="col">{{ t('public.redCards') }}</th>
             <th scope="col">{{ t('public.cleanSheets') }}</th>
@@ -108,8 +108,8 @@ function initials(row: PlayerStatRow): string {
                 <strong>{{ row.first_name }} {{ row.last_name }}</strong>
               </div>
             </td>
-            <td>{{ row.team_name }}</td>
             <td>{{ row.goals }}</td>
+            <td>{{ row.team_name }}</td>
             <td>{{ row.yellow_cards }}</td>
             <td>{{ row.red_cards }}</td>
             <td>{{ row.clean_sheets }}</td>
@@ -119,6 +119,7 @@ function initials(row: PlayerStatRow): string {
       </table>
     </HorizontalScroll>
     <div id="public-player-stats-definitions" class="stats-definitions muted" role="note">
+      <p class="stats-definition">{{ t('public.playerStatsOrder') }}</p>
       <p class="stats-definition">{{ t('public.goalsDefinition') }}</p>
       <p class="stats-definition">{{ t('public.cleanSheetDefinition') }}</p>
       <p class="stats-definition">{{ t('public.statsExclusions') }}</p>
@@ -145,7 +146,7 @@ thead th {
   border-bottom: 1px solid var(--color-line);
   white-space: nowrap;
 }
-thead th:nth-child(n+4) { text-align: right; }
+thead th:nth-child(3), thead th:nth-child(n+5) { text-align: right; }
 tbody td {
   padding: var(--space-3);
   font-size: var(--text-md);
@@ -155,7 +156,7 @@ tbody td {
 tbody tr:nth-child(even) { background: color-mix(in srgb, var(--color-highlight) 2%, transparent); }
 tbody tr:hover { background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
 tbody td:first-child { color: var(--color-accent); font-weight: 800; text-align: center; width: 2.5rem; }
-tbody td:nth-child(n+4) { text-align: right; font-weight: 600; }
+tbody td:nth-child(3), tbody td:nth-child(n+5) { text-align: right; font-weight: 600; }
 tbody tr:last-child td { border-bottom: 0; }
 .stats-player { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .player-photo {
@@ -179,4 +180,16 @@ tbody tr:last-child td { border-bottom: 0; }
 .stats-definitions { display: grid; gap: var(--space-1); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
 .stats-definition { margin: 0; font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere; color: var(--color-muted); }
 .load-more { display: block; margin: var(--space-4) auto 0; }
+@media (max-width: 760px) {
+  table { table-layout: fixed; min-width: 752px; }
+  thead th, tbody td { padding: var(--space-2); }
+  thead th { white-space: normal; letter-spacing: 0; overflow-wrap: anywhere; }
+  thead th:first-child { width: 72px; white-space: nowrap; }
+  thead th:nth-child(2), tbody td:nth-child(2) { width: 136px; min-width: 0; max-width: none; }
+  thead th:nth-child(3) { width: 56px; }
+  thead th:nth-child(4) { width: 144px; }
+  .stats-player { align-items: start; }
+  .stats-player strong { min-width: 0; overflow-wrap: anywhere; }
+  .player-photo { width: var(--space-6); height: var(--space-6); }
+}
 </style>
