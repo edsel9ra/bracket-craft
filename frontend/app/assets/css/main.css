@@ -1,3 +1,6 @@
+@import './tokens.css';
+@import './fonts.css';
+
 :root {
   color-scheme: dark;
   --ink: #f4f0e7;
@@ -27,7 +30,7 @@ body {
   min-width: 320px;
   background: #0c0f0c;
   color: var(--ink);
-  font-family: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -35,6 +38,11 @@ body {
 ::selection {
   background: var(--accent);
   color: var(--accent-ink);
+}
+
+h1, h2, h3, h4, h5, h6, .scoreline, .scoreboard, .bracket-team strong {
+  font-family: var(--font-display);
+  font-stretch: 75%;
 }
 
 a,
