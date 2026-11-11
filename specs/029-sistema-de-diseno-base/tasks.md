@@ -15,8 +15,11 @@ Comandos en `frontend/` dentro de un contenedor `node:24` con pnpm 12.12.1.
 - [x] **T6. Sustituir los 19 `window.confirm`** (incluidos la operación de partido y los asistentes) y adaptar los 2 pasos del E2E. RF-019, RF-021
   - Hecho cuando: `no-native-dialogs.test.ts` pasa, `pnpm test`, `pnpm run typecheck:e2e` y `lint` pasan, y el job `e2e` de CI pasa.
   - Verificación local: tests 822 pass/0 fail/2 skip; typecheck, lint, build y typecheck:e2e OK; E2E `operation-flow` 2 pass (publicación y cierre con el diálogo propio). CI pendiente de abrir el PR; no se declara verificada.
-- [ ] **T7. Migrar las vistas públicas** (portada, detalle del torneo, `components/public/*`, `LanguageSwitcher`, `TeamCrest`). RF-016, RF-022
+- [x] **T7. Migrar las vistas públicas** (portada, detalle del torneo, `components/public/*`, `LanguageSwitcher`, `TeamCrest`). RF-016, RF-022
   - Hecho cuando: `design-scales.test.ts` las recorre sin violaciones fuera de `DESIGN_EXCEPTIONS` y existen capturas antes/después a 1440 y 390 px.
+  - Verificación local: 824 pass/0 fail/2 skip; typecheck, lint, build y typecheck:e2e OK (Node 24, pnpm 12.12.1). Guardián con 24 excepciones específicas y 21 entradas pendientes, impresas por el test. Los estilos globales compartidos de `main.css` quedan pendientes de T9, sin migrar pantallas privadas.
+  - Capturas: `/home/ubuntu/ui-audit/029-before/` (32) y `029-after/` (12), comparadas visualmente en ambas resoluciones. Se corrigieron la reducción excesiva de los titulares y el apilado de cabeceras a 390px. Excepciones VI-1 para conservar la composición fluida de los heroes y el marcador ilustrado; restantes diferencias de escala y mezcla de colores sobre tokens.
+  - Límites del baseline: el demo redirige organización al Workspace y administración a 403; invitación capturada en estado inválido (no se obtuvo enlace válido). El demo de eliminación directa no presenta clasificación de liga. Sin axe nuevo ni CI; T8–T10 siguen pendientes.
 - [ ] **T8. Migrar autenticación, cuenta, organización, invitación, 403, administración y miembros.** RF-016, RF-022
   - Hecho cuando: como en T7, para estas pantallas.
 - [ ] **T9. Migrar el Workspace** (`WorkspaceShell`, listado, calendario, plantillas, parte de página de la configuración y `FormatWarning`). RF-016, RF-022
