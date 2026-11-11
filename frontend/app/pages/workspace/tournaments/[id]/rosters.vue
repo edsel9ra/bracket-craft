@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { focusFormAnchor } from '~/utils/formAnchor';
 import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
@@ -486,8 +487,9 @@ await loadPage();
     <main id="main-content" class="workspace-shell">
       <PageHeader class="container" :title="t('tournament.rosters.title')">
         <template #context>{{ tournamentLabel }}</template>
-        <template v-if="returnToHref" #actions>
-          <a class="button-secondary" :href="returnToHref">{{ t('tournament.rosters.backToOperation') }}</a>
+        <template v-if="returnToHref || (!loading && !loadError && teams.length && canManageTournaments)" #actions>
+          <a v-if="!loading && !loadError && teams.length && canManageTournaments" class="button-secondary" href="#player-entry" @click="focusFormAnchor">{{ t('tournament.rosters.addAction') }}</a>
+          <a v-if="returnToHref" class="button-secondary" :href="returnToHref">{{ t('tournament.rosters.backToOperation') }}</a>
         </template>
       </PageHeader>
 
@@ -542,8 +544,37 @@ await loadPage();
               <span v-if="reactivateGuidance.hintKey">{{ t(reactivateGuidance.hintKey) }}</span>
             </p>
 
+            <section class="panel panel-wide roster-list-panel" :aria-busy="rosterLoading">
+              <div class="panel-heading">
+                <div><p class="eyebrow">{{ t('tournament.rosters.listEyebrow') }}</p><h2>{{ t('tournament.rosters.listTitle', { team: selectedTeam?.name || '' }) }}</h2></div>
+              </div>
+              <p v-if="rosterError" class="form-error" role="alert">{{ rosterError }}</p>
+              <p v-if="rosterLoading" class="muted-note" role="status">{{ t('setup.loading') }}</p>
+              <div v-else-if="rosters.length" class="roster-list">
+                <div v-for="roster in rosters" :key="roster.roster_id" class="roster-card">
+                  <img v-if="roster.photo_url && roster.photo_consent" :src="roster.photo_url" :alt="`${roster.first_name} ${roster.last_name}`" class="roster-photo" />
+                  <div v-else class="roster-photo roster-photo-empty" aria-hidden="true">{{ roster.first_name.charAt(0) }}</div>
+                  <div class="roster-card-info">
+                    <strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong>
+                    <small>{{ t('setup.age', { age: roster.age }) }}</small>
+                    <small>{{ roster.is_active ? t('tournament.rosters.stateActive') : t('tournament.rosters.stateRetired') }}</small>
+                  </div>
+                  <div v-if="canManageTournaments" class="photo-actions">
+                    <button class="player-status" type="button" :disabled="statusBusyRosterId === roster.roster_id" @click="changeRosterStatus(roster)">
+                      {{ roster.is_active ? t('tournament.rosters.retire') : t('tournament.rosters.reactivate') }}
+                    </button>
+                    <button class="photo-consent" type="button" :disabled="photoBusyRosterId === roster.roster_id" @click="toggleRosterPhotoConsent(roster)">
+                      {{ roster.photo_consent ? t('setup.revokePhotoConsent') : t('setup.grantPhotoConsent') }}
+                    </button>
+                    <label v-if="roster.photo_consent" class="photo-picker">{{ roster.photo_url ? t('setup.replacePhoto') : t('setup.uploadPhoto') }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="photoBusyRosterId === roster.roster_id" @change="uploadRosterPhoto($event, roster.roster_id)" /></label>
+                  </div>
+                </div>
+              </div>
+              <p v-else class="muted-note">{{ t('setup.noRosterPlayers') }}</p>
+            </section>
+
             <div class="roster-grid">
-              <form v-if="canManageTournaments" class="panel" :aria-busy="busy" novalidate @submit.prevent="createPlayer">
+              <form id="player-entry" v-if="canManageTournaments" class="panel" :aria-busy="busy" novalidate @submit.prevent="createPlayer">
                 <div class="panel-heading">
                   <div><p class="eyebrow">{{ t('tournament.rosters.addEyebrow') }}</p><h2>{{ t('tournament.rosters.addTitle') }}</h2></div>
                 </div>
@@ -610,34 +641,6 @@ await loadPage();
               <li v-for="warning in rosterWarnings" :key="warning">{{ warning }}</li>
             </ul>
 
-            <section class="panel panel-wide roster-list-panel" :aria-busy="rosterLoading">
-              <div class="panel-heading">
-                <div><p class="eyebrow">{{ t('tournament.rosters.listEyebrow') }}</p><h2>{{ t('tournament.rosters.listTitle', { team: selectedTeam?.name || '' }) }}</h2></div>
-              </div>
-              <p v-if="rosterError" class="form-error" role="alert">{{ rosterError }}</p>
-              <p v-if="rosterLoading" class="muted-note" role="status">{{ t('setup.loading') }}</p>
-              <div v-else-if="rosters.length" class="roster-list">
-                <div v-for="roster in rosters" :key="roster.roster_id" class="roster-card">
-                  <img v-if="roster.photo_url && roster.photo_consent" :src="roster.photo_url" :alt="`${roster.first_name} ${roster.last_name}`" class="roster-photo" />
-                  <div v-else class="roster-photo roster-photo-empty" aria-hidden="true">{{ roster.first_name.charAt(0) }}</div>
-                  <div class="roster-card-info">
-                    <strong>#{{ roster.dorsal_number }} · {{ roster.first_name }} {{ roster.last_name }}</strong>
-                    <small>{{ t('setup.age', { age: roster.age }) }}</small>
-                    <small>{{ roster.is_active ? t('tournament.rosters.stateActive') : t('tournament.rosters.stateRetired') }}</small>
-                  </div>
-                  <div v-if="canManageTournaments" class="photo-actions">
-                    <button class="player-status" type="button" :disabled="statusBusyRosterId === roster.roster_id" @click="changeRosterStatus(roster)">
-                      {{ roster.is_active ? t('tournament.rosters.retire') : t('tournament.rosters.reactivate') }}
-                    </button>
-                    <button class="photo-consent" type="button" :disabled="photoBusyRosterId === roster.roster_id" @click="toggleRosterPhotoConsent(roster)">
-                      {{ roster.photo_consent ? t('setup.revokePhotoConsent') : t('setup.grantPhotoConsent') }}
-                    </button>
-                    <label v-if="roster.photo_consent" class="photo-picker">{{ roster.photo_url ? t('setup.replacePhoto') : t('setup.uploadPhoto') }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="photoBusyRosterId === roster.roster_id" @change="uploadRosterPhoto($event, roster.roster_id)" /></label>
-                  </div>
-                </div>
-              </div>
-              <p v-else class="muted-note">{{ t('setup.noRosterPlayers') }}</p>
-            </section>
           </template>
         </template>
       </section>
@@ -646,6 +649,7 @@ await loadPage();
 </template>
 
 <style scoped>
+#player-entry { scroll-margin-top: var(--space-10); }
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .return-link { margin-top: var(--space-4); }
 .roster-content { display: grid; gap: var(--space-4); padding-bottom: 6vh; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { focusFormAnchor } from '~/utils/formAnchor';
 import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
@@ -276,14 +277,40 @@ await loadData();
     <main id="main-content" class="members-shell">
       <PageHeader class="container" :title="t('members.title')">
         <template #context>{{ t('members.eyebrow') }}</template>
+        <template v-if="!loading && !pageError" #actions>
+          <a class="button-secondary" href="#invite-member" @click="focusFormAnchor">{{ t('members.inviteAction') }}</a>
+        </template>
       </PageHeader>
 
       <section class="container members-content">
         <div v-if="loading" class="empty-state" role="status">{{ t('common.loading') }}</div>
         <div v-else-if="pageError" class="form-error" role="alert">{{ pageError }}</div>
         <template v-else>
+          <Surface as="section" class="panel members-panel">
+            <div class="panel-heading"><div><p class="eyebrow">{{ t('members.directoryEyebrow') }}</p><h2>{{ t('members.directory') }}</h2></div><span class="muted-note">{{ members.length }}</span></div>
+            <div class="member-table-wrap">
+              <table class="member-table">
+                <thead><tr><th>{{ t('members.person') }}</th><th>{{ t('members.role') }}</th><th>{{ t('members.status') }}</th><th>{{ t('members.actions') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="member in pagedMembers" :key="member.organization_user_id">
+                    <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
+                    <td>
+                      <select :value="member.role_code" :aria-label="`${t('members.role')}: ${member.full_name}`" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
+                        <option v-if="!isAssignableRole(member.role_code)" :value="member.role_code">{{ t(roleKey(member.role_code)) }}</option>
+                        <option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option>
+                      </select>
+                    </td>
+                    <td><span class="status-tag" :class="{ inactive: !member.is_active }">{{ t(memberStatusLabelKey(member.is_active ? 'active' : 'inactive')) }}</span></td>
+                    <td><button class="text-button" type="button" :disabled="saving" @click="toggleMember(member)">{{ member.is_active ? t('members.deactivate') : t('members.activate') }}</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <Button variant="secondary" v-if="hasMoreMembers" class="button-secondary load-more" type="button" @click="loadMoreMembers">{{ t('common.loadMore') }}</Button>
+          </Surface>
+
           <div class="members-grid">
-            <form class="panel" :aria-busy="invitationControlsDisabled(invitationOperation)" novalidate @submit.prevent="inviteMember">
+            <form id="invite-member" class="panel" :aria-busy="invitationControlsDisabled(invitationOperation)" novalidate @submit.prevent="inviteMember">
               <div>
                 <p class="eyebrow">{{ t('members.inviteEyebrow') }}</p>
                 <h2>{{ t('members.inviteTitle') }}</h2>
@@ -323,28 +350,7 @@ await loadData();
 
           <div v-if="actionError" class="form-error" role="alert">{{ actionError }}</div>
 
-          <Surface as="section" class="panel members-panel">
-            <div class="panel-heading"><div><p class="eyebrow">{{ t('members.directoryEyebrow') }}</p><h2>{{ t('members.directory') }}</h2></div><span class="muted-note">{{ members.length }}</span></div>
-            <div class="member-table-wrap">
-              <table class="member-table">
-                <thead><tr><th>{{ t('members.person') }}</th><th>{{ t('members.role') }}</th><th>{{ t('members.status') }}</th><th>{{ t('members.actions') }}</th></tr></thead>
-                <tbody>
-                  <tr v-for="member in pagedMembers" :key="member.organization_user_id">
-                    <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
-                    <td>
-                      <select :value="member.role_code" :aria-label="`${t('members.role')}: ${member.full_name}`" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
-                        <option v-if="!isAssignableRole(member.role_code)" :value="member.role_code">{{ t(roleKey(member.role_code)) }}</option>
-                        <option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option>
-                      </select>
-                    </td>
-                    <td><span class="status-tag" :class="{ inactive: !member.is_active }">{{ t(memberStatusLabelKey(member.is_active ? 'active' : 'inactive')) }}</span></td>
-                    <td><button class="text-button" type="button" :disabled="saving" @click="toggleMember(member)">{{ member.is_active ? t('members.deactivate') : t('members.activate') }}</button></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <Button variant="secondary" v-if="hasMoreMembers" class="button-secondary load-more" type="button" @click="loadMoreMembers">{{ t('common.loadMore') }}</Button>
-          </Surface>
+
         </template>
       </section>
     </main>
@@ -352,6 +358,7 @@ await loadData();
 </template>
 
 <style scoped>
+#invite-member { scroll-margin-top: var(--space-10); }
 .members-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .members-content { display: grid; gap: var(--space-4); padding-bottom: var(--space-10); }
 .members-grid { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: var(--space-4); align-items: start; }

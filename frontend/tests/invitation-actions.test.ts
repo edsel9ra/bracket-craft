@@ -259,8 +259,8 @@ test('the invitation operation and the member directory keep separate busy state
 
   const invitePanelStart = membersTemplate.indexOf("members.inviteEyebrow");
   const directoryPanelStart = membersTemplate.indexOf("members.directoryEyebrow");
-  assert.ok(invitePanelStart > 0 && directoryPanelStart > invitePanelStart);
-  const invitationPanels = membersTemplate.slice(invitePanelStart, directoryPanelStart);
+  assert.ok(directoryPanelStart > 0 && invitePanelStart > directoryPanelStart);
+  const invitationPanels = membersTemplate.slice(invitePanelStart);
   assert.doesNotMatch(
     invitationPanels,
     /saving/,

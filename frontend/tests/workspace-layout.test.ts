@@ -4,8 +4,65 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { featureSource } from './support/sources.ts';
+import { focusFormAnchor } from '../app/utils/formAnchor.ts';
 
 const source = (file: string) => readFileSync(new URL(`../app/${file}`, import.meta.url), 'utf8');
+
+test('LY-1 places lists before creation forms and scopes header shortcuts to usable forms', () => {
+  for (const [file, list, id, permission] of [
+    ['members.vue', 'class="member-table"', 'invite-member', '!loading && !pageError'],
+    ['tournaments/[id]/calendar.vue', 'id="operacion"', 'match-entry', '!loading && !loadError && canManageTournaments'],
+    ['tournaments/[id]/rosters.vue', 'class="roster-list"', 'player-entry', '!loading && !loadError && teams.length && canManageTournaments'],
+  ]) {
+    const page = source(`pages/workspace/${file}`);
+    assert.ok(page.indexOf(list!) < page.indexOf(`<form id="${id}"`), file);
+    assert.match(page, new RegExp(`href="#${id}" @click="focusFormAnchor"`));
+    assert.ok(page.includes(permission!));
+    assert.match(page, /scroll-margin-top: var\(--space-10\)/);
+  }
+});
+
+test('form anchors focus the first usable field after native navigation, preserving modified clicks and empty targets', () => {
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const originalFrame = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
+  let callback: (() => void) | undefined;
+  let focused = false;
+  let formExists = true;
+  let fieldExists = true;
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: {
+    getElementById: (id: string) => {
+      assert.equal(id, 'add-player');
+      return formExists ? { querySelector: (selector: string) => {
+        assert.match(selector, /:not\(\[disabled\]\)/);
+        assert.match(selector, /:not\(\[type="hidden"\]\)/);
+        return fieldExists ? { focus: (options: unknown) => { assert.deepEqual(options, { preventScroll: true }); focused = true; } } : null;
+      } } : null;
+    },
+  } });
+  Object.defineProperty(globalThis, 'requestAnimationFrame', { configurable: true, value: (fn: () => void) => { callback = fn; } });
+  const event = { button: 0, currentTarget: { hash: '#add-player' } } as unknown as MouseEvent;
+  try {
+    focusFormAnchor(event);
+    assert.equal(focused, false);
+    callback!();
+    assert.equal(focused, true);
+    callback = undefined;
+    for (const property of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey', 'defaultPrevented']) focusFormAnchor({ ...event, [property]: true });
+    focusFormAnchor({ ...event, button: 1 });
+    focusFormAnchor({ ...event, currentTarget: null });
+    formExists = false;
+    focusFormAnchor(event);
+    formExists = true;
+    fieldExists = false;
+    focusFormAnchor(event);
+    assert.equal(callback, undefined);
+  } finally {
+    for (const [key, descriptor] of [['document', originalDocument], ['requestAnimationFrame', originalFrame]] as const) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});
 
 test('PageHeader owns one condensed section-sized h1 and optional context, state and actions', () => {
   const header = source('components/ui/PageHeader.vue');

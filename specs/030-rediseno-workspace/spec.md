@@ -42,7 +42,7 @@ No aplica: cada rol ve y puede hacer exactamente lo mismo que ahora. Las accione
 ### Cabeceras del Workspace
 
 - RF-001: EL SISTEMA muestra en todas las pantallas del Workspace (listado, configuración, calendario, plantillas, miembros y operación) una cabecera compacta, incluido el listado `/workspace` (HD-1), en lugar del titular de marketing actual.
-- RF-002: A 1440×900 y a 390×844, con los datos demo, EL SISTEMA muestra el inicio del contenido principal de cada pantalla del Workspace dentro de la primera pantalla visible, sin desplazarse.
+- RF-002: A 1440×900 y a 390×844, con los datos demo, EL SISTEMA muestra el inicio del contenido principal de cada pantalla del Workspace dentro de la primera pantalla visible, sin desplazarse. En plantillas, calendario y miembros, el contenido principal es la lista: los formularios quedan detrás, con acceso directo en la cabecera (LY-1).
 - RF-003: La cabecera compacta conserva la información de contexto que se ve hoy (torneo, versión o estado publicado, formato declarado y fase/jornada en la operación) y la jerarquía de encabezados accesible (un único `h1` por página).
 
 ### Operación de partido
@@ -104,6 +104,7 @@ No cambia: se muestran los mismos datos, con los mismos permisos.
 
 - **OP-1 (2026-11-11):** en la operación, las secciones siguen apiladas, con la barra de partido fija arriba, un índice de secciones y la acción principal fija abajo.
 - **HD-1 (2026-11-11):** cabecera compacta en todas las pantallas del Workspace, incluido el listado; el titular grande queda solo en la portada pública.
+- **LY-1 (2026-11-11):** en plantillas, calendario y miembros, la lista precede al formulario de alta/invitación/partido. El slot de acciones de PageHeader ofrece «Añadir jugador», «Añadir partido» o «Invitar» (es/en), solo si el rol puede usar el formulario, mediante un enlace de ancla a su id que enfoca el primer campo o un encabezado con tabindex -1. Sin animación con reduced-motion; sin cambios de peticiones, validaciones ni textos existentes.
 - **SP-1 (2026-11-11):** se dividen la operación de partido y la configuración del torneo, con un máximo de 600 líneas por archivo.
 - **WZ-1 (2026-11-11):** en los asistentes solo se migra la presentación a las escalas, sin cambiar su flujo.
 

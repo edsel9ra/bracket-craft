@@ -3,9 +3,9 @@
 Comandos en `frontend/` con node:24 y pnpm 12.12.1.
 
 **PR A**
-- [ ] **T1. `PageHeader` y cabeceras compactas** en el listado, miembros, calendario y plantillas (la operación y la configuración la reciben en T3/T5). RF-001–003
+- [x] **T1. `PageHeader` y cabeceras compactas** en el listado, miembros, calendario y plantillas (la operación y la configuración la reciben en T3/T5). RF-001–003
   - Hecho cuando: el test de un `h1` por página pasa y las capturas muestran el contenido principal en la primera pantalla a 1440 y 390.
-  - Implementación parcial: cabeceras de 101 px escritorio/84 px móvil y un `h1` verificados. Las listas de plantillas (ambas resoluciones), calendario móvil y miembros móvil siguen bajo el pliegue por los formularios previos; pendiente autorizar su reordenación para RF-002. Evidencias: `/home/ubuntu/ui-audit/030-a-{before,after}/`.
+  - LY-1 aplicada: listas antes de formularios y accesos de ancla con foco, es/en y mismas condiciones de acceso. Cabeceras de 101 px escritorio/84–139 px móvil; un `h1`, sin overflow y contenido principal dentro del viewport en las cinco páginas de PR A. Miembros/calendario/plantillas: inicio en Y=301/351/478 escritorio y 327/431/596 móvil. Enlaces verificados por teclado y con reduced-motion en ambas resoluciones. Node 24/pnpm 12.12.1: 833 tests (831 pass, 2 skip), typecheck, lint, build y typecheck:e2e correctos; E2E local 2 passed. Evidencias: `/home/ubuntu/ui-audit/030-a-{before,after}/`, `030-ly1-{final-checks,operation-flow,capture-final}.log`.
 - [x] **T2. `featureSource()`** en `tests/support/sources.ts` y los 23 tests estáticos migrados a ella, sin cambiar aserciones. RNF-005
   - Hecho cuando: `pnpm test` pasa con el mismo número de tests.
   - Suite existente: 826 antes/826 después; total 831 al añadir cinco tests de layout/recorrido de fuentes (829 pass, 2 skip). 22 lecturas explícitas y el lector genérico de páginas migrados en 17 archivos; aserciones conservadas.

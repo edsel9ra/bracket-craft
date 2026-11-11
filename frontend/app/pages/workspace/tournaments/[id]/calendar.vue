@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { focusFormAnchor } from '~/utils/formAnchor';
 import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
@@ -420,6 +421,9 @@ loading.value = false;
     <main id="main-content" class="workspace-shell">
       <PageHeader class="container" :title="t('tournament.calendar.title')">
         <template #context>{{ tournamentLabel }}</template>
+        <template v-if="!loading && !loadError && canManageTournaments" #actions>
+          <a class="button-secondary" href="#match-entry" @click="focusFormAnchor">{{ t('tournament.calendar.addAction') }}</a>
+        </template>
       </PageHeader>
 
       <section class="container calendar-content">
@@ -446,7 +450,11 @@ loading.value = false;
             </label>
           </div>
 
-          <form class="panel panel-wide" :aria-busy="saving || scheduleBusy" novalidate @submit.prevent="createMatch">
+            <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
+              <li v-for="match in visibleStageMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span><strong v-if="match.bracket_code">{{ match.bracket_code }} · </strong>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
+            </TransitionGroup>
+
+          <form id="match-entry" class="panel panel-wide" :aria-busy="saving || scheduleBusy" novalidate @submit.prevent="createMatch">
             <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
             <h2>{{ t('setup.scheduleMatch') }}</h2>
             <div class="match-form-grid">
@@ -526,9 +534,7 @@ loading.value = false;
                 <code>{{ scheduleResult.seed }}</code>
               </p>
             </div>
-            <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
-              <li v-for="match in visibleStageMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span><strong v-if="match.bracket_code">{{ match.bracket_code }} · </strong>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
-            </TransitionGroup>
+
           </form>
           <div v-if="error" class="form-error" role="alert">{{ error }}</div>
         </template>
@@ -538,6 +544,7 @@ loading.value = false;
 </template>
 
 <style scoped>
+#match-entry { scroll-margin-top: var(--space-10); }
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .calendar-content { display: grid; gap: var(--space-5); padding-bottom: var(--space-10); }
 .calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-5); }

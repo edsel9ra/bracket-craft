@@ -4,6 +4,8 @@ Spec: `specs/030-rediseno-workspace/spec.md` (aprobada el 2026-11-11). Solo fron
 
 ## 1. Archivos y responsabilidades
 
+LY-1: en `rosters.vue`, `calendar.vue` y `members.vue` la lista va antes del formulario; PageHeader incluye un acceso de ancla con foco al primer campo, bajo las condiciones actuales de acceso y respetando reduced-motion.
+
 | Archivo | Responsabilidad | RF |
 |---|---|---|
 | `components/ui/PageHeader.vue` (nuevo) | Cabecera compacta: slot de contexto (rótulo o migas), `title` como único `h1` en tamaño de sección (`--text-xl` fijo, sin `clamp` de display), slot de estado y slot de acciones. Sustituye a los heroes de las páginas del Workspace. | RF-001–003 |
