@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import { nextTick } from 'vue';
 import { useRealtime } from '~/composables/useRealtime';
 import {
@@ -503,7 +505,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       </div>
       <div v-else-if="error" key="error" class="container empty-state" role="alert">
         <span>{{ error }}</span>
-        <button class="button-secondary" type="button" @click="refreshPublicData">{{ refreshing ? t('common.loading') : t('common.retry') }}</button>
+        <Button variant="secondary" class="button-secondary" type="button" @click="refreshPublicData">{{ refreshing ? t('common.loading') : t('common.retry') }}</Button>
       </div>
       <div v-else-if="tournament" key="tournament" class="tournament-content">
         <section class="container tournament-hero">
@@ -516,7 +518,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
         </section>
 
         <section v-if="tournament.teams?.length" class="container public-teams">
-          <div class="panel">
+          <Surface class="panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">{{ t('public.teamsCount', { count: tournament.teams.length }) }}</p>
@@ -530,11 +532,11 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                 <small>{{ team.short_code }}</small>
               </li>
             </ul>
-          </div>
+          </Surface>
         </section>
 
          <section v-if="!stageAwareLayout" class="container public-grid">
-           <div class="panel standings-panel">
+           <Surface class="panel standings-panel">
              <div class="panel-heading">
                <div>
                  <p class="eyebrow">{{ t('public.table') }}</p>
@@ -587,12 +589,12 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  </tbody>
                </table>
              </div>
-             <button v-if="activeStandingsHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings')">
+             <Button variant="secondary" v-if="activeStandingsHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings')">
                {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
-             </button>
-           </div>
+             </Button>
+           </Surface>
 
-           <div class="panel matches-panel">
+           <Surface class="panel matches-panel">
              <div class="panel-heading">
                <div>
                  <p class="eyebrow">{{ t('public.fixtures') }}</p>
@@ -629,10 +631,10 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  </button>
                </article>
              </TransitionGroup>
-             <button v-if="activeMatchesHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
+             <Button variant="secondary" v-if="activeMatchesHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
                {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-             </button>
-           </div>
+             </Button>
+           </Surface>
          </section>
 
          <section v-if="stageAwareLayout" class="container phase-selector" :aria-label="t('setup.stages')">
@@ -712,9 +714,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                        </tbody>
                      </table>
                    </div>
-                   <button v-if="comboHasMore('standings', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings', selectedStage.id, group.groupId)">
+                   <Button variant="secondary" v-if="comboHasMore('standings', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings', selectedStage.id, group.groupId)">
                      {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
-                   </button>
+                   </Button>
 
                    <div class="phase-matches">
                      <div v-if="!matchesForGroup(matches, selectedStage.id, group.groupId).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
@@ -746,9 +748,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                          </button>
                        </article>
                      </TransitionGroup>
-                    <button v-if="comboHasMore('matches', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, group.groupId)">
+                    <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, group.groupId)">
                       {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-                    </button>
+                    </Button>
                    </div>
                  </div>
                </template>
@@ -835,9 +837,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                        </button>
                      </article>
                    </TransitionGroup>
-                 <button v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
+                 <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
                    {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-                 </button>
+                 </Button>
                  </div>
                </template>
              </template>
@@ -847,9 +849,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  :matches="matchesForGroup(matches, selectedStage.id, selectedGroupId)"
                  @open-lineup="openLineup"
                />
-               <button v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
+               <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
                  {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-               </button>
+               </Button>
              </template>
 
              <template v-else>
@@ -882,9 +884,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                    </button>
                  </article>
                </TransitionGroup>
-               <button v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
+               <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
                  {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
-               </button>
+               </Button>
              </template>
            </section>
            <div v-else class="empty-state compact">{{ t('public.noStandings') }}</div>
@@ -892,7 +894,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       </div>
     </Transition>
     <section v-if="tournament" class="container public-stats">
-      <div class="panel stats-panel">
+      <Surface class="panel stats-panel">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">{{ t('public.stats') }}</p>
@@ -926,7 +928,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
         </div>
         <PublicPlayerStatsTable v-if="statsTab === 'players'" :rows="playerStats" :has-more="playerStatsHasMore" :loading-more="statsLoadingMore === 'players'" @load-more="loadMorePlayerStats" />
         <PublicTeamStatsTable v-else :rows="teamStats" :has-more="teamStatsHasMore" :loading-more="statsLoadingMore === 'teams'" @load-more="loadMoreTeamStats" />
-      </div>
+      </Surface>
     </section>
     <PublicLineupModal
       :open="Boolean(selectedLineupMatch)"
@@ -937,84 +939,83 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 </template>
 
 <style scoped>
-.public-shell { min-height: 100vh; padding-bottom: 80px; background: radial-gradient(circle at 84% 0%, rgba(212, 243, 106, 0.08), transparent 30rem), #0c0f0c; }
-.detail-topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 0; }
-.detail-actions { display: flex; align-items: center; gap: 12px; }
-.realtime-status { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.realtime-error, .realtime-reconnecting, .realtime-retrying { color: #ffcb7a; }
-.realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.68rem; text-decoration: underline; }
-.brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.brand-mark:hover { color: var(--accent); }
-.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.tournament-hero { display: flex; justify-content: space-between; align-items: end; gap: 32px; padding: 10vh 0 8vh; animation: rise-in 700ms var(--ease-out) both; }
-.tournament-hero h1 { max-width: 850px; margin: 14px 0 8px; font-size: clamp(3.4rem, 10vw, 8.5rem); line-height: 0.88; letter-spacing: -0.09em; }
-.tournament-meta, .muted { color: var(--muted); }
-.hero-stamp { padding: 14px; border: 1px solid var(--accent); color: var(--accent); font-size: 0.7rem; font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
-.public-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); gap: 18px; }
-.phase-stack { display: grid; gap: 18px; }
-.phase-selector { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
-.phase-chip { padding: 9px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-raised); color: var(--ink); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
-.phase-chip--active { border-color: var(--accent); color: var(--accent); }
-.phase-group { display: grid; gap: 12px; margin-bottom: 18px; }
-.phase-group-title { margin: 8px 0 4px; font-size: 1.15rem; letter-spacing: -0.03em; color: var(--accent); }
-.panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14); }
+/* RF-006/VI-1: título y espaciado del hero conservan su composición fluida. */
+.public-shell { min-height: 100vh; padding-bottom: var(--space-10); background: radial-gradient(circle at 84% 0%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 30rem), var(--color-canvas); }
+.detail-topbar { display: flex; justify-content: space-between; align-items: center; padding: var(--space-6) 0; }
+.detail-actions { display: flex; align-items: center; gap: var(--space-3); }
+.realtime-status { color: var(--color-muted); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.08em; }
+.realtime-error, .realtime-reconnecting, .realtime-retrying { color: var(--color-warning); }
+.realtime-retry { padding: 0; background: transparent; color: var(--color-accent); font-size: var(--text-2xs); text-decoration: underline; }
+.brand-mark { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-ink); font-size: var(--text-xs); font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
+.brand-mark:hover { color: var(--color-accent); }
+.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 18px var(--color-accent); }
+.tournament-hero { display: flex; justify-content: space-between; align-items: end; gap: var(--space-7); padding: 10vh 0 8vh; animation: rise-in 700ms var(--ease-out) both; }
+.tournament-hero h1 { max-width: 850px; margin: var(--space-3) 0 var(--space-2); font-size: clamp(3.4rem, 10vw, 8.5rem); line-height: 0.88; letter-spacing: -0.09em; }
+.tournament-meta, .muted { color: var(--color-muted); }
+.hero-stamp { padding: var(--space-3); border: 1px solid var(--color-accent); color: var(--color-accent); font-size: var(--text-2xs); font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
+.public-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); gap: var(--space-4); }
+.phase-stack { display: grid; gap: var(--space-4); }
+.phase-selector { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.phase-chip { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: var(--color-surface-raised); color: var(--color-ink); font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.phase-chip--active { border-color: var(--color-accent); color: var(--color-accent); }
+.phase-group { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
+.phase-group-title { margin: var(--space-2) 0 var(--space-1); font-size: var(--text-lg); letter-spacing: -0.03em; color: var(--color-accent); }
+.panel { min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 14%, transparent); }
 .phase-panel { animation: rise-in 500ms var(--ease-out) both; }
-.panel-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 20px; }
-.panel-heading h2 { margin: 7px 0 0; font-size: 2rem; letter-spacing: -0.06em; }
-.phase-subheading { margin-top: 28px; margin-bottom: 14px; }
-.phase-subheading h3 { margin: 6px 0 0; font-size: 1.35rem; letter-spacing: -0.04em; }
-.eyebrow { margin: 0; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+.panel-heading { display: flex; justify-content: space-between; align-items: end; gap: var(--space-4); margin-bottom: var(--space-5); }
+.panel-heading h2 { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: -0.06em; }
+.phase-subheading { margin-top: var(--space-6); margin-bottom: var(--space-3); }
+.phase-subheading h3 { margin: var(--space-1) 0 0; font-size: var(--text-lg); letter-spacing: -0.04em; }
+.eyebrow { margin: 0; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 .table-scroll { overflow-x: auto; }
-.standing-team { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.public-team-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
-.public-team-list li { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid rgba(166, 170, 159, 0.15); border-radius: 12px; }
-.public-team-list small { color: var(--muted); font-size: 0.7rem; }
+.standing-team { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.public-team-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.public-team-list li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-muted) 15%, transparent); border-radius: var(--radius-md); }
+.public-team-list small { color: var(--color-muted); font-size: var(--text-2xs); }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
-th { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-align: left; text-transform: uppercase; }
-th, td { padding: 13px 8px; border-bottom: 1px solid rgba(166, 170, 159, 0.14); }
+th { color: var(--color-muted); font-size: var(--text-2xs); font-weight: 700; letter-spacing: 0.1em; text-align: left; text-transform: uppercase; }
+th, td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); }
 tbody tr { transition: background-color 180ms ease, transform 180ms var(--ease-out); }
-tbody tr:hover { background: rgba(212, 243, 106, 0.05); transform: translateX(3px); }
-td { font-size: 0.9rem; }
-td small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
-.rank, .points { color: var(--accent); font-weight: 800; }
-.match-list { position: relative; display: grid; gap: 12px; }
-.match-card { padding: 15px; border: 1px solid rgba(166, 170, 159, 0.15); border-radius: 15px; background: var(--surface-raised); }
-.match-card:hover { border-color: rgba(212, 243, 106, 0.42); transform: translateY(-3px); }
-.match-context, .match-footer { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.match-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 22px 0; font-size: 0.9rem; }
-.match-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
+tbody tr:hover { background: color-mix(in srgb, var(--color-accent) 5%, transparent); transform: translateX(3px); }
+td { font-size: var(--text-md); }
+td small { display: block; margin-top: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); }
+.rank, .points { color: var(--color-accent); font-weight: 800; }
+.match-list { position: relative; display: grid; gap: var(--space-3); }
+.match-card { padding: var(--space-4); border: 1px solid color-mix(in srgb, var(--color-muted) 15%, transparent); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+.match-card:hover { border-color: color-mix(in srgb, var(--color-accent) 42%, transparent); transform: translateY(-3px); }
+.match-context, .match-footer { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.08em; text-transform: uppercase; }
+.match-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--space-3); padding: var(--space-5) 0; font-size: var(--text-md); }
+.match-team { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .match-team--away { justify-content: flex-end; text-align: right; }
-.match-teams strong { color: var(--accent); font-size: 1.2rem; }
-.lineup-trigger { display: block; width: 100%; margin-top: 14px; padding: 13px 0 0; border-top: 1px solid rgba(166, 170, 159, 0.14); background: transparent; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
-.lineup-trigger:hover { color: var(--ink); }
-.empty-state { padding: 28px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
-.loading-state { display: flex; align-items: center; gap: 12px; }
-.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
-.empty-state.compact { padding: 20px; }
-.list-error { margin-bottom: 12px; color: var(--danger); font-size: 0.8rem; }
-.load-more { display: block; margin: 16px auto 0; }
-.stats-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 18px; }
-.stats-scope label { color: var(--muted); font-size: 0.82rem; }
-.stats-scope select { min-width: 0; max-width: 100%; padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); font: inherit; }
-.stats-scope select:hover { border-color: var(--muted); }
-.stats-scope select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
-@media (max-width: 900px) {
+.match-teams strong { color: var(--color-accent); font-size: var(--text-lg); }
+.lineup-trigger { display: block; width: 100%; margin-top: var(--space-3); padding: var(--space-3) 0 0; border-top: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); background: transparent; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.lineup-trigger:hover { color: var(--color-ink); }
+.empty-state { padding: var(--space-6); border: 1px dashed var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); }
+.loading-state { display: flex; align-items: center; gap: var(--space-3); }
+.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 18px var(--color-accent); animation: pulse 1s ease-in-out infinite; }
+.empty-state.compact { padding: var(--space-5); }
+.list-error { margin-bottom: var(--space-3); color: var(--color-danger); font-size: var(--text-sm); }
+.load-more { display: block; margin: var(--space-4) auto 0; }
+.stats-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); }
+.stats-scope label { color: var(--color-muted); font-size: var(--text-sm); }
+.stats-scope select { min-width: 0; max-width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); font: inherit; }
+.stats-scope select:hover { border-color: var(--color-muted); }
+.stats-scope select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+@media (max-width: 1000px) {
   .public-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 620px) {
+@media (max-width: 480px) {
   .container { width: min(100% - 28px, 620px); }
   .tournament-hero { align-items: start; flex-direction: column; padding-top: 8vh; }
   .hero-stamp { align-self: end; }
 }
-@media (max-width: 375px) {
-  .detail-topbar, .detail-actions { align-items: stretch; flex-direction: column; }
-  .detail-actions > * { justify-content: center; text-align: center; }
-  .match-teams { grid-template-columns: 1fr; gap: 7px; text-align: center; }
+@media (max-width: 480px) {
+  .match-teams { grid-template-columns: 1fr; gap: var(--space-2); text-align: center; }
   .match-team--away { justify-content: center; text-align: center; }
 }
 
 .stats-panel { min-width: 0; }
-.stats-tabs { display: flex; gap: 8px; margin: 0 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
-.stats-tab { padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-raised); color: var(--ink); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
-.stats-tab--active { border-color: var(--accent); color: var(--accent); }
+.stats-tabs { display: flex; gap: var(--space-2); margin: 0 0 var(--space-4); border-bottom: 1px solid var(--color-line); padding-bottom: var(--space-2); }
+.stats-tab { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: var(--color-surface-raised); color: var(--color-ink); font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.stats-tab--active { border-color: var(--color-accent); color: var(--color-accent); }
 </style>

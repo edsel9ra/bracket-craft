@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
+import StateMessage from '~/components/ui/StateMessage.vue';
 import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 import { playerInitials } from '~/utils/publicLineup';
 import { playerPhotoSource } from '~/utils/publicStats';
@@ -63,7 +66,7 @@ function initials(row: PlayerStatRow): string {
 </script>
 
 <template>
-  <div class="panel player-stats-panel">
+  <Surface class="panel player-stats-panel">
     <div class="panel-heading">
       <div>
         <p class="eyebrow">{{ t('public.stats') }}</p>
@@ -71,7 +74,7 @@ function initials(row: PlayerStatRow): string {
       </div>
       <span class="muted">{{ t('public.playersCount', { count: rows.length }) }}</span>
     </div>
-    <div v-if="!rows.length" class="empty-state compact" role="status">{{ t('public.noPlayerStats') }}</div>
+    <StateMessage v-if="!rows.length" kind="empty" class="empty-state compact">{{ t('public.noPlayerStats') }}</StateMessage>
     <HorizontalScroll v-else :label="t('public.playerStats')">
       <table aria-describedby="public-player-stats-definitions">
         <caption class="visually-hidden">{{ t('public.playerStats') }}</caption>
@@ -120,59 +123,60 @@ function initials(row: PlayerStatRow): string {
       <p class="stats-definition">{{ t('public.cleanSheetDefinition') }}</p>
       <p class="stats-definition">{{ t('public.statsExclusions') }}</p>
     </div>
-    <button v-if="hasMore" class="button-secondary load-more" type="button" :disabled="loadingMore" @click="emit('load-more')">
+    <Button variant="secondary" v-if="hasMore" class="button-secondary load-more" type="button" :disabled="loadingMore" @click="emit('load-more')">
       {{ loadingMore ? t('common.loading') : t('public.loadMorePlayerStats') }}
-    </button>
-  </div>
+    </Button>
+  </Surface>
 </template>
 
 <style scoped>
 .player-stats-panel { min-width: 0; }
-thead th:nth-child(2), tbody td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 145px; max-width: 180px; background: var(--surface); box-shadow: 5px 0 8px rgba(0, 0, 0, 0.3); }
+.empty-state :deep(p) { margin: 0; }
+thead th:nth-child(2), tbody td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 145px; max-width: 180px; background: var(--color-surface); box-shadow: 5px 0 8px color-mix(in srgb, var(--color-shadow) 30%, transparent); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 thead th {
-  color: var(--muted);
-  font-size: 0.68rem;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
   white-space: nowrap;
 }
 thead th:nth-child(n+4) { text-align: right; }
 tbody td {
-  padding: 12px;
-  font-size: 0.9rem;
-  border-bottom: 1px solid rgba(166, 170, 159, 0.12);
+  padding: var(--space-3);
+  font-size: var(--text-md);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 12%, transparent);
   vertical-align: middle;
 }
-tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
-tbody tr:hover { background: rgba(212, 243, 106, 0.06); }
-tbody td:first-child { color: var(--accent); font-weight: 800; text-align: center; width: 2.5rem; }
+tbody tr:nth-child(even) { background: color-mix(in srgb, var(--color-highlight) 2%, transparent); }
+tbody tr:hover { background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
+tbody td:first-child { color: var(--color-accent); font-weight: 800; text-align: center; width: 2.5rem; }
 tbody td:nth-child(n+4) { text-align: right; font-weight: 600; }
 tbody tr:last-child td { border-bottom: 0; }
-.stats-player { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.stats-player { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .player-photo {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-highlight) 6%, transparent);
   flex-shrink: 0;
 }
 .player-photo--initials {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #f5f7fb;
-  font-size: 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--color-highlight) 18%, transparent);
+  color: var(--color-avatar-ink);
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
 }
-.stats-definitions { display: grid; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.stats-definition { margin: 0; font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; color: var(--muted); }
-.load-more { display: block; margin: 16px auto 0; }
+.stats-definitions { display: grid; gap: var(--space-1); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.stats-definition { margin: 0; font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere; color: var(--color-muted); }
+.load-more { display: block; margin: var(--space-4) auto 0; }
 </style>
