@@ -21,6 +21,7 @@ test('Surface, StatusPill and StateMessage expose bounded semantics', () => {
   assert.match(source('StatusPill'), /default\(\):/);
   assert.match(source('StateMessage'), /kind === 'error' \? 'alert' : 'status'/);
   assert.match(source('StateMessage'), /emit\('retry'\)/);
+  assert.doesNotMatch(source('StateMessage'), /aria-busy/);
 });
 
 test('Tabs implement roving focus and connected panels', () => {

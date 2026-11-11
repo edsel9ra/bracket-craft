@@ -6,7 +6,7 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <div class="ui-state" :class="`ui-state-${kind}`" :role="kind === 'error' ? 'alert' : 'status'" :aria-busy="kind === 'loading' || undefined">
+  <div class="ui-state" :class="`ui-state-${kind}`" :role="kind === 'error' ? 'alert' : 'status'">
     <p><slot /></p>
     <Button v-if="kind === 'error' && retry" variant="secondary" @click="emit('retry')">{{ t('common.retry') }}</Button>
   </div>
