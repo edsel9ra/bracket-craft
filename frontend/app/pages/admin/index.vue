@@ -319,4 +319,8 @@ input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--acc
   .resource-row, .audit-row { align-items: start; flex-direction: column; }
   .form-error { align-items: stretch; flex-direction: column; }
 }
+:root[data-theme="light"] .status-button:disabled { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .status-button:disabled { opacity: 1; }
+}
 </style>

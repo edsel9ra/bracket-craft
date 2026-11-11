@@ -719,4 +719,10 @@ await loadPage();
   .roster-card { grid-template-columns: 42px minmax(0, 1fr); }
   .roster-card .photo-actions { grid-column: 1 / -1; justify-self: stretch; justify-content: stretch; }
 }
+:root[data-theme="light"] .roster-list button:disabled,
+:root[data-theme="light"] .photo-picker:has(input:disabled) { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .roster-list button:disabled,
+  :root[data-theme="system"] .photo-picker:has(input:disabled) { opacity: 1; }
+}
 </style>

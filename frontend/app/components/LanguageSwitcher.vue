@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = withDefaults(defineProps<{ inline?: boolean }>(), { inline: false });
+const props = withDefaults(defineProps<{ inline?: boolean; id?: string }>(), { inline: false, id: 'language-select' });
 
 const { locale, t, setLocale } = useI18n();
 
@@ -10,8 +10,8 @@ useHead(() => ({
 
 <template>
   <div class="language-switcher" :class="{ 'language-switcher-inline': props.inline }">
-    <label for="language-select">{{ t('language.label') }}</label>
-    <select id="language-select" :value="locale" :aria-label="t('language.label')" @change="setLocale(($event.target as HTMLSelectElement).value as 'es' | 'en')">
+    <label :for="props.id">{{ t('language.label') }}</label>
+    <select :id="props.id" :value="locale" :aria-label="t('language.label')" @change="setLocale(($event.target as HTMLSelectElement).value as 'es' | 'en')">
       <option value="es">{{ t('language.es') }}</option>
       <option value="en">{{ t('language.en') }}</option>
     </select>

@@ -200,4 +200,8 @@ button:disabled { cursor: wait; opacity: 0.6; }
 .form-error { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-danger-border) 10%, transparent); color: var(--color-danger); font-size: var(--text-md); }
 .form-notice { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-ink); font-size: var(--text-md); }
 @media (max-width: 760px) { .organization-card { padding: var(--space-6); } }
+:root[data-theme="light"] button:disabled { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] button:disabled { opacity: 1; }
+}
 </style>

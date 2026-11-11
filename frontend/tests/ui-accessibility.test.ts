@@ -17,7 +17,8 @@ test('member role selects and wizard landmarks have contextual names', () => {
   assert.match(source('pages/workspace/members.vue'), /<select :value="member.role_code" :aria-label="[^\n]*member.full_name/);
   assert.match(source('components/wizard/WizardSteps.vue'), /:aria-label="[^\n]*label/);
   assert.match(source('components/wizard/WizardShell.vue'), /<WizardSteps[^>]*:label="title"/);
-  assert.match(source('app.vue'), /<nav[^>]*:aria-label="t\('common.languageNavigation'\)"[\s\S]*?<LanguageSwitcher/);
+  assert.match(source('app.vue'), /<nav[^>]*:aria-label="t\('common.preferencesNavigation'\)"[\s\S]*?<PublicPreferences/);
+  assert.match(source('components/PublicPreferences.vue'), /<ThemeSwitcher[\s\S]*?<LanguageSwitcher/);
 });
 
 test('closed reports render missing live prerequisites neutrally without inventing an assignment', () => {

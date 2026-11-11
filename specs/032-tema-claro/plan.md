@@ -1,6 +1,6 @@
 # Plan 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A (T1–T3) autorizado; PR B/C aún no implementados. Spec/clarificación aprobadas (D1–D4 A). No backend, API, permisos, datos de negocio, dependencias ni política CSP nuevos.
+Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A (T1–T3) fusionado; PR B autorizado con LY-1 y aún no implementado; PR C pendiente. Spec/clarificación aprobadas (D1–D4 A, geometría revisada LY-1). No backend, API, permisos, datos de negocio, dependencias ni política CSP nuevos.
 
 ## 1. Alcance e interfaz
 
@@ -22,7 +22,7 @@ Rutas relativas a `frontend/`, salvo documentación. Nombres nuevos propuestos, 
 | `app/assets/css/tokens.css`, `app/utils/designTokens.ts` | Paletas dark/light y espejo de variables, con 23 roles actuales y roles de isla separados. Oscuro actual conservado. |
 | `app/assets/css/main.css` | Resolución CSS del tema, color-scheme y ajustes claros de estados compartidos. |
 | `app/components/ThemeSwitcher.vue` | Selector etiquetado, i18n, IDs únicos y teclado. Sin estado de apariencia duplicado. |
-| `app/components/WorkspaceShell.vue`, `app/app.vue` | Solo colocar el selector en ubicaciones aprobadas, sin desplazar idioma u otros controles. |
+| `app/components/WorkspaceShell.vue`, `app/app.vue` | Colocar el selector y permitir reordenación de preferencias dentro de R (LY-1), sin desplazar contenido exterior. |
 | `app/composables/useI18n.ts` | Claves ES/EN de apariencia, Claro/Oscuro/Sistema. No cambiar textos existentes. |
 | `app/components/TeamCrest.vue`, `public/PublicPlayerStatsTable.vue` | Iniciales claras legibles; conservar imágenes y su contrato. |
 | `app/components/ui/Button.vue`, `ui/ConfirmDialog.vue`, `public/PublicLineupModal.vue` | Disabled, backdrops y elevación exclusivamente claros. |
@@ -88,11 +88,11 @@ Funciones de paleta, composición, descriptores y comparación reciben todos sus
 ## 5. Selector y región R
 
 - Reutilizar el modelo de select nativo etiquetado del idioma: tres opciones ES/EN, label visible donde quepa y nombre accesible siempre; ID único por instancia (cabecera y menú móvil coexisten en DOM). Flechas/Enter/Escape/Tab según control nativo, sin key handlers globales ni cambios de foco al aplicar.
-- Ubicaciones: público junto al flotante existente; Workspace/admin junto al idioma de cabecera y del menú desplegado. Solo una instancia visible por ubicación activa. La selección sobrevive al cambio de idioma.
-- **No basta insertar un hijo flex/grid**: podría desplazar organización, idioma, cuenta o cambiar altura de menú. Anclar el nuevo control en espacio disponible junto al idioma, con variante compacta si procede, sin reservar espacio ni alterar métricas del contenido existente. No reutilizar la variante inline del idioma público si cambia su aspecto.
-- R cumple la definición de spec: caja de control/etiqueta más halo máximo 8 px, cerrada/foco ≤192×80 px; desplegada ≤192×200 px cuando se compare ese estado. Coordenadas enteras y estado documentados por viewport/fixture antes de calcular el diff; PNG anotado sin editar, JSON de rectángulo y límites. Popups nativos fuera del bitmap de página se ejercitan por teclado; no se inventa un rectángulo DOM para ellos ni se usa su ausencia como prueba visual de ese popup.
-- R no contiene idioma ni otro control preexistente; no es toda la cabecera, la fila de controles o el flotante antiguo. Instancias ocultas aportan R vacío. Verificar cajas del idioma/organización/cuenta/contenido contra la referencia, además de los píxeles.
-- **Riesgo geométrico explícito:** el header usa flex y el menú móvil grid; puede no haber hueco sin mover elementos. Si no cabe un selector accesible dentro de estos límites, se detiene esa integración y se consulta un ajuste de diseño; no se amplía R ni se introduce un desplazamiento no autorizado. No se declara resuelto por no haber renderizado aún el control.
+- **LY-1, aprobada y precisada 2026-11-11:** público conserva el grupo flotante de idioma y añade tema sin trasladarlo a cabecera; R es el grupo en todos los anchos, también móvil, sin menú. Permitir crecimiento y apilar hacia arriba si no cabe a 390 px, sin tapar controles o texto esencial. Workspace/admin mantiene fila de cabecera o menú desplegado; estilo propio, etiqueta coherente con «Idioma». Solo una instancia visible por ubicación activa; la selección sobrevive al cambio de idioma.
+- Se permite reordenar organización, idioma, tema y cuenta dentro de la fila; en móvil abierto, reorganizar su menú completo. Mantener altura de cabecera y posición del contenido inferior. Agrupar idioma/tema en una fila móvil de igual alto evita añadir una fila que empuje Cuenta y el contenido.
+- R es la caja del flotante público en todos los anchos; en Workspace es la fila de preferencias en escritorio/tableta y el menú abierto completo en móvil. Con menú Workspace cerrado, R vacía y comparación completa de cero píxeles. Sustituye los antiguos límites de 192×80/192×200. Registrar coordenadas enteras y estado por viewport/fixture antes de calcular el diff, PNG original y JSON de límites. Popups nativos fuera del bitmap se ejercitan por teclado, sin inventar un rectángulo DOM ni fingir su verificación visual.
+- R no incluye marca, navegación ni contenido inferior ajenos a las preferencias. Comparar cajas y píxeles fuera de R contra main; los cambios internos autorizados no permiten aumentar R para esconder un desplazamiento exterior.
+- **Guardia geométrica:** si cambia algo fuera de R, detenerse e informar. No ampliar R ni cambiar referencias. El flotante público conserva el idioma a la derecha y añade tema a su izquierda; sin sombra nueva fuera de la caja, para mantener los píxeles exteriores.
 
 ## 6. Verificación de 0 píxeles
 
@@ -100,7 +100,7 @@ Funciones de paleta, composición, descriptores y comparación reciben todos sus
 2. Mismo Chromium/versión, SO, escala de dispositivo, fuentes cargadas, viewport, reloj, datos y estado de interacción. Fijar respuestas y actualizaciones dinámicas de forma idéntica en ambos; detener animaciones en ambos, no enmascarar marcadores, fechas o regiones fuera de R.
 3. Matriz de 1440×900, 390×844 y 800×900, ES/EN, oscuro sin cookie y explícito; menú móvil cerrado/abierto, cuenta, tablas con scroll/sticky, formularios/errores, diálogos, bracket y formaciones. Comparar viewport y superficies desplazadas representativas; 0 es por captura, no media global.
 4. Capturar PNG original de ambos, manifiesto R previamente acotado y diferencia anotada. Decodificar ambos a RGBA sRGB mediante Canvas en una página aislada del mismo Chromium; comparar bytes de cada píxel fuera de R con función pura. No añadir dependencia PNG ni importar módulos internos de Playwright. No comparar bytes del PNG comprimido como si fueran píxeles.
-5. Exigir `differentPixelsOutsideR === 0`, dimensiones iguales, región dentro de límites y cajas antiguas sin cambios. No usar tolerancia de antialias para llamar 0 a diferencias pequeñas. Una prueba del comparador modifica un píxel fuera de R y debe fallar; un cambio solo dentro de R no falla; región fuera de límites/vacía inválida y tamaños distintos producen error.
+5. Exigir `differentPixelsOutsideR === 0`, dimensiones iguales, región conforme a LY-1 y cajas exteriores sin cambios. R vacía es válida y obligatoria con menú móvil cerrado: comparar toda la captura. No usar tolerancia de antialias. Un píxel alterado fuera de R falla; cambios solo dentro de R son válidos; región no correspondiente a fila/menú, máscara ampliada o tamaños distintos producen error.
 6. Las regiones se validan contra control real y límites prefijados, no se calculan a partir del diff. Evidencia bajo `/home/ubuntu/ui-audit/032-{before,after,pr}/`, fuera de Git; sin actualizaciones automáticas de referencias para conseguir verde.
 
 ## 7. E2E, axe y gates
@@ -146,11 +146,11 @@ Mantener backend/frontend/infrastructure/security/e2e de CI verdes y revisión h
 | Decisión | Elegida / motivo | Alternativa descartada |
 |---|---|---|
 | D1 A | Oscuro por defecto: preserva primera visita actual. Sistema disponible solo al elegir. | Seguir al sistema sin elección: cambiaría la experiencia inicial. |
-| D2 A | Junto al idioma, excepción única R medida y 0 píxeles fuera. | Preferencias solo por URL/cuenta: peor descubrimiento o excluiría anónimos. Se rechaza también ampliar la máscara a barras completas. |
+| D2 A, sustituida en geometría por LY-1 | Junto al idioma, R medida y 0 píxeles fuera. LY-1 autoriza reordenar la fila de preferencias o menú móvil abierto; cerrado, cero píxeles en toda la captura. | Preferencias solo por URL/cuenta excluyen anónimos o dificultan descubrirlas. Máscara de página/cabecera completa o contenido inferior desplazado siguen rechazados. |
 | D3 A | Cookie anual UI solo al elegir, SSR y cliente coherentes. | localStorage/mounted o script anti-FOUC: segunda ruta de resolución y riesgo de flash. Solo memoria no persiste. |
 | D4 A | Todas las vistas, isla verde solo del terreno con etiquetas propias. | Cobertura parcial con saltos oscuros o reinterpretar todo el terreno sin necesidad. |
 | Espejo doble | Mantener export oscuro compatible y comprobar scopes de ambos temas. | Sustituir la PALETTE antigua o debilitar el test que detecta overrides. |
-| Cero píxeles | RGBA exacto con R limitada y comparación de cajas antiguas. | Umbral porcentual, rebaseline o máscara derivada de fallos. |
+| Cero píxeles | RGBA exacto con R conforme a LY-1 y comparación de cajas exteriores. | Umbral porcentual, rebaseline o máscara derivada de fallos. |
 | Seguridad | Sin scripts de inicialización extra, ni red/identidad para preferencias. | Relajar CSP, añadir endpoint o guardar tema en cuenta. |
 
 ## 9. Cobertura de requisitos
@@ -162,7 +162,7 @@ Mantener backend/frontend/infrastructure/security/e2e de CI verdes y revisión h
 | RF-004 | Estado reactivo sin remount/red; E2E de formulario/foco/filtros/scroll. |
 | RF-005/006 | Cookie/SSR, primer paint con hidratación retenida, persistencia y bloqueo. |
 | RF-008 | 29 pares oscuros + 158 claros y adicionales efectivos; axe/render de todos los estados. |
-| RF-009, RNF-001 | Capturas RGBA 0 fuera de R y cajas de idioma/resto idénticas, escalas intactas. |
+| RF-009, RNF-001 | Capturas RGBA 0 fuera de R según LY-1 y cajas exteriores idénticas; móvil cerrado, R vacía; escalas intactas. |
 | RF-010 | Matriz completa de vistas, tablas/controles/diálogos en ambos temas. |
 | RF-011 | Imágenes sin filtros/cambio de bytes; iniciales medibles con foto ausente/fallida. |
 | RF-012 | Campo/isla y SVG con mismos datos/geometría/relaciones/textual. |

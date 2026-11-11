@@ -93,4 +93,8 @@ function playerStyle(player: PublicLineupPlayer): Record<string, string> {
 .bench-player { padding: var(--space-1) var(--space-1); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-ink); font-size: 0.63rem; }
 .bench-empty { color: var(--color-muted); font-size: 0.63rem; }
 @media (max-width: 480px) { .pitch { aspect-ratio: 0.6 / 1; } .pitch-player .player-name { font-size: 0.54rem; } .player-position { font-size: 0.48rem; } }
+:root[data-theme="light"] .pitch { --color-ink: var(--color-island-ink); --color-accent: var(--color-island-accent); --color-warning: var(--color-island-warning); --color-canvas: var(--color-pitch-player); --color-surface: var(--color-pitch-player); --color-accent-ink: var(--color-pitch-player); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .pitch { --color-ink: var(--color-island-ink); --color-accent: var(--color-island-accent); --color-warning: var(--color-island-warning); --color-canvas: var(--color-pitch-player); --color-surface: var(--color-pitch-player); --color-accent-ink: var(--color-pitch-player); }
+}
 </style>

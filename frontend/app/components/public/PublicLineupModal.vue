@@ -300,4 +300,8 @@ function formatDate(value: string | null): string {
 @media (max-width: 480px) {
   .lineup-modal-roles { grid-template-columns: 1fr; gap: var(--space-4); }
 }
+:root[data-theme="light"] .lineup-dialog::backdrop { background: color-mix(in srgb, var(--color-shadow) 32%, transparent); opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .lineup-dialog::backdrop { background: color-mix(in srgb, var(--color-shadow) 32%, transparent); opacity: 1; }
+}
 </style>

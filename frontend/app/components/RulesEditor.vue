@@ -624,4 +624,10 @@ code { margin-left: var(--space-1); color: var(--color-accent); font-size: var(-
   .pipeline-parameter { grid-column: 2 / -1; }
   .pipeline-actions { grid-column: 3; grid-row: 1; }
 }
+:root[data-theme="light"] fieldset:disabled,
+:root[data-theme="light"] .pipeline-actions button:disabled { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] fieldset:disabled,
+  :root[data-theme="system"] .pipeline-actions button:disabled { opacity: 1; }
+}
 </style>

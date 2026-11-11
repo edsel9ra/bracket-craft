@@ -314,4 +314,8 @@ input { width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid v
 @media (max-width: 480px) {
   .empty-state { align-items: stretch; flex-direction: column; }
 }
+:root[data-theme="light"] .card-action:disabled { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .card-action:disabled { opacity: 1; }
+}
 </style>

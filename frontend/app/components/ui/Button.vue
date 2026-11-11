@@ -46,4 +46,8 @@ function onClick(event: MouseEvent) {
 .ui-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
 .ui-button[aria-disabled="true"] { cursor: not-allowed; opacity: 0.65; }
 @media (prefers-reduced-motion: reduce) { .ui-button { transition: none; } }
+:root[data-theme="light"] .ui-button[aria-disabled="true"] { opacity: 1; background: var(--color-surface-bright); color: var(--color-muted); border-color: var(--color-line); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .ui-button[aria-disabled="true"] { opacity: 1; background: var(--color-surface-bright); color: var(--color-muted); border-color: var(--color-line); }
+}
 </style>
