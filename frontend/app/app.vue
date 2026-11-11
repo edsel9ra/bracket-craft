@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConfirmDialog from '~/components/ui/ConfirmDialog.vue';
 const { t } = useI18n();
 const route = useRoute();
 const isWorkspaceRoute = computed(() => (
@@ -16,4 +17,5 @@ const isWorkspaceRoute = computed(() => (
   </nav>
   <NuxtLoadingIndicator color="#d4f36a" :height="3" :throttle="160" />
   <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
+  <ConfirmDialog />
 </template>
