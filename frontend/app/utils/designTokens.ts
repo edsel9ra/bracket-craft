@@ -42,6 +42,7 @@ export const PALETTE = {
   'pitch-line': '#ecffce',
   'pitch-player': '#172218',
   'avatar-ink': '#f5f7fb',
+  'danger-border': '#a45b5b',
 } as const;
 export const FONTS = {
   sans: '"Archivo", "Archivo Fallback", Arial, sans-serif',

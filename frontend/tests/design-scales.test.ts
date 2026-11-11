@@ -13,14 +13,6 @@ export const PENDING_MIGRATION = [
   ['components/TeamsWizard.vue', 'opción 3: asistente de equipos'],
   ['components/StageTeamsWizard.vue', 'opción 3: asistente de fases'],
   ['components/wizard/', 'opción 3: infraestructura de asistentes'],
-  ['pages/login.vue', 'T8'],
-  ['pages/auth/callback.vue', 'T8'],
-  ['pages/account/google.vue', 'T8'],
-  ['pages/organization.vue', 'T8'],
-  ['pages/invitations/[token].vue', 'T8'],
-  ['pages/forbidden.vue', 'T8'],
-  ['pages/admin/index.vue', 'T8'],
-  ['pages/workspace/members.vue', 'T8'],
   ['pages/workspace/index.vue', 'T9'],
   ['pages/workspace/tournaments/[id]/index.vue', 'T9'],
   ['pages/workspace/tournaments/[id]/calendar.vue', 'T9'],
@@ -31,6 +23,11 @@ export const PENDING_MIGRATION = [
 ] as const;
 
 export const DESIGN_EXCEPTIONS: { file: string; property: string; value: string; reason: string }[] = [
+  { file: 'pages/login.vue', property: 'font-size', value: 'clamp(2.4rem, 8vw, 4.6rem)', reason: 'VI-1: display aumenta el titular de acceso un 37% en escritorio y altera los saltos de línea del formulario.' },
+  { file: 'pages/invitations/[token].vue', property: 'font-size', value: 'clamp(2.5rem, 8vw, 4.8rem)', reason: 'VI-1: mantener la composición del titular de invitación dentro de su tarjeta.' },
+  { file: 'pages/admin/index.vue', property: 'font-size', value: '2.5rem', reason: 'Cifras de métricas de ancho limitado: display fluido no cabe en las tarjetas.' },
+  { file: 'pages/admin/index.vue', property: 'padding', value: '4vh 0 4vh', reason: 'Ritmo del hero de administración proporcional a la ventana.' },
+  { file: 'pages/workspace/members.vue', property: 'padding', value: '5vh 0 4vh', reason: 'Ritmo del hero de miembros proporcional a la ventana.' },
   ...['0.62rem', '0.53rem', '0.58rem', '0.63rem', '0.54rem'].map((value) => ({ file: 'components/public/MatchPitch.vue', property: 'font-size', value, reason: 'Etiquetas dentro de la geometría del campo, con nombre completo accesible.' })),
   ...['clamp(0.62rem, 2cqw, 1.1rem)', '0.62rem', '0.6rem', '0.52rem', '0.58rem', '0.63rem', '0.54rem', '0.48rem'].map((value) => ({ file: 'components/public/TeamPitch.vue', property: 'font-size', value, reason: 'Etiquetas del campo adaptadas al contenedor; nombres completos en alternativa textual.' })),
   ...['MatchPitch', 'TeamPitch'].map((component) => ({ file: `components/public/${component}.vue`, property: 'gap', value: '1px', reason: 'Separación entre avatar, dorsal y etiqueta sin desplazar los slots tácticos.' })),

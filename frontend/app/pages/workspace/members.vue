@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import {
@@ -297,15 +299,15 @@ await loadData();
                   <select :id="id" v-model="inviteForm.role_code" :aria-describedby="ariaDescribedby"><option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option></select>
                 </template>
               </FormField>
-              <button class="button-primary" type="submit" :disabled="invitationControlsDisabled(invitationOperation)">{{ isCreatingInvitation ? t('common.processing') : t('members.invite') }}</button>
+              <Button variant="primary" class="button-primary" type="submit" :disabled="invitationControlsDisabled(invitationOperation)">{{ isCreatingInvitation ? t('common.processing') : t('members.invite') }}</Button>
               <div v-if="generatedLink" class="generated-link" role="status">
                 <strong>{{ t('members.generatedLink') }}</strong>
                 <input :value="generatedLink" readonly :aria-label="t('members.generatedLinkAria')" />
-                <button class="button-secondary" type="button" @click="copyLink">{{ t('members.copyLink') }}</button>
+                <Button variant="secondary" class="button-secondary" type="button" @click="copyLink">{{ t('members.copyLink') }}</Button>
               </div>
             </form>
 
-            <section class="panel">
+            <Surface as="section" class="panel">
               <div class="panel-heading"><div><p class="eyebrow">{{ t('members.pendingEyebrow') }}</p><h2>{{ t('members.invitations') }}</h2></div><span class="muted-note">{{ invitations.length }}</span></div>
               <ul v-if="invitations.length" class="resource-list">
                 <li v-for="invitation in pagedInvitations" :key="invitation.id">
@@ -316,13 +318,13 @@ await loadData();
                 </li>
               </ul>
               <p v-else class="muted-note">{{ t('members.noInvitations') }}</p>
-              <button v-if="hasMoreInvitations" class="button-secondary load-more" type="button" @click="loadMoreInvitations">{{ t('common.loadMore') }}</button>
-            </section>
+              <Button variant="secondary" v-if="hasMoreInvitations" class="button-secondary load-more" type="button" @click="loadMoreInvitations">{{ t('common.loadMore') }}</Button>
+            </Surface>
           </div>
 
           <div v-if="actionError" class="form-error" role="alert">{{ actionError }}</div>
 
-          <section class="panel members-panel">
+          <Surface as="section" class="panel members-panel">
             <div class="panel-heading"><div><p class="eyebrow">{{ t('members.directoryEyebrow') }}</p><h2>{{ t('members.directory') }}</h2></div><span class="muted-note">{{ members.length }}</span></div>
             <div class="member-table-wrap">
               <table class="member-table">
@@ -342,8 +344,8 @@ await loadData();
                 </tbody>
               </table>
             </div>
-            <button v-if="hasMoreMembers" class="button-secondary load-more" type="button" @click="loadMoreMembers">{{ t('common.loadMore') }}</button>
-          </section>
+            <Button variant="secondary" v-if="hasMoreMembers" class="button-secondary load-more" type="button" @click="loadMoreMembers">{{ t('common.loadMore') }}</Button>
+          </Surface>
         </template>
       </section>
     </main>
@@ -351,40 +353,41 @@ await loadData();
 </template>
 
 <style scoped>
-.members-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
+/* RF-006: el hero mantiene su espaciado proporcional a la ventana. */
+.members-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .members-hero { padding: 5vh 0 4vh; }
-.members-hero h1 { max-width: 760px; margin: 12px 0; font-size: clamp(2.7rem, 7vw, 5.7rem); line-height: 0.92; letter-spacing: -0.08em; }
-.members-hero p:last-child { max-width: 560px; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
-.members-content { display: grid; gap: 18px; padding-bottom: 90px; }
-.members-grid { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 18px; align-items: start; }
-.panel { display: grid; align-content: start; gap: 15px; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12); }
-.panel h2 { margin: 0; font-size: 1.5rem; letter-spacing: -0.05em; }
-.panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
-label { display: grid; gap: 7px; color: var(--muted); font-size: 0.8rem; }
-input, select { min-width: 0; padding: 0.78rem 0.85rem; border: 1px solid var(--line); border-radius: 9px; background: #0c0f0c; color: var(--ink); font: inherit; }
-input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); outline: none; }
-.field-hint, .muted-note { color: var(--muted); font-size: 0.76rem; line-height: 1.5; }
-.generated-link { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-.generated-link input { font-size: 0.7rem; }
-.resource-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.resource-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
-.resource-list li > div:first-child { display: grid; gap: 4px; min-width: 0; }
-.resource-list small, .member-table small { display: block; overflow: hidden; color: var(--muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
-.row-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 9px; }
-.text-button { padding: 3px 0; background: transparent; color: var(--muted); font-size: 0.75rem; }
-.text-button:hover:not(:disabled) { color: var(--accent); }
-.text-button.danger:hover:not(:disabled) { color: var(--danger); }
-.form-error, .empty-state { padding: 17px; border: 1px solid #a45b5b; border-radius: 12px; color: var(--danger); }
-.empty-state { border-style: dashed; border-color: var(--line); color: var(--muted); }
+.members-hero h1 { max-width: 760px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.members-hero p:last-child { max-width: 560px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.members-content { display: grid; gap: var(--space-4); padding-bottom: var(--space-10); }
+.members-grid { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: var(--space-4); align-items: start; }
+.panel { display: grid; align-content: start; gap: var(--space-4); min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 12%, transparent); }
+.panel h2 { margin: 0; font-size: var(--text-lg); letter-spacing: -0.05em; }
+.panel-heading { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
+label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+input, select { min-width: 0; padding: var(--space-3) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); font: inherit; }
+input:focus, select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); outline: none; }
+.field-hint, .muted-note { color: var(--color-muted); font-size: var(--text-xs); line-height: 1.5; }
+.generated-link { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.generated-link input { font-size: var(--text-2xs); }
+.resource-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.resource-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--color-line); }
+.resource-list li > div:first-child { display: grid; gap: var(--space-1); min-width: 0; }
+.resource-list small, .member-table small { display: block; overflow: hidden; color: var(--color-muted); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.row-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: var(--space-2); }
+.text-button { padding: var(--space-1) 0; background: transparent; color: var(--color-muted); font-size: var(--text-xs); }
+.text-button:hover:not(:disabled) { color: var(--color-accent); }
+.text-button.danger:hover:not(:disabled) { color: var(--color-danger); }
+.form-error, .empty-state { padding: var(--space-4); border: 1px solid var(--color-danger-border); border-radius: var(--radius-md); color: var(--color-danger); }
+.empty-state { border-style: dashed; border-color: var(--color-line); color: var(--color-muted); }
 .member-table-wrap { overflow-x: auto; }
 .member-table { width: 100%; border-collapse: collapse; min-width: 650px; }
-.member-table th { padding: 0 12px 11px; color: var(--muted); font-size: 0.67rem; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
-.member-table td { padding: 13px 12px; border-top: 1px solid var(--line); color: var(--ink); font-size: 0.82rem; }
-.member-table td:first-child { display: grid; gap: 4px; }
-.member-table select { padding: 0.55rem 0.62rem; font-size: 0.75rem; }
-.status-tag { color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.status-tag.inactive { color: var(--danger); }
-@media (max-width: 800px) { .members-grid { grid-template-columns: 1fr; } .members-hero, .members-content { width: min(100% - 28px, 620px); } }
-@media (max-width: 480px) { .panel { padding: 17px; } .resource-list li { align-items: start; flex-direction: column; } .row-actions { justify-content: start; } }
-.load-more { display: block; margin: 12px auto 0; }
+.member-table th { padding: 0 var(--space-3) var(--space-3); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.member-table td { padding: var(--space-3) var(--space-3); border-top: 1px solid var(--color-line); color: var(--color-ink); font-size: var(--text-sm); }
+.member-table td:first-child { display: grid; gap: var(--space-1); }
+.member-table select { padding: var(--space-2) var(--space-2); font-size: var(--text-xs); }
+.status-tag { color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.status-tag.inactive { color: var(--color-danger); }
+@media (max-width: 760px) { .members-grid { grid-template-columns: 1fr; } .members-hero, .members-content { width: min(100% - 28px, 620px); } }
+@media (max-width: 480px) { .panel { padding: var(--space-4); } .resource-list li { align-items: start; flex-direction: column; } .row-actions { justify-content: start; } }
+.load-more { display: block; margin: var(--space-3) auto 0; }
 </style>
