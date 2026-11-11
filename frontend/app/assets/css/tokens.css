@@ -51,6 +51,16 @@
   --color-success: #d4f36a;
   --color-home: #d4f36a;
   --color-away: #ffcb7a;
+  --color-canvas: #0c0f0c;
+  --color-canvas-raised: #111611;
+  --color-shadow: #000000;
+  --color-highlight: #ffffff;
+  --color-pitch-grass: #315b35;
+  --color-pitch-stripe: #38673b;
+  --color-pitch-line: #ecffce;
+  --color-pitch-player: #172218;
+  --color-avatar-ink: #f5f7fb;
+  --color-danger-border: #a45b5b;
   --font-sans: "Archivo", "Archivo Fallback", Arial, sans-serif;
   --font-display: "Archivo", "Archivo Fallback", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;

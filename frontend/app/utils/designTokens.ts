@@ -34,6 +34,16 @@ export const PALETTE = {
   success: '#d4f36a',
   home: '#d4f36a',
   away: '#ffcb7a',
+  canvas: '#0c0f0c',
+  'canvas-raised': '#111611',
+  shadow: '#000000',
+  highlight: '#ffffff',
+  'pitch-grass': '#315b35',
+  'pitch-stripe': '#38673b',
+  'pitch-line': '#ecffce',
+  'pitch-player': '#172218',
+  'avatar-ink': '#f5f7fb',
+  'danger-border': '#a45b5b',
 } as const;
 export const FONTS = {
   sans: '"Archivo", "Archivo Fallback", Arial, sans-serif',

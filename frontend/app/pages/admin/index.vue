@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isUnauthorized } from '~/utils/api';
 
@@ -163,9 +165,9 @@ await load();
 
     <section class="container admin-content">
        <div class="admin-metrics" :aria-label="t('admin.platformControl')">
-          <article class="metric-card"><span>{{ t('admin.activeUsers') }}</span><strong>{{ activeUserCount }}</strong><small>{{ t('admin.visibleRecords', { count: users.length }) }}</small></article>
-          <article class="metric-card"><span>{{ t('admin.activeOrganizations') }}</span><strong>{{ activeOrganizationCount }}</strong><small>{{ t('admin.visibleRecords', { count: organizations.length }) }}</small></article>
-         <article class="metric-card metric-card-accent"><span>{{ t('admin.recentEvents') }}</span><strong>{{ audit.length }}</strong><small>{{ t('admin.visibleActions') }}</small></article>
+          <Surface as="article" class="metric-card"><span>{{ t('admin.activeUsers') }}</span><strong>{{ activeUserCount }}</strong><small>{{ t('admin.visibleRecords', { count: users.length }) }}</small></Surface>
+          <Surface as="article" class="metric-card"><span>{{ t('admin.activeOrganizations') }}</span><strong>{{ activeOrganizationCount }}</strong><small>{{ t('admin.visibleRecords', { count: organizations.length }) }}</small></Surface>
+         <Surface as="article" class="metric-card metric-card-accent"><span>{{ t('admin.recentEvents') }}</span><strong>{{ audit.length }}</strong><small>{{ t('admin.visibleActions') }}</small></Surface>
       </div>
       <div class="admin-toolbar">
         <FormField :label="t('admin.search')" for-id="admin-search">
@@ -173,13 +175,13 @@ await load();
             <input :id="id" v-model="search" type="search" maxlength="100" :placeholder="t('admin.searchPlaceholder')" :aria-describedby="ariaDescribedby" @keyup.enter="refresh" />
           </template>
         </FormField>
-        <button class="button-primary" type="button" :disabled="loading" @click="refresh">{{ t('common.refresh') }}</button>
+        <Button variant="primary" class="button-primary" type="button" :disabled="loading" @click="refresh">{{ t('common.refresh') }}</Button>
       </div>
-        <div v-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="refresh">{{ t('common.retry') }}</button></div>
+        <div v-if="error" class="form-error" role="alert"><span>{{ error }}</span><Button variant="secondary" class="button-secondary" type="button" @click="refresh">{{ t('common.retry') }}</Button></div>
        <div v-if="loading" class="empty-state" role="status">{{ t('common.loading') }}</div>
       <template v-else>
         <div class="admin-grid">
-          <section class="panel">
+          <Surface as="section" class="panel">
             <div class="panel-heading">
               <div>
                  <p class="eyebrow">{{ t('admin.identity') }}</p>
@@ -207,10 +209,10 @@ await load();
               </article>
                </TransitionGroup>
              </Transition>
-             <button v-if="hasMoreUsers" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</button>
-           </section>
+             <Button variant="secondary" v-if="hasMoreUsers" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</Button>
+           </Surface>
 
-          <section class="panel">
+          <Surface as="section" class="panel">
             <div class="panel-heading">
               <div>
                  <p class="eyebrow">{{ t('admin.tenants') }}</p>
@@ -238,11 +240,11 @@ await load();
               </article>
                </TransitionGroup>
              </Transition>
-             <button v-if="hasMoreOrganizations" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</button>
-           </section>
+             <Button variant="secondary" v-if="hasMoreOrganizations" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</Button>
+           </Surface>
         </div>
 
-        <section class="panel audit-panel">
+        <Surface as="section" class="panel audit-panel">
           <div class="panel-heading">
             <div>
                <p class="eyebrow">{{ t('admin.traceability') }}</p>
@@ -259,8 +261,8 @@ await load();
             </div>
              </TransitionGroup>
            </Transition>
-           <button v-if="hasMoreAudit" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</button>
-         </section>
+           <Button variant="secondary" v-if="hasMoreAudit" class="button-secondary load-more" type="button" :disabled="loading" @click="loadMore">{{ loadingMore ? t('common.loading') : t('admin.loadMore') }}</Button>
+         </Surface>
       </template>
     </section>
    </main>
@@ -268,51 +270,52 @@ await load();
 </template>
 
 <style scoped>
-.admin-shell { min-height: 100vh; background: radial-gradient(circle at 88% 4%, rgba(212, 243, 106, 0.1), transparent 30rem), #0c0f0c; }
+/* RF-006: hero proporcional a la ventana y cifras de métricas de 2.5rem ajustadas a sus tarjetas. */
+.admin-shell { min-height: 100vh; background: radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 30rem), var(--color-canvas); }
 .admin-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.hero-line { display: flex; align-items: center; gap: 18px; }
-.admin-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
-.admin-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.admin-hero h1 { max-width: 900px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
-.admin-copy { max-width: 560px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
-.admin-content { padding-bottom: 80px; }
-.admin-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
-.metric-card { display: grid; gap: 7px; min-height: 130px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, var(--surface-raised), var(--surface)); }
-.metric-card span, .metric-card small { color: var(--muted); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.hero-line { display: flex; align-items: center; gap: var(--space-4); }
+.admin-status { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.admin-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 12px var(--color-accent); }
+.admin-hero h1 { max-width: 900px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.admin-copy { max-width: 560px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.admin-content { padding-bottom: var(--space-10); }
+.admin-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-bottom: var(--space-6); }
+.metric-card { display: grid; gap: var(--space-2); min-height: 130px; padding: var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, var(--color-surface-raised), var(--color-surface)); }
+.metric-card span, .metric-card small { color: var(--color-muted); font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; }
 .metric-card strong { font-size: 2.5rem; line-height: 1; letter-spacing: -0.08em; }
-.metric-card-accent { border-color: rgba(212, 243, 106, 0.36); }
-.admin-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
-label { display: grid; gap: 7px; width: min(100%, 460px); color: var(--muted); font-size: 0.82rem; }
-input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
-.admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12); }
-.panel-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 20px; }
-.panel-heading h2 { margin: 7px 0 0; font-size: 1.8rem; letter-spacing: -0.06em; }
-.eyebrow { margin: 0; color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
-.muted, .empty-state { color: var(--muted); }
-.empty-state { padding: 20px; border: 1px dashed var(--line); border-radius: 14px; }
-.empty-state.compact { padding: 16px; }
-.form-error { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; padding: 12px; border: 1px solid #a45b5b; border-radius: 10px; color: #ffb0a8; }
-.resource-list, .audit-list { display: grid; gap: 10px; }
+.metric-card-accent { border-color: color-mix(in srgb, var(--color-accent) 36%, transparent); }
+.admin-toolbar { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+label { display: grid; gap: var(--space-2); width: min(100%, 460px); color: var(--color-muted); font-size: var(--text-sm); }
+input { width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); }
+input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.panel { min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 12%, transparent); }
+.panel-heading { display: flex; justify-content: space-between; align-items: end; gap: var(--space-4); margin-bottom: var(--space-5); }
+.panel-heading h2 { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: -0.06em; }
+.eyebrow { margin: 0; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+.muted, .empty-state { color: var(--color-muted); }
+.empty-state { padding: var(--space-5); border: 1px dashed var(--color-line); border-radius: var(--radius-md); }
+.empty-state.compact { padding: var(--space-4); }
+.form-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-5); padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); color: var(--color-danger); }
+.resource-list, .audit-list { display: grid; gap: var(--space-2); }
 .resource-list, .audit-list { position: relative; }
-.resource-row, .audit-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 0; border-top: 1px solid rgba(166, 170, 159, 0.14); }
+.resource-row, .audit-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); }
 .resource-row:first-child, .audit-row:first-child { border-top: 0; }
-.resource-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
-.status-button { flex: 0 0 auto; padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); font-size: 0.72rem; font-weight: 800; }
-.status-button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-glow); transform: translateY(-2px); }
+.resource-row small { display: block; margin-top: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); }
+.status-button { flex: 0 0 auto; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: transparent; color: var(--color-accent); font-size: var(--text-xs); font-weight: 800; }
+.status-button:hover:not(:disabled) { border-color: var(--color-accent); background: var(--accent-glow); transform: translateY(-2px); }
 .status-button:disabled { cursor: wait; opacity: 0.5; }
-.audit-panel { margin-top: 16px; }
-.load-more { display: block; margin: 16px auto 0; }
-.audit-row { align-items: baseline; font-size: 0.82rem; }
-.audit-row span, .audit-row time { color: var(--muted); }
-@media (max-width: 800px) {
+.audit-panel { margin-top: var(--space-4); }
+.load-more { display: block; margin: var(--space-4) auto 0; }
+.audit-row { align-items: baseline; font-size: var(--text-sm); }
+.audit-row span, .audit-row time { color: var(--color-muted); }
+@media (max-width: 760px) {
   .container { width: min(100% - 28px, 620px); }
   .admin-metrics { grid-template-columns: 1fr; }
   .admin-grid { grid-template-columns: 1fr; }
   .admin-toolbar { align-items: stretch; flex-direction: column; }
 }
-@media (max-width: 560px) {
+@media (max-width: 480px) {
   .resource-row, .audit-row { align-items: start; flex-direction: column; }
   .form-error { align-items: stretch; flex-direction: column; }
 }

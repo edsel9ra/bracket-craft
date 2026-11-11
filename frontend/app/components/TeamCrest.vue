@@ -89,13 +89,13 @@ watch(
   height: 2.5rem;
   border-radius: 50%;
   object-fit: contain;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-highlight) 6%, transparent);
 }
 
 .team-crest--initials {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #f5f7fb;
-  font-size: 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--color-highlight) 18%, transparent);
+  color: var(--color-avatar-ink);
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;

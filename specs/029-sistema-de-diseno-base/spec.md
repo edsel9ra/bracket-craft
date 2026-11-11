@@ -2,6 +2,8 @@
 
 Estado: aprobada (2026-11-11; DT-1, MG-1, VI-1 y RV-1 resueltas)
 
+Implementación T1–T10 cerrada localmente (2026-11-11), en fase de Validación. El estado no pasa todavía a `implementada`: faltan CI verde sobre la entrega completa y la revisión final del usuario, conforme a los criterios de finalización y la skill SDD. Opción 3 hereda únicamente la migración visual pendiente de operación y asistentes, sin ampliar este alcance.
+
 ## Contexto y objetivo
 
 La interfaz tiene una identidad visual reconocible (tema oscuro, acento lima, titulares de gran cuerpo), pero no la sostiene un sistema común. La auditoría de interfaz del 2026-11-11 (opción 2) midió lo siguiente:

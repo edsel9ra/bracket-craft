@@ -227,7 +227,7 @@ test('an observer reads the configuration without any write action', () => {
 
   for (const action of ['publishVersion', 'createDraftVersion', 'useDefaultRules']) {
     const button = configurationPage.slice(
-      configurationPage.lastIndexOf('<button', configurationPage.indexOf(`@click="${action}"`)),
+      configurationPage.lastIndexOf('<Button', configurationPage.indexOf(`@click="${action}"`)),
       configurationPage.indexOf('>', configurationPage.indexOf(`@click="${action}"`)) + 1,
     );
     assert.match(button, /v-(?:else-)?if="canManageTournaments/, `${action} is offered without permission`);

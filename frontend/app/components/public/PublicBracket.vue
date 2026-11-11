@@ -116,27 +116,27 @@ function resolutionLabel(match: PublicMatch): string {
 </template>
 
 <style scoped>
-.bracket-grid { display: grid; grid-auto-columns: minmax(230px, 1fr); grid-auto-flow: column; align-items: start; gap: 16px; min-width: max-content; }
+.bracket-grid { display: grid; grid-auto-columns: minmax(230px, 1fr); grid-auto-flow: column; align-items: start; gap: var(--space-4); min-width: max-content; }
 .bracket-round { min-width: 230px; }
-.bracket-round-heading { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.bracket-round-heading h3 { margin: 6px 0 0; font-size: 1.1rem; letter-spacing: -0.03em; }
-.bracket-match-list { display: grid; gap: 12px; }
-.bracket-match { padding: 13px; border: 1px solid rgba(166, 170, 159, 0.15); border-radius: 15px; background: var(--surface-raised); }
-.bracket-match:hover { border-color: rgba(212, 243, 106, 0.42); transform: translateY(-2px); }
+.bracket-round-heading { margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-line); }
+.bracket-round-heading h3 { margin: var(--space-1) 0 0; font-size: var(--text-base); letter-spacing: -0.03em; }
+.bracket-match-list { display: grid; gap: var(--space-3); }
+.bracket-match { padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-muted) 15%, transparent); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+.bracket-match:hover { border-color: color-mix(in srgb, var(--color-accent) 42%, transparent); transform: translateY(-2px); }
 @media (prefers-reduced-motion: reduce) {
   .bracket-match:hover { transform: none; }
 }
-.bracket-match-context, .bracket-match-footer { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.64rem; letter-spacing: 0.07em; text-transform: uppercase; }
-.bracket-team { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid rgba(166, 170, 159, 0.12); font-size: 0.86rem; }
+.bracket-match-context, .bracket-match-footer { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.07em; text-transform: uppercase; }
+.bracket-team { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 12%, transparent); font-size: var(--text-md); }
 .bracket-team:last-of-type { border-bottom: 0; }
-.bracket-team strong { color: var(--ink); font-size: 1.05rem; }
-.bracket-team.winner span, .bracket-team.winner strong { color: var(--accent); font-weight: 800; }
-.bracket-match-footer { padding-top: 9px; }
-.lineup-trigger { display: block; width: 100%; margin-top: 12px; padding: 11px 0 0; border-top: 1px solid rgba(166, 170, 159, 0.14); background: transparent; color: var(--accent); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
-.lineup-trigger:hover { color: var(--ink); }
-.empty-state { padding: 28px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
-.empty-state.compact { padding: 20px; }
-@media (max-width: 620px) {
+.bracket-team strong { color: var(--color-ink); font-size: var(--text-base); }
+.bracket-team.winner span, .bracket-team.winner strong { color: var(--color-accent); font-weight: 800; }
+.bracket-match-footer { padding-top: var(--space-2); }
+.lineup-trigger { display: block; width: 100%; margin-top: var(--space-3); padding: var(--space-3) 0 0; border-top: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); background: transparent; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.lineup-trigger:hover { color: var(--color-ink); }
+.empty-state { padding: var(--space-6); border: 1px dashed var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); }
+.empty-state.compact { padding: var(--space-5); }
+@media (max-width: 480px) {
   .bracket-grid { grid-auto-columns: minmax(205px, 1fr); }
   .bracket-round { min-width: 205px; }
 }

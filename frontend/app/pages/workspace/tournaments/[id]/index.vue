@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import { type StageFormat } from '~/constants/stageFormats';
 import { getApiCode, isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
@@ -885,7 +887,7 @@ loading.value = false;
 
     <section class="container config-content">
         <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('setup.loading') }}</div>
-        <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><button class="button-secondary" type="button" @click="retryConfiguration">{{ t('common.retry') }}</button></div>
+        <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><Button variant="secondary" class="button-secondary" type="button" @click="retryConfiguration">{{ t('common.retry') }}</Button></div>
         <template v-else>
           <p v-if="configurationReadOnly" class="read-only-notice" role="status">
             {{ t('setup.readOnlyMode') }}
@@ -899,12 +901,12 @@ loading.value = false;
               </option>
             </select>
           </label>
-             <button v-if="canManageTournaments && draftVersion" class="button-primary" type="button" :disabled="saving || !canPublish" @click="publishVersion">
+             <Button variant="primary" v-if="canManageTournaments && draftVersion" class="button-primary" type="button" :disabled="saving || !canPublish" @click="publishVersion">
              {{ saving ? t('common.saving') : t('setup.publishDraft') }}
-           </button>
-             <button v-else-if="canManageTournaments && activeVersion?.status === 'published'" class="button-secondary" type="button" :disabled="saving" @click="createDraftVersion">
+           </Button>
+             <Button variant="secondary" v-else-if="canManageTournaments && activeVersion?.status === 'published'" class="button-secondary" type="button" :disabled="saving" @click="createDraftVersion">
               {{ saving ? t('common.saving') : t('setup.createDraftVersion') }}
-           </button>
+           </Button>
           </div>
 
           <div class="setup-checklist" :aria-label="t('setup.operationalChecklist')">
@@ -917,7 +919,7 @@ loading.value = false;
                <div><p class="eyebrow">{{ t('setup.rulesEyebrow') }}</p><h2 ref="rulesTitle" tabindex="-1">{{ t('setup.editRules') }}</h2></div>
                <div class="rules-heading-actions">
                  <span v-if="activeVersion && !rulesEditable" class="muted-note">{{ t('rules.readOnlyVersion') }}</span>
-                <button v-if="canManageTournaments && rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</button>
+                <Button variant="secondary" v-if="canManageTournaments && rulesEditable && !rulesConfig" class="button-secondary" type="button" @click="useDefaultRules">{{ t('setup.useDefaultRules') }}</Button>
                </div>
              </div>
              <p class="field-hint">{{ t('setup.rulesDescription') }}</p>
@@ -944,8 +946,8 @@ loading.value = false;
              <template v-if="rulesMinutesNotice">
                <p class="minutes-warning" role="status">{{ rulesMinutesNotice }}</p>
                <div class="minutes-warning-actions">
-                 <button type="button" class="button-secondary" @click="continueAfterNotice">{{ t('rules.minutesWarning.continue') }}</button>
-                 <button type="button" class="button-secondary" @click="stayAfterNotice">{{ t('rules.minutesWarning.stay') }}</button>
+                 <Button variant="secondary" type="button" class="button-secondary" @click="continueAfterNotice">{{ t('rules.minutesWarning.continue') }}</Button>
+                 <Button variant="secondary" type="button" class="button-secondary" @click="stayAfterNotice">{{ t('rules.minutesWarning.stay') }}</Button>
                </div>
              </template>
            </form>
@@ -956,7 +958,7 @@ loading.value = false;
             <!-- RF-003 / RF-021 (IN-1): único lugar que da de alta equipos.
                  El alta no pide fase: para inscribir se usa el asistente de fases.
                  Spec 025 (RF-001): el orden del documento es reglas → equipos → fases. -->
-            <div id="equipos" class="panel teams-panel panel-wide">
+            <Surface as="div" id="equipos" class="panel teams-panel panel-wide">
               <p class="eyebrow">{{ t('setup.teamsEyebrow') }}</p>
               <h2 ref="teamsTitle" tabindex="-1">{{ t('setup.nameTheField') }}</h2>
               <TeamsWizard
@@ -997,14 +999,15 @@ loading.value = false;
                       @change="onCrestFileSelected(team.team_id, $event)"
                     >
                     </label>
-                    <button
+                    <Button
+                      variant="secondary"
                       v-if="team.crest_url"
                       type="button"
                       class="button-secondary"
                       :disabled="crestBusyTeamId === team.team_id"
                       :aria-describedby="crestErrors[team.team_id] ? crestErrorId(team.team_id) : undefined"
                       @click="removeCrest(team)"
-                    >{{ t('crest.remove') }}</button>
+                    >{{ t('crest.remove') }}</Button>
                     <p
                       v-if="crestErrors[team.team_id]"
                       :id="crestErrorId(team.team_id)"
@@ -1014,7 +1017,7 @@ loading.value = false;
                   </div>
                 </li>
               </TransitionGroup>
-            </div>
+            </Surface>
 
             <!-- RF-002/RF-010 (AT-1): único lugar que crea fases e inscribe equipos.
                  La creación y la inscripción son dos peticiones; si la segunda falla,
@@ -1047,72 +1050,72 @@ loading.value = false;
 </template>
 
 <style scoped>
-.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
+.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .config-hero { padding: 4vh 0 4vh; }
 .config-hero { animation: rise-in 700ms var(--ease-out) both; }
-.hero-line { display: flex; align-items: center; gap: 18px; }
-.draft-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
-.draft-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.config-hero h1 { max-width: 800px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
-.workspace-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
-.config-content { padding-bottom: 80px; }
-.read-only-notice { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 0.85rem; }
-.config-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
-.config-toolbar label, label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
-.setup-checklist { display: grid; gap: 16px; margin-bottom: 24px; padding: 20px; border: 1px solid rgba(212, 243, 106, 0.24); border-radius: 20px; background: rgba(212, 243, 106, 0.04); }
-.checklist-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
-.checklist-heading h2 { margin: 0; font-size: 1.5rem; letter-spacing: -0.05em; }
-.checklist-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
-.check-item { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 8px; min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); }
-.check-item > span { display: grid; grid-row: span 2; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: rgba(255, 176, 168, 0.1); color: var(--danger); font-size: 0.75rem; font-weight: 900; }
-.check-item strong { overflow: hidden; color: var(--ink); font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
-.check-item small { color: var(--muted); font-size: 0.7rem; }
-.check-item.valid { border-color: rgba(212, 243, 106, 0.28); }
-.check-item.valid > span { background: rgba(212, 243, 106, 0.16); color: var(--accent); }
-select, input { min-width: 0; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); }
-select:hover, input:hover { border-color: var(--muted); }
-select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
-.config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 20px; }
-.panel { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12); }
+.hero-line { display: flex; align-items: center; gap: var(--space-4); }
+.draft-status { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.draft-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 12px var(--color-accent); }
+.config-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.workspace-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.config-content { padding-bottom: var(--space-10); }
+.read-only-notice { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); font-size: var(--text-md); }
+.config-toolbar { display: flex; align-items: end; justify-content: space-between; gap: var(--space-5); margin-bottom: var(--space-6); }
+.config-toolbar label, label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+.setup-checklist { display: grid; gap: var(--space-4); margin-bottom: var(--space-6); padding: var(--space-5); border: 1px solid color-mix(in srgb, var(--color-accent) 24%, transparent); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-accent) 4%, transparent); }
+.checklist-heading { display: flex; align-items: end; justify-content: space-between; gap: var(--space-5); }
+.checklist-heading h2 { margin: 0; font-size: var(--text-lg); letter-spacing: -0.05em; }
+.checklist-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.check-item { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; padding: var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); }
+.check-item > span { display: grid; grid-row: span 2; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--color-danger) 10%, transparent); color: var(--color-danger); font-size: var(--text-xs); font-weight: 900; }
+.check-item strong { overflow: hidden; color: var(--color-ink); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.check-item small { color: var(--color-muted); font-size: var(--text-2xs); }
+.check-item.valid { border-color: color-mix(in srgb, var(--color-accent) 28%, transparent); }
+.check-item.valid > span { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-accent); }
+select, input { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); }
+select:hover, input:hover { border-color: var(--color-muted); }
+select:focus, input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-5); }
+.panel { display: grid; align-content: start; gap: var(--space-3); min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 12%, transparent); }
 .panel-wide { grid-column: 1 / -1; }
-.panel:hover { border-color: rgba(212, 243, 106, 0.32); }
-.panel h2 { margin: 0 0 10px; font-size: 1.6rem; letter-spacing: -0.05em; }
-.panel h2:focus { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 0.35rem; }
-.panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.panel:hover { border-color: color-mix(in srgb, var(--color-accent) 32%, transparent); }
+.panel h2 { margin: 0 0 var(--space-2); font-size: 1.6rem; letter-spacing: -0.05em; }
+.panel h2:focus { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: var(--radius-sm); }
+.panel-heading { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
 .panel-heading h2 { margin-bottom: 0; }
-.rules-heading-actions { display: flex; align-items: center; justify-content: end; gap: 10px; }
-.rules-panel { margin-bottom: 20px; }
-.rules-panel textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; }
-.resource-list { position: relative; display: grid; gap: 8px; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; }
-.resource-list li { display: flex; justify-content: space-between; gap: 10px; color: var(--ink); font-size: 0.85rem; }
-.resource-list button { width: 100%; padding: 8px; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
-.resource-list button:hover { background: rgba(212, 243, 106, 0.06); }
-.resource-list li.active { color: var(--accent); }
-.resource-list li.active button { background: rgba(212, 243, 106, 0.08); }
-.resource-list small { color: var(--muted); font-size: 0.7rem; }
-.team-crest-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 320px)); justify-content: center; gap: 14px; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; }
-.team-crest-card { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 16px; max-width: 320px; width: 100%; margin-inline: auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(12, 15, 12, 0.3); }
-.team-crest-meta { display: grid; gap: 2px; min-width: 0; justify-items: center; }
-.team-crest-meta .team-name { color: var(--ink); font-size: 0.85rem; }
-.team-crest-meta small { color: var(--muted); font-size: 0.7rem; }
-.team-name { color: var(--ink); font-size: 0.85rem; overflow-wrap: anywhere; }
-.crest-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.rules-heading-actions { display: flex; align-items: center; justify-content: end; gap: var(--space-2); }
+.rules-panel { margin-bottom: var(--space-5); }
+.rules-panel textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); }
+.resource-list { position: relative; display: grid; gap: var(--space-2); margin: var(--space-2) 0 0; padding: var(--space-3) 0 0; border-top: 1px solid var(--color-line); list-style: none; }
+.resource-list li { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--color-ink); font-size: var(--text-md); }
+.resource-list button { width: 100%; padding: var(--space-2); border-radius: var(--radius-sm); color: inherit; background: transparent; text-align: left; }
+.resource-list button:hover { background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
+.resource-list li.active { color: var(--color-accent); }
+.resource-list li.active button { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.resource-list small { color: var(--color-muted); font-size: var(--text-2xs); }
+.team-crest-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 320px)); justify-content: center; gap: var(--space-3); margin: var(--space-2) 0 0; padding: var(--space-3) 0 0; border-top: 1px solid var(--color-line); list-style: none; }
+.team-crest-card { display: grid; justify-items: center; text-align: center; gap: var(--space-2); padding: var(--space-4); max-width: 320px; width: 100%; margin-inline: auto; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-canvas) 30%, transparent); }
+.team-crest-meta { display: grid; gap: var(--space-1); min-width: 0; justify-items: center; }
+.team-crest-meta .team-name { color: var(--color-ink); font-size: var(--text-md); }
+.team-crest-meta small { color: var(--color-muted); font-size: var(--text-2xs); }
+.team-name { color: var(--color-ink); font-size: var(--text-md); overflow-wrap: anywhere; }
+.crest-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); width: 100%; }
 .crest-actions .photo-picker,
-.crest-actions .button-secondary { min-height: 40px; padding: 0.6rem 1rem; font-size: 0.78rem; border-radius: 10px; justify-content: center; }
-.crest-actions label { font-size: 0.72rem; }
+.crest-actions .button-secondary { min-height: 40px; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); border-radius: var(--radius-sm); justify-content: center; }
+.crest-actions label { font-size: var(--text-xs); }
 .crest-actions .form-error { flex-basis: 100%; margin: 0; }
-.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
-.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: var(--space-1) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font-size: var(--text-xs); font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
+.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
 .photo-picker:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
 .photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
-.empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
-.loading-state { display: flex; align-items: center; gap: 12px; }
-.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
-.form-error { border-style: solid; border-color: #a45b5b; color: #ffb0a8; }
-.minutes-warning { margin: 0; padding: 11px 13px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.82rem; }
-.minutes-warning-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 900px) { .config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } }
-@media (max-width: 900px) { .checklist-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 620px) { .container { width: min(100% - 28px, 620px); } .config-toolbar, .checklist-heading, .panel-heading { align-items: stretch; flex-direction: column; } .checklist-items { grid-template-columns: 1fr; } }
+.empty-state, .form-error { padding: var(--space-5); border: 1px dashed var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); }
+.loading-state { display: flex; align-items: center; gap: var(--space-3); }
+.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 18px var(--color-accent); animation: pulse 1s ease-in-out infinite; }
+.form-error { border-style: solid; border-color: var(--color-danger-border); color: var(--color-danger); }
+.minutes-warning { margin: 0; padding: var(--space-3) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-warning) 6%, transparent); color: var(--color-warning); font-size: var(--text-sm); }
+.minutes-warning-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+@media (max-width: 1000px) { .config-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } }
+@media (max-width: 1000px) { .checklist-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .container { width: min(100% - 28px, 620px); } .config-toolbar, .checklist-heading, .panel-heading { align-items: stretch; flex-direction: column; } .checklist-items { grid-template-columns: 1fr; } }
 </style>

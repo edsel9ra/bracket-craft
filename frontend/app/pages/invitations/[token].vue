@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { isNotFound, isUnauthorized } from '~/utils/api';
 import { roleKey, type AssignableRoleCode } from '~/utils/labels';
@@ -90,7 +92,7 @@ await loadPreview();
 
 <template>
   <main id="main-content" class="invitation-shell">
-    <section class="invitation-card">
+    <Surface as="section" class="invitation-card">
       <NuxtLink to="/" class="invitation-brand">BRACKET CRAFT</NuxtLink>
       <div v-if="loading" class="invitation-state" role="status">{{ t('common.loading') }}</div>
       <div v-else-if="error" class="invitation-state form-error" role="alert">{{ error }}</div>
@@ -123,30 +125,31 @@ await loadPreview();
             </FormField>
           </template>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-          <button class="button-primary invitation-action" type="submit" :disabled="submitting || !canAccept">{{ submitting ? t('common.processing') : t('invitation.accept') }}</button>
+          <Button variant="primary" class="button-primary invitation-action" type="submit" :disabled="submitting || !canAccept">{{ submitting ? t('common.processing') : t('invitation.accept') }}</Button>
         </form>
       </template>
-    </section>
+    </Surface>
   </main>
 </template>
 
 <style scoped>
-.invitation-shell { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(circle at 20% 0%, rgba(212, 243, 106, 0.1), transparent 32rem), #0c0f0c; }
-.invitation-card { width: min(100%, 540px); padding: clamp(28px, 6vw, 56px); border: 1px solid var(--line); border-radius: 28px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.96), rgba(21, 24, 20, 0.98)); box-shadow: var(--shadow-deep); }
-.invitation-brand { color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.invitation-brand:hover { color: var(--accent); }
-.eyebrow { margin: 62px 0 12px; color: var(--accent); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+/* RF-006/VI-1: el titular mantiene la composición fluida de la tarjeta. */
+.invitation-shell { display: grid; min-height: 100vh; place-items: center; padding: var(--space-6); background: radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 32rem), var(--color-canvas); }
+.invitation-card { width: min(100%, 540px); padding: var(--space-8); border: 1px solid var(--color-line); border-radius: var(--radius-xl); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 96%, transparent), color-mix(in srgb, var(--color-surface) 98%, transparent)); box-shadow: var(--shadow-deep); }
+.invitation-brand { color: var(--color-ink); font-size: var(--text-xs); font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
+.invitation-brand:hover { color: var(--color-accent); }
+.eyebrow { margin: var(--space-9) 0 var(--space-3); color: var(--color-accent); font-size: var(--text-xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(2.5rem, 8vw, 4.8rem); line-height: 0.94; letter-spacing: -0.08em; }
-.invitation-copy, .field-hint { color: var(--muted); line-height: 1.6; }
-.invitation-details { display: grid; gap: 10px; margin: 26px 0; padding: 16px; border: 1px solid var(--line); border-radius: 13px; }
-.invitation-details div { display: flex; justify-content: space-between; gap: 16px; }
-dt { color: var(--muted); font-size: 0.75rem; } dd { margin: 0; color: var(--ink); font-size: 0.8rem; text-align: right; }
-.invitation-form { display: grid; gap: 15px; margin-top: 22px; }
-label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
-input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.72); color: var(--ink); }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); outline: none; }
-.invitation-action { display: inline-flex; justify-content: center; width: 100%; margin-top: 8px; min-height: 46px; text-decoration: none; }
-.form-error { padding: 12px; border: 1px solid #a45b5b; border-radius: 10px; background: rgba(164, 91, 91, 0.1); color: var(--danger); font-size: 0.85rem; }
-.invitation-state { margin-top: 42px; color: var(--muted); }
-@media (max-width: 480px) { .invitation-shell { padding: 16px; } .invitation-card { padding: 25px 20px; } .invitation-details div { align-items: start; flex-direction: column; gap: 4px; } dd { text-align: left; } }
+.invitation-copy, .field-hint { color: var(--color-muted); line-height: 1.6; }
+.invitation-details { display: grid; gap: var(--space-2); margin: var(--space-6) 0; padding: var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-md); }
+.invitation-details div { display: flex; justify-content: space-between; gap: var(--space-4); }
+dt { color: var(--color-muted); font-size: var(--text-xs); } dd { margin: 0; color: var(--color-ink); font-size: var(--text-sm); text-align: right; }
+.invitation-form { display: grid; gap: var(--space-4); margin-top: var(--space-5); }
+label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+input { width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-canvas) 72%, transparent); color: var(--color-ink); }
+input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); outline: none; }
+.invitation-action { display: inline-flex; justify-content: center; width: 100%; margin-top: var(--space-2); min-height: 46px; text-decoration: none; }
+.form-error { padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-danger-border) 10%, transparent); color: var(--color-danger); font-size: var(--text-md); }
+.invitation-state { margin-top: var(--space-8); color: var(--color-muted); }
+@media (max-width: 480px) { .invitation-shell { padding: var(--space-4); } .invitation-card { padding: var(--space-6) var(--space-5); } .invitation-details div { align-items: start; flex-direction: column; gap: var(--space-1); } dd { text-align: left; } }
 </style>

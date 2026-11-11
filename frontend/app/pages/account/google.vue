@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Surface from '~/components/ui/Surface.vue';
 import { googleErrorKey, googleLinkActionVisible, googleNoticeKey } from '~/utils/googleAuth';
 
 definePageMeta({ middleware: ['session'] });
@@ -73,7 +74,7 @@ async function startLink() {
 
 <template>
   <main id="main-content" class="account-shell">
-    <section class="account-card">
+    <Surface as="section" class="account-card">
       <NuxtLink to="/workspace" class="account-back">{{ t('common.back') }}</NuxtLink>
       <p class="eyebrow">Bracket Craft</p>
       <h1>{{ t('google.link.title') }}</h1>
@@ -99,7 +100,7 @@ async function startLink() {
       <p class="account-waiting" role="status" aria-live="polite">
         {{ pending ? t('google.link.waiting') : '' }}
       </p>
-    </section>
+    </Surface>
   </main>
 </template>
 
@@ -108,38 +109,39 @@ async function startLink() {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 28px;
-  background: radial-gradient(circle at 20% 0%, rgba(212, 243, 106, 0.1), transparent 32rem), #0c0f0c;
+  padding: var(--space-6);
+  background: radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 32rem), var(--color-canvas);
 }
 .account-card {
   width: min(100%, 520px);
-  padding: clamp(28px, 6vw, 48px);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: linear-gradient(145deg, rgba(32, 37, 30, 0.96), rgba(21, 24, 20, 0.98));
+  padding: var(--space-8);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 96%, transparent), color-mix(in srgb, var(--color-surface) 98%, transparent));
   box-shadow: var(--shadow-deep);
 }
 .account-back {
   display: inline-block;
-  margin-bottom: 26px;
-  color: var(--muted);
-  font-size: 0.78rem;
+  margin-bottom: var(--space-6);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
   text-decoration: underline;
 }
-.account-back:hover { color: var(--accent); }
+.account-back:hover { color: var(--color-accent); }
 .eyebrow {
-  margin: 0 0 12px;
-  color: var(--accent);
-  font-size: 0.72rem;
+  margin: 0 0 var(--space-3);
+  color: var(--color-accent);
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
-h1 { margin: 0; font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.05; letter-spacing: -0.05em; }
-.account-copy { margin: 14px 0 0; color: var(--muted); line-height: 1.6; }
-.account-state { margin: 22px 0 0; color: var(--ink); font-size: 0.9rem; }
-.google-link-button { width: 100%; justify-content: center; min-height: 46px; margin-top: 18px; font-size: 0.9rem; }
-.account-waiting { min-height: 1.1rem; margin: 8px 0 0; color: var(--muted); font-size: 0.78rem; }
-.form-error { margin-top: 18px; padding: 12px; border: 1px solid #a45b5b; border-radius: 10px; background: rgba(164, 91, 91, 0.1); color: var(--danger); font-size: 0.85rem; }
-.form-notice { margin-top: 18px; padding: 12px; border: 1px solid rgba(212, 243, 106, 0.35); border-radius: 10px; background: rgba(212, 243, 106, 0.08); color: var(--ink); font-size: 0.85rem; }
+h1 { margin: 0; font-size: var(--text-xl); line-height: 1.05; letter-spacing: -0.05em; }
+.account-copy { margin: var(--space-3) 0 0; color: var(--color-muted); line-height: 1.6; }
+.account-state { margin: var(--space-5) 0 0; color: var(--color-ink); font-size: var(--text-md); }
+.google-link-button { width: 100%; justify-content: center; min-height: 46px; margin-top: var(--space-4); font-size: var(--text-md); }
+.account-waiting { min-height: 1.1rem; margin: var(--space-2) 0 0; color: var(--color-muted); font-size: var(--text-xs); }
+.form-error { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-danger-border) 10%, transparent); color: var(--color-danger); font-size: var(--text-md); }
+.form-notice { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-ink); font-size: var(--text-md); }
+@media (max-width: 760px) { .account-card { padding: var(--space-6); } }
 </style>

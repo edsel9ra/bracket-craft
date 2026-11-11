@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import {
   createReloadCoordinator,
@@ -198,9 +200,9 @@ onBeforeUnmount(() => {
         </div>
         <div class="section-actions">
             <span v-if="tournamentsStore.loading" class="muted" role="status">{{ t('common.loading') }}</span>
-             <button v-if="canManageTournaments && !showCreateForm" class="button-primary" type="button" @click="openCreateForm">
+             <Button variant="primary" v-if="canManageTournaments && !showCreateForm" class="button-primary" type="button" @click="openCreateForm">
              {{ t('workspace.newTournament') }}
-          </button>
+          </Button>
         </div>
       </div>
        <Transition name="panel-reveal" mode="out-in">
@@ -227,25 +229,25 @@ onBeforeUnmount(() => {
              </label>
            </div>
            <div v-if="createError" class="form-error" role="alert">{{ createError }}</div>
-           <button class="button-primary" type="submit" :disabled="creating">
+           <Button variant="primary" class="button-primary" type="submit" :disabled="creating">
               {{ creating ? t('workspace.creating') : t('workspace.createDraft') }}
-           </button>
+           </Button>
          </form>
        </Transition>
        <Transition name="content-fade" mode="out-in">
           <div v-if="workspaceError" key="workspace-error" class="empty-state" role="alert">
             <span>{{ workspaceError }}</span>
-            <button class="button-secondary" type="button" @click="retryWorkspace">{{ t('common.retry') }}</button>
+            <Button variant="secondary" class="button-secondary" type="button" @click="retryWorkspace">{{ t('common.retry') }}</Button>
           </div>
           <div v-else-if="tournamentsStore.error" key="store-error" class="empty-state" role="alert">
             <span>{{ tournamentsStore.error }}</span>
-            <button class="button-secondary" type="button" @click="tournamentsStore.load()">{{ t('common.retry') }}</button>
+            <Button variant="secondary" class="button-secondary" type="button" @click="tournamentsStore.load()">{{ t('common.retry') }}</Button>
           </div>
          <div v-else-if="!tournamentsStore.loading && !tournamentsStore.tournaments.length" key="empty" class="empty-state">
             {{ t('workspace.empty') }}
          </div>
          <TransitionGroup v-else key="tournaments" name="card-list" tag="div" class="tournament-grid">
-           <article v-for="tournament in tournamentsStore.tournaments" :key="tournament.id" class="tournament-card">
+           <Surface as="article" v-for="tournament in tournamentsStore.tournaments" :key="tournament.id" class="tournament-card">
               <span class="status-tag">{{ statusLabel(tournament.status) }}</span>
              <h3>{{ tournament.name }}</h3>
              <p>{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
@@ -259,13 +261,13 @@ onBeforeUnmount(() => {
              >
                 {{ publishingTournamentId === tournament.id ? t('workspace.publishing') : t('workspace.publish') }}
              </button>
-           </article>
+           </Surface>
           </TransitionGroup>
         </Transition>
         <div v-if="tournamentsStore.hasMore" class="load-more-row">
-           <button class="button-secondary" type="button" :disabled="tournamentsStore.loading" @click="loadMoreTournaments">
+           <Button variant="secondary" class="button-secondary" type="button" :disabled="tournamentsStore.loading" @click="loadMoreTournaments">
             {{ tournamentsStore.loading ? t('common.loading') : t('workspace.loadMore') }}
-          </button>
+          </Button>
         </div>
       </section>
    </main>
@@ -273,47 +275,47 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
+.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .workspace-hero { padding: 5vh 0 5vh; animation: rise-in 700ms var(--ease-out) both; }
-.hero-line { display: flex; align-items: center; gap: 18px; }
-.live-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
-.live-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
-.live-status.realtime-reconnecting span, .live-status.realtime-retrying span, .live-status.realtime-error span { background: #ffcb7a; box-shadow: 0 0 12px rgba(255, 203, 122, 0.7); }
-.realtime-retry { padding: 0; background: transparent; color: var(--accent); font-size: 0.7rem; text-decoration: underline; }
-.workspace-hero h1 { max-width: 760px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
-.workspace-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
-.workspace-content { padding-bottom: 80px; }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.section-actions { display: flex; align-items: center; gap: 14px; }
-.section-heading h2 { margin: 8px 0 0; font-size: 2rem; letter-spacing: -0.05em; }
-.muted, .empty-state, .tournament-card p { color: var(--muted); }
-.empty-state { padding: 28px; border: 1px dashed var(--line); border-radius: 16px; }
-.empty-state { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.load-more-row { display: flex; justify-content: center; margin-top: 22px; }
-.creation-panel { display: grid; gap: 20px; margin-bottom: 28px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, var(--surface-raised), rgba(21, 24, 20, 0.9)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16); }
-.creation-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
-.creation-heading h3 { margin: 8px 0 0; }
-.creation-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; }
-label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
-input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); }
-.form-error { padding: 12px; border: 1px solid #a45b5b; border-radius: 10px; color: #ffb0a8; font-size: 0.85rem; }
-.close-button { padding: 0; color: var(--muted); background: transparent; }
-.tournament-grid { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.tournament-card { min-height: 150px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, var(--surface), rgba(32, 37, 30, 0.72)); }
-.tournament-card:hover { border-color: var(--accent); transform: translateY(-5px); box-shadow: 0 18px 36px rgba(0, 0, 0, 0.2); }
-.tournament-card h3 { margin: 28px 0 8px; }
-.tournament-card p { margin: 0; font-size: 0.9rem; }
-.card-action { display: block; margin-top: 18px; padding: 0; color: var(--accent); background: transparent; font-size: 0.78rem; font-weight: 800; text-decoration: none; }
-.card-action:hover:not(:disabled) { color: var(--ink); transform: translateX(3px); }
+.hero-line { display: flex; align-items: center; gap: var(--space-4); }
+.live-status { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.live-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 12px var(--color-accent); }
+.live-status.realtime-reconnecting span, .live-status.realtime-retrying span, .live-status.realtime-error span { background: var(--color-warning); box-shadow: 0 0 12px color-mix(in srgb, var(--color-warning) 70%, transparent); }
+.realtime-retry { padding: 0; background: transparent; color: var(--color-accent); font-size: var(--text-2xs); text-decoration: underline; }
+.workspace-hero h1 { max-width: 760px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.workspace-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.workspace-content { padding-bottom: var(--space-10); }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+.section-actions { display: flex; align-items: center; gap: var(--space-3); }
+.section-heading h2 { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: -0.05em; }
+.muted, .empty-state, .tournament-card p { color: var(--color-muted); }
+.empty-state { padding: var(--space-6); border: 1px dashed var(--color-line); border-radius: var(--radius-md); }
+.empty-state { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.load-more-row { display: flex; justify-content: center; margin-top: var(--space-5); }
+.creation-panel { display: grid; gap: var(--space-5); margin-bottom: var(--space-6); padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, var(--color-surface-raised), color-mix(in srgb, var(--color-surface) 90%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 16%, transparent); }
+.creation-heading { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
+.creation-heading h3 { margin: var(--space-2) 0 0; }
+.creation-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--space-3); }
+label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+input { width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); }
+.form-error { padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); color: var(--color-danger); font-size: var(--text-md); }
+.close-button { padding: 0; color: var(--color-muted); background: transparent; }
+.tournament-grid { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+.tournament-card { min-height: 150px; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, var(--color-surface), color-mix(in srgb, var(--color-surface-raised) 72%, transparent)); }
+.tournament-card:hover { border-color: var(--color-accent); transform: translateY(-5px); box-shadow: 0 18px 36px color-mix(in srgb, var(--color-shadow) 20%, transparent); }
+.tournament-card h3 { margin: var(--space-6) 0 var(--space-2); }
+.tournament-card p { margin: 0; font-size: var(--text-md); }
+.card-action { display: block; margin-top: var(--space-4); padding: 0; color: var(--color-accent); background: transparent; font-size: var(--text-xs); font-weight: 800; text-decoration: none; }
+.card-action:hover:not(:disabled) { color: var(--color-ink); transform: translateX(3px); }
 .card-action:disabled { cursor: wait; opacity: 0.6; }
-.status-tag { color: var(--accent); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-@media (max-width: 800px) {
+.status-tag { color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+@media (max-width: 760px) {
   .container { width: min(100% - 28px, 620px); }
   .section-heading, .section-actions { align-items: start; flex-direction: column; }
   .creation-fields { grid-template-columns: 1fr; }
   .tournament-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 375px) {
+@media (max-width: 480px) {
   .empty-state { align-items: stretch; flex-direction: column; }
 }
 </style>

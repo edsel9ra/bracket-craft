@@ -15,7 +15,7 @@ const isWorkspaceRoute = computed(() => (
   <nav v-if="!isWorkspaceRoute" :aria-label="t('common.languageNavigation')">
     <LanguageSwitcher />
   </nav>
-  <NuxtLoadingIndicator color="#d4f36a" :height="3" :throttle="160" />
+  <NuxtLoadingIndicator color="var(--color-accent)" :height="3" :throttle="160" />
   <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
   <ConfirmDialog />
 </template>

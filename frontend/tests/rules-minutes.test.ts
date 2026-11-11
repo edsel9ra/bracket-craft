@@ -290,8 +290,8 @@ test('keeps the two notice controls outside the announced region', () => {
   const statusEnd = block.indexOf('</p>');
   assert.ok(block.indexOf('rules.minutesWarning.continue') > statusEnd, '«Continuar» must stay outside role="status"');
   assert.ok(block.indexOf('rules.minutesWarning.stay') > statusEnd, '«Quedarme» must stay outside role="status"');
-  assert.match(block, /<button type="button" class="button-secondary" @click="continueAfterNotice">/);
-  assert.match(block, /<button type="button" class="button-secondary" @click="stayAfterNotice">/);
+  assert.match(block, /<Button variant="secondary" type="button" class="button-secondary" @click="continueAfterNotice">/);
+  assert.match(block, /<Button variant="secondary" type="button" class="button-secondary" @click="stayAfterNotice">/);
   assert.doesNotMatch(block, /saveRules/, 'the notice controls must not repeat the save');
 });
 

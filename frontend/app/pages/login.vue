@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
+import Surface from '~/components/ui/Surface.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { googleErrorKey } from '~/utils/googleAuth';
 import { safeInternalRedirect } from '~/utils/navigation';
@@ -122,7 +124,7 @@ async function submit() {
 
 <template>
   <main id="main-content" class="auth-shell">
-    <section class="auth-card">
+    <Surface as="section" class="auth-card">
       <NuxtLink to="/" class="auth-brand">BRACKET CRAFT</NuxtLink>
        <p class="eyebrow">{{ isRegister ? t('auth.newOrganization') : t('auth.workspaceAccess') }}</p>
        <h1>{{ isRegister ? t('auth.registerHeadline') : t('auth.loginHeadline') }}</h1>
@@ -208,49 +210,51 @@ async function submit() {
         <div v-if="queryError || googleError || auth.error" id="auth-error" class="field-error" role="alert">
           {{ queryError || googleError || auth.error }}
         </div>
-        <button class="button-primary" type="submit" :disabled="auth.loading">
+        <Button variant="primary" class="button-primary" type="submit" :disabled="auth.loading">
            {{ auth.loading ? t('common.processing') : isRegister ? t('auth.createAccount') : t('auth.login') }}
-        </button>
+        </Button>
       </form>
 
        <div class="auth-secondary-actions">
-         <NuxtLink v-if="needsOrganization" to="/organization" class="button-secondary auth-secondary-action">
+         <Button as="NuxtLink" variant="secondary" v-if="needsOrganization" to="/organization" class="button-secondary auth-secondary-action">
             {{ t('organization.create') }}
-         </NuxtLink>
-         <button class="button-secondary auth-secondary-action mode-toggle" type="button" @click="isRegister = !isRegister; auth.error = null">
+         </Button>
+         <Button variant="secondary" class="button-secondary auth-secondary-action mode-toggle" type="button" @click="isRegister = !isRegister; auth.error = null">
             {{ isRegister ? t('auth.haveAccount') : t('auth.createNewAccount') }}
-         </button>
-         <NuxtLink to="/" class="button-secondary auth-secondary-action back-link">{{ t('auth.backHome') }}</NuxtLink>
+         </Button>
+         <Button as="NuxtLink" variant="secondary" to="/" class="button-secondary auth-secondary-action back-link">{{ t('auth.backHome') }}</Button>
        </div>
-    </section>
+    </Surface>
   </main>
 </template>
 
 <style scoped>
-.auth-shell { position: relative; min-height: 100vh; display: grid; place-items: center; overflow: hidden; padding: 28px; background: radial-gradient(circle at 20% 0%, rgba(212, 243, 106, 0.1), transparent 32rem), #0c0f0c; }
-.auth-shell::before, .auth-shell::after { position: absolute; border: 1px solid rgba(212, 243, 106, 0.12); border-radius: 50%; content: ''; pointer-events: none; }
+/* RF-006/VI-1: el titular conserva su escala fluida para mantener la composición del formulario. */
+.auth-shell { position: relative; min-height: 100vh; display: grid; place-items: center; overflow: hidden; padding: var(--space-6); background: radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 32rem), var(--color-canvas); }
+.auth-shell::before, .auth-shell::after { position: absolute; border: 1px solid color-mix(in srgb, var(--color-accent) 12%, transparent); border-radius: 50%; content: ''; pointer-events: none; }
 .auth-shell::before { width: 38rem; height: 38rem; right: -20rem; top: -18rem; }
-.auth-shell::after { width: 20rem; height: 20rem; left: -12rem; bottom: -10rem; background: rgba(212, 243, 106, 0.03); }
-.auth-card { position: relative; z-index: 1; width: min(100%, 500px); padding: clamp(28px, 6vw, 56px); border: 1px solid var(--line); border-radius: 28px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.96), rgba(21, 24, 20, 0.98)); box-shadow: var(--shadow-deep); }
-.auth-brand { color: var(--ink); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
-.auth-brand:hover { color: var(--accent); }
-.eyebrow { margin: 62px 0 12px; color: var(--accent); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+.auth-shell::after { width: 20rem; height: 20rem; left: -12rem; bottom: -10rem; background: color-mix(in srgb, var(--color-accent) 3%, transparent); }
+.auth-card { position: relative; z-index: 1; width: min(100%, 500px); padding: var(--space-8); border: 1px solid var(--color-line); border-radius: var(--radius-xl); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 96%, transparent), color-mix(in srgb, var(--color-surface) 98%, transparent)); box-shadow: var(--shadow-deep); }
+.auth-brand { color: var(--color-ink); font-size: var(--text-xs); font-weight: 900; letter-spacing: 0.16em; text-decoration: none; }
+.auth-brand:hover { color: var(--color-accent); }
+.eyebrow { margin: var(--space-9) 0 var(--space-3); color: var(--color-accent); font-size: var(--text-xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(2.4rem, 8vw, 4.6rem); line-height: 0.95; letter-spacing: -0.07em; }
-.auth-copy { color: var(--muted); line-height: 1.6; }
-.auth-form { display: grid; gap: 16px; margin-top: 28px; }
-.google-access { display: grid; gap: 6px; margin-top: 24px; }
-.google-button { width: 100%; justify-content: center; min-height: 46px; font-size: 0.9rem; }
-.google-status { min-height: 1.1rem; margin: 0; color: var(--muted); font-size: 0.78rem; }
-.register-fields { display: grid; gap: 16px; }
-label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
-input { width: 100%; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.72); color: var(--ink); }
-input:hover { border-color: var(--muted); }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
-.field-help { color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
-button[type='submit'] { justify-content: center; margin-top: 8px; min-height: 46px; }
+.auth-copy { color: var(--color-muted); line-height: 1.6; }
+.auth-form { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
+.google-access { display: grid; gap: var(--space-1); margin-top: var(--space-6); }
+.google-button { width: 100%; justify-content: center; min-height: 46px; font-size: var(--text-md); }
+.google-status { min-height: 1.1rem; margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
+.register-fields { display: grid; gap: var(--space-4); }
+label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+input { width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-canvas) 72%, transparent); color: var(--color-ink); }
+input:hover { border-color: var(--color-muted); }
+input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.field-help { color: var(--color-muted); font-size: var(--text-xs); line-height: 1.4; }
+button[type='submit'] { justify-content: center; margin-top: var(--space-2); min-height: 46px; }
 button:disabled { cursor: wait; opacity: 0.6; }
-.form-error { padding: 12px; border: 1px solid #a45b5b; border-radius: 10px; background: rgba(164, 91, 91, 0.1); color: var(--danger); font-size: 0.85rem; }
- .auth-secondary-actions { display: grid; gap: 10px; margin-top: 18px; }
- .auth-secondary-action { width: 100%; justify-content: center; min-height: 44px; font-size: 0.88rem; }
+.form-error { padding: var(--space-3); border: 1px solid var(--color-danger-border); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-danger-border) 10%, transparent); color: var(--color-danger); font-size: var(--text-md); }
+ .auth-secondary-actions { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+ .auth-secondary-action { width: 100%; justify-content: center; min-height: 44px; font-size: var(--text-md); }
  .back-link { text-decoration: none; }
+@media (max-width: 760px) { .auth-card { padding: var(--space-6); } }
 </style>

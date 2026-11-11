@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import type { StageFormat } from '~/constants/stageFormats';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
@@ -424,7 +425,7 @@ loading.value = false;
 
       <section class="container calendar-content">
         <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('setup.loading') }}</div>
-        <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><button class="button-secondary" type="button" @click="retryCalendar">{{ t('common.retry') }}</button></div>
+        <div v-else-if="loadError" class="form-error" role="alert"><span>{{ loadError }}</span><Button variant="secondary" class="button-secondary" type="button" @click="retryCalendar">{{ t('common.retry') }}</Button></div>
         <template v-else>
           <div class="calendar-toolbar">
             <label class="field">
@@ -476,7 +477,7 @@ loading.value = false;
                   <input :id="id" v-model="matchForm.match_date" :disabled="!canManageTournaments" type="datetime-local" required :aria-describedby="ariaDescribedby" />
                 </template>
               </FormField>
-              <button v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || scheduleBusy || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</button>
+              <Button variant="primary" v-if="canManageTournaments" class="button-primary match-submit" type="submit" :disabled="saving || scheduleBusy || activeVersion?.status !== 'draft' || !selectedStageId">{{ t('setup.createMatch') }}</Button>
             </div>
             <div v-if="selectedStage" class="schedule-generator">
               <div class="schedule-generator-heading">
@@ -516,9 +517,9 @@ loading.value = false;
               </div>
               <p class="field-hint">{{ t('setup.generatorHint') }}</p>
               <div class="schedule-generator-actions">
-                <button v-if="canManageTournaments" class="button-secondary" type="button" :disabled="scheduleBusy || saving || !canGenerateSchedule || !scheduleForm.start_date" @click="drawStageSchedule">
+                <Button variant="secondary" v-if="canManageTournaments" class="button-secondary" type="button" :disabled="scheduleBusy || saving || !canGenerateSchedule || !scheduleForm.start_date" @click="drawStageSchedule">
                   {{ scheduleBusy ? t('setup.generatingSchedule') : selectedStage.stage_type === 'swiss' && scheduleForm.swiss_round > 1 ? t('setup.drawNextSwissRound') : visibleStageMatches.length ? t('setup.regenerateSchedule') : t('setup.generateSchedule') }}
-                </button>
+                </Button>
                 <span v-if="selectedStageTeams.length < 2" class="muted-note">{{ t('setup.generatorNeedsTeams') }}</span>
               </div>
               <p v-if="scheduleResult" class="schedule-result" role="status">
@@ -538,44 +539,44 @@ loading.value = false;
 </template>
 
 <style scoped>
-.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
+.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .section-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.section-hero h1 { max-width: 800px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
-.section-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
-.calendar-content { display: grid; gap: 20px; padding-bottom: 80px; }
-.calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 20px; }
-label { display: grid; gap: 7px; color: var(--muted); font-size: 0.82rem; }
-select, input { min-width: 0; padding: 0.82rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: #0c0f0c; color: var(--ink); }
-select:hover, input:hover { border-color: var(--muted); }
-select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
-.panel { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.9), rgba(21, 24, 20, 0.94)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12); }
-.panel:hover { border-color: rgba(212, 243, 106, 0.32); }
-.panel h2 { margin: 0 0 10px; font-size: 1.6rem; letter-spacing: -0.05em; }
-.resource-list { position: relative; display: grid; gap: 8px; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; }
-.resource-list li { display: flex; justify-content: space-between; gap: 10px; color: var(--ink); font-size: 0.85rem; }
-.resource-list a { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 8px; border-radius: 8px; color: inherit; text-decoration: none; }
-.resource-list a:hover { background: rgba(212, 243, 106, 0.06); }
-.resource-list small { color: var(--muted); font-size: 0.7rem; }
-.match-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 14px; }
+.section-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.section-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.calendar-content { display: grid; gap: var(--space-5); padding-bottom: var(--space-10); }
+.calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-5); }
+label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+select, input { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); }
+select:hover, input:hover { border-color: var(--color-muted); }
+select:focus, input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.panel { display: grid; align-content: start; gap: var(--space-3); min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 12%, transparent); }
+.panel:hover { border-color: color-mix(in srgb, var(--color-accent) 32%, transparent); }
+.panel h2 { margin: 0 0 var(--space-2); font-size: 1.6rem; letter-spacing: -0.05em; }
+.resource-list { position: relative; display: grid; gap: var(--space-2); margin: var(--space-2) 0 0; padding: var(--space-3) 0 0; border-top: 1px solid var(--color-line); list-style: none; }
+.resource-list li { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--color-ink); font-size: var(--text-md); }
+.resource-list a { display: flex; justify-content: space-between; gap: var(--space-2); width: 100%; padding: var(--space-2); border-radius: var(--radius-sm); color: inherit; text-decoration: none; }
+.resource-list a:hover { background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
+.resource-list small { color: var(--color-muted); font-size: var(--text-2xs); }
+.match-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: var(--space-3); }
 .match-submit { min-height: 47px; }
-.schedule-generator { display: grid; gap: 12px; margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
-.schedule-generator-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
-.schedule-generator-heading h3 { margin: 0; font-size: 1.05rem; letter-spacing: -0.03em; }
-.schedule-generator-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; }
-.schedule-generator-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; }
-.group-head-options { display: grid; gap: 10px; }
-.checkbox-label { display: flex; grid-template-columns: none; align-items: center; gap: 8px; color: var(--ink); }
+.schedule-generator { display: grid; gap: var(--space-3); margin-top: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--color-line); }
+.schedule-generator-heading { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
+.schedule-generator-heading h3 { margin: 0; font-size: var(--text-base); letter-spacing: -0.03em; }
+.schedule-generator-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: var(--space-3); }
+.schedule-generator-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: var(--space-3); }
+.group-head-options { display: grid; gap: var(--space-2); }
+.checkbox-label { display: flex; grid-template-columns: none; align-items: center; gap: var(--space-2); color: var(--color-ink); }
 .checkbox-label input { width: auto; }
-.team-head-picker { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
-.schedule-generator-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.schedule-result { margin: 0; padding: 11px 12px; border: 1px solid rgba(212, 243, 106, 0.28); border-radius: 10px; background: rgba(212, 243, 106, 0.06); color: var(--muted); font-size: 0.78rem; }
-.schedule-result code { margin-left: 4px; }
-.match-list { margin-top: 2px; }
-.empty-state, .form-error { padding: 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
-.loading-state { display: flex; align-items: center; gap: 12px; }
-.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
-.form-error { border-style: solid; border-color: #a45b5b; color: #ffb0a8; }
-code { color: var(--accent); font-size: 0.75rem; }
-@media (max-width: 900px) { .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } }
-@media (max-width: 620px) { .container { width: min(100% - 28px, 620px); } .schedule-generator-heading { align-items: stretch; flex-direction: column; } .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: 1fr; } }
+.team-head-picker { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); }
+.schedule-generator-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.schedule-result { margin: 0; padding: var(--space-3) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 6%, transparent); color: var(--color-muted); font-size: var(--text-xs); }
+.schedule-result code { margin-left: var(--space-1); }
+.match-list { margin-top: var(--space-1); }
+.empty-state, .form-error { padding: var(--space-5); border: 1px dashed var(--color-line); border-radius: var(--radius-md); color: var(--color-muted); }
+.loading-state { display: flex; align-items: center; gap: var(--space-3); }
+.loading-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 18px var(--color-accent); animation: pulse 1s ease-in-out infinite; }
+.form-error { border-style: solid; border-color: var(--color-danger-border); color: var(--color-danger); }
+code { color: var(--color-accent); font-size: var(--text-xs); }
+@media (max-width: 1000px) { .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } }
+@media (max-width: 480px) { .container { width: min(100% - 28px, 620px); } .schedule-generator-heading { align-items: stretch; flex-direction: column; } .match-form-grid, .schedule-generator-grid, .schedule-generator-options { grid-template-columns: 1fr; } }
 </style>
