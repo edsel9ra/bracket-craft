@@ -26,3 +26,16 @@ test('closed, walkover and administrative results retain the final score without
     });
   }
 });
+
+test('cancelled matches with absent or incomplete scores never invent a final zero', () => {
+  for (const segments of [[], [{ minute_start: 0 }]]) {
+    for (const score of [{ home: null, away: null }, { home: 2, away: null }, { home: null, away: 1 }]) {
+      assert.deepEqual(matchScoreDisplay({ status: 'cancelled', segments, score }), {
+        kind: 'cancelled', home: null, away: null, labelKey: 'status.cancelled',
+      });
+    }
+    assert.deepEqual(matchScoreDisplay({ status: 'cancelled', segments, score: { home: 0, away: 0 } }), {
+      kind: 'final', home: 0, away: 0, labelKey: 'match.scoreFinal',
+    });
+  }
+});

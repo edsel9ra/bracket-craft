@@ -25,7 +25,7 @@ const teams = computed(() => [
         <span class="team-name" :title="teams[0]!.name">{{ teams[0]!.name }}</span>
       </div>
       <div class="match-score" :aria-label="t(score.labelKey)">
-        <span v-if="score.kind === 'pending'" class="score-pending">{{ t(score.labelKey) }}</span>
+        <span v-if="score.kind === 'pending' || score.kind === 'cancelled'" class="score-pending">{{ t(score.labelKey) }}</span>
         <strong v-else>{{ score.home }} – {{ score.away }}</strong>
       </div>
       <div class="match-team away-team">

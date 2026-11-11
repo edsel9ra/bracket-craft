@@ -6,6 +6,9 @@ export interface ScoreDisplayInput {
 }
 
 export function matchScoreDisplay(input: ScoreDisplayInput) {
+  if (input.status === 'cancelled' && (input.score.home === null || input.score.away === null)) {
+    return { kind: 'cancelled', home: null, away: null, labelKey: 'status.cancelled' } as const;
+  }
   const final = ['finished', 'administrative_resolution', 'cancelled'].includes(input.status);
   const kind = final ? 'final' : input.segments.length ? 'live' : 'pending';
   return {
