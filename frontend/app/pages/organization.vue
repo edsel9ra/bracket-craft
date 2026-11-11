@@ -8,6 +8,7 @@ definePageMeta({ middleware: ['session'] });
 const auth = useAuthStore();
 const route = useRoute();
 const { t } = useI18n();
+useHead(() => ({ title: `${t('organization.title')} | Bracket Craft` }));
 
 const destination = computed(() => safeInternalRedirect(route.query.next, '/workspace'));
 

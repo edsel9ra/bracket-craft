@@ -9,6 +9,7 @@ import {
 const props = defineProps<{
   steps: WizardStepStatus[];
   current: WizardStepId;
+  label: string;
 }>();
 
 const emit = defineEmits<{
@@ -59,7 +60,7 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
 </script>
 
 <template>
-  <nav class="wizard-steps" :aria-label="t('wizard.indexLabel')">
+  <nav class="wizard-steps" :aria-label="`${t('wizard.indexLabel')}: ${label}`">
     <p class="wizard-step-count">
       {{ t('wizard.stepCount', { current: currentIndex + 1, total: visibleSteps.length }) }}
     </p>

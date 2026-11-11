@@ -11,7 +11,9 @@ const isWorkspaceRoute = computed(() => (
 
 <template>
   <a class="skip-link" href="#main-content">{{ t('common.skip') }}</a>
-  <LanguageSwitcher v-if="!isWorkspaceRoute" />
+  <nav v-if="!isWorkspaceRoute" :aria-label="t('common.languageNavigation')">
+    <LanguageSwitcher />
+  </nav>
   <NuxtLoadingIndicator color="#d4f36a" :height="3" :throttle="160" />
   <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
 </template>

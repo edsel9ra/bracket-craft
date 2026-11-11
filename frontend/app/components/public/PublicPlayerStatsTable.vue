@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 import { playerInitials } from '~/utils/publicLineup';
 import { playerPhotoSource } from '~/utils/publicStats';
 
@@ -71,7 +72,7 @@ function initials(row: PlayerStatRow): string {
       <span class="muted">{{ t('public.playersCount', { count: rows.length }) }}</span>
     </div>
     <div v-if="!rows.length" class="empty-state compact" role="status">{{ t('public.noPlayerStats') }}</div>
-    <div v-else class="table-scroll">
+    <HorizontalScroll v-else :label="t('public.playerStats')">
       <table aria-describedby="public-player-stats-definitions">
         <caption class="visually-hidden">{{ t('public.playerStats') }}</caption>
         <thead>
@@ -113,7 +114,7 @@ function initials(row: PlayerStatRow): string {
           </tr>
         </tbody>
       </table>
-    </div>
+    </HorizontalScroll>
     <div id="public-player-stats-definitions" class="stats-definitions muted" role="note">
       <p class="stats-definition">{{ t('public.goalsDefinition') }}</p>
       <p class="stats-definition">{{ t('public.cleanSheetDefinition') }}</p>
@@ -127,7 +128,7 @@ function initials(row: PlayerStatRow): string {
 
 <style scoped>
 .player-stats-panel { min-width: 0; }
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+thead th:nth-child(2), tbody td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 145px; max-width: 180px; background: var(--surface); box-shadow: 5px 0 8px rgba(0, 0, 0, 0.3); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 thead th {
   color: var(--muted);

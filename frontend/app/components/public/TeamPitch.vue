@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FORMATIONS_GRID, type FormationCode } from '~/constants/formations';
-import { positionLabel } from '~/utils/positions';
+import { positionAbbreviation, positionLabel } from '~/utils/positions';
 import { playerInitials } from '~/utils/publicLineup';
 import type { PublicLineupPlayer, PublicTeamLineup } from '~/utils/publicTournament';
 
@@ -49,7 +49,7 @@ function playerStyle(player: PublicLineupPlayer): Record<string, string> {
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position">{{ positionLabel(player.position_slot || '', t) }}</span>
+        <span class="player-position" :title="positionLabel(player.position_slot, t)"><span aria-hidden="true">{{ positionAbbreviation(player.position_slot, t) }}</span><span class="visually-hidden">{{ positionLabel(player.position_slot, t) }}</span></span>
       </div>
     </div>
     <div class="team-pitch-substitutes">
@@ -86,7 +86,7 @@ function playerStyle(player: PublicLineupPlayer): Record<string, string> {
 .pitch-player img, .player-avatar { width: clamp(28px, 5.5cqw, 56px); height: clamp(28px, 5.5cqw, 56px); display: grid; place-items: center; border: 2px solid var(--accent); border-radius: 50%; background: var(--accent-ink); color: var(--accent); object-fit: cover; font-size: clamp(0.62rem, 2cqw, 1.1rem); font-weight: 900; line-height: 1; text-align: center; }
 .player-number { margin-top: 0; padding: 2px 5px; border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 0.62rem; font-weight: 900; line-height: 1; }
 .pitch-player .player-name { min-width: 0; max-width: 100%; overflow: hidden; color: var(--ink); font-size: 0.6rem; font-weight: 800; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
-.player-position { max-width: 100%; color: var(--accent); font-size: 0.52rem; font-weight: 800; line-height: 1.1; text-align: center; text-transform: uppercase; overflow-wrap: anywhere; }
+.player-position { max-width: 100%; color: var(--accent); font-size: 0.52rem; font-weight: 800; line-height: 1.1; text-align: center; text-transform: uppercase; white-space: nowrap; }
 .team-pitch-substitutes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 9px; border: 1px solid rgba(166, 170, 159, 0.14); border-radius: 9px; background: rgba(12, 15, 12, 0.28); }
 .team-pitch-substitutes small { flex-basis: 100%; color: var(--muted); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 .bench-player { padding: 4px 6px; border-radius: 5px; background: rgba(212, 243, 106, 0.08); color: var(--ink); font-size: 0.63rem; }

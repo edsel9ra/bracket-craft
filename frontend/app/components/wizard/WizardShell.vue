@@ -96,7 +96,7 @@ watch(() => props.current, async (stepId) => {
     <p v-if="readOnly" class="wizard-readonly" role="status">{{ t('wizard.readOnly') }}</p>
 
     <div class="wizard-shell-body">
-      <WizardSteps :steps="statuses" :current="current" @select="goTo" />
+      <WizardSteps :steps="statuses" :current="current" :label="title" @select="goTo" />
 
       <div class="wizard-step">
         <h3 :id="stepTitleId" ref="stepTitle" class="wizard-step-title" tabindex="-1">

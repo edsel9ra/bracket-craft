@@ -23,5 +23,5 @@ test('player labels stay within their marker and the number does not overlap the
   assert.match(css, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.doesNotMatch(css, /margin-top:\s*-/);
   assert.match(css, /\.pitch-player \.player-name\s*\{[^}]*max-width:\s*100%/);
-  assert.match(css, /\.player-position\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  assert.match(css, /\.player-position\s*\{[^}]*white-space:\s*nowrap/);
 });

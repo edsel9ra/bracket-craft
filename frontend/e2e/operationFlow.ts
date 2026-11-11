@@ -219,7 +219,7 @@ function reportPanel(page: Page): Locator {
 
 function stepButtons(page: Page, wizard: Locator): Locator {
   return wizard
-    .getByRole('navigation', { name: labelText(E2E_LABELS.wizardIndex), exact: true })
+    .getByRole('navigation', { name: namePattern(`${labelText(E2E_LABELS.wizardIndex)}: `) })
     .getByRole('button');
 }
 

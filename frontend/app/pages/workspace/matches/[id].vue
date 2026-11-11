@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { checklistPresentation } from '~/utils/operationChecklist';
 import FormField from '~/components/ui/FormField.vue';
 import { FORMATION_OPTIONS, formationSlots, type FormationCode } from '~/constants/formations';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
@@ -397,9 +398,10 @@ const substitutionReasonKeys: Record<SubstitutionUnavailableReason, string> = {
   pair_required: 'match.substitutionPairRequired',
 };
 
-useHead({
+useHead(() => ({
+  title: `${t('match.matchReport')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
-});
+}));
 
 const match = computed(() => operation.value?.match || null);
 const isTerminal = computed(() => ['finished', 'cancelled', 'administrative_resolution'].includes(match.value?.status || ''));
@@ -657,10 +659,10 @@ const rulesDefaults = computed(() => match.value?.rules_config?.stage_defaults |
 // de once no coincide con la modalidad declarada, sin bloquear nada.
 const matchGameFormat = computed(() => gameFormatOf(match.value?.rules_config ?? null));
 const operationChecklist = computed(() => [
-  { label: t('status.published'), valid: match.value?.version_status === 'published' },
-  { label: t('match.activeSegment'), valid: Boolean(activeSegment.value) },
-  { label: t('match.roster'), valid: hasCompleteLineup.value || Boolean(operation.value?.lineup.length) },
-  { label: t('match.mainReferee'), valid: Boolean(operation.value?.officials.some((official) => official.official_role === 'main_referee')) },
+  { label: t('status.published'), ...checklistPresentation(match.value?.version_status === 'published', isTerminal.value) },
+  { label: t('match.activeSegment'), ...checklistPresentation(Boolean(activeSegment.value), isTerminal.value, 'match.notRequired') },
+  { label: t('match.roster'), ...checklistPresentation(hasCompleteLineup.value || Boolean(operation.value?.lineup.length), isTerminal.value) },
+  { label: t('match.mainReferee'), ...checklistPresentation(Boolean(operation.value?.officials.some((official) => official.official_role === 'main_referee')), isTerminal.value, 'match.unassigned') },
 ]);
 
 const defaultCloseForm = {
@@ -1716,8 +1718,8 @@ onBeforeUnmount(() => {
        <div v-else-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="retryOperation">{{ t('common.retry') }}</button></div>
       <template v-else-if="operation && match">
         <div class="checklist" :aria-label="t('match.matchReport')">
-          <div v-for="item in operationChecklist" :key="item.label" class="check-item" :class="{ valid: item.valid }">
-            <span aria-hidden="true">{{ item.valid ? '✓' : '!' }}</span><strong>{{ item.label }}</strong><small>{{ item.valid ? t('common.ready') : t('common.incomplete') }}</small>
+          <div v-for="item in operationChecklist" :key="item.label" class="check-item" :class="{ valid: item.valid, neutral: item.neutral }">
+            <span aria-hidden="true">{{ item.icon }}</span><strong>{{ item.label }}</strong><small>{{ t(item.statusKey) }}</small>
           </div>
         </div>
 
@@ -2028,6 +2030,8 @@ onBeforeUnmount(() => {
 .check-item small { color: var(--muted); font-size: 0.68rem; }
 .check-item.valid { border-color: rgba(212, 243, 106, 0.28); color: var(--ink); }
 .check-item.valid span { background: rgba(212, 243, 106, 0.18); color: var(--accent); }
+.check-item.neutral { color: var(--muted); border-color: var(--line); }
+.check-item.neutral span { color: var(--muted); background: transparent; }
 .operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .panel { display: grid; align-content: start; gap: 18px; min-width: 0; padding: 23px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, rgba(32, 37, 30, 0.92), rgba(21, 24, 20, 0.96)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14); }
 .panel:hover { border-color: rgba(212, 243, 106, 0.3); }
