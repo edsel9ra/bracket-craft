@@ -1,6 +1,6 @@
 # Plan 031 — Pulido de las vistas públicas
 
-Fecha: 2026-11-11. Spec aprobada por el usuario; plan y tareas redactados por encargo, pendientes de revisión antes de implementar. No se ha cambiado código de aplicación.
+Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de documentación cerradas. PR A (T1–T4) implementado y verificado; PR B/C pendientes. La spec permanece aprobada hasta completar y validar el conjunto.
 
 ## 1. Alcance y archivos por responsabilidad
 

@@ -1,22 +1,22 @@
 # Tareas 031 — Pulido de las vistas públicas
 
-Fecha: 2026-11-11. Spec aprobada; plan/tareas pendientes de revisión antes de implementación. Ninguna tarea ejecutada. Estimaciones por tarea de 20–30 min; si no cabe, detenerse y proponer división, no añadir alcance ni darla por hecha. Tests primero en rojo, código mínimo y comprobación antes de marcar cada casilla. Comandos desde la raíz, con Node 24/pnpm 12.12.1; no son resultados de esta entrega documental.
+Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de documentación cerradas. PR A (T1–T4) implementado con tests primero en rojo y comprobación antes de marcar cada casilla; PR B/C pendientes. Comandos desde la raíz con Node 24/pnpm 12.12.1. Evidencias y resultados de PR A al final; los comandos de las tareas pendientes siguen siendo propuestas, no resultados.
 
 ## PR A — Diagrama y lógica pura (T1–T4)
 
-- [ ] **T1. Inferencia conservadora de conexiones por ganador/participante y unicidad.** RF-005, RF-008–011; RNF-001. 25 min.
+- [x] **T1. Inferencia conservadora de conexiones por ganador/participante y unicidad.** RF-005, RF-008–011; RNF-001. 25 min.
   - Hecho cuando: `publicBracket.ts` no muta entradas ni usa DOM/red/reloj; tests cubren regular, penales, W.O., ganador ausente/ajeno, participante null, duplicados, dos fuentes/destinos, rondas no consecutivas, byes, grupos/fases ajenos y datos parciales. Cero líneas ambiguas; orden API estable y todos los partidos conservados.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-bracket.test.ts`.
 
-- [ ] **T2. Etiquetas de ronda con códigos actuales y fallback ES/EN.** RF-006; RNF-006. Depende de T1. 20 min.
+- [x] **T2. Etiquetas de ronda con códigos actuales y fallback ES/EN.** RF-006; RNF-006. Depende de T1. 20 min.
   - Hecho cuando: FINAL, SF1/SF2, QF1–QF4 y R16-1–R16-8 producen las cuatro etiquetas aprobadas; null, mezcla, índices inválidos, R32 y última página incompleta no inventan nombres. «Ronda n»/genérico conserva fallback. Pruebas y traducciones presentes.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-bracket.test.ts && pnpm run typecheck`.
 
-- [ ] **T3. Layout puro por medidas, promedio de orígenes y separación sin solapes.** RF-007, RF-012; RNF-003. Depende de T1. 25 min.
+- [x] **T3. Layout puro por medidas, promedio de orígenes y separación sin solapes.** RF-007, RF-012; RNF-003. Depende de T1. 25 min.
   - Hecho cuando: `publicBracketLayout.ts` recibe alturas/gap, centra con cero/uno/dos orígenes según plan, conserva orden API y registra desplazamiento mínimo por colisión; tests verifican cajas separadas, coordenadas finitas, alturas variables y entradas incompletas, tolerancia ≤2 px en casos sin colisión y ausencia de mutación/reloj.
   - Comando: `cd frontend && node --test --experimental-strip-types tests/public-bracket-layout.test.ts`.
 
-- [ ] **T4. Integrar diagrama medido, SVG decorativo y relaciones textuales.** RF-005, RF-007–012, RF-019; RNF-003–006. Depende de T2/T3. 30 min.
+- [x] **T4. Integrar diagrama medido, SVG decorativo y relaciones textuales.** RF-005, RF-007–012, RF-019; RNF-003–006. Depende de T2/T3. 30 min.
   - Hecho cuando: `PublicBracket` reutiliza `HorizontalScroll`, observa medidas solo en cliente y limpia recursos; SVG aria-hidden sin foco/clics, relaciones aceptadas también en texto y ganador identificable sin solo color. Rondas/partidos/controles permanecen visibles sin medidas, se conserva openLineup, score/tanda/W.O. y marca neutra; escalas 029 sin nuevas exclusiones genéricas y reduced-motion respetado. La revisión de capturas/axe se completa en T10, no se anticipa aquí.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint`.
 
@@ -52,5 +52,15 @@ Fecha: 2026-11-11. Spec aprobada; plan/tareas pendientes de revisión antes de i
 ## Reglas de entrega
 
 - PR A → PR B → PR C, en dependencia; cada PR conserva suites existentes verdes y evidencia de su superficie, no difiere fallos conocidos al siguiente. La pasada completa de aceptación se repite en T10 sobre el conjunto final.
-- No abrir ningún PR ni implementar en este encargo documental. La agrupación es propuesta para el siguiente encargo, después de revisar plan/tareas.
-- Mantener la spec en aprobada hasta validación y autorización explícita de cierre. Nada marcado en este documento representa trabajo ya realizado.
+- El usuario autorizó implementar PR A en la misma rama, sin abrir PR. PR B/C requieren su siguiente encargo.
+- Mantener la spec en aprobada hasta validación del conjunto y autorización explícita de cierre. Solo T1–T4 están ejecutadas.
+
+## Evidencia PR A — 2026-11-11
+
+- TDD: rojo antes de código en T1 (módulo ausente), T2 (export ausente), T3 (módulo ausente) y T4 (integración/textos ausentes). Ver `/home/ubuntu/ui-audit/031-a-t{1,2,3,4}-{red,green}.log`; verdes focales 6/7/4/3 tests respectivamente. Suite final: 865 tests, 863 pass, 0 fail, 2 skip. Node 24.22.2/pnpm 12.12.1; test/typecheck/lint/build/typecheck:e2e con salida 0 (`031-a-final-checks.log`).
+- `operation-flow`: setup y escenario existentes sin modificar, 2 passed (38.2s), `031-a-operation-flow.log`. Configuración local `.mts` fuera del repo solo selecciona el Chromium disponible; conserva proyectos/dependencias, localizadores y veredicto. Se corrigieron permisos de dependencias/artefactos ignorados generados previamente por Docker y se reinstaló con lockfile congelado; sin cambios de configuración/lockfile del repo.
+- Diez mediciones anónimas: demo 8 y temporales 4/8/16/5 a 1440×900 y 390×844. Por resolución, dibujados/deducibles: 4/4, 1/1, 2/2, 4/4, 2/2; diferencia Y máxima 0 px, sin colisiones, solapes, overflow de documento, errores de página ni violaciones axe (10 ejecuciones). Incluyen pendientes, placeholders, W.O. reales y 3 byes en cuadro de 5. Colisiones/desplazamiento mínimo también cubiertos en test puro.
+- Cero líneas falsas: igualdad de los pares SVG con una deducción independiente de los datos públicos y contraste con `advancement_links` locales solo para auditoría; la UI nunca consulta esas relaciones privadas. Repetidos, ambigüedad y ausencia de ganador se cubren en tests sin líneas. Penales se cubren por contrato unitario, no como cierre real de esta corrida.
+- Teclado: scroll con flecha, diálogo de formación/Escape/retorno de foco, actualización de trazos al redimensionar y reduced-motion comprobados (`031-a-interactions.json`). Sin animación añadida ni excepciones 029 nuevas.
+- Composiciones antes/después revisadas: `/home/ubuntu/ui-audit/031-a-pr/{demo-8,4,8,16,5}-{desktop,mobile}.png`. Datos y geometría en `031-a-{before,after}/measurements.json`. Fixtures retirados: cuatro torneos/33 equipos y un torneo E2E/dos equipos/dos jugadores; contadores finales cero en `031-a-cleanup{,-e2e}.log`. Demo y fixtures anteriores conservados.
+- No se han ejecutado T5–T10 ni la aceptación global de portada/estadísticas/clasificación; permanece pendiente el arreglo de clasificación de PR B y el gate CI de PR.
