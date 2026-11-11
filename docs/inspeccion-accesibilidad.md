@@ -189,3 +189,64 @@ Los guards devuelven la promesa. Los selectores de versión y resolución restau
 Verificación en Node 24 / pnpm 12.12.1: tests **822 pass / 0 fail / 2 skip**, typecheck, lint, build y typecheck:e2e con salida 0. El nuevo guardián analiza llamadas en scripts y expresiones de plantillas, distingue el `confirm` local de las llamadas globales y también rechaza alert/prompt nativos. El inventario tiene 19 sitios convertidos; los otros `confirm` locales de los asistentes son funciones de guardado, no diálogos nativos.
 
 E2E local `operation-flow`: **2 passed (51.0s)** sobre el frontend actualizado del stack demo, incluidos publicar versión y cerrar acta con botón localizado dentro de `role=dialog`. Se usó Chromium de `mcr.microsoft.com/playwright:v1.64.1-noble` (Node 26 de esa imagen; pnpm 12.12.1 instalado solo en el contenedor, que no incluye Corepack). Los cinco checks anteriores sí se ejecutaron en `node:24`. Esto comprueba esos flujos funcionales, no todas las cancelaciones ni cada guard en un navegador. No se repitieron axe, capturas ni revisión visual o de lector de pantalla; CI de T6 queda pendiente del PR.
+
+## 10. Revisión 029 — T7–T10 (2026-11-11)
+
+### Método y cobertura
+
+Stack local de desarrollo, mismo método del §7: Playwright conectado a Chromium por CDP e inyección local de **axe-core 4.10.3**, `axe.run(document, { reporter: 'v2' })`, sin desactivar reglas ni excluir DevTools. Esta revisión sí ejecuta axe a **1440×900 y 390×844**, con movimiento reducido y fuentes cargadas. Se guardan violaciones con todos sus targets y resúmenes de fallo, pases de contraste e incomplete en `/home/ubuntu/ui-audit/axe-029.json`; el baseline conservado es `axe-after.json` del PR #40.
+
+Son **28 estados por resolución, 56 análisis** de documento completo, no 56 páginas independientes:
+
+- Portada, detalle público, bracket, estadísticas de jugadores/equipos y modal de formación.
+- Login, registro, invitación válida, 403, organización sin membresías, cuenta Google y callback.
+- Workspace, administración real, miembros y su directorio.
+- Configuración del torneo, checklist, escudos y asistente de reglas abierto; calendario y formulario; plantillas y formulario; operación de acta cerrada y formulario.
+- Diálogo propio de revocación de una invitación abierto y cancelado, sin ejecutar la revocación desde el diálogo.
+
+Los estados reales de admin e invitación no se sustituyen por un 403 ni por un enlace inválido. Se añadió temporalmente una fila local en `platform_admins`, se creó una invitación mediante API (**201**) y se reactivó el usuario local sin organizaciones de T8. Al finalizar, la elevación se retiró, la invitación se revocó mediante API y el usuario temporal se desactivó. No se tocaron seeds ni permisos del producto. El callback se mantiene en espera reteniendo y después entregando la respuesta real de sesión, sin simular datos ni verificar el proveedor OAuth.
+
+### Axe: PR #40 → revisión 029
+
+Las cifras de la tabla son nodos denunciados por regla. El baseline comprende **14 estados solo desktop**; esta revisión amplía a 28 por resolución. En los **13 estados desktop con el mismo identificador** no aparecen reglas nuevas. Los otros estados y móvil amplían cobertura, no tienen un baseline equivalente del PR #40.
+
+| Regla | PR #40 desktop | 029 desktop | 029 móvil |
+|---|---:|---:|---:|
+| `region`, exclusivamente Nuxt DevTools | 13 | 26 | 26 |
+| `color-contrast` | 0 | 0 | 0 |
+| `document-title` | 0 | 0 | 0 |
+| `landmark-unique` | 0 | 0 | 0 |
+| `select-name` | 0 | 0 | 0 |
+| Otras reglas con violaciones | 0 | 0 | 0 |
+| **Violaciones de aplicación, sin DevTools** | **0** | **0** | **0** |
+
+**Cero violaciones nuevas de aplicación.** Los 52 avisos `region` del nuevo artefacto apuntan únicamente a `nuxt-devtools-frame`/su etiqueta de tiempo. Permanecen en el JSON, no se ocultan para obtener un resultado verde. Los modales de formación y confirmación no presentan violaciones; el resto del documento queda inerte mientras están abiertos.
+
+`color-contrast` deja **incomplete** en 14 estados/1838 nodos del baseline, 27 estados/2700 nodos de 029 desktop y 27 estados/3121 nodos de 029 móvil. Se cuentan apariciones en documentos completos repetidos, no nodos únicos ni regresiones demostradas. Gradientes y fondos compuestos requieren revisión manual: cero violaciones automáticas no certifica WCAG AA universal.
+
+### Contraste, fuente y diálogo
+
+Se conserva la medición sRGB de T1 (§8), verificada por `design-contrast.test.ts`, sin cambiar la paleta base:
+
+| Primer plano | surface | surface-raised | surface-bright |
+|---|---:|---:|---:|
+| ink | 15,75:1 | 13,73:1 | 11,58:1 |
+| muted | 7,57:1 | 6,60:1 | 5,56:1 |
+| accent / success / home | 14,35:1 | 12,51:1 | 10,55:1 |
+| danger | 10,26:1 | 8,94:1 | 7,54:1 |
+| warning / away | 12,00:1 | 10,47:1 | 8,83:1 |
+| line | **1,79:1** | **1,56:1** | **1,31:1** |
+
+`--line`/`--color-line` **no alcanza 3:1** y solo se considera separador decorativo, nunca única señal esencial de un control. Los controles nuevos usan muted/acento para esas señales; esto no certifica todos los controles heredados de opción 3. `accent-ink` sobre acento/peligro/aviso mantiene **13,46:1 / 9,62:1 / 11,26:1**. Los tokens añadidos durante T7–T9 representan colores preexistentes, no una nueva paleta.
+
+Archivo variable latino se distribuye localmente con ejes peso/ancho y sustitución métrica sobre Arial; el único woff2 emitido pesa **90 104 bytes**, inferior a 120 000. Sin orígenes de fuentes externos ni cambios de CSP. Las 19 confirmaciones usan el diálogo propio con título, mensaje y verbo localizado; las pruebas de cola/cancelación y el guardián de diálogos nativos permanecen activos. La revisión axe incluye un diálogo peligroso real cancelado; no sustituye una auditoría de todos los caminos de foco y navegación.
+
+### Evidencias, verificación y límites
+
+Las capturas baseline T7 provienen de main y las T8/T9 del worktree `origin/main` (`ce254f0c`); están en `029-before/` y `029-after/`, a ambas resoluciones. La comparación visual corrigió sobredimensionados y superficies nuevas no equivalentes; las diferencias restantes son normalización de escala y presentación de piezas comunes. Operación y asistentes conservan su fuente sin migración visual; heredan solo la normalización global comprobada en T9.
+
+Seis composiciones para el PR, etiquetadas antes/después y de ancho máximo 1600 px, en `/home/ubuntu/ui-audit/029-pr/`: `portada-desktop.png`, `torneo-mobile.png`, `miembros-desktop.png`, `admin-desktop.png`, `configuracion-desktop.png` y `plantillas-mobile.png`.
+
+T10 solo cambia documentación: los inputs del frontend son idénticos al árbol `24a801d79410672966a3c2da45752a1b9a46cd68` verificado en T9, por lo que se conservan sus resultados sin repetir comandos con entradas idénticas. Node **24.22.2**, pnpm **12.12.1**: tests **824 pass / 0 fail / 2 skip**, typecheck, lint sin warnings, build y typecheck:e2e con salida **0**; E2E `operation-flow` **2 passed (44.6s)**, también con Node 24. Auditoría de dependencias constitucional: **OK**, cinco avisos no accionables. Logs `/home/ubuntu/ui-audit/029-t9-*.log`. El guardián conserva **37 excepciones** y únicamente **6 pendientes de opción 3**: operación, RulesEditor, rules/, TeamsWizard, StageTeamsWizard y wizard/.
+
+**Límites:** sin lector de pantalla, dispositivos físicos, Lighthouse ni OAuth real. No se auditan visualmente todos los pasos/estados de asistentes, todos los ratios de fondos compuestos ni todas las cancelaciones; el demo no contiene clasificación de liga. Los emuladores de viewport y axe no equivalen a esas comprobaciones. T1–T10 quedan entregadas localmente, pero el cierre formal como `implementada` continúa pendiente de CI verde sobre la rama completa y revisión final del usuario. No se declara CI verde ni una certificación global de accesibilidad.
