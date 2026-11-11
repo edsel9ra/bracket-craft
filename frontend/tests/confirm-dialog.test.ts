@@ -54,7 +54,8 @@ test('version selector restores its value before waiting and route guards preser
   const match = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
   assert.match(match, /return confirm\(\{ title: t\('confirm.leaveMatch.title'\)/);
   assert.match(match, /closeResolutionDecision\(\{ \.\.\.closeInput, confirmed: true \}\)/);
-  const resolutionHandler = match.slice(match.indexOf('async function onResolutionChange'), match.indexOf('const eventSubstitutionTeam'));
+  const resolutionStart = match.indexOf('async function onResolutionChange');
+  const resolutionHandler = match.slice(resolutionStart, match.indexOf('function closeValidationIssue', resolutionStart));
   assert.ok(resolutionHandler.indexOf('select.value = resolution.value') < resolutionHandler.indexOf('await changeResolution(next)'));
   assert.match(match, /@change="onResolutionChange"/);
 });

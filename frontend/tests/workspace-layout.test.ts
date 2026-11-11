@@ -80,8 +80,8 @@ test('the migrated Workspace pages delegate their only h1 to PageHeader', () => 
     assert.equal(feature.match(/<PageHeader\b/g)?.length, 1, page);
     assert.doesNotMatch(feature, /<h1\b/, page);
   }
-  // La operación conserva su h1 hasta T5.
-  assert.equal(source('pages/workspace/matches/[id].vue').match(/<h1\b/g)?.length, 1);
+  // PR B conserva la cabecera y su h1 sin migrar la presentación de PR C.
+  assert.equal(featureSource('pages/workspace/matches/[id].vue').match(/<h1\b/g)?.length, 1);
 });
 
 test('the setup orchestrator and extracted files respect their line budgets', () => {
@@ -104,6 +104,33 @@ test('featureSource follows shared local dependencies once without absorbing UI,
   assert.doesNotMatch(feature, /class="rules-wizard"/);
 });
 
+test('the operation orchestrator and extracted files respect their line budgets', () => {
+  const page = source('pages/workspace/matches/[id].vue');
+  assert.ok(page.split('\n').length <= 250);
+  assert.ok(page.indexOf('await useAsyncData') < page.indexOf('onMounted(context.mountOperation)'));
+  assert.ok(page.indexOf('loadPersistedDraft();') < page.indexOf('onBeforeUnmount(context.unmountOperation)'));
+  for (const file of [
+    ...['useMatchOperation', 'useMatchOperationState', 'useMatchLineup', 'useMatchEvents', 'useMatchEventsDraft', 'useMatchClose'].map((name) => `composables/${name}.ts`),
+    ...['MatchOperationHeader', 'MatchResolutionPanel', 'MatchFieldSection', 'MatchRosterLinks', 'MatchLineupSection', 'MatchEventsSection', 'MatchCloseSection'].map((name) => `components/match/${name}.vue`),
+    'components/match/types.ts',
+    'components/match/operation.css',
+  ]) assert.ok(source(file).split('\n').length <= 600, file);
+});
+
+test('featureSource includes the shared operation stylesheet once and preserves section command bindings', () => {
+  const feature = featureSource('pages/workspace/matches/[id].vue');
+  assert.ok(feature.includes(source('components/match/operation.css')));
+  assert.equal(feature.match(/\.realtime-retrying\b/g)?.length, 1);
+  for (const command of ['createSegment', 'assignOfficial', 'saveLineup', 'addEvent', 'closeMatch']) {
+    assert.ok(feature.includes(`${command === 'assignOfficial' ? '@submit.prevent' : '@click'}="${command}"`));
+    assert.ok(feature.includes(`emit('${command}')`));
+    assert.ok(feature.includes(`="context.${command}"`));
+  }
+  assert.doesNotMatch(feature, /provide\(|inject\(/);
+  assert.ok(feature.includes('@retry-realtime="context.realtime.retry()"'));
+  assert.ok(feature.includes("emit('retryRealtime')"));
+});
+
 test('featureSource handles empty source and reports invalid entries and missing local imports', () => {
   const directory = mkdtempSync(join(tmpdir(), 'bracket-feature-'));
   const entry = join(directory, 'empty.vue');
@@ -113,6 +140,8 @@ test('featureSource handles empty source and reports invalid entries and missing
     assert.throws(() => featureSource(''), /entry is required/);
     assert.throws(() => featureSource(join(directory, 'absent.vue')), /ENOENT/);
     writeFileSync(entry, "import Missing from '~/components/workspace/absent-feature.vue';");
+    assert.throws(() => featureSource(entry), /Missing local feature source/);
+    writeFileSync(entry, '<style scoped src="~/components/match/absent-operation.css" />');
     assert.throws(() => featureSource(entry), /Missing local feature source/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
