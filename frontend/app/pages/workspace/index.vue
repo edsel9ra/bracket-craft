@@ -253,7 +253,7 @@ onBeforeUnmount(() => {
              <p>{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
               <NuxtLink class="card-action" :to="`/workspace/tournaments/${tournament.id}`">{{ t('workspace.configure') }} <span aria-hidden="true">↗</span></NuxtLink>
              <button
-               v-if="tournament.status === 'draft' && tournament.draft_version_id"
+               v-if="canManageTournaments && tournament.status === 'draft' && tournament.draft_version_id"
                class="card-action"
                type="button"
                :disabled="publishingTournamentId === tournament.id"
