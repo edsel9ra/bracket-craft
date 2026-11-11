@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
@@ -238,7 +239,7 @@ test('there is a single label table and no duplicated position labels', () => {
   assert.doesNotMatch(formations, /positionLabel/, 'constants/formations.ts still formats position labels');
   assert.doesNotMatch(formations, /replace\('_', ' '\)/, 'constants/formations.ts still formats position labels');
 
-  const matchPage = appSource('pages/workspace/matches/[id].vue');
+  const matchPage = featureSource('pages/workspace/matches/[id].vue');
   assert.doesNotMatch(matchPage, /\bfunction\s+positionLabel\b/, 'the match page defines its own position labels');
   assert.doesNotMatch(matchPage, /position\.replace\('_', ' '\)/, 'the match page still formats position codes');
   assert.match(matchPage, /from '~\/utils\/positions'/, 'the match page does not use the single source');

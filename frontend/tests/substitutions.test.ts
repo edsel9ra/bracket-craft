@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -19,10 +20,7 @@ import {
   type TeamSubstitutionState,
 } from '../app/utils/substitutions.ts';
 
-const matchPageSource = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const matchPageSource = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const translationsSource = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',

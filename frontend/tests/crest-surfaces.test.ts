@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,10 +7,7 @@ const PUBLIC_PAGE = readFileSync(
   new URL('../app/pages/tournaments/[id].vue', import.meta.url),
   'utf8',
 );
-const OPERATION_PAGE = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const OPERATION_PAGE = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const LINEUP_MODAL = readFileSync(
   new URL('../app/components/public/PublicLineupModal.vue', import.meta.url),
   'utf8',
@@ -18,10 +16,7 @@ const PUBLIC_TYPES = readFileSync(
   new URL('../app/utils/publicTournament.ts', import.meta.url),
   'utf8',
 );
-const WORKSPACE_PAGE = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const WORKSPACE_PAGE = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 
 // RF-47/RF-48: the anonymous page shows the uploaded crest only; the legacy
 // external URL is never requested from a third party there.
