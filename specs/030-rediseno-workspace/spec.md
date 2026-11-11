@@ -1,6 +1,6 @@
 # Spec 030 — Rediseño del Workspace
 
-Estado: borrador
+Estado: aprobada (2026-11-11; OP-1, HD-1, SP-1 y WZ-1 resueltas)
 
 Depende de: spec 029 (implementada; PR #41, #42 y #43).
 
@@ -41,7 +41,7 @@ No aplica: cada rol ve y puede hacer exactamente lo mismo que ahora. Las accione
 
 ### Cabeceras del Workspace
 
-- RF-001: EL SISTEMA muestra en todas las pantallas del Workspace (listado, configuración, calendario, plantillas, miembros y operación) una cabecera compacta, en lugar del titular de marketing actual.
+- RF-001: EL SISTEMA muestra en todas las pantallas del Workspace (listado, configuración, calendario, plantillas, miembros y operación) una cabecera compacta, incluido el listado `/workspace` (HD-1), en lugar del titular de marketing actual.
 - RF-002: A 1440×900 y a 390×844, con los datos demo, EL SISTEMA muestra el inicio del contenido principal de cada pantalla del Workspace dentro de la primera pantalla visible, sin desplazarse.
 - RF-003: La cabecera compacta conserva la información de contexto que se ve hoy (torneo, versión o estado publicado, formato declarado y fase/jornada en la operación) y la jerarquía de encabezados accesible (un único `h1` por página).
 
@@ -50,20 +50,20 @@ No aplica: cada rol ve y puede hacer exactamente lo mismo que ahora. Las accione
 - RF-004: EL SISTEMA muestra la barra de partido con ambos equipos, marcador, estado y segmento o minuto. MIENTRAS el usuario recorre la operación, la barra permanece visible.
 - RF-005: CUANDO el partido no tiene goles registrados, EL SISTEMA muestra el marcador «0 – 0» si hay un segmento iniciado y una marca neutra de «sin empezar» si no lo hay; en ningún caso un marcador vacío en vivo.
 - RF-006: EL SISTEMA ofrece un índice de las secciones del acta que permite saltar a cada una con teclado y lectores de pantalla, e indica en qué sección se encuentra el usuario.
-- RF-007: EN pantallas estrechas, EL SISTEMA mantiene accesible la acción principal desde cualquier punto de la operación, sin tener que desplazarse hasta su sección. [NECESITA ACLARACIÓN: OP-1]
+- RF-007: EN pantallas estrechas, EL SISTEMA mantiene accesible la acción principal desde cualquier punto de la operación, sin tener que desplazarse hasta su sección: las secciones siguen apiladas en el orden actual, con la barra de partido fija arriba, el índice de secciones bajo ella y una barra inferior fija con la acción principal (OP-1).
 - RF-008: EL SISTEMA muestra los nombres de equipo sin partir palabras. Los nombres largos se recortan de forma legible, con el nombre completo disponible para lectores de pantalla y como texto alternativo.
 - RF-009: La operación conserva exactamente su comportamiento actual: las mismas peticiones y sus cuerpos, las validaciones, los borradores locales, el tiempo real, los diálogos de confirmación, los bloqueos y los mensajes.
 
 ### Estructura del código
 
-- RF-010: EL SISTEMA divide `pages/workspace/matches/[id].vue` en componentes por sección del acta y en composables de estado y orquestación. Ningún archivo resultante supera **600** líneas. [NECESITA ACLARACIÓN: SP-1]
+- RF-010: EL SISTEMA divide `pages/workspace/matches/[id].vue` en componentes por sección del acta y en composables de estado y orquestación. Ningún archivo resultante supera **600** líneas (SP-1).
 - RF-011: EL SISTEMA divide `pages/workspace/tournaments/[id]/index.vue` en componentes por bloque (resumen y versión, checklist, reglas, equipos y escudos, fases). Ningún archivo resultante supera **600** líneas.
 - RF-012: La división no cambia la interfaz pública de los componentes que ya se reutilizan ni la lógica de `utils/`. Las funciones puras se reutilizan y no se duplican.
 
 ### Migración pendiente de la spec 029
 
 - RF-013: EL SISTEMA aplica las escalas y piezas de la spec 029 a la operación de partido y a los asistentes (RulesEditor, RulesWizard, TeamsWizard, StageTeamsWizard y `wizard/*`). `PENDING_MIGRATION` queda vacía y el guardián recorre todo `frontend/app/`.
-- RF-014: Los asistentes conservan su flujo actual (pasos, validación, borradores, navegación por teclado y foco). En ellos solo cambia la presentación (escalas, piezas y cabecera compacta del contenedor). [NECESITA ACLARACIÓN: WZ-1]
+- RF-014: Los asistentes conservan su flujo actual (pasos, validación, borradores, navegación por teclado y foco). En ellos solo cambia la presentación (escalas, piezas y cabecera compacta del contenedor) (WZ-1).
 
 ## Requisitos no funcionales
 
@@ -100,9 +100,13 @@ No cambia: se muestran los mismos datos, con los mismos permisos.
 - `PENDING_MIGRATION` vacía y el guardián de escalas recorriendo todo `frontend/app/`.
 - `AGENTS.md`, `docs/inspeccion-accesibilidad.md` y `MEMORY.md` actualizados.
 
+## Decisiones registradas
+
+- **OP-1 (2026-11-11):** en la operación, las secciones siguen apiladas, con la barra de partido fija arriba, un índice de secciones y la acción principal fija abajo.
+- **HD-1 (2026-11-11):** cabecera compacta en todas las pantallas del Workspace, incluido el listado; el titular grande queda solo en la portada pública.
+- **SP-1 (2026-11-11):** se dividen la operación de partido y la configuración del torneo, con un máximo de 600 líneas por archivo.
+- **WZ-1 (2026-11-11):** en los asistentes solo se migra la presentación a las escalas, sin cambiar su flujo.
+
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **OP-1 Operación en móvil.** ¿Cómo se organiza? (a) Secciones apiladas como hoy, con la barra de partido fija arriba, el índice de secciones bajo ella y una barra inferior fija con la acción principal. (b) Una sección visible cada vez, con pestañas por sección. (c) Solo compactar (cabecera, marcador y espaciados), sin elementos fijos. Recomendación: (a). Conserva el orden y el comportamiento actuales y es la que más acerca las acciones; (b) oculta información mientras se registran eventos y obliga a cambiar el E2E.
-- [NECESITA ACLARACIÓN] **HD-1 Cabecera del listado.** ¿El listado del Workspace (`/workspace`) también pierde el titular de marketing o lo conserva como portada interna? Recomendación: aplicar la cabecera compacta a todas las pantallas, por coherencia; el titular grande queda solo en la portada pública.
-- [NECESITA ACLARACIÓN] **SP-1 División del código.** ¿Se acepta el límite de 600 líneas por archivo y dividir también la página de configuración, o solo la operación? Recomendación: ambas, porque la configuración (1121 líneas) tiene el mismo problema y los asistentes se montan en ella.
-- [NECESITA ACLARACIÓN] **WZ-1 Asistentes.** ¿En los asistentes solo se migra la presentación a las escalas (sin cambiar su flujo) o también se rediseña su estructura (por ejemplo, un índice lateral de pasos en escritorio)? Recomendación: solo la presentación. Su flujo ya cumple las specs 024–027 y tiene E2E completo por teclado; cambiarlo sería una spec aparte.
+Ninguna.
