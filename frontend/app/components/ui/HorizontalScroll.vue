@@ -6,7 +6,8 @@ const hintId = useId();
 
 <template>
   <div class="scroll-surface">
-    <p :id="hintId" class="scroll-hint">{{ t('common.horizontalScroll') }}</p>
+    <p class="scroll-hint">{{ t('common.horizontalScrollHint') }}</p>
+    <p :id="hintId" class="visually-hidden">{{ t('common.horizontalScroll') }}</p>
     <div class="scroll-content" role="region" :aria-label="label" :aria-describedby="hintId" tabindex="0">
       <slot />
     </div>

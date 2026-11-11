@@ -37,7 +37,7 @@ test('pitch labels use catalog codes without wrapping and retain localized full 
   for (const pitch of ['TeamPitch', 'MatchPitch']) {
     const text = source(`components/public/${pitch}.vue`);
     assert.match(text, /class="player-position" :title="positionLabel\(player.position_slot, t\)"/);
-    assert.match(text, /aria-hidden="true">\{\{ player.position_slot \}\}/);
+    assert.match(text, /aria-hidden="true">\{\{ positionAbbreviation\(player.position_slot, t\) \}\}/);
     assert.match(text, /class="visually-hidden">\{\{ positionLabel\(player.position_slot, t\) \}\}/);
     assert.match(text, /\.player-position\s*\{[^}]*white-space: nowrap/);
   }
@@ -48,6 +48,8 @@ test('public scroll regions are named, keyboard reachable, hinted and motion-saf
   const scroll = source('components/ui/HorizontalScroll.vue');
   assert.match(scroll, /role="region" :aria-label="label" :aria-describedby="hintId" tabindex="0"/);
   assert.match(scroll, /t\('common.horizontalScroll'\)/);
+  assert.match(scroll, /class="scroll-hint">\{\{ t\('common.horizontalScrollHint'\) \}\}/);
+  assert.match(scroll, /:id="hintId" class="visually-hidden"/);
   assert.match(scroll, /linear-gradient/);
   assert.match(scroll, /prefers-reduced-motion: reduce/);
   for (const name of ['PublicPlayerStatsTable', 'PublicTeamStatsTable', 'PublicBracket']) {

@@ -21,7 +21,7 @@ rechaza `*` y cualquier red `/0`. Ver `docs/despliegue-proxy-tiempo-real.md`.
 
 
 - Manual de usuario: [`docs/manual-usuario.md`](docs/manual-usuario.md) (flujos operativos reales: torneos, reglas, equipos y plantillas, fases, calendario, actas, consulta pública).
-- Accesibilidad: [`docs/inspeccion-accesibilidad.md`](docs/inspeccion-accesibilidad.md) incluye la revisión en navegador del 2026-11-11, títulos y nombres accesibles, posiciones abreviadas con nombre completo accesible, checklist neutro de actas cerradas y desplazamiento horizontal señalado en estadísticas/bracket. El contraste mantiene casos pendientes de revisión manual.
+- Accesibilidad: [`docs/inspeccion-accesibilidad.md`](docs/inspeccion-accesibilidad.md) incluye la revisión en navegador del 2026-11-11, títulos y nombres accesibles, posiciones abreviadas localizadas (es/en) con nombre completo accesible, checklist neutro de actas cerradas y desplazamiento horizontal con pista breve en estadísticas/bracket y descripción accesible de teclado. El contraste mantiene casos pendientes de revisión manual.
 - Guía para agentes: [`AGENTS.md`](AGENTS.md).
 - Constitución: [`docs/constitution.md`](docs/constitution.md).
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FORMATIONS_GRID, type FormationCode } from '~/constants/formations';
-import { positionLabel } from '~/utils/positions';
+import { positionAbbreviation, positionLabel } from '~/utils/positions';
 import { playerInitials } from '~/utils/publicLineup';
 import type { PublicLineupPlayer, PublicTeamLineup } from '~/utils/publicTournament';
 
@@ -49,7 +49,7 @@ function playerStyle(player: PublicLineupPlayer): Record<string, string> {
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position" :title="positionLabel(player.position_slot, t)"><span aria-hidden="true">{{ player.position_slot }}</span><span class="visually-hidden">{{ positionLabel(player.position_slot, t) }}</span></span>
+        <span class="player-position" :title="positionLabel(player.position_slot, t)"><span aria-hidden="true">{{ positionAbbreviation(player.position_slot, t) }}</span><span class="visually-hidden">{{ positionLabel(player.position_slot, t) }}</span></span>
       </div>
     </div>
     <div class="team-pitch-substitutes">

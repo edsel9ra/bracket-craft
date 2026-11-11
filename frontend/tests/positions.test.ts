@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
+import { FORMATIONS_GRID } from '../app/constants/formations.ts';
 
 import {
   POSITION_CODES,
   POSITION_DEFINITIONS,
   positionKey,
   positionLabel,
+  positionAbbreviation,
   positionSide,
   type PositionSide,
 } from '../app/utils/positions.ts';
@@ -51,6 +53,29 @@ const EXPECTED: Record<string, ExpectedPosition> = {
 };
 
 const NO_SIDE_CODES = ['GK', 'CB', 'CM', 'CAM', 'ST'];
+
+test('every formation slot has a localized abbreviation of at most four characters without underscores', () => {
+  const slices = catalogSlices();
+  const slots = new Set([...Object.values(FORMATIONS_GRID).flatMap(Object.keys), ...POSITION_CODES]);
+  for (const [locale, slice] of Object.entries(slices)) {
+    const catalog = catalogMap(slice);
+    for (const slot of slots) {
+      const key = `positionAbbreviations.${slot}`;
+      assert.ok(catalog.has(key), `${locale}: missing ${key}`);
+      const abbreviation = positionAbbreviation(slot, (key) => catalog.get(key) ?? key);
+      assert.match(abbreviation, /^[A-Z]{1,4}$/, `${locale}: ${slot}`);
+      assert.equal(abbreviation, catalog.get(key));
+    }
+  }
+  assert.equal(positionAbbreviation('GK', (key) => catalogMap(slices.spanish).get(key) ?? key), 'POR');
+  assert.equal(positionAbbreviation('CM_L', (key) => catalogMap(slices.english).get(key) ?? key), 'LCM');
+});
+
+test('missing or unknown abbreviations never expose raw slot codes', () => {
+  for (const slot of [null, undefined, '', 'UNKNOWN', 'CM_L']) {
+    assert.equal(positionAbbreviation(slot, (key) => key), '');
+  }
+});
 
 const POSITIONS_SOURCE = readFileSync(
   new URL('../app/utils/positions.ts', import.meta.url),

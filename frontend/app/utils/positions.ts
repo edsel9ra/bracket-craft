@@ -102,6 +102,17 @@ export const POSITION_DEFINITIONS: Record<PositionCode, PositionDefinition> = {
 /** Traductor existente (`t` de `useI18n`): clave i18n → texto del idioma activo. */
 export type PositionTranslator = (key: string) => string;
 
+export function positionAbbreviation(
+  code: string | null | undefined,
+  translate: PositionTranslator,
+): string {
+  const definition = definitionOf(code);
+  if (!definition) return '';
+  const key = definition.key.replace('positions.', 'positionAbbreviations.');
+  const abbreviation = translate(key);
+  return abbreviation && abbreviation !== key ? abbreviation : '';
+}
+
 function definitionOf(code: string | null | undefined): PositionDefinition | null {
   if (typeof code !== 'string') return null;
   const candidate = code.trim();
