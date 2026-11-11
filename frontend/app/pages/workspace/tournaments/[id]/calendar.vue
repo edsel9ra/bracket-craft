@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import type { StageFormat } from '~/constants/stageFormats';
@@ -417,11 +418,9 @@ loading.value = false;
     :tournament="{ id: tournamentId, name: tournamentName }"
   >
     <main id="main-content" class="workspace-shell">
-      <section class="container section-hero">
-        <p class="eyebrow">{{ t('tournament.calendar.eyebrow') }}</p>
-        <h1>{{ t('tournament.calendar.title') }}</h1>
-        <p class="section-copy">{{ t('tournament.calendar.copy') }}</p>
-      </section>
+      <PageHeader class="container" :title="t('tournament.calendar.title')">
+        <template #context>{{ tournamentLabel }}</template>
+      </PageHeader>
 
       <section class="container calendar-content">
         <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('setup.loading') }}</div>
@@ -540,9 +539,6 @@ loading.value = false;
 
 <style scoped>
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
-.section-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.section-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
-.section-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
 .calendar-content { display: grid; gap: var(--space-5); padding-bottom: var(--space-10); }
 .calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-5); }
 label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }

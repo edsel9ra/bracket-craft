@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
 import FormField from '~/components/ui/FormField.vue';
@@ -273,11 +274,9 @@ await loadData();
 <template>
   <WorkspaceShell :breadcrumbs="[{ label: t('members.title'), current: true }]">
     <main id="main-content" class="members-shell">
-      <section class="container members-hero">
-        <p class="eyebrow">{{ t('members.eyebrow') }}</p>
-        <h1>{{ t('members.headline') }}</h1>
-        <p>{{ t('members.copy') }}</p>
-      </section>
+      <PageHeader class="container" :title="t('members.title')">
+        <template #context>{{ t('members.eyebrow') }}</template>
+      </PageHeader>
 
       <section class="container members-content">
         <div v-if="loading" class="empty-state" role="status">{{ t('common.loading') }}</div>
@@ -353,11 +352,7 @@ await loadData();
 </template>
 
 <style scoped>
-/* RF-006: el hero mantiene su espaciado proporcional a la ventana. */
 .members-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
-.members-hero { padding: 5vh 0 4vh; }
-.members-hero h1 { max-width: 760px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
-.members-hero p:last-child { max-width: 560px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
 .members-content { display: grid; gap: var(--space-4); padding-bottom: var(--space-10); }
 .members-grid { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: var(--space-4); align-items: start; }
 .panel { display: grid; align-content: start; gap: var(--space-4); min-width: 0; padding: var(--space-5); border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: linear-gradient(145deg, color-mix(in srgb, var(--color-surface-raised) 90%, transparent), color-mix(in srgb, var(--color-surface) 94%, transparent)); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) 12%, transparent); }
@@ -387,7 +382,7 @@ input:focus, select:focus { border-color: var(--color-accent); box-shadow: 0 0 0
 .member-table select { padding: var(--space-2) var(--space-2); font-size: var(--text-xs); }
 .status-tag { color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .status-tag.inactive { color: var(--color-danger); }
-@media (max-width: 760px) { .members-grid { grid-template-columns: 1fr; } .members-hero, .members-content { width: min(100% - 28px, 620px); } }
+@media (max-width: 760px) { .members-grid { grid-template-columns: 1fr; } .page-header, .members-content { width: min(100% - 28px, 620px); } }
 @media (max-width: 480px) { .panel { padding: var(--space-4); } .resource-list li { align-items: start; flex-direction: column; } .row-actions { justify-content: start; } }
 .load-more { display: block; margin: var(--space-3) auto 0; }
 </style>

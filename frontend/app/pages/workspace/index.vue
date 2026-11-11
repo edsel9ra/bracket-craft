@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
@@ -180,17 +181,16 @@ onBeforeUnmount(() => {
 <template>
   <WorkspaceShell :breadcrumbs="[{ label: t('shell.tournaments'), current: true }]">
    <main id="main-content" class="workspace-shell">
-    <section class="container workspace-hero">
-      <div class="hero-line">
-         <p class="eyebrow">{{ t('workspace.private') }}</p>
+    <PageHeader class="container" :title="t('workspace.tournaments')">
+      <template #context>{{ t('workspace.private') }}</template>
+      <template #state>
+
           <span class="live-status" :class="`realtime-${realtime.status.value}`" role="status">
             <span aria-hidden="true" /> {{ realtimeStatusLabel }}
           </span>
           <button v-if="realtime.status.value === 'error'" class="realtime-retry" type="button" @click="realtime.retry()">{{ t('common.retry') }}</button>
-      </div>
-       <h1>{{ t('workspace.headline') }}</h1>
-       <p class="workspace-copy">{{ t('workspace.copy') }}</p>
-    </section>
+      </template>
+    </PageHeader>
 
     <section class="container workspace-content">
       <div class="section-heading">
@@ -276,14 +276,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
-.workspace-hero { padding: 5vh 0 5vh; animation: rise-in 700ms var(--ease-out) both; }
-.hero-line { display: flex; align-items: center; gap: var(--space-4); }
 .live-status { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
 .live-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 12px var(--color-accent); }
 .live-status.realtime-reconnecting span, .live-status.realtime-retrying span, .live-status.realtime-error span { background: var(--color-warning); box-shadow: 0 0 12px color-mix(in srgb, var(--color-warning) 70%, transparent); }
 .realtime-retry { padding: 0; background: transparent; color: var(--color-accent); font-size: var(--text-2xs); text-decoration: underline; }
-.workspace-hero h1 { max-width: 760px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
-.workspace-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
 .workspace-content { padding-bottom: var(--space-10); }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
 .section-actions { display: flex; align-items: center; gap: var(--space-3); }

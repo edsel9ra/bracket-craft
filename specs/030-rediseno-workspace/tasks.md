@@ -5,10 +5,13 @@ Comandos en `frontend/` con node:24 y pnpm 12.12.1.
 **PR A**
 - [ ] **T1. `PageHeader` y cabeceras compactas** en el listado, miembros, calendario y plantillas (la operación y la configuración la reciben en T3/T5). RF-001–003
   - Hecho cuando: el test de un `h1` por página pasa y las capturas muestran el contenido principal en la primera pantalla a 1440 y 390.
-- [ ] **T2. `featureSource()`** en `tests/support/sources.ts` y los 23 tests estáticos migrados a ella, sin cambiar aserciones. RNF-005
+  - Implementación parcial: cabeceras de 101 px escritorio/84 px móvil y un `h1` verificados. Las listas de plantillas (ambas resoluciones), calendario móvil y miembros móvil siguen bajo el pliegue por los formularios previos; pendiente autorizar su reordenación para RF-002. Evidencias: `/home/ubuntu/ui-audit/030-a-{before,after}/`.
+- [x] **T2. `featureSource()`** en `tests/support/sources.ts` y los 23 tests estáticos migrados a ella, sin cambiar aserciones. RNF-005
   - Hecho cuando: `pnpm test` pasa con el mismo número de tests.
-- [ ] **T3. División de la configuración** (`useTournamentSetup` + `components/workspace/setup/*`), con `PageHeader`. RF-011, RF-012
+  - Suite existente: 826 antes/826 después; total 831 al añadir cinco tests de layout/recorrido de fuentes (829 pass, 2 skip). 22 lecturas explícitas y el lector genérico de páginas migrados en 17 archivos; aserciones conservadas.
+- [x] **T3. División de la configuración** (`useTournamentSetup` + `components/workspace/setup/*`), con `PageHeader`. RF-011, RF-012
   - Hecho cuando: ningún archivo pasa de 600 líneas (la página ≤ 250), y pasan `pnpm test`, `typecheck` y el E2E `operation-flow` local.
+  - Página: 123 líneas; composable principal: 597. Las 38 funciones originales mantienen cuerpo idéntico sin contar whitespace; asistentes sin cambios. Node 24/pnpm 12.12.1: test, typecheck, lint, build y typecheck:e2e correctos; E2E local 2 passed. Logs externos: `/home/ubuntu/ui-audit/030-a-verified.log`, `030-a-operation-flow-final.log`.
 
 **PR B**
 - [ ] **T4. Script de la operación a `useMatchOperation`** (y sub-composables si hace falta). La plantilla no cambia. RF-010, RF-012

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
@@ -483,14 +484,12 @@ await loadPage();
     :tournament="{ id: tournamentId, name: tournamentName }"
   >
     <main id="main-content" class="workspace-shell">
-      <section class="container section-hero">
-        <p class="eyebrow">{{ t('tournament.rosters.eyebrow') }}</p>
-        <h1>{{ t('tournament.rosters.title') }}</h1>
-        <p class="section-copy">{{ t('tournament.rosters.copy') }}</p>
-        <p v-if="returnToHref" class="return-link">
+      <PageHeader class="container" :title="t('tournament.rosters.title')">
+        <template #context>{{ tournamentLabel }}</template>
+        <template v-if="returnToHref" #actions>
           <a class="button-secondary" :href="returnToHref">{{ t('tournament.rosters.backToOperation') }}</a>
-        </p>
-      </section>
+        </template>
+      </PageHeader>
 
       <section class="container roster-content">
         <div v-if="loading" class="empty-state loading-state" role="status">
@@ -648,9 +647,6 @@ await loadPage();
 
 <style scoped>
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
-.section-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.section-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
-.section-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
 .return-link { margin-top: var(--space-4); }
 .roster-content { display: grid; gap: var(--space-4); padding-bottom: 6vh; }
 .roster-toolbar { display: grid; gap: var(--space-2); }

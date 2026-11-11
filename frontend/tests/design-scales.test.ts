@@ -17,15 +17,13 @@ export const PENDING_MIGRATION = [
 
 export const DESIGN_EXCEPTIONS: { file: string; property: string; value: string; reason: string }[] = [
   { file: 'assets/css/main.css', property: 'margin', value: '-1px', reason: 'Recorte accesible de visually-hidden de un píxel, no espaciado de layout.' },
-  { file: 'pages/workspace/index.vue', property: 'padding', value: '5vh 0 5vh', reason: 'VI-1: ritmo del hero del Workspace proporcional a la ventana.' },
-  ...['index', 'calendar', 'rosters'].map((page) => ({ file: `pages/workspace/tournaments/[id]/${page}.vue`, property: 'padding', value: '4vh 0 4vh', reason: 'VI-1: ritmo del hero privado de torneo proporcional a la ventana.' })),
   { file: 'pages/workspace/tournaments/[id]/rosters.vue', property: 'padding-bottom', value: '6vh', reason: 'VI-1: separación de cierre de plantillas proporcional a la ventana.' },
-  ...['index', 'calendar'].map((page) => ({ file: `pages/workspace/tournaments/[id]/${page}.vue`, property: 'font-size', value: '1.6rem', reason: 'VI-1/MG-1: xl aumenta los títulos de panel un 72% en escritorio y desplaza los asistentes y formularios embebidos.' })),
+  { file: 'pages/workspace/tournaments/[id]/calendar.vue', property: 'font-size', value: '1.6rem', reason: 'VI-1/MG-1: conservar el tamaño de panel existente.' },
+  ...['SetupRules', 'SetupTeams'].map((component) => ({ file: `components/workspace/setup/${component}.vue`, property: 'font-size', value: '1.6rem', reason: 'VI-1/MG-1: títulos de panel trasladados sin redimensionar asistentes.' })),
   { file: 'pages/login.vue', property: 'font-size', value: 'clamp(2.4rem, 8vw, 4.6rem)', reason: 'VI-1: display aumenta el titular de acceso un 37% en escritorio y altera los saltos de línea del formulario.' },
   { file: 'pages/invitations/[token].vue', property: 'font-size', value: 'clamp(2.5rem, 8vw, 4.8rem)', reason: 'VI-1: mantener la composición del titular de invitación dentro de su tarjeta.' },
   { file: 'pages/admin/index.vue', property: 'font-size', value: '2.5rem', reason: 'Cifras de métricas de ancho limitado: display fluido no cabe en las tarjetas.' },
   { file: 'pages/admin/index.vue', property: 'padding', value: '4vh 0 4vh', reason: 'Ritmo del hero de administración proporcional a la ventana.' },
-  { file: 'pages/workspace/members.vue', property: 'padding', value: '5vh 0 4vh', reason: 'Ritmo del hero de miembros proporcional a la ventana.' },
   ...['0.62rem', '0.53rem', '0.58rem', '0.63rem', '0.54rem'].map((value) => ({ file: 'components/public/MatchPitch.vue', property: 'font-size', value, reason: 'Etiquetas dentro de la geometría del campo, con nombre completo accesible.' })),
   ...['clamp(0.62rem, 2cqw, 1.1rem)', '0.62rem', '0.6rem', '0.52rem', '0.58rem', '0.63rem', '0.54rem', '0.48rem'].map((value) => ({ file: 'components/public/TeamPitch.vue', property: 'font-size', value, reason: 'Etiquetas del campo adaptadas al contenedor; nombres completos en alternativa textual.' })),
   ...['MatchPitch', 'TeamPitch'].map((component) => ({ file: `components/public/${component}.vue`, property: 'gap', value: '1px', reason: 'Separación entre avatar, dorsal y etiqueta sin desplazar los slots tácticos.' })),
