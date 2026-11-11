@@ -1,6 +1,6 @@
 # Tareas 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** Implementación de PR A autorizada; B/C pendientes. Node 24/pnpm 12.12.1. Comandos de tareas pendientes son previstos, no resultados ejecutados.
+Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A fusionado; PR B autorizado con LY-1; PR C pendiente. Node 24/pnpm 12.12.1. Comandos de tareas pendientes son previstos, no resultados ejecutados.
 
 ## PR A — Paletas y resolución SSR (T1–T3)
 
@@ -22,7 +22,7 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** I
 ## PR B — Selector y superficies claras (T4–T6)
 
 - [ ] **T4. Selector accesible ES/EN y ubicación limitada a R.** RF-001/004/007/009; RNF-001/003. Depende de T3. 30 min.
-  - Hecho cuando: pruebas rojas antes del control; select etiquetado/IDs únicos/teclado en flotante público, cabecera y menú móvil Workspace/admin; mismo estado reactivo y sin cambio de ruta/foco. Nuevo control y halo caben en R (192×80, desplegado 192×200 si se compara); no refluye ni oculta idioma, organización, cuenta o contenido. Registrar cajas/R a 1440/390/800 y ES/EN. Si no cabe, parar: no ampliar región ni aprobar desplazamientos implícitos. Validación visual final en T7/T9.
+  - Hecho cuando: pruebas rojas antes del control; select etiquetado/IDs únicos/teclado junto al idioma en fila de cabecera o menú público y Workspace/admin; mismo estado reactivo y sin cambio de ruta/foco. LY-1 aprobada el 2026-11-11 permite reordenar organización/idioma/tema/cuenta dentro de la fila y el menú móvil abierto completo, sin mover nada fuera de cabecera. Etiqueta coherente con «Idioma», estilo propio y opciones Oscuro/Claro/Sistema ES/EN. Registrar cajas/R antes del diff a 1440/390/800, ES/EN: fila de preferencias desktop/tableta, menú completo móvil abierto y R vacía móvil cerrado. Si algo exterior se mueve, parar e informar, sin ampliar R. Validación final T7/T9.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint`.
 
 - [ ] **T5. Iniciales, disabled, backdrops y superficies compartidas claras.** RF-008/010/011; RNF-001/002. Depende de T4. 30 min.
@@ -36,7 +36,7 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** I
 ## PR C — Regresión y aceptación (T7–T10)
 
 - [ ] **T7. Comparador visual exacto y referencia oscura.** RF-007/009; RNF-001. Depende de T6. 30 min activos; capturas aparte.
-  - Hecho cuando: test primero rojo con un píxel alterado fuera de R; comparación RGBA exacta con 0 fuera y validación de dimensiones/límites de R, sin tolerancia de antialias. Baseline de la revisión fijada, motor/fixture/fuentes/reloj iguales; manifiesto R prefijado y cajas antiguas intactas. Todas las vistas/estados acordados, ES/EN, 1440×900/390×844/800×900, PNG originales/diff anotado en `/home/ubuntu/ui-audit/032-{before,after,pr}/`. Cambio solo dentro de R es válido; máscara expandida u ocultando controles, imágenes de tamaños distintos o referencia alterada fallan. No se declara verde sin las capturas.
+  - Hecho cuando: test primero rojo con un píxel alterado fuera de R; comparación RGBA exacta con 0 fuera y dimensiones/R según LY-1, sin tolerancia. Baseline fijada, motor/fixture/fuentes/reloj iguales; manifiesto previo al diff y cajas exteriores intactas, incluido contenido inferior. Desktop/tableta R es fila de preferencias; móvil abierto es menú completo; móvil cerrado R vacía y captura completa idéntica. Todas las vistas/estados acordados, ES/EN, 1440×900/390×844/800×900, PNG originales/diff anotado en `/home/ubuntu/ui-audit/032-{before,after,pr}/`. Cambio solo dentro de R válido; máscara ampliada fuera de LY-1, tamaños distintos o referencia alterada fallan. No declarar verde sin capturas.
   - Comando: `cd frontend && pnpm test && pnpm exec playwright test --config e2e/theme-audit.config.ts --grep @visual`.
 
 - [ ] **T8. E2E de elección, persistencia y primer pintado.** RF-001–007/013–015; RNF-004/005/006. Depende de T7. 30 min.
@@ -56,4 +56,4 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** I
 
 - Orden PR A → B → C; agrupación propuesta, no autorización para implementarla o abrirlos. En cada tarea de código: tests rojos primero, cambio mínimo, checks y solo entonces checkbox. Suites existentes siempre conservadas.
 - Los gates de CI y revisión humana no se sustituyen por capturas locales; no dar por ejecutadas las comprobaciones propuestas aquí. PR A/B no declaran cerrada la aceptación global de C.
-- R es una excepción visual de spec aprobada, no una excepción constitucional ni permiso para cambiar lenguaje, controles, contenido o API. Si la geometría requiere otra excepción, pedirla antes de proceder.
+- R es la excepción visual LY-1 aprobada el 2026-11-11, no una excepción constitucional ni permiso para cambiar contenido/API o desplazar controles fuera de fila/menú. Si algo más se mueve fuera de la cabecera, parar e informar antes de proceder.
