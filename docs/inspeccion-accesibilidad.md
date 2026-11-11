@@ -156,3 +156,26 @@ La revisión de la rama sustituyó los códigos crudos visibles por abreviaturas
 La pista visible pasa a «Desliza para ver más columnas» / «Swipe to see more columns»; las instrucciones largas de teclado quedan visualmente ocultas como descripción accesible de la región. Se reconstruyó el frontend y se regeneraron `after/public-lineup-mobile.png` y `after/public-stats-players-mobile.png`: a 390×844 la pista ocupa una sola línea y se comprobaron las abreviaturas españolas junto con sus nombres completos accesibles (`followup-visual.json`). La variante inglesa se verifica en los tests, no mediante una captura adicional.
 
 Los cuatro comandos se volvieron a ejecutar en Node 24 con pnpm 12.12.1: tests 802, pass 801, fail 0, skipped 1; typecheck, lint y build con salida 0. El primer intento de typecheck encontró un binding nativo incompatible al reutilizar dependencias de Alpine en el contenedor Debian; se instaló el lockfile sin cambios en un volumen limpio para ese contenedor y las verificaciones restantes finalizaron correctamente. No se repitió axe en este ajuste: las tablas anteriores corresponden a la auditoría previa, no certifican nuevamente este cambio ni resuelven el contraste pendiente.
+
+## 8. Base de diseño 029 — T1–T5 (2026-11-11)
+
+Esta entrega añade tokens y piezas sin migrar pantallas ni sustituir `window.confirm`. Solo cambia la fuente global a Archivo variable local; el diálogo se monta cerrado una sola vez. T6–T10 siguen pendientes. No se ha realizado una nueva revisión visual, de lector de pantalla o axe: las evidencias de la sección 7 no se presentan como validación de esta entrega.
+
+Contraste calculado mediante luminancia relativa sRGB (WCAG 2.1), con `contrastRatio` y tests de pares semánticos en `design-contrast.test.ts`. No se modificaron los colores existentes. `success` y `home` reutilizan el acento; `away` reutiliza `warning`.
+
+| Primer plano | surface | surface-raised | surface-bright | Uso |
+|---|---:|---:|---:|---|
+| ink | 15,75:1 | 13,73:1 | 11,58:1 | Texto normal: AA |
+| muted | 7,57:1 | 6,60:1 | 5,56:1 | Texto normal: AA |
+| accent / success / home | 14,35:1 | 12,51:1 | 10,55:1 | Texto y señal esencial: AA |
+| danger | 10,26:1 | 8,94:1 | 7,54:1 | Texto normal: AA |
+| warning / away | 12,00:1 | 10,47:1 | 8,83:1 | Texto normal: AA |
+| line | 1,79:1 | 1,56:1 | 1,31:1 | **No alcanza 3:1**; solo separador decorativo |
+
+Texto `accent-ink` sobre botones: acento **13,46:1**, peligro **9,62:1**, aviso **11,26:1**. El foco utiliza acento sobre la superficie; los controles secundarios nuevos usan borde muted, no line como única señal esencial. No se certifican pares arbitrarios de colores ni todos los fondos compuestos de las pantallas todavía sin migrar.
+
+Tipografía: `@fontsource-variable/archivo@5.3.0`, únicamente `archivo-latin-wdth-normal.woff2`, ejes peso 100–900 y ancho 62–125 %, emitido por el build con **90 104 bytes** (límite 120 000). La sustitución sobre Arial ajusta tamaño y métricas verticales; las métricas del archivo Archivo son 878/−210/0 unidades (ascendente/descendente/gap) sobre 1000. CSP y su test existente sin cambios; no hay fuentes externas.
+
+Verificación en Node 24 / pnpm 12.12.1 con volumen limpio: `pnpm test` (817 tests, 815 pass, 0 fail, 2 skipped), typecheck, lint, build y typecheck:e2e con salida 0. Un skip es la comprobación del artefacto antes de construir: se ejecutó después del build con `VERIFY_FONT_BUILD=1 node --test --experimental-strip-types tests/fonts.test.ts`, **2 pass / 0 fail**, incluido el peso emitido. La auditoría oficial de dependencias finalizó en OK mediante el filtro constitucional: cinco avisos no accionables (tres moderados y dos bajos), ninguno high/critical accionable.
+
+La cola de confirmaciones se prueba como lógica pura por aplicación (FIFO, cancelación completa, doble resolución y eventos obsoletos). El estado SSR contiene únicamente opciones e identificador; los resolutores permanecen fuera del estado serializado. Los contratos de foco, ARIA, teclado y piezas se verifican estáticamente, y la lógica de flechas/Inicio/Fin mediante tests puros: no equivale a una prueba interactiva del diálogo o a un E2E de su futura integración.

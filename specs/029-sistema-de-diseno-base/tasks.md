@@ -2,15 +2,15 @@
 
 Comandos en `frontend/` dentro de un contenedor `node:24` con pnpm 12.12.1.
 
-- [ ] **T1. Tokens y escalas.** `tokens.css` + `designTokens.ts` (escalas, paleta, puntos de corte, `contrastRatio`, `nearestStep`) y tests de coincidencia CSS↔TS y de contraste. RF-001–005, RNF-004
+- [x] **T1. Tokens y escalas.** `tokens.css` + `designTokens.ts` (escalas, paleta, puntos de corte, `contrastRatio`, `nearestStep`) y tests de coincidencia CSS↔TS y de contraste. RF-001–005, RNF-004
   - Hecho cuando: `pnpm test` pasa con `design-contrast.test.ts` en verde y sin cambios visuales (todavía no se usan los tokens).
-- [ ] **T2. Tipografía Archivo.** Dependencia `@fontsource-variable/archivo`, `fonts.css` con `@font-face` latino `wdth` + cara de sustitución, y `--font-sans`/`--font-display` en `body` y titulares. RF-007–009, RNF-005, RNF-006
+- [x] **T2. Tipografía Archivo.** Dependencia `@fontsource-variable/archivo`, `fonts.css` con `@font-face` latino `wdth` + cara de sustitución, y `--font-sans`/`--font-display` en `body` y titulares. RF-007–009, RNF-005, RNF-006
   - Hecho cuando: `pnpm run build` pasa; un test comprueba que el woff2 emitido pesa ≤ 120 kB y que la CSP no cambió (`security-headers.test.ts`); la auditoría frontend de la constitución pasa.
-- [ ] **T3. Piezas base: Button, Surface, StatusPill y StateMessage.** RF-010–012, RF-015
+- [x] **T3. Piezas base: Button, Surface, StatusPill y StateMessage.** RF-010–012, RF-015
   - Hecho cuando: `pnpm test` pasa con `ui-pieces.test.ts` (variantes cerradas, `aria-busy`, roles status/alert, texto obligatorio en la píldora) y con `ui-component-imports.test.ts`.
-- [ ] **T4. Piezas Tabs y DataTable.** RF-013, RF-014
+- [x] **T4. Piezas Tabs y DataTable.** RF-013, RF-014
   - Hecho cuando: los tests de teclado (flechas, Inicio/Fin, tabulador itinerante) y de cabeceras con `scope` pasan; `pnpm run typecheck` pasa.
-- [ ] **T5. Diálogo de confirmación.** `ConfirmDialog.vue` + `useConfirm.ts` + montaje en `app.vue` + textos i18n es/en. RF-017–020, RNF-007
+- [x] **T5. Diálogo de confirmación.** `ConfirmDialog.vue` + `useConfirm.ts` + montaje en `app.vue` + textos i18n es/en. RF-017–020, RNF-007
   - Hecho cuando: `confirm-dialog.test.ts` (cola, una sola resolución, cancelar al navegar, foco inicial en Cancelar si es de peligro) pasa.
 - [ ] **T6. Sustituir los 19 `window.confirm`** (incluidos la operación de partido y los asistentes) y adaptar los 2 pasos del E2E. RF-019, RF-021
   - Hecho cuando: `no-native-dialogs.test.ts` pasa, `pnpm test`, `pnpm run typecheck:e2e` y `lint` pasan, y el job `e2e` de CI pasa.
