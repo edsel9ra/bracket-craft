@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -42,7 +43,7 @@ function loadViews(): Array<{ file: string; namespace: RealtimeLabelNamespace; s
   return views.map(({ file, namespace }) => ({
     file,
     namespace,
-    source: readFileSync(new URL(file, import.meta.url), 'utf8'),
+    source: featureSource(new URL(file, import.meta.url)),
   }));
 }
 

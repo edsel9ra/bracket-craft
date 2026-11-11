@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -370,10 +371,7 @@ test('an existing phase opens directly on the composition step in read-only iden
   assert.equal(openExistingStage([]), null);
 });
 
-const configurationPage = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const configurationPage = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 const stageWizardComponent = readFileSync(
   new URL('../app/components/StageTeamsWizard.vue', import.meta.url),
   'utf8',

@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
@@ -24,10 +25,7 @@ import {
 // La prueba del botón de alta existe por una regresión real: en la 015 el botón
 // «Añadir evento» desapareció de esta misma zona y solo lo detectó el E2E.
 
-const PAGE = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const PAGE = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const TRANSLATIONS = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',

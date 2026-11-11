@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -38,18 +39,12 @@ const rostersPage = readFileSync(
   new URL('../app/pages/workspace/tournaments/[id]/rosters.vue', import.meta.url),
   'utf8',
 );
-const configurationPage = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const configurationPage = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 const stageWizard = readFileSync(
   new URL('../app/components/StageTeamsWizard.vue', import.meta.url),
   'utf8',
 );
-const matchPage = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const matchPage = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const translations = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',

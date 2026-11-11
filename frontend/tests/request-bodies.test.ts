@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
@@ -180,10 +181,7 @@ const MEMBERS_PAGE = readFileSync(
   new URL('../app/pages/workspace/members.vue', import.meta.url),
   'utf8',
 );
-const MATCH_PAGE = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const MATCH_PAGE = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const WORKSPACE_PAGE = readFileSync(
   new URL('../app/pages/workspace/index.vue', import.meta.url),
   'utf8',

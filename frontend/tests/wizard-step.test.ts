@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -599,10 +600,7 @@ test('the step composable derives the step from the address and writes with the 
   assert.doesNotMatch(stepComposable, /sessionStorage|localStorage/);
 });
 
-const configurationPageSource = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const configurationPageSource = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 const rulesWizardSource = readFileSync(
   new URL('../app/components/rules/RulesWizard.vue', import.meta.url),
   'utf8',

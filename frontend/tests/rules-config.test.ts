@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -42,10 +43,7 @@ const editorSource = readFileSync(
   new URL('../app/components/RulesEditor.vue', import.meta.url),
   'utf8',
 );
-const tournamentPageSource = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const tournamentPageSource = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 const translationsSource = readFileSync(
   new URL('../app/composables/useI18n.ts', import.meta.url),
   'utf8',
@@ -973,10 +971,7 @@ test('warns in the three surfaces only when the declared format is not 11v11', (
   assert.match(warningSource, /t\(/);
   assert.doesNotMatch(warningSource, /disabled/, 'the format warning never blocks an action');
 
-  const matchPageSource = readFileSync(
-    new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-    'utf8',
-  );
+  const matchPageSource = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 
   // Tres lugares: paso de reglas, resumen de configuración y operación/planilla.
   // La advertencia genérica se retiró (spec 024); ahora se muestra información
