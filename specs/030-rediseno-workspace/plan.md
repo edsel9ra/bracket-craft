@@ -38,16 +38,18 @@ Desviación de PR B (2026-11-11): la división T4–T5 usa props hacia abajo y e
 
 ```
 primaryAction({ status, canOperate, canManage, activeSegment, lineupDirty, draftEvents, closeReady, isTerminal }):
-  if isTerminal or not (canOperate or canManage): return null
+  if isTerminal or not canOperate: return null
   if not activeSegment and status in (scheduled, interrupted):
     return { id:'startSegment', mode:'focus', target:'#seccion-campo' }        # requiere minuto/formulario
   if lineupDirty and canOperate: return { id:'saveLineup', mode:'run' }       # mismo handler y disabled que hoy
-  if draftEvents > 0 and canOperate: return { id:'saveEvents', mode:'run' }
+  if draftEvents > 0 and canOperate: return { id:'closeReport', mode:'focus', target:'#seccion-cierre' }
   if closeReady: return { id:'closeReport', mode:'focus', target:'#seccion-cierre' }  # cerrar exige revisar el formulario
   return { id:'addEvent', mode:'focus', target:'#seccion-eventos' }
 ```
 
 Los nombres exactos de las condiciones se toman de las que ya usa la página. `run` llama al mismo handler que el botón de su sección y respeta su `disabled`/`busyAction`; `focus` hace `scrollIntoView` (sin animación si se prefiere movimiento reducido) y enfoca el primer control de la sección.
+
+Adaptación autorizada para PR C: no existe un guardado independiente de eventos. Los borradores solo se envían junto con `POST …/close`, de forma atómica (RF-009). Con eventos pendientes, la acción es `closeReport` en modo `focus`, con etiqueta «Revisar cierre del acta» / «Review report closing»; el envío sigue exclusivamente en el botón actual de cierre, con sus validaciones y confirmación. Se usa la misma etiqueta cuando el cierre está listo. Todas las acciones de edición requieren `canOperateMatch`; `MANAGE_TOURNAMENTS` por sí solo no concede ese permiso.
 
 La división se hace en este orden: primero el script (la página sigue funcionando con el mismo template) y después la plantilla, sección a sección. Cada paso mantiene verde el E2E de operación.
 
