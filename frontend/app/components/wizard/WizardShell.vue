@@ -153,76 +153,76 @@ watch(() => props.current, async (stepId) => {
 <style scoped>
 .wizard-shell {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .wizard-shell-title {
   margin: 0;
-  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  font-size: var(--text-lg);
 }
 
 .wizard-shell-title:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: 3px;
-  border-radius: 0.35rem;
+  border-radius: var(--radius-sm);
 }
 
 .wizard-shell-body {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: var(--space-5);
   align-items: start;
 }
 
 .wizard-step {
   display: grid;
-  gap: 0.75rem;
-  padding: 1.1rem;
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: var(--surface);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .wizard-step-title {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--text-lg);
 }
 
 .wizard-step-title:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: 3px;
-  border-radius: 0.35rem;
+  border-radius: var(--radius-sm);
 }
 
 .wizard-step-summary {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+  color: var(--color-muted);
+  font-size: var(--text-md);
 }
 
 .wizard-step-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .wizard-blocked {
   margin: 0;
-  color: var(--danger);
-  font-size: 0.85rem;
+  color: var(--color-danger);
+  font-size: var(--text-md);
 }
 
 .wizard-readonly {
   margin: 0;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  color: var(--muted);
-  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-md);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .wizard-shell-body {
     grid-template-columns: minmax(0, 1fr);
   }

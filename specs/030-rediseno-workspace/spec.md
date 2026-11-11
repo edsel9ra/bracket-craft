@@ -1,8 +1,10 @@
 # Spec 030 — Rediseño del Workspace
 
-Estado: aprobada (2026-11-11; OP-1, HD-1, SP-1 y WZ-1 resueltas)
+Estado: implementada (2026-11-11; T1–T10 completas)
 
 Depende de: spec 029 (implementada; PR #41, #42 y #43).
+
+Entregas: [PR #44](https://github.com/edsel9ra/bracket-craft/pull/44) (T1–T3), [PR #47](https://github.com/edsel9ra/bracket-craft/pull/47) (T4–T5), [PR #48](https://github.com/edsel9ra/bracket-craft/pull/48) (T6–T8) y PR D (T9–T10), esta entrega en `devin/1794409672-spec-030-asistentes-cierre`. El PR D no se abre por instrucción del usuario; su número y el gate E2E de CI se incorporarán al abrirlo. La implementación se cierra con las verificaciones locales y evidencias de `tasks.md` y `docs/inspeccion-accesibilidad.md` §11; no se declara ejecutado el gate de un PR inexistente.
 
 ## Contexto y objetivo
 

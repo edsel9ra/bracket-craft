@@ -87,21 +87,21 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
 <style scoped>
 .wizard-steps {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-content: start;
 }
 
 .wizard-step-count {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .wizard-step-list {
   display: grid;
-  gap: 0.35rem;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -113,31 +113,31 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
   grid-template-areas:
     'index label state'
     'index obligation state';
-  gap: 0.15rem 0.6rem;
+  gap: var(--space-1) var(--space-2);
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--ink);
+  color: var(--color-ink);
   text-align: left;
 }
 
 .wizard-step-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: rgba(212, 243, 106, 0.06);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 
 .wizard-step-button[aria-current='step'] {
-  border-color: var(--accent);
-  background: rgba(212, 243, 106, 0.1);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
 .wizard-step-index {
   grid-area: index;
   align-self: center;
-  color: var(--muted);
+  color: var(--color-muted);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
@@ -150,8 +150,8 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
 
 .wizard-step-obligation {
   grid-area: obligation;
-  color: var(--muted);
-  font-size: 0.7rem;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -159,22 +159,22 @@ function onStepKeydown(event: KeyboardEvent, index: number) {
 .wizard-step-state {
   grid-area: state;
   align-self: center;
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.7rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
   white-space: nowrap;
 }
 
 .wizard-step-button.is-complete .wizard-step-state {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .wizard-step-button.is-error .wizard-step-state {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .wizard-step-button.is-omitted .wizard-step-state,

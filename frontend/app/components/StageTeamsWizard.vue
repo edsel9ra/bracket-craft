@@ -825,20 +825,20 @@ draft.applyAfterMount((stored) => {
 <style scoped>
 .stage-wizard-panel {
   display: grid;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .stage-wizard-mode {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .stage-wizard-mode label {
   display: grid;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 0.82rem;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .stage-wizard-mode select,
@@ -846,17 +846,17 @@ draft.applyAfterMount((stored) => {
 .stage-wizard-panel input[type='text'],
 .stage-wizard-panel input:not([type]) {
   min-width: 0;
-  padding: 0.82rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #0c0f0c;
-  color: var(--ink);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 .stage-identity-readonly dl,
 .stage-review {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
 }
 
@@ -864,32 +864,32 @@ draft.applyAfterMount((stored) => {
 .stage-review > div {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-line);
 }
 
 .stage-identity-readonly dt,
 .stage-review dt {
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .stage-identity-readonly dd,
 .stage-review dd {
   margin: 0;
-  color: var(--ink);
+  color: var(--color-ink);
   font-weight: 600;
 }
 
 .stage-team-group {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .stage-team-list {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -899,65 +899,65 @@ draft.applyAfterMount((stored) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
 }
 
 .stage-team-list small,
 .stage-team-options small {
-  color: var(--muted);
-  font-size: 0.72rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .stage-team-name {
   display: grid;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .team-size {
-  color: var(--muted);
-  font-size: 0.7rem;
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
 }
 
 .stage-enrollment-block {
   display: grid;
-  gap: 5px;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid rgba(255, 203, 122, 0.3);
-  border-radius: 0.75rem;
-  background: rgba(255, 203, 122, 0.06);
-  color: #ffcb7a;
-  font-size: 0.82rem;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
 }
 
 .stage-enrollment-block ul {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
-  padding-left: 1.1rem;
+  padding-left: var(--space-4);
 }
 
 .stage-team-remove {
-  padding: 5px 9px;
-  font-size: 0.72rem;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
 }
 
 .stage-team-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--ink);
+  gap: var(--space-2);
+  color: var(--color-ink);
 }
 
 .checkbox-label input {
@@ -966,54 +966,54 @@ draft.applyAfterMount((stored) => {
 
 .stage-warnings {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
-  padding: 0.6rem 0.9rem 0.6rem 1.4rem;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  color: var(--muted);
-  font-size: 0.82rem;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-6);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .stage-partial {
   display: grid;
-  gap: 4px;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--danger);
-  border-radius: 0.75rem;
-  color: var(--danger);
-  font-size: 0.82rem;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
 }
 
 .stage-partial ul {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: var(--space-5);
 }
 
 .stage-wizard-link {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--color-accent);
   font-size: inherit;
   text-decoration: underline;
 }
 
 .field-error {
   margin: 0;
-  color: #ffb0a8;
-  font-size: 0.78rem;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
 }
 
 .wizard-blocked {
   margin: 0;
-  color: var(--danger);
-  font-size: 0.85rem;
+  color: var(--color-danger);
+  font-size: var(--text-md);
 }
 
 .form-error {
   margin: 0;
-  color: #ffb0a8;
-  font-size: 0.85rem;
+  color: var(--color-danger);
+  font-size: var(--text-md);
 }
 </style>

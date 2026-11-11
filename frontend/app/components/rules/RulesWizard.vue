@@ -304,28 +304,28 @@ draft.applyAfterMount((stored) => {
 <style scoped>
 .wizard-description {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+  color: var(--color-muted);
+  font-size: var(--text-md);
 }
 
 .rules-errors {
   display: grid;
-  gap: 0.35rem;
+  gap: var(--space-1);
   margin: 0;
-  padding: 0.7rem 0.9rem 0.7rem 1.6rem;
-  border: 1px solid var(--danger);
-  border-radius: 0.75rem;
-  color: var(--danger);
-  font-size: 0.82rem;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
 }
 
 .wizard-blocked {
   margin: 0;
-  color: var(--danger);
-  font-size: 0.85rem;
+  color: var(--color-danger);
+  font-size: var(--text-md);
 }
 
-.editor-mode { display: inline-flex; width: fit-content; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(12, 15, 12, 0.45); margin-bottom: 12px; }
-.mode-button { padding: 8px 13px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
-.mode-button.active { background: var(--accent); color: var(--accent-ink); }
+.editor-mode { display: inline-flex; width: fit-content; padding: var(--space-1); border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--color-canvas) 45%, transparent); margin-bottom: var(--space-3); }
+.mode-button { padding: var(--space-2) var(--space-3); border-radius: var(--radius-pill); background: transparent; color: var(--color-muted); font-size: var(--text-xs); font-weight: 800; }
+.mode-button.active { background: var(--color-accent); color: var(--color-accent-ink); }
 </style>

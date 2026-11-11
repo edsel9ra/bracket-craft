@@ -493,38 +493,38 @@ draft.applyAfterMount((stored) => {
 <style scoped>
 .teams-wizard-panel {
   display: grid;
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .teams-wizard-panel input:not([type='radio']):not([type='file']) {
   min-width: 0;
-  padding: 0.82rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #0c0f0c;
-  color: var(--ink);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 .team-entry-path {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
 }
 
 .team-entry-path legend {
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: 0.78rem;
+  padding: 0 var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--ink);
+  gap: var(--space-2);
+  color: var(--color-ink);
 }
 
 .checkbox-label input {
@@ -533,29 +533,29 @@ draft.applyAfterMount((stored) => {
 
 .team-entry-summary {
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: var(--ink);
-  font-size: 0.88rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  font-size: var(--text-md);
 }
 
 .csv-file-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .file-picker {
   position: relative;
   justify-content: center;
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .file-picker:focus-within {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: 4px;
 }
 
@@ -564,7 +564,7 @@ draft.applyAfterMount((stored) => {
   width: 1px;
   height: 1px;
   padding: 0;
-  margin: -1px;
+  margin: calc(-1 * var(--space-1));
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -574,61 +574,61 @@ draft.applyAfterMount((stored) => {
 .csv-file-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 0.78rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .file-clear {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
-  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .file-clear:hover {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .team-csv-issues {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
-  padding-left: 1.2rem;
-  color: #ffb0a8;
-  font-size: 0.82rem;
+  padding-left: var(--space-5);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
 }
 
 .team-review {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
 }
 
 .team-review > div {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-line);
 }
 
 .team-review dt {
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .team-review dd {
   margin: 0;
-  color: var(--ink);
+  color: var(--color-ink);
   font-weight: 600;
 }
 
 .team-review-list {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -637,61 +637,61 @@ draft.applyAfterMount((stored) => {
 .team-review-list li {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
 }
 
 .team-review-list small {
-  color: var(--muted);
-  font-size: 0.72rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
 }
 
 .team-warnings {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
-  padding: 0.6rem 0.9rem 0.6rem 1.4rem;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  color: var(--muted);
-  font-size: 0.82rem;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-6);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
 }
 
 .team-created {
   margin: 0;
-  color: var(--accent);
-  font-size: 0.85rem;
+  color: var(--color-accent);
+  font-size: var(--text-md);
 }
 
 .team-created a {
-  color: var(--accent);
+  color: var(--color-accent);
   text-decoration: underline;
 }
 
 .field-error,
 .form-error {
   margin: 0;
-  color: #ffb0a8;
-  font-size: 0.82rem;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
 }
 
 textarea {
   width: 100%;
   resize: vertical;
-  padding: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #0c0f0c;
-  color: var(--ink);
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font: inherit;
   line-height: 1.5;
 }
 
 textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-glow);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 18%, transparent);
   outline: none;
 }
 </style>
