@@ -2,6 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
+- 2026-11-11 · Spec activa: `specs/029-sistema-de-diseno-base` — fase: Spec/Clarificación — estado: borrador (dudas DT-1, MG-1, VI-1, RV-1 abiertas).
 - 2026-11-10 · H10: router de torneos dividido mecánicamente en `access.py`, siete subrouters en `routes/` y fachada de 22 líneas sin reexports. OpenAPI normalizado idéntico a `5bf526c`, 31 operaciones y cinco solapamientos conservados; 2213 pass/480 skip sin BD y 2688 pass/5 skip con PostgreSQL aislado y migraciones 001–032. Ruff y Bandit `-ll` OK; sin cambios en contratos ni specs históricas.
 - Mantenimiento de auditoría (2026-11-09): ESLint gradual, Bandit con supresiones locales revisadas y Gitleaks sobre árbol versionado; Redis compartido para rate limit/readiness; migración **032** para revalidación de sockets en una llamada con RLS. Detalles: `docs/mantenimiento-auditoria.md`.
 - 2026-11-09 · H5: login ejecuta Argon2 aunque no haya cuenta/hash; ficticio precalculado con parámetros recomendados, nunca autenticable. Tests fijan llamada, rechazo y paridad de parámetros. Sin cambios al registro ni rate limit.
