@@ -1,6 +1,8 @@
 # Verificación y cierre de 031 — 2026-11-11
 
-PR A: [#50](https://github.com/edsel9ra/bracket-craft/pull/50). PR B: [#51](https://github.com/edsel9ra/bracket-craft/pull/51), incluido el arreglo de la pista a 800 px. PR C: rama `devin/1794419368-spec-031-verificacion-cierre`, desde `origin/main` `081ad060`; no se abre PR por instrucción del usuario. El número y el gate de CI del PR C quedan pendientes, no se inventa una referencia.
+PR A: [#50](https://github.com/edsel9ra/bracket-craft/pull/50). PR B: [#51](https://github.com/edsel9ra/bracket-craft/pull/51), incluido el arreglo de la pista a 800 px. PR C: [#52](https://github.com/edsel9ra/bracket-craft/pull/52), rama `devin/1794419368-spec-031-verificacion-cierre`, desde `origin/main` `081ad060`. Validación cerrada y aprobada por el usuario el 2026-11-11: «Lo apruebo, procede con la task 10. Me encargo de fusionar.» T1–T10 completas; la fusión corresponde al usuario, no al agente.
+
+CI del PR #52 sobre cc6c9404: **7 passed, 0 failed, 0 pending, 0 skipped**. El [job E2E](https://github.com/edsel9ra/bracket-craft/actions/runs/43076141163/job/130716366488) ejecutó y pasó las 21 pruebas públicas nuevas (7 por cada viewport 1440/390/800), dentro de `26 passed (3.1m)`, sin omisiones.
 
 ## Evidencia reproducible
 
@@ -57,13 +59,13 @@ Axe-core 4.10.3, sin excluir reglas ni nodos de la aplicación: **30 vistas real
 4. Cuadros 4/8/16/5 reales; byes, W.O. y pendientes reales; penales simulados expresamente, sin pretender verificar un cierre deportivo real.
 5. Filtros, rank, empates, orden, continuación y sticky protegidos por el E2E, datos reales y tests unitarios conservados.
 6. Cero axe, teclado/Escape/retorno y equivalente textual. No se ha usado lector de pantalla ni dispositivos físicos; no se certifican combinaciones arbitrarias de navegador/zoom/colisión.
-7. Contrato real sin cambios y gates locales verdes. CI y revisión del PR C se completarán cuando exista el PR; esta entrega no autoriza fusionarlo sin esos gates.
+7. Contrato real sin cambios y gates locales verdes. CI del PR #52 verde, incluidas las 21 pruebas públicas nuevas; revisión y cierre de validación aprobados por el usuario el 2026-11-11. El usuario se encarga de fusionar.
 
 ## Constitución §4
 
 | Criterio obligatorio | Resultado/evidencia |
 |---|---|
-| CI correspondiente | Gates locales siguientes. Jobs de rama consultables después del push; E2E de CI solo corre en PR o main. **Pendiente el gate del PR C; no se declara verde ni se elude.** |
+| CI correspondiente | PR #52 sobre cc6c9404: 7 passed, 0 failed, 0 pending, 0 skipped. [E2E de CI](https://github.com/edsel9ra/bracket-craft/actions/runs/43076141163/job/130716366488): 26 passed (3.1m), incluidas las 21 públicas nuevas. Revisión aprobada por el usuario el 2026-11-11. |
 | Sin secretos/credenciales/datos personales nuevos | Solo fixtures ficticios y geometría en los tests; storageState vacío, trazas desactivadas, no se adjuntan cabeceras/cookies ni contexto autenticado. Capturas fuera de Git. |
 | Documentación observable | Spec/tareas/memoria, AGENTS y accesibilidad; manual sin cambios porque A/B ya documentan la interfaz y C no la cambia. |
 | Pruebas del comportamiento | Guardián nuevo + 21 E2E; realtime y operation-flow conservados. |

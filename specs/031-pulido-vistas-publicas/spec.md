@@ -2,7 +2,7 @@
 
 Estado: implementada
 
-Implementación: PR A [#50](https://github.com/edsel9ra/bracket-craft/pull/50), PR B [#51](https://github.com/edsel9ra/bracket-craft/pull/51) fusionados; PR C identificado por la rama `devin/1794419368-spec-031-verificacion-cierre` (sin número mientras no se abra, por instrucción del usuario). Evidencia RF por RF, criterios de finalización y constitución §4 en [verificacion.md](verificacion.md). Implementada no significa autorizada para fusionar: el gate E2E de CI del PR C y su revisión externa quedan pendientes hasta abrir el PR.
+Implementación: PR A [#50](https://github.com/edsel9ra/bracket-craft/pull/50) y PR B [#51](https://github.com/edsel9ra/bracket-craft/pull/51) fusionados; PR C [#52](https://github.com/edsel9ra/bracket-craft/pull/52) con CI verde y revisión aprobada por el usuario el 2026-11-11. T1–T10 completas y validación cerrada. El [job E2E de CI](https://github.com/edsel9ra/bracket-craft/actions/runs/43076141163/job/130716366488) pasó las 21 pruebas públicas nuevas dentro de 26 pruebas totales. Evidencia RF por RF, criterios de finalización y constitución §4 en [verificacion.md](verificacion.md). El usuario se encarga de fusionar el PR #52; el agente no fusiona.
 
 Aprobada por el usuario el 2026-11-11. Se conserva la numeración de respuestas de su aprobación: D1 diagrama, D2 seguridad de conectores, D3 nombres y D4 tablas. En el borrador, nombres/estadísticas/seguridad figuraban como D2/D3/D4 respectivamente; cambia la referencia, no el significado de las respuestas.
 
