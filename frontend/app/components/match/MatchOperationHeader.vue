@@ -10,7 +10,7 @@ const { t, match, matchGameFormat, formatDate } = props.context;
   <div class="container operation-hero">
     <PageHeader :title="t('match.matchReport')">
       <template v-if="match" #context>{{ match.tournament_name }} · {{ match.stage_name }} · {{ t('public.matchday', { value: match.matchday || '-' }) }}</template>
-      <template v-if="match" #state><span class="match-context">{{ formatDate(match.match_date) }}<template v-if="match.group_name"> · {{ match.group_name }}</template> · <span>{{ t('format.context', { format: matchGameFormat }) }}</span></span></template>
+      <template v-if="match" #state><span class="match-context">{{ formatDate(match.match_date) }}<template v-if="match.group_name"> · {{ match.group_name }}</template> · <span v-if="matchGameFormat !== '11v11'">{{ t('format.context', { format: matchGameFormat }) }}</span><span v-else>{{ t('setup.gameFormat', { format: matchGameFormat }) }}</span></span></template>
     </PageHeader>
   </div>
 </template>

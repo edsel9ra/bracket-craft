@@ -83,6 +83,7 @@ test('the migrated Workspace pages delegate their only h1 to PageHeader', () => 
   const operation = featureSource('pages/workspace/matches/[id].vue');
   assert.equal(operation.match(/<PageHeader\b/g)?.length, 1);
   assert.doesNotMatch(operation, /<h1\b/);
+  assert.match(source('components/match/MatchOperationHeader.vue'), /v-if="matchGameFormat !== '11v11'"/);
 });
 
 test('the setup orchestrator and extracted files respect their line budgets', () => {
