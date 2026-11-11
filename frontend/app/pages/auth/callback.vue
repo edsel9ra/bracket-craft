@@ -8,6 +8,7 @@ definePageMeta({ middleware: [] });
 const auth = useAuthStore();
 const route = useRoute();
 const { t } = useI18n();
+useHead(() => ({ title: `${t('common.login')} | Bracket Craft` }));
 
 function landingDestination(): string {
   // `next` solo se usa tras validarlo: nunca se renderiza ni se navega en crudo.

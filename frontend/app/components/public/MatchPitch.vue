@@ -76,7 +76,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position">{{ positionLabel(player.position_slot || '', t) }}</span>
+        <span class="player-position" :title="positionLabel(player.position_slot, t)"><span aria-hidden="true">{{ player.position_slot }}</span><span class="visually-hidden">{{ positionLabel(player.position_slot, t) }}</span></span>
       </div>
       <div
         v-for="player in home.starters"
@@ -88,7 +88,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
         <span v-else class="player-avatar">{{ playerInitials(player) }}</span>
         <span class="player-number">{{ player.dorsal_number ?? '—' }}</span>
         <span class="player-name">{{ playerName(player) }}</span>
-        <span class="player-position">{{ positionLabel(player.position_slot || '', t) }}</span>
+        <span class="player-position" :title="positionLabel(player.position_slot, t)"><span aria-hidden="true">{{ player.position_slot }}</span><span class="visually-hidden">{{ positionLabel(player.position_slot, t) }}</span></span>
       </div>
     </div>
     <div v-if="showBench" class="bench-grid">
@@ -130,7 +130,7 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
 .pitch-player-away img, .pitch-player-away .player-avatar { border-color: #ffcb7a; }
 .player-number { margin-top: -8px; padding: 2px 5px; border-radius: 5px; background: #0c0f0c; color: var(--ink); font-size: 0.62rem; font-weight: 900; }
 .pitch-player .player-name { max-width: 75px; overflow: hidden; color: var(--ink); font-size: 0.62rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-.player-position { color: var(--accent); font-size: 0.53rem; font-weight: 800; text-transform: uppercase; }
+.player-position { color: var(--accent); font-size: 0.53rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
 .pitch-player-away .player-position { color: #ffcb7a; }
 .bench-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .bench-team { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 9px; border: 1px solid rgba(166, 170, 159, 0.14); border-radius: 9px; background: rgba(12, 15, 12, 0.28); }

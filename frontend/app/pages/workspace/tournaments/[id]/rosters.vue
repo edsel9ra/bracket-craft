@@ -134,9 +134,10 @@ const playerFormHasErrors = computed(() => Object.values(playerFormErrors.value)
 const PAGE_SIZE = 200;
 const ROSTER_PAGE_SIZE = 1000;
 
-useHead({
+useHead(() => ({
+  title: `${t('tournament.rosters.title')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
-});
+}));
 
 const selectedTeam = computed(
   () => teams.value.find((team) => team.team_id === selectedTeamId.value) || null,

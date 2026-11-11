@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 interface TeamStatRow {
   rank: number;
   team_id: string;
@@ -37,7 +38,7 @@ const { t } = useI18n();
       <span class="muted">{{ t('public.teamsCount', { count: rows.length }) }}</span>
     </div>
     <div v-if="!rows.length" class="empty-state compact" role="status">{{ t('public.noTeamStats') }}</div>
-    <div v-else class="table-scroll">
+    <HorizontalScroll v-else :label="t('public.teamStats')">
       <table aria-describedby="public-team-stats-definitions">
         <caption class="visually-hidden">{{ t('public.teamStats') }}</caption>
         <thead>
@@ -69,7 +70,7 @@ const { t } = useI18n();
           </tr>
         </tbody>
       </table>
-    </div>
+    </HorizontalScroll>
     <div id="public-team-stats-definitions" class="stats-definitions muted" role="note">
       <p class="stats-definition">{{ t('public.goalsForDefinition') }}</p>
       <p class="stats-definition">{{ t('public.goalsAgainstDefinition') }}</p>
@@ -85,7 +86,7 @@ const { t } = useI18n();
 
 <style scoped>
 .team-stats-panel { min-width: 0; }
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+thead th:nth-child(2), tbody td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 130px; max-width: 170px; background: var(--surface); box-shadow: 5px 0 8px rgba(0, 0, 0, 0.3); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 thead th {
   color: var(--muted);

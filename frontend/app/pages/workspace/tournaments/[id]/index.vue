@@ -144,9 +144,10 @@ const rulesTitle = ref<HTMLElement | null>(null);
 const teamsTitle = ref<HTMLElement | null>(null);
 const CONFIG_PAGE_SIZE = 200;
 
-useHead({
+useHead(() => ({
+  title: `${t('shell.configuration')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
-});
+}));
 
 const activeVersion = computed(() => versions.value.find((version) => version.id === selectedVersionId.value));
 const draftVersion = computed(() => versions.value.find((version) => version.status === 'draft'));

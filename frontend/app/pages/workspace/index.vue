@@ -50,9 +50,10 @@ function reloadRealtime(trigger: ReloadTrigger) {
   }
 }
 
-useHead({
+useHead(() => ({
+  title: `${t('shell.tournaments')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
-});
+}));
 
 function failureMessage(cause: unknown): string {
   return errorMessage(cause, t('workspace.noCreate'));

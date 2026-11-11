@@ -112,9 +112,10 @@ const scheduleBusy = ref(false);
 const scheduleResult = ref<ScheduleGenerationResponse | null>(null);
 const CONFIG_PAGE_SIZE = 200;
 
-useHead({
+useHead(() => ({
+  title: `${t('tournament.calendar.title')} | Bracket Craft`,
   meta: [{ name: 'robots', content: 'noindex, nofollow' }],
-});
+}));
 
 const activeVersion = computed(() => versions.value.find((version) => version.id === selectedVersionId.value));
 const selectedVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === selectedVersionId.value));

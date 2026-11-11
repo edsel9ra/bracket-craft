@@ -72,3 +72,79 @@ Método para ejecutarlas en un entorno con navegador: recorrido manual con tecla
 ## 6. Conclusión
 
 La accesibilidad se cubre parcialmente por pruebas unitarias y por el E2E de teclado en los asistentes. La accesibilidad completa (contraste, `alt` en todas las vistas, orden de foco fuera de los asistentes) queda como **inspección manual documentada**, con método y vistas definidos, y se declara **no ejecutada** en esta entrega por falta de navegador/entorno, sin presentarse como verde (RNF-002).
+
+## 7. Revisión en navegador — 2026-11-11
+
+Esta revisión es posterior a la inspección estática del 2026-10-28. No convierte sus comprobaciones manuales pendientes en verificaciones realizadas.
+
+### Método y alcance
+
+- Stack local de Docker Compose con `scripts.seed_demo`: torneo de eliminación directa, ocho equipos, 96 jugadores, siete partidos y cuatro cuartos cerrados con formaciones publicadas. Frontend reconstruido con el código de esta revisión. Sin cambios de API, matriz pública ni reglas de cierre.
+- Playwright conectado a Chrome por CDP; axe-core **4.10.3** inyectado en el navegador y ejecutado sobre el documento completo en escritorio (1440×900), incluyendo la regla `color-contrast`. Capturas adicionales en móvil (390×844).
+- Rutas públicas anónimas; Workspace con la cuenta demo. Se mantiene Nuxt DevTools para que la comparación antes/después use el mismo entorno de desarrollo.
+- Artefactos locales: `/home/ubuntu/ui-audit/axe.json` (antes), `axe-after.json` (después), `screens/` (antes), `after/` (después), `verification-after.json` (teclado, sticky, títulos y checklist) y `console-after.json`. Son evidencias de esta ejecución, no ficheros versionados ni un servicio público.
+- «Después» cubre los mismos 14 estados que «antes». Las filas de bracket y estadísticas corresponden a distintos estados del mismo detalle público; axe analiza todo el documento, no solo la sección que aparece en la captura. No deben sumarse como páginas independientes.
+- La cuenta demo no tiene permiso de plataforma: `/admin` redirige a 403. Solo se evalúa esa pantalla, no la administración real. El demo no tiene clasificación de liga: sus partidos están en el bracket; no se crearon datos adicionales para simular otra modalidad.
+
+### Resultados antes → después
+
+Notación: `región(n)` = regla `region`, impacto moderado, n nodos; `título` = `document-title`, impacto serio, 1 nodo; `landmark` = `landmark-unique`, impacto moderado, 1 nodo; `selector` = `select-name`, impacto crítico, 1 nodo.
+
+| Página / estado | Antes | Después |
+|---|---|---|
+| Portada `/` | región(2) | región(1), solo DevTools |
+| Detalle público | región(2) | región(1), solo DevTools |
+| Bracket | región(2) | región(1), solo DevTools |
+| Estadísticas de jugadores | región(2) | región(1), solo DevTools |
+| Estadísticas de equipos | región(2) | región(1), solo DevTools |
+| Modal de formación pública | Sin violaciones detectadas | Sin violaciones detectadas |
+| `/login` | región(2) | región(1), solo DevTools |
+| `/workspace` | región(1) | región(1), solo DevTools |
+| Configuración del torneo | título + landmark + región(1) | región(1), solo DevTools |
+| Calendario | título + región(1) | región(1), solo DevTools |
+| Plantillas | título + región(1) | región(1), solo DevTools |
+| Operación del partido cerrado | título + región(1) | región(1), solo DevTools |
+| Miembros | selector + región(1) | región(1), solo DevTools |
+| Acceso a `/admin` denegado | región(2) | región(1), solo DevTools |
+
+El aviso `region` restante apunta al indicador de tiempo de `nuxt-devtools-frame`; no se ha ocultado ni excluido del análisis. La formación modal no lo incluye porque el resto del documento queda inerte. No se declara una auditoría global «verde».
+
+### Contraste (`color-contrast`)
+
+**Cero violaciones automáticas detectadas antes y después**, pero axe dejó numerosos nodos como `incomplete` (requieren revisión manual, por ejemplo fondos con gradientes). La ausencia de violaciones **no certifica WCAG AA** ni equivale a contraste verificado en todos los textos.
+
+| Página / estado | Nodos `incomplete` antes | Nodos `incomplete` después | Nodos con pase automático después |
+|---|---:|---:|---:|
+| Portada | 30 | 30 | 1 |
+| Detalle público | 509 | 410 | 152 |
+| Bracket | 509 | 410 | 152 |
+| Estadísticas de jugadores | 509 | 410 | 152 |
+| Estadísticas de equipos | 122 | 99 | 76 |
+| Modal de formación | 25 | 25 | 12 |
+| Login | 15 | 15 | 0 |
+| Workspace | 13 | 13 | 10 |
+| Configuración | 138 | 138 | 66 |
+| Calendario | 50 | 50 | 20 |
+| Plantillas | 111 | 111 | 19 |
+| Operación | 97 | 97 | 21 |
+| Miembros | 26 | 26 | 12 |
+| Acceso admin denegado | 4 | 4 | 5 |
+
+El análisis inicial no guardó el conjunto de pases automáticos; no se reconstruye ese dato. Los distintos conteos públicos reflejan también el fondo opaco de la nueva columna sticky: no significan que se haya revisado manualmente el contraste restante. Esta comprobación automatizada es de escritorio; no se certifica contraste móvil.
+
+### Correcciones y comprobación visual
+
+- Miembros: el selector de rol de cada miembro lleva un nombre contextual, incluido el dueño deshabilitado (`Rol: Demo Owner`). El selector de invitación conserva su label asociado. Axe ya no detecta `select-name`.
+- Cada página declara título. Además de las cuatro rutas reportadas, el barrido estático detectó ausencia de título propio en Workspace, cuenta Google, callback y organización; se añadieron con el patrón traducido `… | Bracket Craft`. Las cinco rutas principales de Workspace se verificaron también por navegación; las pantallas OAuth/organización no se recorrieron en una sesión real del proveedor.
+- Los índices de asistentes incluyen el título de su asistente en el nombre del landmark. El selector flotante de idioma queda dentro de una navegación con nombre sin cambiar su estilo.
+- TeamPitch y MatchPitch muestran los códigos abreviados existentes de formación (`CM`, `CM_L`, `GK`, etc.) sin partirlos. El nombre completo traducido permanece en `title` y en texto visualmente oculto; PublicLineupModal reutiliza TeamPitch y conserva su equivalente textual con nombres completos. Se comprobó visualmente la formación pública móvil, no todas las combinaciones de formaciones en MatchPitch.
+- Estadísticas: columna de jugador/equipo sticky con fondo opaco; bracket y tablas usan una región nombrada, enfocable, una instrucción de desplazamiento móvil y degradado de borde sin animación. Se ejercitó el desplazamiento horizontal con flecha derecha y se capturaron los extremos desplazados de ambas tablas y del bracket. Se comprobó sticky en ambas tablas y `scroll-behavior: auto` con reduced-motion. Sin overflow horizontal global en los estados móviles medidos.
+- Acta cerrada: la cadena real del demo pasa por `_close_quarterfinal` → `CloseMatchReportService.execute`; el cierre confirma el resultado y marca el segmento como `completed` (`backend/app/modules/matches/service.py`). El frontend buscaba un segmento `active` y representaba todo valor falso como pendiente. Ahora, usando el mismo estado terminal que ya bloquea la edición, la ausencia de segmento activo se representa como **No requerido** y la ausencia de árbitro principal como **Sin asignar**, con guion e indicación neutra, nunca como un árbitro ficticio ni como un requisito satisfecho. Si existe árbitro, mantiene Listo; los partidos abiertos mantienen Pendiente y su alerta. No se cambian validaciones ni escrituras del cierre.
+- Capturas mínimas: `after/workspace-members-desktop.png`, `workspace-members-directory-mobile.png`, `public-lineup-mobile.png`, `public-stats-players-mobile.png`, `public-stats-teams-mobile.png`, `public-bracket-mobile.png`, `workspace-match-desktop.png`, `workspace-match-mobile.png` y las tres vistas móviles `*-scrolled-mobile.png`.
+- Sin eventos `console.error` ni `pageerror` en la captura principal posterior (`console-after.json`: `[]`). El indicador de DevTools sigue superponiéndose a contenido inferior en móvil: se documenta como artefacto de desarrollo, no como defecto corregido del producto.
+
+### Verificación de código y límites
+
+Contenedor `node:24`, pnpm **12.12.1**: `pnpm test` (800 tests, 799 pass, 0 fail, 1 skipped), `pnpm run typecheck`, `pnpm run lint` y `pnpm run build` finalizaron con código 0. El test de layout que exigía `overflow-wrap: anywhere` se ajustó al nuevo requisito de posiciones sin cortes. Se añadieron tests del checklist abierto/cerrado/vacío, títulos de todas las páginas, landmarks y superficies de scroll.
+
+No se ejecutaron Lighthouse, E2E completo, lector de pantalla ni una revisión manual de todos los ratios de contraste o del foco en todas las páginas. La administración real y el flujo OAuth real permanecen sin verificar. Las evidencias anteriores no sustituyen esas comprobaciones.

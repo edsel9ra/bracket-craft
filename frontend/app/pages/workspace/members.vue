@@ -328,7 +328,7 @@ await loadData();
                   <tr v-for="member in pagedMembers" :key="member.organization_user_id">
                     <td><strong>{{ member.full_name }}</strong><small>{{ member.email }}</small></td>
                     <td>
-                      <select :value="member.role_code" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
+                      <select :value="member.role_code" :aria-label="`${t('members.role')}: ${member.full_name}`" :disabled="member.role_code === 'owner' || saving" @change="changeRole(member, $event)">
                         <option v-if="!isAssignableRole(member.role_code)" :value="member.role_code">{{ t(roleKey(member.role_code)) }}</option>
                         <option v-for="role in assignableRoles" :key="role" :value="role">{{ t(roleKey(role)) }}</option>
                       </select>

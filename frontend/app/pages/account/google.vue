@@ -6,6 +6,7 @@ definePageMeta({ middleware: ['session'] });
 const auth = useAuthStore();
 const route = useRoute();
 const { t } = useI18n();
+useHead(() => ({ title: `${t('google.link.title')} | Bracket Craft` }));
 
 const linked = ref(false);
 const googleEnabled = ref(false);
