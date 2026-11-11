@@ -1,6 +1,8 @@
 # Spec 031 — Pulido de las vistas públicas
 
-Estado: borrador
+Estado: aprobada
+
+Aprobada por el usuario el 2026-11-11. Se conserva la numeración de respuestas de su aprobación: D1 diagrama, D2 seguridad de conectores, D3 nombres y D4 tablas. En el borrador, nombres/estadísticas/seguridad figuraban como D2/D3/D4 respectivamente; cambia la referencia, no el significado de las respuestas.
 
 ## Contexto y objetivo
 
@@ -60,32 +62,32 @@ La ordenación actual viene del servicio: jugadores por goles descendentes, part
 
 ## Definiciones
 
-- **Origen inequívoco:** relación de avance que se puede identificar sin ambigüedad usando exclusivamente la información pública ya entregada. Cercanía visual, orden de llegada o igualdad de nombres no son por sí solos una prueba.
+- **Origen inequívoco:** partido de la ronda inmediatamente anterior cuyo ganador informado es participante del destino y cuyo par origen/destino es único para ese participante dentro de la misma fase y ámbito. Se usan identificadores públicos, nunca nombres, proximidad, marcador deducido ni el orden de llegada. Sin ganador o ante ambigüedad no se representa línea, incluso si el código permite adivinar una llave teórica (D2).
 - **Bye o pase libre:** avance sin disputar un partido. No equivale a una victoria por W.O. ni a un partido pendiente, y no autoriza a inventar un resultado.
 - **Marca neutra:** indicación de marcador no informado, distinta de un 0–0 realmente comunicado.
 - **Ronda nominal:** Final, Semifinales, Cuartos de final u Octavos de final cuando el significado se puede establecer con la información vigente; «Ronda n» es una denominación genérica válida cuando no hay certeza.
-- **Columna prioritaria:** dato que debe ser completamente visible en la vista inicial móvil según D3, sin desplazamiento horizontal.
+- **Columna prioritaria:** Posición/Jugador/Goles en jugadores y Posición/Equipo/GF en equipos, completamente visibles en la vista inicial móvil sin desplazamiento horizontal (D4); las demás métricas siguen accesibles mediante scroll local y la identidad permanece sticky.
 - **Recuento visible:** número de filas cargadas en ese momento, no un total de participantes inferido.
 
 ## Requisitos funcionales
 
-Los requisitos condicionados por D1–D4 son propuestas del borrador, no decisiones aprobadas. Ninguno autoriza ampliar la información pública.
+Las decisiones D1–D4 están aprobadas e incorporadas a los requisitos. Ninguna autoriza ampliar la información pública.
 
 - RF-001: EL SISTEMA conservará las rutas, lecturas, campos, permisos y visibilidad públicos vigentes; no añadirá escrituras, requisitos de sesión, cookies nuevas ni datos privados para presentar estas mejoras.
 - RF-002: CUANDO existan torneos públicos, EL SISTEMA ofrecerá en la primera pantalla de la portada un acceso identificable a la lista de torneos, a 1440×900 y 390×844, sin exigir registro ni usar el enlace a documentación como sustituto; al activarlo se verá el encabezado de la lista sin quedar cubierto.
 - RF-003: MIENTRAS un marcador de portada sea una ilustración fija y no un resultado de los datos consultados, EL SISTEMA lo identificará como ejemplo y no como un partido real «En vivo».
 - RF-004: CUANDO se abra el detalle de un torneo con resultados o estadísticas, EL SISTEMA ofrecerá accesos a esas secciones dentro de la primera pantalla en ambas resoluciones, sin tener que recorrer antes toda la lista de equipos; se mantendrá accesible esa lista completa.
 - RF-005: CUANDO se muestre una llave, EL SISTEMA conservará todos los partidos recibidos, una vez cada uno y en su ronda correspondiente, incluidos los pendientes y aquellos con uno o ambos participantes por definir; no añadirá partidos o resultados para rellenar huecos.
-- RF-006: CUANDO una ronda tenga un significado nominal inequívoco, EL SISTEMA mostrará su nombre en español e inglés conforme a D2; SI el significado no es inequívoco, incluso por información parcial, ENTONCES EL SISTEMA conservará una etiqueta genérica y no llamará «Final» a la última ronda cargada solo por ser la última visible.
-- RF-007: CUANDO se representen relaciones de avance inequívocas en el modelo aprobado en D1/D4, EL SISTEMA hará identificable cada unión origen/destino y, en la representación gráfica, situará el centro del destino a no más de 2 px del promedio de los centros de sus orígenes representados, a escala 100 %, en las dos resoluciones, con 4, 8 y 16 equipos.
-- RF-008: SI la relación de avance o la existencia de un bye no se pueden establecer con la información pública disponible, ENTONCES EL SISTEMA no dibujará un conector ni afirmará un pase libre inventados, y ofrecerá la representación por rondas y la explicación de limitación que se acuerde en D4.
+- RF-006: CUANDO los códigos públicos reconocidos identifiquen la ronda, EL SISTEMA mostrará Final, Semifinales, Cuartos de final u Octavos de final y su equivalente en inglés (D3); SI el código no permite establecer ese significado, ENTONCES EL SISTEMA conservará «Ronda n» o una etiqueta genérica cuando no exista número, sin inferir la final de la última página visible.
+- RF-007: CUANDO se muestre una llave, EL SISTEMA presentará un diagrama con scroll horizontal y conectores solo entre pares inequívocos de rondas consecutivas (D1/D2). El centro nominal del destino será el promedio Y de sus orígenes conocidos, con tolerancia de 2 px a escala 100 % cuando no haya colisión; si el centrado produce solapes, se aplicará únicamente el desplazamiento mínimo necesario para separarlos. Los partidos sin orígenes permanecerán en su orden de API. Se comprobarán ambas resoluciones y los casos de 4, 8 y 16 equipos.
+- RF-008: SI falta ganador, hay más de un par posible o la existencia de un bye no se puede establecer con la información pública disponible, ENTONCES EL SISTEMA mantendrá el partido en su ronda sin línea ni pase libre inventados y explicará que solo se conectan avances identificables (D2). Una línea falsa es peor que una línea ausente; no se amplía la API.
 - RF-009: CUANDO el torneo contenga byes o un número impar admitido por el producto, EL SISTEMA conservará las rondas y participantes recibidos sin convertir el bye en W.O., partido ficticio o eliminación; se comprobará el caso real de 5 equipos y 3 pases libres.
 - RF-010: CUANDO un partido incluya ganador informado, EL SISTEMA lo distinguirá mediante una señal textual o accesible además del color; SI no hay ganador informado, ENTONCES EL SISTEMA no lo deducirá de la posición de una tarjeta, del nombre del equipo o de un marcador ausente.
 - RF-011: CUANDO se muestre un partido resuelto por penales o W.O., EL SISTEMA distinguirá resolución, marcador y, si existe, tanda; conservará exactamente los números recibidos y no publicará el motivo privado de la resolución. SI el marcador no está informado, ENTONCES EL SISTEMA mostrará una marca neutra, nunca un 0–0 inventado.
-- RF-012: CUANDO se consulte la llave a 390×844, EL SISTEMA permitirá alcanzar todas las rondas y todos sus partidos mediante el modelo aprobado en D1, manteniendo visible el nombre de la ronda consultada y sin causar scroll horizontal del documento.
+- RF-012: CUANDO se consulte la llave a 390×844, EL SISTEMA permitirá alcanzar todas las rondas y todos sus partidos con scroll horizontal local del diagrama (D1), con nombre de ronda visible en cada columna, pista de desplazamiento y acceso por teclado, sin causar scroll horizontal del documento ni sustituir el cuadro por listas o pestañas.
 - RF-013: CUANDO se abran las estadísticas, EL SISTEMA conservará «Torneo completo» como ámbito inicial independiente de la fase del calendario; CUANDO se elija una fase o se restaure el torneo completo, EL SISTEMA aplicará o retirará ese filtro en ambas tablas sin mezclar filas de ámbitos diferentes, torneos u organizaciones.
 - RF-014: MIENTRAS se presenten estadísticas, EL SISTEMA conservará la posición y el orden entregados, incluidos empates y saltos de posición, y hará consultable el criterio de orden actual; cargar más filas no reiniciará la posición ni reordenará solo el fragmento visible. No se incorporan controles nuevos de ordenación.
-- RF-015: CUANDO se consulten estadísticas en móvil, EL SISTEMA mostrará completamente las columnas prioritarias acordadas en D3 y permitirá consultar todas las restantes sin suprimir métricas; la identidad del jugador o equipo seguirá asociada a los valores al desplazarse horizontalmente. Los nombres abreviados conservarán su versión completa accesible por teclado y ayudas técnicas.
+- RF-015: CUANDO se consulten estadísticas a 390×844, EL SISTEMA conservará tablas con scroll e identidad sticky (D4), mostrará completamente Posición/Jugador/Goles o Posición/Equipo/GF al abrir y permitirá consultar todas las columnas restantes sin suprimir métricas ni sustituir filas por tarjetas. Los nombres abreviados conservarán su versión completa accesible por teclado y ayudas técnicas.
 - RF-016: CUANDO una tabla de estadísticas ofrezca cargar más filas, EL SISTEMA identificará el recuento como filas mostradas, no como total del torneo, y conservará la acción de cargar más y sus estados de carga, vacío y error.
 - RF-017: CUANDO clasificación o estadísticas excedan el ancho disponible, EL SISTEMA mostrará una pista visible de desplazamiento, una región con nombre accesible y foco de teclado, y mantendrá identificable al equipo o jugador mientras se consultan las métricas de la derecha; el scroll local no desplazará horizontalmente el documento.
 - RF-018: CUANDO se consulten partidos en lista, EL SISTEMA mantendrá asociados ambos equipos, marcador, estado, fecha y resolución, sin solapar sus textos ni ocultar controles a 390×844; los participantes por definir conservarán una etiqueta explícita y los nombres completos seguirán siendo accesibles.
@@ -108,6 +110,8 @@ Se conserva la proyección mínima vigente: los nombres y fotografías públicos
 
 - Torneo sin fases, sin clasificación, sin estadísticas o sin partidos; carga parcial, error y reintento ya existentes.
 - Llaves de 4, 8 y 16 equipos, 5 equipos con 3 byes, rondas incompletas o con jornada desconocida, códigos no reconocidos y formatos distintos de eliminación directa.
+- En byes, cuadros parciales o partidos pendientes no se rellenan huecos ni se enlazan partidos saltando rondas; un ganador informado por penales o W.O. puede originar una línea bajo la misma prueba de unicidad. Un equipo repetido en varios partidos hace ambiguos los pares afectados: no se elige uno por nombre, índice o código.
+- Si varios destinos reclaman la misma posición Y, el espacio mínimo entre tarjetas prevalece sobre el centro nominal para evitar solapes; se conserva el orden de API de los partidos sin relación y se registra el desplazamiento al verificar el layout (RF-007).
 - Participantes por definir, nombres largos o iguales, equipo sin escudo, ganador ausente, 0–0 real, cancelado sin resultado, W.O., prórroga y tanda de penales.
 - Empates compartidos y paginación de estadísticas, filtro sin filas, cambio de fase y vuelta al ámbito completo.
 - Una o ambas formaciones no publicadas, publicación de solo alineación textual, formación por segmento, nombres largos, foto ausente o fallida.
@@ -116,15 +120,15 @@ Se conserva la proyección mínima vigente: los nombres y fotografías públicos
 ## Fuera de alcance
 
 - Cambios en matriz pública, campos, API, permisos, esquema, motor deportivo, calendarios, resultados, avance, privacidad o publicación de formaciones.
-- Consultar relaciones de avance privadas para dibujar conectores; añadir esa información pública exigiría otra propuesta y no queda autorizado por D4.
+- Consultar relaciones de avance privadas para dibujar conectores; añadir esa información pública exigiría otra propuesta y no queda autorizado por D2.
 - Rehacer T15/T16 de la 022: están implementadas; aquí solo se protegen como comportamiento existente.
 - Nuevos criterios de orden, cálculo local de posiciones, nuevas métricas, tarjetas de jugador con datos adicionales o acciones privadas de gestión.
 - Nuevo tema o marca, cambio de tipografía, rediseño del Workspace, autenticación o administración.
-- Implementación, plan y tareas en esta fase. Esta entrega solo documenta el estado observado y propone requisitos.
+- Implementación sin aprobación previa del plan y las tareas. La aprobación de la spec y el encargo de redactar esos documentos no autorizan a tocar la app.
 
 ## Criterios de finalización
 
-- Resolver D1–D4 y aprobar la spec antes de planificar o implementar; este borrador no equivale a esa aprobación.
+- Spec aprobada y D1–D4 resueltas el 2026-11-11; obtener la aprobación del plan/tareas antes de implementar.
 - Comparar antes/después de todas las superficies auditadas a ambas resoluciones, con medidas Y, anchos visibles/desplazables, columnas prioritarias y cero overflow horizontal de página.
 - Verificar las relaciones representadas contra los casos conocidos sin usar datos privados en la vista pública; demostrar el fallback cuando los datos no permiten garantizar una conexión.
 - Verificar etiquetas de ronda, 4/8/16 equipos, impares/byes, resultados pendientes, W.O. y penales; no inventar cruces ni resultados.
@@ -134,7 +138,4 @@ Se conserva la proyección mínima vigente: los nombres y fotografías públicos
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **D1 — Llave móvil.** Recomendación: **A)** mantener un diagrama con scroll horizontal local, conectores únicamente para relaciones fiables y rondas reconocibles; permite seguir el cuadro y conserva el contexto deportivo. Alternativas: **B)** lista vertical por rondas con referencias textuales a los orígenes conocidos; **C)** una ronda por pestaña, con referencias y navegación anterior/siguiente. ¿Qué modelo se aprueba? RF-007/RF-012 se ajustarán al elegido.
-- [NECESITA ACLARACIÓN] **D2 — Nombres de ronda.** Recomendación: **A)** Final, Semifinales, Cuartos y Octavos solo cuando el código público reconocido determina ese significado; conservar «Ronda n» o una etiqueta genérica en los demás casos. El caso demo ya entrega FINAL, por lo que renombrarlo no necesita ampliar la API. Alternativas: **B)** mantener siempre «Ronda n» junto al código; **C)** deducir nombres por tamaño del cuadro únicamente cuando esté completo y sea inequívoco, con fallback genérico. Nunca inferir la final solo de la última página cargada.
-- [NECESITA ACLARACIÓN] **D3 — Estadísticas móviles.** Recomendación: **A)** conservar tablas con scroll y la identidad sticky existente; priorizar inicialmente Posición/Jugador/Goles y Posición/Equipo/GF, manteniendo las demás columnas accesibles. Alternativa: **B)** tarjetas por fila con posición, identidad y dato principal, desplegando todas las métricas restantes. Ninguna opción añade datos, ordenación o cálculos de posición.
-- [NECESITA ACLARACIÓN] **D4 — Relaciones de avance que no son públicas.** La respuesta actual informa ronda, código, participantes y ganador, pero no incluye los identificadores de los partidos de origen, los slots ni los enlaces de avance. Un orden visual no garantiza el grafo para byes, cuadros manuales, datos parciales o formatos distintos. Recomendación: **A)** conectar solo relaciones inequívocas a partir de los datos existentes y usar una vista por rondas con limitación explícita para las demás; la mejora no prometerá conectores universales. Alternativa: **B)** limitar esta spec a rondas/etiquetas/lista sin conectores, y posponer un diagrama general correcto a otra spec que pudiera revisar la disponibilidad pública de relaciones. No se solicita ni autoriza cambiar la API dentro de la 031.
+Ninguna pendiente. Respuestas del usuario, 2026-11-11: D1 A → RF-007/RF-012; D2 A → definición de origen, RF-008 y casos límite; D3 A → RF-006; D4 A → definición de columnas y RF-015. La matriz pública, campos y API permanecen intactos.
