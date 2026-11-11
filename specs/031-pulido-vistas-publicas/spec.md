@@ -1,6 +1,8 @@
 # Spec 031 — Pulido de las vistas públicas
 
-Estado: aprobada
+Estado: implementada
+
+Implementación: PR A [#50](https://github.com/edsel9ra/bracket-craft/pull/50), PR B [#51](https://github.com/edsel9ra/bracket-craft/pull/51) fusionados; PR C identificado por la rama `devin/1794419368-spec-031-verificacion-cierre` (sin número mientras no se abra, por instrucción del usuario). Evidencia RF por RF, criterios de finalización y constitución §4 en [verificacion.md](verificacion.md). Implementada no significa autorizada para fusionar: el gate E2E de CI del PR C y su revisión externa quedan pendientes hasta abrir el PR.
 
 Aprobada por el usuario el 2026-11-11. Se conserva la numeración de respuestas de su aprobación: D1 diagrama, D2 seguridad de conectores, D3 nombres y D4 tablas. En el borrador, nombres/estadísticas/seguridad figuraban como D2/D3/D4 respectivamente; cambia la referencia, no el significado de las respuestas.
 

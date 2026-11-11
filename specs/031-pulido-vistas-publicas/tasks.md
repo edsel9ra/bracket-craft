@@ -40,20 +40,21 @@ Fecha: 2026-11-11. Spec, plan y tareas aprobados por el usuario; fases de docume
 
 ## PR C — Verificación y documentación (T9–T10)
 
-- [ ] **T9. Automatizar regresión de público sin sesión y mediciones de aceptación.** RF-001–019; RNF-001–006. Depende de T8. 30 min.
+- [x] **T9. Automatizar regresión de público sin sesión y mediciones de aceptación.** RF-001–019; RNF-001–006. Depende de T8. 30 min.
   - Hecho cuando: `e2e/public-polish.spec.ts` usa contexto anónimo, viewport 1440×900/390×844, casos sintéticos del contrato normal/vacío/error y nombres largos; mide tres columnas completas, sticky al final del scroll, geometría, anclas y overflow, verifica filtro/restauración/paginación, teclado, Escape/retorno de foco y relaciones sin falsos positivos. Ampliar solo testMatch del proyecto public existente, conservando realtime y sin nueva dependencia. Traces/cookies/tokens no se guardan en evidencia.
   - Comando: `cd frontend && pnpm run typecheck:e2e && pnpm exec playwright test e2e/public-polish.spec.ts --project=public --no-deps` (test/entrada planeados por esta tarea).
 
 - [ ] **T10. Auditoría final, documentación, limpieza y gates.** RF-001–019; RNF-001–006. Depende de T9. 30 min de trabajo activo; espera CI aparte.
-  - Hecho cuando: todas las vistas se comparan con 031-before a ambas resoluciones; capturas/mediciones en `/home/ubuntu/ui-audit/031-after/`, axe cero de app incluida clasificación, navegación de teclado y reduced-motion documentados. Se prueban los cuadros 4/8/16/5 con byes y W.O.; si penales solo se simulan, se declara. Tabla RF con evidencia, desviaciones de centro por colisión explícitas, todas las métricas accesibles, sin datos nuevos ni pérdida de contenido; fixtures retirados por sus IDs. Manual/inspección/AGENTS/memoria actualizados, suites y CI aplicables verdes y revisión humana antes de cerrar como implementada; si falta un gate se deja pendiente, no se marca T10.
+  - Hecho cuando: todas las vistas se comparan con 031-before a ambas resoluciones; capturas/mediciones en `/home/ubuntu/ui-audit/031-after/`, composiciones finales en `/home/ubuntu/ui-audit/031-c-pr/`, axe cero de app incluida clasificación, navegación de teclado y reduced-motion documentados. Se prueban los cuadros 4/8/16/5 con byes y W.O.; si penales solo se simulan, se declara. Tabla RF con evidencia, desviaciones de centro por colisión explícitas, todas las métricas accesibles, sin datos nuevos ni pérdida de contenido; fixtures retirados por sus IDs. Manual/inspección/AGENTS/memoria actualizados, suites y CI aplicables verdes y revisión humana antes de cerrar como implementada; si falta un gate se deja pendiente, no se marca T10.
+  - Estado de entrega: auditoría y gates locales terminados; [verificacion.md](verificacion.md) cita RF por RF y constitución §4. Por encargo explícito del usuario se registra la implementación, pero se conserva T10 sin marcar hasta el gate E2E del PR C y revisión humana. No se abre PR ni se sustituye ese gate por una corrida local.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run typecheck:e2e && pnpm exec playwright test e2e/public-polish.spec.ts --project=public --no-deps`.
   - Además: ejecutar axe local sobre cada vista/viewport (con versión y JSON de resultados en la evidencia), comprobar `git diff --check` y esperar los jobs de CI descritos en el plan. No se debilitan reglas de axe ni tests para conseguir verde. Datos y capturas fuera del repo.
 
 ## Reglas de entrega
 
 - PR A → PR B → PR C, en dependencia; cada PR conserva suites existentes verdes y evidencia de su superficie, no difiere fallos conocidos al siguiente. La pasada completa de aceptación se repite en T10 sobre el conjunto final.
-- El usuario autorizó PR A y después PR B desde main actualizado en `devin/1794415336-spec-031-tablas-navegacion`, sin abrir PR. PR C requiere su siguiente encargo.
-- Mantener la spec en aprobada hasta validación del conjunto y autorización explícita de cierre. T1–T8 ejecutadas; T9/T10 pendientes.
+- El usuario autorizó PR A, PR B y PR C desde main actualizado, sin abrir PR; en C pidió expresamente el estado implementada. Referencias a #50/#51 y rama de C en la spec.
+- T1–T9 ejecutadas; validación local del conjunto terminada. T10 conserva el checkbox pendiente de CI del PR C y revisión humana; no es autorización de fusión.
 
 ## Evidencia PR A — 2026-11-11
 

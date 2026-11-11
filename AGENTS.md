@@ -37,6 +37,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 - **Cadena de suministro CI:** todas las acciones `uses:` se fijan al SHA completo del commit (no al objeto de tag anotado), con tag exacto en comentario. Resolver mediante `git ls-remote` y desreferenciar `^{}` cuando exista. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. Trivy conserva la versión v0.36.0 fijada por la constitución.
 
+- Regresión pública 031: `e2e/public-polish.spec.ts` comparte el proyecto `public` con realtime, pero usa storageState vacío y trazas desactivadas; mide 1440/390/800 px con contratos ficticios y no escribe en la API. Ejecución aislada: `pnpm exec playwright test e2e/public-polish.spec.ts --project public --no-deps`; evidencia y límites en `specs/031-pulido-vistas-publicas/verificacion.md`.
 - Gate E2E de tiempo real: `channel.ts` contabiliza intentos HTTP y WebSocket;
   `abort` cierra el socket interceptado sin conectar al servidor, `hold` lo retiene
   hasta `releaseHeld`. Las esperas aceptan ambos transportes, sin exigir polling.
