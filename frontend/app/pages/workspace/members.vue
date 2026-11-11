@@ -178,6 +178,7 @@ async function inviteMember() {
     });
     generatedLink.value = invitation.invite_url || null;
     inviteForm.email = '';
+    inviteTouched.value = false;
     await loadData();
   } catch (cause) {
     if (!(await redirectOnSessionFailure(cause))) {
