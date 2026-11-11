@@ -79,6 +79,9 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
+- «Ver torneos» lleva directamente al listado desde la primera pantalla. El marcador fijo de portada es un ejemplo, no un partido real. Registro y documentación siguen disponibles.
+- En el detalle, «Resultados», «Estadísticas» y «Equipos» enlazan a sus secciones, también sin JavaScript. El selector de fase aparece antes de la lista completa de equipos; esta conserva su propio acceso.
+- Las estadísticas abren en «Torneo completo»; elegir una fase y restaurar el torneo completo es independiente del calendario. Posición y empates son los recibidos del servidor. El recuento indica filas mostradas y el criterio de orden está junto a cada tabla. En móvil se ven inicialmente Posición/Jugador/Goles o Posición/Equipos/GF; las demás métricas se alcanzan con scroll local y la identidad permanece fija. Clasificación también tiene pista y región de scroll con foco de teclado.
 - Un torneo no visible responde 404 indistinguible.
 - La llave permite desplazamiento horizontal local, también con teclado. Usa Final, Semifinales, Cuartos u Octavos cuando los códigos publicados identifican la ronda; en otro caso conserva «Ronda n» o una etiqueta genérica.
 - Los conectores solo muestran avances inequívocos: ganador confirmado del partido anterior y participante del siguiente, también por penales o W.O. Un partido sin línea no implica eliminación ni pase libre; pendientes y participantes por definir permanecen visibles. La relación también está disponible en texto accesible y el ganador no se indica solo por color.
