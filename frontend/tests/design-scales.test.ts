@@ -6,13 +6,7 @@ import { BREAKPOINTS, CSS_TOKENS, RADII, SPACING, TEXT_SIZES } from '../app/util
 
 const ROOT = new URL('../app/', import.meta.url).pathname;
 
-export const PENDING_MIGRATION = [
-  ['components/RulesEditor.vue', 'opción 3: editor de reglas'],
-  ['components/rules/', 'opción 3: asistentes de reglas'],
-  ['components/TeamsWizard.vue', 'opción 3: asistente de equipos'],
-  ['components/StageTeamsWizard.vue', 'opción 3: asistente de fases'],
-  ['components/wizard/', 'opción 3: infraestructura de asistentes'],
-] as const;
+export const PENDING_MIGRATION: readonly (readonly [string, string])[] = [];
 
 export const DESIGN_EXCEPTIONS: { file: string; property: string; value: string; reason: string }[] = [
   { file: 'assets/css/main.css', property: 'margin', value: '-1px', reason: 'Recorte accesible de visually-hidden de un píxel, no espaciado de layout.' },
@@ -87,7 +81,8 @@ test('scale guard detects invalid values and accepts canonical steps, tokens and
   assert.equal(inspect('@media (min-width: 480px) and (max-width: 521px) {}', 'fixture.css')[0]?.value, '521px');
 });
 
-test('all non-pending Vue and CSS files obey the design scales', () => {
+test('all Vue and CSS files obey the design scales with no pending migrations', () => {
+  assert.deepEqual(PENDING_MIGRATION, []);
   console.info('DESIGN_EXCEPTIONS:', JSON.stringify(DESIGN_EXCEPTIONS));
   console.info('PENDING_MIGRATION:', JSON.stringify(PENDING_MIGRATION));
   for (const entry of DESIGN_EXCEPTIONS) {
