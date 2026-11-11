@@ -2,6 +2,8 @@
 
 Fecha: 2026-11-11. Auditoría estática, no implementación. Base `origin/main` `8993a393c4d64229bd5a16dce6d5157c37d4455c`, después de fusionar #52. Alcance: archivos versionados del frontend; se excluyen dependencias, compilados, cachés y capturas. No se ejecutaron navegador, axe ni suites de aplicación: no se declara conformidad visual del tema inexistente.
 
+Actualización de clarificación, 2026-11-11: el usuario aprobó D1–D4 A; la [spec](../specs/032-tema-claro/spec.md) registra las respuestas y define la única región R exceptuada de los 0 píxeles oscuros. El [plan](../specs/032-tema-claro/plan.md) y las tareas están propuestos para revisión, sin implementación. Las mediciones de esta auditoría inicial se conservan como evidencia, no como aceptación renderizada.
+
 ## 1. Inventario y método
 
 - `tokens.css`: **23 roles de color, 20 valores hex únicos**, dentro de 69 propiedades totales. `PALETTE` en `designTokens.ts`: 23 entradas, mismas claves/valores, igualdad comprobada.
@@ -35,21 +37,21 @@ El inventario detecta **81 líneas en 31 archivos** con sombras, degradados o SV
 - CSP comprobada en `app/utils/securityHeaders.ts`, aplicada por `nuxt.config.ts` a /**: **`frame-ancestors 'none'; object-src 'none'; base-uri 'self'`**. No hay script-src **ni default-src**; la ausencia de ambos implica que esta política no bloquearía un script inline anti-FOUC. No hay que añadir unsafe-inline ni relajar cabeceras. Esto NO significa que sea necesaria o preferible esa solución; un proxy de despliegue puede añadir otra política, no inspeccionada en esta auditoría. DevTools no representa producción.
 - Cambiar tema no debe recargar rutas, perder foco, cerrar diálogos, resetear formularios/filtros ni efectuar llamadas API adicionales.
 
-## 4. Propuesta de diseño, todavía no aprobada
+## 4. Propuesta cromática de la auditoría inicial
 
 Dirección: **papel de acta, tinta verde de señalización y césped conservado**. No invertir el oscuro ni cambiar marca, tipografía Archivo, jerarquía, espacios, radios, layout o escalas de la 029. Base clara ligeramente verdosa, cinco niveles existentes, verde bosque para acciones y ámbar/rojo oscuro para semántica legible. Sin fuentes, ilustraciones o animaciones nuevas.
 
 Se revisó el primer planteamiento (invertir paleta, conservar todo texto de avatares/campo): perdía contraste. La propuesta revisada separa avatares de superficie e isla del césped y aclara solo el ámbar de esta isla. Los nuevos roles de isla y ajustes de opacidad se limitarían a claro. La paleta no implica autorización para implementar.
 
-Layout de preferencia a decidir, sin rediseñar la navegación:
+Ubicaciones de preferencia aprobadas en D2, sin rediseñar la navegación (boceto, no implementación):
 
 ```text
-Público:   contenido intacto       [Idioma] [Apariencia?] (ubicación actual flotante)
-Workspace: marca | navegación | organización | idioma | apariencia? | cuenta
-Móvil:     menú existente -> idioma / apariencia? (sin desplazar el contenido)
+Público:   contenido intacto       [Idioma] [Apariencia] (ubicación actual flotante)
+Workspace: marca | navegación | organización | idioma | apariencia | cuenta
+Móvil:     menú existente -> idioma / apariencia (sin desplazar el contenido)
 ```
 
-**Conflicto real:** un selector nuevo visible modifica píxeles aunque todos los tokens oscuros se conserven. El requisito del usuario de 0 píxeles oscuros se mantiene literal; NO se introduce una máscara/excepción silenciosa. D2 debe resolver si autoriza exclusivamente el nuevo control o exige acceso separado sin alterar vistas existentes. No se inicia plan/implementación antes de resolverlo.
+**Conflicto de fase 1 resuelto por D2 A:** el usuario autoriza únicamente la región R medida del selector; se exigen 0 píxeles distintos fuera de ella. No se autoriza mover idioma u otros controles ni ampliar máscaras para conseguir verde. Límites y medición en spec/plan; no se implementa hasta aprobar plan y tareas.
 
 ### Paleta por rol actual
 
@@ -369,4 +371,4 @@ Líneas de fuente, no colores nuevos. Sombra incluye referencias a tokens shadow
 
 ## 8. Límites de esta entrega
 
-Solo auditoría de código y cálculo de paleta, sin cambios de app ni datos temporales. No se ha renderizado el claro, comparado 0 píxeles, medido FOUC, inspeccionado CSP de un proxy productivo, ejecutado axe ni certificado lectores de pantalla/dispositivos físicos. Son criterios de aceptación de una implementación futura, no resultados de esta fase. No hay plan.md/tasks.md, aprobación ni PR nuevos.
+Solo auditoría de código y cálculo de paleta, sin cambios de app ni datos temporales. No se ha renderizado el claro, comparado 0 píxeles, medido FOUC, inspeccionado CSP de un proxy productivo, ejecutado axe ni certificado lectores de pantalla/dispositivos físicos. Son criterios de aceptación de una implementación futura, no resultados de esta fase. La clarificación está aprobada y plan/tareas redactados para revisión; sin implementación ni PR nuevo.
