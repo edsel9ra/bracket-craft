@@ -5,7 +5,8 @@ import { CSS_TOKENS, CONTRAST_PAIRS, PALETTE, contrastRatio, nearestStep, BREAKP
 
 test('CSS and TypeScript declare the same tokens', () => {
   const css = readFileSync(new URL('../app/assets/css/tokens.css', import.meta.url), 'utf8');
-  const declarations = Object.fromEntries([...css.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]!.trim()]));
+  const root = css.match(/^:root\s*\{([^}]*)\}/)![1]!;
+  const declarations = Object.fromEntries([...root.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]!.trim()]));
   assert.deepEqual(declarations, CSS_TOKENS);
   assert.deepEqual(Object.values(BREAKPOINTS), [480, 760, 1000, 1280]);
   assert.deepEqual(Object.values(TEXT_SIZES), ['0.6875rem', '0.75rem', '0.8125rem', '0.875rem', '1rem', '1.25rem', 'clamp(1.75rem, 4vw, 2.75rem)', 'clamp(2.5rem, 7vw, 6.5rem)']);

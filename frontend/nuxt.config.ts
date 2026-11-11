@@ -9,7 +9,6 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'es' },
-      meta: [{ name: 'theme-color', content: '#0c0f0c' }],
     },
   },
   modules: ['@pinia/nuxt', '@nuxt/eslint'],

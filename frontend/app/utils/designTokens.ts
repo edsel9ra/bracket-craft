@@ -20,7 +20,7 @@ export const SPACING = {
 export const RADII = {
   sm: 8, md: 12, lg: 20, xl: 28, pill: 999,
 } as const;
-export const PALETTE = {
+export const PALETTE_DARK = {
   ink: '#f4f0e7',
   muted: '#a6aa9f',
   surface: '#151814',
@@ -45,6 +45,44 @@ export const PALETTE = {
   'avatar-ink': '#f5f7fb',
   'danger-border': '#a45b5b',
 } as const;
+export const PALETTE = PALETTE_DARK;
+export const PALETTE_LIGHT = {
+  'ink': '#182218',
+  'muted': '#4c594a',
+  'surface': '#fafbf5',
+  'surface-raised': '#f0f3e8',
+  'surface-bright': '#e4ead9',
+  'line': '#707d67',
+  'accent': '#355619',
+  'accent-ink': '#ffffff',
+  'danger': '#9c2929',
+  'warning': '#785000',
+  'success': '#355619',
+  'home': '#355619',
+  'away': '#785000',
+  'canvas': '#f5f7ef',
+  'canvas-raised': '#edf1e4',
+  'shadow': '#000000',
+  'highlight': '#ffffff',
+  'pitch-grass': '#315b35',
+  'pitch-stripe': '#38673b',
+  'pitch-line': '#ecffce',
+  'pitch-player': '#172218',
+  'avatar-ink': '#182218',
+  'danger-border': '#a45b5b',
+} as const satisfies Record<keyof typeof PALETTE_DARK, string>;
+export const PALETTES = { dark: PALETTE_DARK, light: PALETTE_LIGHT } as const;
+export const ISLAND_PALETTES = {
+  dark: { ink: PALETTE_DARK.ink, accent: PALETTE_DARK.accent, warning: PALETTE_DARK.warning },
+  light: { ink: PALETTE_DARK.ink, accent: PALETTE_DARK.accent, warning: '#ffd18a' },
+} as const;
+export const COLOR_TOKENS_BY_THEME = Object.fromEntries(
+  (['dark', 'light'] as const).map(theme => [theme, Object.fromEntries([
+    ...Object.entries(PALETTES[theme]).map(([key, value]) => [`color-${key}`, value]),
+    ...Object.entries(ISLAND_PALETTES[theme]).map(([key, value]) => [`color-island-${key}`, value]),
+  ])]),
+) as Record<'dark' | 'light', Record<string, string>>;
+
 export const FONTS = {
   sans: '"Archivo", "Archivo Fallback", Arial, sans-serif',
   display: '"Archivo", "Archivo Fallback", Arial, sans-serif',

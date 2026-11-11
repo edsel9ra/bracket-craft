@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { BREAKPOINTS, CSS_TOKENS, RADII, SPACING, TEXT_SIZES } from '../app/utils/designTokens.ts';
+import { BREAKPOINTS, CSS_TOKENS, COLOR_TOKENS_BY_THEME, RADII, SPACING, TEXT_SIZES } from '../app/utils/designTokens.ts';
 
 const ROOT = new URL('../app/', import.meta.url).pathname;
 
@@ -65,9 +65,9 @@ function inspect(source: string, file: string): Violation[] {
       if (!Object.values(BREAKPOINTS).includes(pixels(value) as never)) add('@media', value);
     }
   }
-  for (const match of clean.matchAll(/#[\da-f]{3,8}\b|rgba?\([^()]*\)/gi)) {
+  for (const match of clean.matchAll(/#[\da-f]{3,8}\b|(?:rgba?|hsla?)\([^()]*\)/gi)) {
     const value = match[0];
-    if (file === 'assets/css/tokens.css' && Object.values(CSS_TOKENS).includes(value)) continue;
+    if (file === 'assets/css/tokens.css' && [CSS_TOKENS, ...Object.values(COLOR_TOKENS_BY_THEME)].some(tokens => Object.values(tokens).includes(value))) continue;
     add('color', value);
   }
   return found;
@@ -77,6 +77,8 @@ test('scale guard detects invalid values and accepts canonical steps, tokens and
   assert.deepEqual(inspect('.x { padding: 0 auto; margin: 10%; gap: var(--space-3); border: 1px solid transparent; width: 37px; font-size: 0.875rem; }', 'fixture.css'), []);
   assert.deepEqual(inspect('.x { padding: 7px; margin-inline: 3px; gap: 9px; font-size: 17px; border-radius: 11px; color: #abc; } @media (max-width: 521px) {}', 'fixture.css').map((item) => item.property), ['padding', 'margin-inline', 'gap', 'font-size', 'border-radius', '@media', 'color']);
   assert.deepEqual(inspect('', 'fixture.css'), []);
+  assert.equal(inspect('.x { color: hsl(90, 30%, 40%); }', 'fixture.css')[0]?.property, 'color');
+  assert.equal(inspect('.x { color: hsla(90, 30%, 40%, .5); }', 'fixture.css')[0]?.property, 'color');
   assert.equal(inspect('<template><div :style="{ paddingTop: \'7px\' }" /></template>', 'fixture.vue')[0]?.property, 'padding-top');
   assert.equal(inspect('@media (min-width: 480px) and (max-width: 521px) {}', 'fixture.css')[0]?.value, '521px');
 });

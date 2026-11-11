@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import ConfirmDialog from '~/components/ui/ConfirmDialog.vue';
+import { describeTheme } from '~/utils/theme';
+const { preference } = useTheme();
+useHead(() => describeTheme(preference.value));
 const { t } = useI18n();
 const route = useRoute();
 const isWorkspaceRoute = computed(() => (
