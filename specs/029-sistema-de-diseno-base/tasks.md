@@ -12,8 +12,9 @@ Comandos en `frontend/` dentro de un contenedor `node:24` con pnpm 12.12.1.
   - Hecho cuando: los tests de teclado (flechas, Inicio/Fin, tabulador itinerante) y de cabeceras con `scope` pasan; `pnpm run typecheck` pasa.
 - [x] **T5. Diálogo de confirmación.** `ConfirmDialog.vue` + `useConfirm.ts` + montaje en `app.vue` + textos i18n es/en. RF-017–020, RNF-007
   - Hecho cuando: `confirm-dialog.test.ts` (cola, una sola resolución, cancelar al navegar, foco inicial en Cancelar si es de peligro) pasa.
-- [ ] **T6. Sustituir los 19 `window.confirm`** (incluidos la operación de partido y los asistentes) y adaptar los 2 pasos del E2E. RF-019, RF-021
+- [x] **T6. Sustituir los 19 `window.confirm`** (incluidos la operación de partido y los asistentes) y adaptar los 2 pasos del E2E. RF-019, RF-021
   - Hecho cuando: `no-native-dialogs.test.ts` pasa, `pnpm test`, `pnpm run typecheck:e2e` y `lint` pasan, y el job `e2e` de CI pasa.
+  - Verificación local: tests 822 pass/0 fail/2 skip; typecheck, lint, build y typecheck:e2e OK; E2E `operation-flow` 2 pass (publicación y cierre con el diálogo propio). CI pendiente de abrir el PR; no se declara verificada.
 - [ ] **T7. Migrar las vistas públicas** (portada, detalle del torneo, `components/public/*`, `LanguageSwitcher`, `TeamCrest`). RF-016, RF-022
   - Hecho cuando: `design-scales.test.ts` las recorre sin violaciones fuera de `DESIGN_EXCEPTIONS` y existen capturas antes/después a 1440 y 390 px.
 - [ ] **T8. Migrar autenticación, cuenta, organización, invitación, 403, administración y miembros.** RF-016, RF-022
