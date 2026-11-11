@@ -250,3 +250,39 @@ Seis composiciones para el PR, etiquetadas antes/después y de ancho máximo 160
 T10 solo cambia documentación: los inputs del frontend son idénticos al árbol `24a801d79410672966a3c2da45752a1b9a46cd68` verificado en T9, por lo que se conservan sus resultados sin repetir comandos con entradas idénticas. Node **24.22.2**, pnpm **12.12.1**: tests **824 pass / 0 fail / 2 skip**, typecheck, lint sin warnings, build y typecheck:e2e con salida **0**; E2E `operation-flow` **2 passed (44.6s)**, también con Node 24. Auditoría de dependencias constitucional: **OK**, cinco avisos no accionables. Logs `/home/ubuntu/ui-audit/029-t9-*.log`. El guardián conserva **37 excepciones** y únicamente **6 pendientes de opción 3**: operación, RulesEditor, rules/, TeamsWizard, StageTeamsWizard y wizard/.
 
 **Límites:** sin lector de pantalla, dispositivos físicos, Lighthouse ni OAuth real. No se auditan visualmente todos los pasos/estados de asistentes, todos los ratios de fondos compuestos ni todas las cancelaciones; el demo no contiene clasificación de liga. Los emuladores de viewport y axe no equivalen a esas comprobaciones. T1–T10 quedan entregadas localmente, pero el cierre formal como `implementada` continúa pendiente de CI verde sobre la rama completa y revisión final del usuario. No se declara CI verde ni una certificación global de accesibilidad.
+
+## 11. Workspace 030 — cierre T9–T10 (2026-11-11)
+
+Entregas: [PR #44](https://github.com/edsel9ra/bracket-craft/pull/44), [PR #47](https://github.com/edsel9ra/bracket-craft/pull/47), [PR #48](https://github.com/edsel9ra/bracket-craft/pull/48) y PR D, esta entrega en `devin/1794409672-spec-030-asistentes-cierre`. No se abre PR D por instrucción del usuario; no hay todavía número ni resultado de su gate E2E de CI.
+
+### Asistentes: alcance y equivalencia (WZ-1, VI-1)
+
+Solo se modifican los estilos de `RulesEditor.vue`, `rules/RulesWizard.vue`, `TeamsWizard.vue`, `StageTeamsWizard.vue`, `wizard/WizardShell.vue` y `wizard/WizardSteps.vue`. Las 176 decisiones de escala usan `nearestStep`; colores y transparencias se expresan mediante tokens y `color-mix`. Se conservan controles, contratos y estructura, sin sustituciones de markup ni imports. Los seis bloques `<script>` y todo el contenido ajeno a `<style>` son idénticos byte a byte a main (`60f38626`), con hashes SHA-256 en `030-d-scripts.json`. `PENDING_MIGRATION` está vacía y el guardián lo exige; ninguna excepción nueva, 33 históricas conservadas.
+
+Se recorren por Enter los 8 pasos de reglas, los 4 visibles del índice de equipos y los 3 de fase a ambas resoluciones: 30 instantáneas con idénticos títulos, selección, controles, estados disabled y foco antes/después. El E2E existente `operation-flow` cubre además los tres asistentes completos por Tab/Home/flechas/Enter, alta individual/masiva, fase nueva/existente, asociación/corrección de errores y guardado. No existe un proyecto E2E separado de asistentes.
+
+Las seis composiciones etiquetadas de `030-d-pr/` se revisan visualmente: solo normalización de escala, sin pérdida de pasos, controles ni contenido. Los recortes completos proceden de capturas de página desde scroll inicial para evitar que las barras globales sticky oculten parte del asistente en la evidencia; se conservan también capturas de viewport y del último paso. Resoluciones: 1440×900 y 390×844.
+
+### Axe y mediciones finales
+
+48 ejecuciones de axe-core con **0 violaciones de aplicación**: listado, miembros, configuración, calendario, plantillas y operación programada/en vivo/cerrada (16 ejecuciones), más todos los pasos visibles de los tres asistentes y modo JSON (32 ejecuciones). DevTools se oculta durante la auditoría; no se excluye ninguna regla ni nodo de la aplicación. Datos: `axe-030-d-workspace.json` y `030-d-after/flows.json`.
+
+RF-002: alturas sin navegación global; Y desde el documento. En configuración/calendario/plantillas se usa Copa Demo en su versión publicada; el acceso de alta de partido no corresponde a ese estado.
+
+| Pantalla | Cabecera 1440 | Cabecera 390 | Inicio 1440 | Inicio 390 |
+|---|---:|---:|---:|---:|
+| Listado | 101 px | 84 px | 310 | 325 |
+| Miembros | 101 px | 139 px | 301 | 327 |
+| Configuración | 101 px | 108 px | 351 | 461 |
+| Calendario | 101 px | 84 px | 351 | 375 |
+| Plantillas | 101 px | 139 px | 478 | 596 |
+
+Diez inicios dentro del viewport, un `h1` y ningún overflow horizontal. Operación: hero 101/125 px y MatchBar 70/66 px (escritorio/móvil); primera acción móvil Y=790,5 en programado y en vivo, ninguna acción editable en cerrado. PR C conserva la verificación específica de guardar planilla frente a Y=2521 y revisar cierre frente a Y=4520, visibilidad al scroll, anclas sin JS y foco no tapado.
+
+### Verificación y evidencias
+
+Node **24.22.2**, pnpm **12.12.1**: `pnpm test` **851 tests / 849 pass / 0 fail / 2 skip**; `typecheck`, `lint`, `build` y `typecheck:e2e` con salida **0**. `operation-flow`: **2 passed (43.9s)**, incluidos los asistentes por teclado. Los fixtures de capturas y de esta corrida E2E fueron retirados, incluidos sus equipos y jugadores; no se eliminan fixtures anteriores ni datos demo. Evidencia de limpieza en `030-d-cleanup.log`.
+
+Artefactos persistentes bajo `/home/ubuntu/ui-audit/`: `030-d-{before,after,pr,workspace}/`, `030-d-{scripts,flow-parity,nearest-steps,visual}.json`, `axe-030-d-workspace.json`, `030-d-final-checks.log` y `030-d-final-operation-flow.log`.
+
+**Límites:** verificación en Chromium con viewports emulados, no lector de pantalla ni dispositivos físicos. No se certifican todos los estados de error, todos los roles ni contraste sobre cualquier fondo compuesto. La implementación de 030 queda cerrada; los PR #44/#47/#48 tienen CI verde, pero el gate E2E de CI de PR D solo se ejecutará al abrirlo. Una suite local verde no se presenta como resultado de ese gate.

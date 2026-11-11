@@ -20,7 +20,7 @@ Desviación de PR B (2026-11-11): la división T4–T5 usa props hacia abajo y e
 | `components/match/MatchBar.vue` | Barra de partido `position: sticky` (escudo, nombre, marcador y estado), conexión en tiempo real y segmento o minuto. Los nombres van en una línea con `text-overflow: ellipsis`, `title` y el nombre completo accesible. | RF-004, RF-005, RF-008 |
 | `components/match/MatchSectionNav.vue` | `nav` con nombre accesible y enlaces de ancla a `#seccion-*`. `aria-current="location"` sigue la sección visible mediante `IntersectionObserver` (sin JS, los anclajes siguen funcionando). | RF-006 |
 | `components/match/MatchActionBar.vue` | Barra inferior fija **solo por debajo de `md` (760 px)**. Muestra la acción principal y se oculta mientras hay un campo de texto enfocado (teclado virtual). | RF-007, RNF-003 |
-| `utils/matchScoreDisplay.ts` (nuevo, puro) | `matchScoreDisplay({ status, segments, score, resolution }) → { kind: 'pending' \| 'live' \| 'final', home, away, labelKey }`. Sin segmento iniciado devuelve `pending`; con segmento iniciado y sin goles, `0 – 0`. | RF-005 |
+| `utils/matchScoreDisplay.ts` (nuevo, puro) | `matchScoreDisplay({ status, segments, score, resolution }) → { kind: 'pending' \| 'live' \| 'final' \| 'cancelled', home, away, labelKey }`. Sin segmento iniciado devuelve `pending`; con segmento iniciado y sin goles, `0 – 0`. Un cancelado sin marcador completo muestra una marca neutra. | RF-005 |
 | `utils/matchPrimaryAction.ts` (nuevo, puro) | `primaryAction(input) → { id, labelKey, mode: 'run' \| 'focus', target } \| null` (ver §3). | RF-007 |
 | `pages/workspace/matches/[id].vue` | Orquestador de ≤ 250 líneas: `useMatchOperation`, props/eventos y las secciones; conserva la cabecera actual en PR B y recibe `PageHeader`, `MatchBar`, `MatchSectionNav` y `MatchActionBar` en PR C. | RF-010 |
 | Asistentes (`RulesEditor`, `rules/*`, `TeamsWizard`, `StageTeamsWizard`, `wizard/*`) | Solo estilos: tokens, `nearestStep` y piezas `ui/` donde la sustitución sea directa. Sin tocar script ni flujo. | RF-013, RF-014 |
@@ -37,9 +37,11 @@ Desviación de PR B (2026-11-11): la división T4–T5 usa props hacia abajo y e
 ## 3. Lógica no trivial (pseudocódigo)
 
 ```
-primaryAction({ status, canOperate, canManage, activeSegment, lineupDirty, draftEvents, closeReady, isTerminal }):
+primaryAction({ status, resolution, canOperate, canManage, activeSegment, lineupDirty, draftEvents, closeReady, isTerminal }):
   if isTerminal or not canOperate: return null
-  if not activeSegment and status in (scheduled, interrupted):
+  if not activeSegment and resolution == walkover and status in (scheduled, live, interrupted):
+    return { id:'closeReport', mode:'focus', target:'#seccion-cierre' }         # W.O. no exige segmentos ni planilla
+  if not activeSegment and status in (scheduled, interrupted, suspended):
     return { id:'startSegment', mode:'focus', target:'#seccion-campo' }        # requiere minuto/formulario
   if lineupDirty and canOperate: return { id:'saveLineup', mode:'run' }       # mismo handler y disabled que hoy
   if draftEvents > 0 and canOperate: return { id:'closeReport', mode:'focus', target:'#seccion-cierre' }
@@ -52,6 +54,8 @@ Los nombres exactos de las condiciones se toman de las que ya usa la página. `r
 Adaptación autorizada para PR C: no existe un guardado independiente de eventos. Los borradores solo se envían junto con `POST …/close`, de forma atómica (RF-009). Con eventos pendientes, la acción es `closeReport` en modo `focus`, con etiqueta «Revisar cierre del acta» / «Review report closing»; el envío sigue exclusivamente en el botón actual de cierre, con sus validaciones y confirmación. Se usa la misma etiqueta cuando el cierre está listo. Todas las acciones de edición requieren `canOperateMatch`; `MANAGE_TOURNAMENTS` por sí solo no concede ese permiso.
 
 La división se hace en este orden: primero el script (la página sigue funcionando con el mismo template) y después la plantilla, sección a sección. Cada paso mantiene verde el E2E de operación.
+
+Revisión final de PR C (#48): un cancelado con marcador ausente o incompleto muestra la marca neutra `status.cancelled`, no ceros inventados; un resultado explícito se conserva. El W.O. es una resolución elegida en la UI, no un estado del partido, y permite enfocar el cierre sin segmentos. La administrativa conserva el requisito de segmento y planilla. `suspended` permite crear segmentos, pero el backend rechaza cerrarlo, también como W.O.; por eso sin segmento activo se enfoca la creación existente, no los eventos ni el cierre.
 
 ## 4. Decisiones y alternativas descartadas
 
