@@ -8,6 +8,10 @@ const PUBLIC_PAGE = readFileSync(
   'utf8',
 );
 const OPERATION_PAGE = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
+const STANDINGS_TABLE = readFileSync(
+  new URL('../app/components/public/PublicStandingsTable.vue', import.meta.url),
+  'utf8',
+);
 const LINEUP_MODAL = readFileSync(
   new URL('../app/components/public/PublicLineupModal.vue', import.meta.url),
   'utf8',
@@ -23,7 +27,8 @@ const WORKSPACE_PAGE = featureSource(new URL('../app/pages/workspace/tournaments
 test('the public page never paints logo_url', () => {
   assert.doesNotMatch(PUBLIC_PAGE, /logo_url/);
   assert.doesNotMatch(LINEUP_MODAL, /logo_url/);
-  for (const file of [PUBLIC_PAGE, LINEUP_MODAL]) {
+  for (const file of [PUBLIC_PAGE, STANDINGS_TABLE, LINEUP_MODAL]) {
+    assert.doesNotMatch(file, /logo_url/);
     const crestUses = file.match(/surface="public"/g) ?? [];
     assert.ok(crestUses.length > 0, 'the public surfaces use TeamCrest in public mode');
     assert.ok(file.includes('TeamCrest'));
@@ -32,7 +37,8 @@ test('the public page never paints logo_url', () => {
 
 test('the public page shows the crest on standings, match cards, lineup and teams', () => {
   // Standings rows bind the public row crest.
-  assert.match(PUBLIC_PAGE, /standing\.crest_url/);
+  assert.match(PUBLIC_PAGE, /<PublicStandingsTable/);
+  assert.match(STANDINGS_TABLE, /standing\.crest_url/);
   // Match cards bind both sides.
   assert.match(PUBLIC_PAGE, /home_team_crest_url/);
   assert.match(PUBLIC_PAGE, /away_team_crest_url/);

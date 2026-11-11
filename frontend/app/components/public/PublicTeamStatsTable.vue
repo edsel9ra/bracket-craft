@@ -38,7 +38,7 @@ const { t } = useI18n();
         <p class="eyebrow">{{ t('public.stats') }}</p>
         <h2>{{ t('public.teamStats') }}</h2>
       </div>
-      <span class="muted">{{ t('public.teamsCount', { count: rows.length }) }}</span>
+      <span class="muted">{{ t('public.rowsShown', { count: rows.length }) }}</span>
     </div>
     <StateMessage v-if="!rows.length" kind="empty" class="empty-state compact">{{ t('public.noTeamStats') }}</StateMessage>
     <HorizontalScroll v-else :label="t('public.teamStats')">
@@ -75,6 +75,7 @@ const { t } = useI18n();
       </table>
     </HorizontalScroll>
     <div id="public-team-stats-definitions" class="stats-definitions muted" role="note">
+      <p class="stats-definition">{{ t('public.teamStatsOrder') }}</p>
       <p class="stats-definition">{{ t('public.goalsForDefinition') }}</p>
       <p class="stats-definition">{{ t('public.goalsAgainstDefinition') }}</p>
       <p class="stats-definition">{{ t('public.cleanSheetDefinition') }}</p>
@@ -122,4 +123,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .stats-definitions { display: grid; gap: var(--space-1); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
 .stats-definition { margin: 0; font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere; color: var(--color-muted); }
 .load-more { display: block; margin: var(--space-4) auto 0; }
+@media (max-width: 760px) {
+  table { table-layout: fixed; min-width: 528px; }
+  thead th, tbody td { padding: var(--space-2); }
+  thead th { white-space: normal; letter-spacing: 0; overflow-wrap: anywhere; }
+  thead th:first-child { width: 72px; white-space: nowrap; }
+  thead th:nth-child(2), tbody td:nth-child(2) { width: 136px; min-width: 0; max-width: none; }
+  thead th:nth-child(3), thead th:nth-child(4) { width: 56px; }
+  .stats-team { align-items: start; }
+  .stats-team div { min-width: 0; }
+  .stats-team strong, .stats-team small { overflow-wrap: anywhere; }
+}
 </style>

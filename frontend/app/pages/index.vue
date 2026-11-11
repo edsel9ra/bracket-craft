@@ -41,14 +41,15 @@ await callOnce('public-tournaments', () => tournamentsStore.loadPublic());
            {{ t('home.lede') }}
         </p>
         <div class="hero-actions">
-           <Button as="NuxtLink" to="/login?mode=register">{{ t('home.createTournament') }}</Button>
+           <a href="#public-tournaments" class="public-browse">{{ t('home.browseTournaments') }}</a>
+           <Button as="NuxtLink" to="/login?mode=register" variant="secondary">{{ t('home.createTournament') }}</Button>
            <Button as="NuxtLink" variant="secondary" :to="docsUrl">{{ t('home.documentation') }}</Button>
         </div>
       </div>
       <Surface class="hero-card">
         <div class="card-caption">
            <span>{{ t('home.liveControl') }}</span>
-           <StatusPill tone="live" class="live-pill">● {{ t('home.live') }}</StatusPill>
+           <StatusPill class="example-score">{{ t('home.exampleScore') }}</StatusPill>
         </div>
         <div class="scoreline">
           <div><strong>RIV</strong><span>2</span></div>
@@ -61,7 +62,7 @@ await callOnce('public-tournaments', () => tournamentsStore.loadPublic());
       </Surface>
     </section>
 
-    <section class="container dashboard-preview">
+    <section id="public-tournaments" class="container dashboard-preview" tabindex="-1">
       <div class="section-heading">
         <div>
            <p class="eyebrow">{{ t('home.workspace') }}</p>
@@ -115,7 +116,9 @@ await callOnce('public-tournaments', () => tournamentsStore.loadPublic());
 .hero-card::after { position: absolute; top: -90px; right: -90px; width: 220px; height: 220px; border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent); border-radius: 50%; content: ''; }
 .card-caption, .card-footer, .event-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .card-caption, .card-footer { color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
-.live-pill { color: var(--color-accent); }
+.public-browse { display: inline-flex; align-items: center; justify-content: center; padding: var(--space-3) var(--space-4); border: 1px solid transparent; border-radius: var(--radius-pill); background: var(--color-accent); color: var(--color-accent-ink); font-weight: var(--weight-lg); text-decoration: none; }
+.public-browse:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+#public-tournaments { scroll-margin-top: var(--space-6); }
 .topbar :deep(.ui-button), .hero-actions :deep(.ui-button) { font-size: var(--text-base); }
 .topbar :deep(.ui-button-secondary), .hero-actions :deep(.ui-button-secondary) { background: transparent; border-color: var(--color-line); }
 .scoreline { display: flex; align-items: center; justify-content: space-between; padding: var(--space-8) 0 var(--space-7); font-size: var(--text-xl); }

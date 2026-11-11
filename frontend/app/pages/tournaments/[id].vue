@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
+import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
 import { nextTick } from 'vue';
 import { useRealtime } from '~/composables/useRealtime';
 import {
@@ -513,29 +514,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              <p class="eyebrow">{{ t('public.publicCompetition') }} · {{ statusLabel(tournament.status) }}</p>
             <h1>{{ tournament.name }}</h1>
              <p class="tournament-meta">{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
+             <nav class="public-section-nav" :aria-label="t('public.sectionNavigation')">
+               <a href="#public-results">{{ t('public.results') }}</a>
+               <a href="#public-stats">{{ t('public.stats') }}</a>
+               <a v-if="tournament.teams?.length" href="#public-teams">{{ t('setup.teams') }}</a>
+             </nav>
            </div>
            <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
         </section>
 
-        <section v-if="tournament.teams?.length" class="container public-teams">
-          <Surface class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">{{ t('public.teamsCount', { count: tournament.teams.length }) }}</p>
-                <h2>{{ t('setup.teams') }}</h2>
-              </div>
-            </div>
-            <ul class="public-team-list">
-              <li v-for="team in tournament.teams" :key="team.team_id">
-                <TeamCrest :team="team" :crest-url="team.crest_url" surface="public" />
-                <span>{{ team.name }}</span>
-                <small>{{ team.short_code }}</small>
-              </li>
-            </ul>
-          </Surface>
-        </section>
 
-         <section v-if="!stageAwareLayout" class="container public-grid">
+         <section v-if="!stageAwareLayout" id="public-results" class="container public-grid" tabindex="-1">
            <Surface class="panel standings-panel">
              <div class="panel-heading">
                <div>
@@ -546,49 +535,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              </div>
              <div v-if="listError" class="list-error" role="alert">{{ listError }}</div>
              <div v-if="!standings.length" class="empty-state compact">{{ t('public.noStandings') }}</div>
-             <div v-else class="table-scroll">
-               <table>
-                 <caption class="visually-hidden">{{ t('public.standings') }}</caption>
-                 <thead>
-                   <tr>
-                     <th scope="col">#</th>
-                     <th scope="col">{{ t('setup.teams') }}</th>
-                     <th scope="col">{{ t('public.played') }}</th>
-                     <th scope="col">{{ t('public.won') }}</th>
-                     <th scope="col">{{ t('public.drawn') }}</th>
-                     <th scope="col">{{ t('public.lost') }}</th>
-                     <th scope="col">{{ t('public.goalsFor') }}</th>
-                     <th scope="col">{{ t('public.goalsAgainst') }}</th>
-                     <th scope="col">{{ t('public.goalDifference') }}</th>
-                     <th scope="col">{{ t('public.points') }}</th>
-                     <th scope="col">{{ t('public.fairPlayPoints') }}</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   <tr v-for="standing in standingsRows(standings)" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
-                     <td class="rank">{{ standing.rank }}</td>
-                     <td>
-                        <div class="standing-team">
-                          <TeamCrest :team="{ name: standing.team_name, short_code: standing.short_code }" :crest-url="standing.crest_url" surface="public" />
-                          <div>
-                            <strong>{{ standing.team_name }}</strong>
-                            <small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small>
-                          </div>
-                        </div>
-                      </td>
-                     <td>{{ standing.played }}</td>
-                     <td>{{ standing.won }}</td>
-                     <td>{{ standing.drawn }}</td>
-                     <td>{{ standing.lost }}</td>
-                     <td>{{ standing.goals_for }}</td>
-                     <td>{{ standing.goals_against }}</td>
-                     <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
-                     <td class="points">{{ standing.points }}</td>
-                     <td>{{ standing.fair_play_points }}</td>
-                   </tr>
-                 </tbody>
-               </table>
-             </div>
+             <PublicStandingsTable v-else :rows="standingsRows(standings)" />
              <Button variant="secondary" v-if="activeStandingsHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings')">
                {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
              </Button>
@@ -637,7 +584,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
            </Surface>
          </section>
 
-         <section v-if="stageAwareLayout" class="container phase-selector" :aria-label="t('setup.stages')">
+         <section v-if="stageAwareLayout" id="public-results" class="container phase-selector" tabindex="-1" :aria-label="t('setup.stages')">
            <button
              v-for="stage in stages"
              :key="stage.id"
@@ -671,49 +618,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  <div v-for="group in selectedStageGroups" :key="group.groupId ?? 'nogroup'" class="phase-group">
                    <h3 class="phase-group-title">{{ group.groupName || t('public.group') }}</h3>
                    <div v-if="!standingsForGroup(standings, selectedStage.id, group.groupId).length" class="empty-state compact">{{ t('public.noStandings') }}</div>
-                   <div v-else class="table-scroll">
-                     <table>
-                       <caption class="visually-hidden">{{ `${t('public.standings')} · ${group.groupName || selectedStage.name}` }}</caption>
-                       <thead>
-                         <tr>
-                           <th scope="col">#</th>
-                           <th scope="col">{{ t('setup.teams') }}</th>
-                           <th scope="col">{{ t('public.played') }}</th>
-                           <th scope="col">{{ t('public.won') }}</th>
-                           <th scope="col">{{ t('public.drawn') }}</th>
-                           <th scope="col">{{ t('public.lost') }}</th>
-                           <th scope="col">{{ t('public.goalsFor') }}</th>
-                           <th scope="col">{{ t('public.goalsAgainst') }}</th>
-                           <th scope="col">{{ t('public.goalDifference') }}</th>
-                           <th scope="col">{{ t('public.points') }}</th>
-                           <th scope="col">{{ t('public.fairPlayPoints') }}</th>
-                         </tr>
-                       </thead>
-                       <tbody>
-                         <tr v-for="standing in standingsRows(standingsForGroup(standings, selectedStage.id, group.groupId))" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
-                           <td class="rank">{{ standing.rank }}</td>
-                           <td>
-                            <div class="standing-team">
-                              <TeamCrest :team="{ name: standing.team_name, short_code: standing.short_code }" :crest-url="standing.crest_url" surface="public" />
-                              <div>
-                                <strong>{{ standing.team_name }}</strong>
-                                <small>{{ standing.short_code }}</small>
-                              </div>
-                            </div>
-                          </td>
-                           <td>{{ standing.played }}</td>
-                           <td>{{ standing.won }}</td>
-                           <td>{{ standing.drawn }}</td>
-                           <td>{{ standing.lost }}</td>
-                           <td>{{ standing.goals_for }}</td>
-                           <td>{{ standing.goals_against }}</td>
-                           <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
-                           <td class="points">{{ standing.points }}</td>
-                           <td>{{ standing.fair_play_points }}</td>
-                         </tr>
-                       </tbody>
-                     </table>
-                   </div>
+                   <PublicStandingsTable v-else :rows="standingsRows(standingsForGroup(standings, selectedStage.id, group.groupId))" :caption="`${t('public.standings')} · ${group.groupName || selectedStage.name}`" :show-scope="false" />
                    <Button variant="secondary" v-if="comboHasMore('standings', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('standings', selectedStage.id, group.groupId)">
                      {{ loadingMore === 'standings' ? t('common.loading') : t('public.loadMoreStandings') }}
                    </Button>
@@ -756,49 +661,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                </template>
                <template v-else>
                  <div v-if="!standingsForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noStandings') }}</div>
-                 <div v-else class="table-scroll">
-                   <table>
-                     <caption class="visually-hidden">{{ `${t('public.standings')} · ${selectedStage.name}` }}</caption>
-                     <thead>
-                       <tr>
-                         <th scope="col">#</th>
-                         <th scope="col">{{ t('setup.teams') }}</th>
-                         <th scope="col">{{ t('public.played') }}</th>
-                         <th scope="col">{{ t('public.won') }}</th>
-                         <th scope="col">{{ t('public.drawn') }}</th>
-                         <th scope="col">{{ t('public.lost') }}</th>
-                         <th scope="col">{{ t('public.goalsFor') }}</th>
-                         <th scope="col">{{ t('public.goalsAgainst') }}</th>
-                         <th scope="col">{{ t('public.goalDifference') }}</th>
-                         <th scope="col">{{ t('public.points') }}</th>
-                         <th scope="col">{{ t('public.fairPlayPoints') }}</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       <tr v-for="standing in standingsRows(standingsForGroup(standings, selectedStage.id, selectedGroupId))" :key="`${standing.stage_id}:${standing.group_id}:${standing.team_id}`">
-                         <td class="rank">{{ standing.rank }}</td>
-                         <td>
-                          <div class="standing-team">
-                            <TeamCrest :team="{ name: standing.team_name, short_code: standing.short_code }" :crest-url="standing.crest_url" surface="public" />
-                            <div>
-                              <strong>{{ standing.team_name }}</strong>
-                              <small>{{ standing.short_code }} · {{ standing.group_name || standing.stage_name }}</small>
-                            </div>
-                          </div>
-                        </td>
-                         <td>{{ standing.played }}</td>
-                         <td>{{ standing.won }}</td>
-                         <td>{{ standing.drawn }}</td>
-                         <td>{{ standing.lost }}</td>
-                         <td>{{ standing.goals_for }}</td>
-                         <td>{{ standing.goals_against }}</td>
-                         <td>{{ standing.goal_difference > 0 ? `+${standing.goal_difference}` : standing.goal_difference }}</td>
-                         <td class="points">{{ standing.points }}</td>
-                         <td>{{ standing.fair_play_points }}</td>
-                       </tr>
-                     </tbody>
-                   </table>
-                 </div>
+                 <PublicStandingsTable v-else :rows="standingsRows(standingsForGroup(standings, selectedStage.id, selectedGroupId))" :caption="`${t('public.standings')} · ${selectedStage.name}`" />
 
                  <div class="phase-matches">
                    <div class="panel-heading phase-subheading">
@@ -891,9 +754,26 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
            </section>
            <div v-else class="empty-state compact">{{ t('public.noStandings') }}</div>
          </section>
+        <section v-if="tournament.teams?.length" id="public-teams" class="container public-teams" tabindex="-1">
+          <Surface class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">{{ t('public.teamsCount', { count: tournament.teams.length }) }}</p>
+                <h2>{{ t('setup.teams') }}</h2>
+              </div>
+            </div>
+            <ul class="public-team-list">
+              <li v-for="team in tournament.teams" :key="team.team_id">
+                <TeamCrest :team="team" :crest-url="team.crest_url" surface="public" />
+                <span>{{ team.name }}</span>
+                <small>{{ team.short_code }}</small>
+              </li>
+            </ul>
+          </Surface>
+        </section>
       </div>
     </Transition>
-    <section v-if="tournament" class="container public-stats">
+    <section v-if="tournament" id="public-stats" class="container public-stats" tabindex="-1">
       <Surface class="panel stats-panel">
         <div class="panel-heading">
           <div>
@@ -908,7 +788,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
             <option v-for="stage in stages" :key="stage.id" :value="stage.id">{{ stage.name }}</option>
           </select>
         </div>
-        <div class="stats-tabs" role="tablist">
+        <div class="stats-tabs" role="tablist" :aria-label="t('public.stats')">
           <button
             type="button"
             role="tab"
@@ -953,6 +833,10 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 .tournament-hero h1 { max-width: 850px; margin: var(--space-3) 0 var(--space-2); font-size: clamp(3.4rem, 10vw, 8.5rem); line-height: 0.88; letter-spacing: -0.09em; }
 .tournament-meta, .muted { color: var(--color-muted); }
 .hero-stamp { padding: var(--space-3); border: 1px solid var(--color-accent); color: var(--color-accent); font-size: var(--text-2xs); font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
+.public-section-nav { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); font-size: var(--text-md); font-weight: 700; }
+.public-section-nav a { color: var(--color-accent); text-underline-offset: var(--space-1); }
+.public-section-nav a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+#public-results, #public-stats, #public-teams { scroll-margin-top: var(--space-6); }
 .public-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); gap: var(--space-4); }
 .phase-stack { display: grid; gap: var(--space-4); }
 .phase-selector { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
@@ -967,25 +851,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 .phase-subheading { margin-top: var(--space-6); margin-bottom: var(--space-3); }
 .phase-subheading h3 { margin: var(--space-1) 0 0; font-size: var(--text-lg); letter-spacing: -0.04em; }
 .eyebrow { margin: 0; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
-.table-scroll { overflow-x: auto; }
-.standing-team { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .public-team-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .public-team-list li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-muted) 15%, transparent); border-radius: var(--radius-md); }
 .public-team-list small { color: var(--color-muted); font-size: var(--text-2xs); }
-table { width: 100%; border-collapse: collapse; min-width: 760px; }
-th { color: var(--color-muted); font-size: var(--text-2xs); font-weight: 700; letter-spacing: 0.1em; text-align: left; text-transform: uppercase; }
-th, td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); }
-tbody tr { transition: background-color 180ms ease, transform 180ms var(--ease-out); }
-tbody tr:hover { background: color-mix(in srgb, var(--color-accent) 5%, transparent); transform: translateX(3px); }
-td { font-size: var(--text-md); }
-td small { display: block; margin-top: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); }
-.rank, .points { color: var(--color-accent); font-weight: 800; }
 .match-list { position: relative; display: grid; gap: var(--space-3); }
 .match-card { padding: var(--space-4); border: 1px solid color-mix(in srgb, var(--color-muted) 15%, transparent); border-radius: var(--radius-md); background: var(--color-surface-raised); }
 .match-card:hover { border-color: color-mix(in srgb, var(--color-accent) 42%, transparent); transform: translateY(-3px); }
-.match-context, .match-footer { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.08em; text-transform: uppercase; }
-.match-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--space-3); padding: var(--space-5) 0; font-size: var(--text-md); }
+.match-context, .match-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.08em; text-transform: uppercase; }
+.match-context span, .match-footer span { min-width: 0; overflow-wrap: anywhere; }
+.match-teams { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-5) 0; font-size: var(--text-md); }
 .match-team { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.match-team span { min-width: 0; overflow-wrap: anywhere; }
 .match-team--away { justify-content: flex-end; text-align: right; }
 .match-teams strong { color: var(--color-accent); font-size: var(--text-lg); }
 .lineup-trigger { display: block; width: 100%; margin-top: var(--space-3); padding: var(--space-3) 0 0; border-top: 1px solid color-mix(in srgb, var(--color-muted) 14%, transparent); background: transparent; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
@@ -1011,6 +887,7 @@ td small { display: block; margin-top: var(--space-1); color: var(--color-muted)
 }
 @media (max-width: 480px) {
   .match-teams { grid-template-columns: 1fr; gap: var(--space-2); text-align: center; }
+  .match-team { justify-content: center; }
   .match-team--away { justify-content: center; text-align: center; }
 }
 
