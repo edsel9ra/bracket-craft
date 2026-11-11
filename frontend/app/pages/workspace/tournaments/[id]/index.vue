@@ -98,6 +98,7 @@ const auth = useAuthStore();
 const tournamentsStore = useTournamentsStore();
 const { request } = useApi();
 const { t, statusLabel, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const tournamentId = String(route.params.id);
 // RF-020: `#calendario` y `#plantillas` redirigen a su dirección propia
 // reemplazando la entrada de historial.
@@ -369,13 +370,14 @@ function discardDraft(): void {
  * si se acepta, se descarta el borrador y el asistente carga los valores del
  * servidor de la versión nueva.
  */
-function onVersionChange(event: Event): void {
+async function onVersionChange(event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
   const next = select.value;
+  select.value = selectedVersionId.value;
   if (next === selectedVersionId.value) return;
 
   const accepted = hasWizardChanges.value && import.meta.client
-    ? window.confirm(t('wizard.navigation.confirmVersion'))
+    ? await confirm({ title: t('confirm.changeVersion.title'), message: t('wizard.navigation.confirmVersion'), confirmLabel: t('confirm.changeVersion.action'), tone: 'danger' })
     : hasWizardChanges.value;
   const effect = resolveNavigation('version', hasWizardChanges.value, accepted);
   if (!effect.proceed) {
@@ -384,6 +386,7 @@ function onVersionChange(event: Event): void {
   }
   if (effect.discardDraft) clearWizardDrafts(selectedVersionId.value);
   selectedVersionId.value = next;
+  select.value = next;
   // RF-016: cambiar de versión descarta el aviso y el salto armado.
   clearPendingAdvance();
   if (effect.discardDraft) wizardResetToken.value += 1;
@@ -392,7 +395,7 @@ function onVersionChange(event: Event): void {
 // Cambiar de torneo con cambios sin guardar pide confirmación; recargar,
 // cambiar de sección o el botón atrás dentro del asistente no pasan por aquí
 // (mismo torneo) o conservan el borrador de la pestaña.
-onBeforeRouteLeave((to) => {
+onBeforeRouteLeave(async (to) => {
   const targetId = typeof to.params.id === 'string' ? to.params.id : '';
   const otherTournament = to.path.startsWith('/workspace/tournaments/')
     && Boolean(targetId)
@@ -400,7 +403,7 @@ onBeforeRouteLeave((to) => {
   if (!otherTournament || !hasWizardChanges.value) return true;
 
   const accepted = import.meta.client
-    ? window.confirm(t('wizard.navigation.confirmTournament'))
+    ? await confirm({ title: t('confirm.leaveTournament.title'), message: t('wizard.navigation.confirmTournament'), confirmLabel: t('confirm.leaveTournament.action'), tone: 'danger' })
     : true;
   const effect = resolveNavigation('tournament', true, accepted);
   if (!effect.proceed) return false;
@@ -446,9 +449,9 @@ function setRulesConfig(config: unknown): boolean {
   return true;
 }
 
-function useDefaultRules() {
+async function useDefaultRules() {
   if (!rulesEditable.value) return;
-  if (import.meta.client && !window.confirm(t('setup.confirmReplaceRules'))) return;
+  if (import.meta.client && !(await confirm({ title: t('confirm.replaceRules.title'), message: t('setup.confirmReplaceRules'), confirmLabel: t('confirm.replaceRules.action'), tone: 'danger' }))) return;
   setRulesConfig(DEFAULT_RULES_CONFIG);
 }
 
@@ -550,7 +553,7 @@ async function uploadCrest(team: TeamSummary): Promise<void> {
 
 async function removeCrest(team: TeamSummary): Promise<void> {
   if (!canManageTournaments.value || !team.crest_url) return;
-  if (import.meta.client && !window.confirm(t('crest.confirmRemove', { team: team.name }))) return;
+  if (import.meta.client && !(await confirm({ title: t('confirm.removeCrest.title'), message: t('crest.confirmRemove', { team: team.name }), confirmLabel: t('confirm.removeCrest.action'), tone: 'danger' }))) return;
   crestBusyTeamId.value = team.team_id;
   crestStatusMessage.value = t('crest.removing');
   delete crestErrors[team.team_id];
@@ -665,7 +668,7 @@ async function publishVersion() {
     error.value = t('setup.publishRequirement');
     return;
   }
-  if (import.meta.client && !window.confirm(t('workspace.confirmPublish'))) return;
+  if (import.meta.client && !(await confirm({ title: t('confirm.publish.title'), message: t('workspace.confirmPublish'), confirmLabel: t('confirm.publish.action'), tone: 'danger' }))) return;
   saving.value = true;
   error.value = null;
   try {
@@ -798,7 +801,7 @@ async function saveRules() {
       events: minutesImpact.events.length,
       max: minutesImpact.maxMinute ?? 0,
     });
-    if (import.meta.client && !window.confirm(message)) return;
+    if (import.meta.client && !(await confirm({ title: t('confirm.saveRules.title'), message, confirmLabel: t('confirm.saveRules.action'), tone: 'primary' }))) return;
     minutesNotice = message;
   } else if (minutesImpact.events.length) {
     minutesNotice = t('rules.minutesWarning.events', {

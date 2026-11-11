@@ -69,6 +69,7 @@ const auth = useAuthStore();
 const tournamentsStore = useTournamentsStore();
 const { request } = useApi();
 const { t, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const tournamentId = String(route.params.id);
 const tournamentName = computed(
   () => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null,
@@ -452,7 +453,7 @@ async function uploadRosterPhoto(event: Event, rosterId: string) {
 
 async function toggleRosterPhotoConsent(roster: RosterSummary) {
   const nextConsent = !roster.photo_consent;
-  if (!nextConsent && roster.photo_url && import.meta.client && !window.confirm(t('setup.confirmRevokePhotoConsent'))) return;
+  if (!nextConsent && roster.photo_url && import.meta.client && !(await confirm({ title: t('confirm.revokePhotoConsent.title'), message: t('setup.confirmRevokePhotoConsent'), confirmLabel: t('confirm.revokePhotoConsent.action'), tone: 'danger' }))) return;
   photoBusyRosterId.value = roster.roster_id;
   actionError.value = null;
   try {

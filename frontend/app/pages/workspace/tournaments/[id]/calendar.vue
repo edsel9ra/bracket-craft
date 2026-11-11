@@ -74,6 +74,7 @@ const auth = useAuthStore();
 const tournamentsStore = useTournamentsStore();
 const { request } = useApi();
 const { t, statusLabel, formatDateTime, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const tournamentId = String(route.params.id);
 const tournamentName = computed(
   () => tournamentsStore.tournaments.find((tournament) => tournament.id === tournamentId)?.name || null,
@@ -352,7 +353,7 @@ async function drawStageSchedule() {
   const replaceExisting = selectedStage.value?.stage_type === 'swiss'
     ? scheduleForm.swiss_round === 1 && visibleStageMatches.value.length > 0
     : visibleStageMatches.value.length > 0;
-  if (replaceExisting && import.meta.client && !window.confirm(t('setup.confirmRegenerateSchedule'))) return;
+  if (replaceExisting && import.meta.client && !(await confirm({ title: t('confirm.regenerateSchedule.title'), message: t('setup.confirmRegenerateSchedule'), confirmLabel: t('confirm.regenerateSchedule.action'), tone: 'danger' }))) return;
 
   scheduleBusy.value = true;
   error.value = null;

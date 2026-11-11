@@ -1,8 +1,8 @@
-import { createConfirmQueue, type ConfirmOptions, type ConfirmRequest } from '~/utils/confirmQueue';
+import { createConfirmQueue, singleFlightConfirm, type ConfirmOptions, type ConfirmRequest } from '~/utils/confirmQueue';
 
 const queues = new WeakMap<object, ReturnType<typeof createConfirmQueue>>();
 
-export function useConfirm() {
+export function useConfirm(options: { singleFlight?: boolean } = {}) {
   const app = useNuxtApp();
   const router = useRouter();
   const active = useState<ConfirmRequest | null>('confirm', () => null);
@@ -16,9 +16,10 @@ export function useConfirm() {
     }
   }
   const currentQueue = queue;
+  const confirm = (options: ConfirmOptions): Promise<boolean> => import.meta.client ? currentQueue.confirm(options) : Promise.resolve(false);
   return {
     active: readonly(active),
-    confirm: (options: ConfirmOptions): Promise<boolean> => import.meta.client ? currentQueue.confirm(options) : Promise.resolve(false),
+    confirm: options.singleFlight ? singleFlightConfirm(confirm) : confirm,
     settle: (value: boolean, id: number) => currentQueue.settle(value, id),
     cancelAll: () => currentQueue.cancelAll(),
   };

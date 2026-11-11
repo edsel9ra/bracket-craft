@@ -16,6 +16,7 @@ const tournamentsStore = useTournamentsStore();
 const realtime = useRealtime();
 const { request } = useApi();
 const { t, statusLabel, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
 const workspaceError = ref<string | null>(null);
 const showCreateForm = ref(false);
@@ -126,7 +127,7 @@ async function createTournament() {
 
 async function publishTournament(tournament: { id: string; draft_version_id?: string | null }) {
   if (!tournament.draft_version_id) return;
-  if (import.meta.client && !window.confirm(t('workspace.confirmPublish'))) return;
+  if (import.meta.client && !(await confirm({ title: t('confirm.publish.title'), message: t('workspace.confirmPublish'), confirmLabel: t('confirm.publish.action'), tone: 'danger' }))) return;
   publishingTournamentId.value = tournament.id;
   workspaceError.value = null;
   try {

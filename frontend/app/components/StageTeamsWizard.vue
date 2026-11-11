@@ -84,6 +84,7 @@ const emit = defineEmits<{
 
 const { request } = useApi();
 const { t, stageTypeLabel, errorMessage } = useI18n();
+const discardConfirmationDialog = useConfirm({ singleFlight: true });
 const auth = useAuthStore();
 
 const formatOptions = computed(() => STAGE_FORMATS.map((format) => ({
@@ -282,10 +283,10 @@ const dirty = computed(() => Boolean(
 ));
 
 /** Descarte explícito: confirma, vuelve a los valores del servidor y limpia el borrador. */
-function discardChanges(): void {
+async function discardChanges(): Promise<void> {
   if (props.disabled || !dirty.value) return;
   const accepted = import.meta.client
-    ? window.confirm(t('wizard.navigation.confirmDiscard'))
+    ? await discardConfirmationDialog.confirm({ title: t('confirm.discardChanges.title'), message: t('wizard.navigation.confirmDiscard'), confirmLabel: t('confirm.discardChanges.action'), tone: 'danger' })
     : true;
   const effect = resolveNavigation('discard', dirty.value, accepted);
   if (!effect.proceed) return;

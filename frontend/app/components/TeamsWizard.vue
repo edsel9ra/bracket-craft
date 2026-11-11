@@ -54,6 +54,7 @@ const emit = defineEmits<{
 
 const { request } = useApi();
 const { t, errorMessage } = useI18n();
+const discardConfirmationDialog = useConfirm({ singleFlight: true });
 const auth = useAuthStore();
 
 const form = reactive({
@@ -197,10 +198,10 @@ function resetForm(): void {
  * —un formulario vacío, porque el alta no tiene datos previos— y elimina el
  * borrador de la pestaña.
  */
-function discardChanges(): void {
+async function discardChanges(): Promise<void> {
   if (props.disabled || !hasChanges()) return;
   const accepted = import.meta.client
-    ? window.confirm(t('wizard.navigation.confirmDiscard'))
+    ? await discardConfirmationDialog.confirm({ title: t('confirm.discardChanges.title'), message: t('wizard.navigation.confirmDiscard'), confirmLabel: t('confirm.discardChanges.action'), tone: 'danger' })
     : true;
   const effect = resolveNavigation('discard', hasChanges(), accepted);
   if (!effect.proceed) return;

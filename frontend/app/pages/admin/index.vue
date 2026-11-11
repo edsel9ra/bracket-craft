@@ -34,6 +34,7 @@ interface PlatformAudit {
 const auth = useAuthStore();
 const { request } = useApi();
 const { t, statusLabel, formatDateTime, errorMessage } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const users = ref<PlatformUser[]>([]);
 const organizations = ref<PlatformOrganization[]>([]);
 const audit = ref<PlatformAudit[]>([]);
@@ -123,7 +124,7 @@ async function toggleOrganization(organization: PlatformOrganization) {
 }
 
 async function toggleStatus(path: string, currentValue: boolean, key: string) {
-  if (currentValue && import.meta.client && !window.confirm(t('admin.confirmDeactivate'))) return;
+  if (currentValue && import.meta.client && !(await confirm({ title: t('confirm.deactivate.title'), message: t('admin.confirmDeactivate'), confirmLabel: t('confirm.deactivate.action'), tone: 'danger' }))) return;
   savingKey.value = key;
   error.value = null;
   try {

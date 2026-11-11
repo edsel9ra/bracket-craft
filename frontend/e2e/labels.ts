@@ -364,6 +364,8 @@ export const E2E_LABELS = {
   // Cierre del acta sin rechazo por minuto (RF-032): alta mínima de un jugador
   // por equipo, apertura del partido, evento en el límite y cierre.
   publishDraft: { key: 'setup.publishDraft', es: 'Publicar versión draft', en: 'Publish draft version' },
+  confirmPublish: { key: 'confirm.publish.action', es: 'Publicar versión', en: 'Publish version' },
+  confirmCloseReport: { key: 'confirm.closeReport.action', es: 'Cerrar acta', en: 'Close report' },
   statusPublished: { key: 'status.published', es: 'Publicado', en: 'Published' },
   rosterTeamField: { key: 'setup.team', es: 'Equipo', en: 'Team' },
   rosterListTitle: {

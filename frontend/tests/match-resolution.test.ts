@@ -273,7 +273,7 @@ test('keeps no value without every identifier and clears only its own key', () =
 // añade un segundo selector.
 test('renders a single planned-resolution control in the operation', () => {
   assert.equal(
-    PAGE_SOURCE.split('v-model="selectedResolution"').length - 1,
+    PAGE_SOURCE.split(':value="selectedResolution"').length - 1,
     1,
     'the operation must have exactly one resolution control',
   );
@@ -668,7 +668,7 @@ test('gates the change and the close on the pure decisions', () => {
   assert.ok(decisionAt > 0, 'the close must evaluate the decision');
   assert.ok(decisionAt < closeRequestAt, 'the decision must come before sending the close');
   assert.match(PAGE_SOURCE, /needsConfirmation/);
-  assert.match(PAGE_SOURCE, /window\.confirm\(t\(decision\.messageKey/);
+  assert.match(PAGE_SOURCE, /await confirm\(\{[^\n]*message: t\(decision\.messageKey/);
 });
 
 // RF-033/RNF-011: las funciones son puras: sin reloj, sin red y sin

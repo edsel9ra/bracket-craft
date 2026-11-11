@@ -221,12 +221,12 @@ test('the invitation row renders the actions decided by invitationActionsFor (RF
 
 test('reopening asks for confirmation before the request and a second activation sends nothing (RF-006)', () => {
   assert.match(membersScript, /invitationActionConfirmKey\(action\)/);
-  assert.match(membersScript, /window\.confirm\(t\(confirmKey\)\)/);
+  assert.match(membersScript, /await confirm\(\{[^\n]*message: t\(confirmKey\)/);
   assert.match(membersScript, /beginInvitationOperation\(invitationOperation\.value,/);
   assert.match(membersScript, /if \(operation === null\) return;/);
   assert.match(membersTemplate, /:disabled="invitationControlsDisabled\(invitationOperation\)"/);
 
-  const confirmIndex = membersScript.indexOf('window.confirm(t(confirmKey))');
+  const confirmIndex = membersScript.indexOf('await confirm({');
   const reopenRequestIndex = membersScript.indexOf('/organizations/invitations/${invitation.id}/reopen');
   assert.ok(confirmIndex > 0, 'reopening must ask for confirmation');
   assert.ok(reopenRequestIndex > 0, 'reopening must call the reopen endpoint');

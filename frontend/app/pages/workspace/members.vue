@@ -52,6 +52,7 @@ const auth = useAuthStore();
 const route = useRoute();
 const { request } = useApi();
 const { t, errorMessage, formatDateTime } = useI18n();
+const { confirm } = useConfirm({ singleFlight: true });
 const members = ref<Member[]>([]);
 const invitations = ref<Invitation[]>([]);
 const MEMBERS_PAGE_SIZE = 10;
@@ -187,7 +188,9 @@ async function inviteMember() {
 /** Un solo punto de entrada por activación: la compuerta evita la doble petición (RF-006). */
 async function runInvitationAction(action: InvitationAction, invitation: Invitation) {
   const confirmKey = invitationActionConfirmKey(action) ?? (action === 'revoke' ? REVOKE_CONFIRM_KEY : null);
-  if (confirmKey && import.meta.client && !window.confirm(t(confirmKey))) return;
+  if (invitationOperation.value !== 'idle') return;
+  const confirmation = action === 'revoke' ? 'revokeInvitation' : 'reopenInvitation';
+  if (confirmKey && import.meta.client && !(await confirm({ title: t(`confirm.${confirmation}.title`), message: t(confirmKey), confirmLabel: t(`confirm.${confirmation}.action`), tone: action === 'revoke' ? 'danger' : 'primary' }))) return;
   const operation = beginInvitationOperation(invitationOperation.value, OPERATION_BY_ACTION[action]);
   if (operation === null) return;
   invitationOperation.value = operation;
