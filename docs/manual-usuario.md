@@ -80,6 +80,8 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
 - Un torneo no visible responde 404 indistinguible.
+- La llave permite desplazamiento horizontal local, también con teclado. Usa Final, Semifinales, Cuartos u Octavos cuando los códigos publicados identifican la ronda; en otro caso conserva «Ronda n» o una etiqueta genérica.
+- Los conectores solo muestran avances inequívocos: ganador confirmado del partido anterior y participante del siguiente, también por penales o W.O. Un partido sin línea no implica eliminación ni pase libre; pendientes y participantes por definir permanecen visibles. La relación también está disponible en texto accesible y el ganador no se indica solo por color.
 - Estadísticas: `GET /tournaments/public/{id}/player-stats` y `GET /tournaments/public/{id}/team-stats`, con filtro opcional por fase.
 - Portería imbatida: del equipo, partido disputado con cero goles recibidos (prórroga incluida, penales excluidos); del portero, identificable por `GK` en formación táctica publicada, titular del primer segmento o entrante acreditado por sustitución en formación publicada posterior, con ≥60 minutos y sin goles recibidos. Walkover y resolución administrativa no cuentan.
 - No se publican: documentos de identidad, fecha de nacimiento, edad, plantilla inscrita, asistencias, sanciones, suspensiones, motivo de walkover/resolución administrativa, `logo_url` heredado, claves de almacenamiento, datos de miembros/organizaciones.
