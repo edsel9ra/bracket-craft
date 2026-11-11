@@ -72,7 +72,9 @@ onBeforeUnmount(() => cleanup());
 </template>
 
 <style scoped>
-.public-preferences { position: fixed; right: 20px; bottom: 20px; z-index: 30; display: flex; flex-wrap: wrap-reverse; align-items: end; justify-content: space-between; gap: var(--space-2); max-width: calc(100vw - 40px); }
+.public-preferences { position: fixed; right: 20px; bottom: 20px; z-index: 30; display: flex; flex-wrap: wrap-reverse; align-items: end; justify-content: space-between; gap: var(--space-2); max-width: calc(100vw - 40px); pointer-events: none; }
+.public-preferences :deep(.theme-switcher),
+.public-preferences :deep(.language-switcher) { pointer-events: auto; }
 .public-preferences.is-stacked { flex-direction: column; flex-wrap: nowrap; align-items: end; }
 .public-preferences:not(.is-ready) :deep(.theme-switcher) { visibility: hidden; }
 .public-preferences :deep(.language-switcher) { position: static; flex: 0 0 auto; }

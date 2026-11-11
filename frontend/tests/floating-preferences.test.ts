@@ -7,6 +7,12 @@ const language = { x: 264, y: 791, width: 99, height: 41 };
 const theme = { width: 142, height: 41 };
 const viewport = { width: 375, height: 844 };
 
+test('floating gaps pass pointer events through while both preference controls remain interactive', () => {
+  const source = readFileSync(new URL('../app/components/PublicPreferences.vue', import.meta.url), 'utf8');
+  assert.match(source, /\.public-preferences\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(source, /\.public-preferences\s*:deep\(\.theme-switcher\),\s*\.public-preferences\s*:deep\(\.language-switcher\)\s*\{[^}]*pointer-events:\s*auto/);
+});
+
 test('public placement resamples font and motion completion and cleans up motion listeners', () => {
   const source = readFileSync(new URL('../app/components/PublicPreferences.vue', import.meta.url), 'utf8');
   assert.match(source, /document.fonts.ready.then\(schedule\)/);
