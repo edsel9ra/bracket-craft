@@ -1440,7 +1440,7 @@ onBeforeRouteLeave((to) => {
   // los restaura al volver, así que avisar de una pérdida que no ocurre sería
   // falso. Cualquier otro destino mantiene la confirmación.
   if (to.path === rostersHref.value) return true;
-  return confirm({ title: t('confirm.leaveMatch.title'), message: t('match.unsavedLeave'), confirmLabel: t('confirm.leaveMatch.action'), tone: 'danger' });
+  return confirm({ title: t('confirm.leaveMatch.title'), message: t('match.unsavedLeave'), confirmLabel: t('confirm.leaveMatch.action'), tone: 'primary' });
 });
 
 async function closeMatch() {
