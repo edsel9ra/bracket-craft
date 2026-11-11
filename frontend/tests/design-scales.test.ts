@@ -13,16 +13,14 @@ export const PENDING_MIGRATION = [
   ['components/TeamsWizard.vue', 'opción 3: asistente de equipos'],
   ['components/StageTeamsWizard.vue', 'opción 3: asistente de fases'],
   ['components/wizard/', 'opción 3: infraestructura de asistentes'],
-  ['pages/workspace/index.vue', 'T9'],
-  ['pages/workspace/tournaments/[id]/index.vue', 'T9'],
-  ['pages/workspace/tournaments/[id]/calendar.vue', 'T9'],
-  ['pages/workspace/tournaments/[id]/rosters.vue', 'T9'],
-  ['components/WorkspaceShell.vue', 'T9'],
-  ['components/FormatWarning.vue', 'T9'],
-  ['assets/css/main.css', 'T9: estilos globales compartidos con pantallas privadas'],
 ] as const;
 
 export const DESIGN_EXCEPTIONS: { file: string; property: string; value: string; reason: string }[] = [
+  { file: 'assets/css/main.css', property: 'margin', value: '-1px', reason: 'Recorte accesible de visually-hidden de un píxel, no espaciado de layout.' },
+  { file: 'pages/workspace/index.vue', property: 'padding', value: '5vh 0 5vh', reason: 'VI-1: ritmo del hero del Workspace proporcional a la ventana.' },
+  ...['index', 'calendar', 'rosters'].map((page) => ({ file: `pages/workspace/tournaments/[id]/${page}.vue`, property: 'padding', value: '4vh 0 4vh', reason: 'VI-1: ritmo del hero privado de torneo proporcional a la ventana.' })),
+  { file: 'pages/workspace/tournaments/[id]/rosters.vue', property: 'padding-bottom', value: '6vh', reason: 'VI-1: separación de cierre de plantillas proporcional a la ventana.' },
+  ...['index', 'calendar'].map((page) => ({ file: `pages/workspace/tournaments/[id]/${page}.vue`, property: 'font-size', value: '1.6rem', reason: 'VI-1/MG-1: xl aumenta los títulos de panel un 72% en escritorio y desplaza los asistentes y formularios embebidos.' })),
   { file: 'pages/login.vue', property: 'font-size', value: 'clamp(2.4rem, 8vw, 4.6rem)', reason: 'VI-1: display aumenta el titular de acceso un 37% en escritorio y altera los saltos de línea del formulario.' },
   { file: 'pages/invitations/[token].vue', property: 'font-size', value: 'clamp(2.5rem, 8vw, 4.8rem)', reason: 'VI-1: mantener la composición del titular de invitación dentro de su tarjeta.' },
   { file: 'pages/admin/index.vue', property: 'font-size', value: '2.5rem', reason: 'Cifras de métricas de ancho limitado: display fluido no cabe en las tarjetas.' },

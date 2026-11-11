@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { rosterReturnHref } from '~/utils/matchNavigation';
@@ -497,7 +498,7 @@ await loadPage();
         </div>
         <div v-else-if="loadError" class="form-error" role="alert">
           <span>{{ loadError }}</span>
-          <button class="button-secondary" type="button" @click="loadPage">{{ t('common.retry') }}</button>
+          <Button variant="secondary" class="button-secondary" type="button" @click="loadPage">{{ t('common.retry') }}</Button>
         </div>
         <template v-else>
           <div v-if="!teams.length" class="panel">
@@ -578,7 +579,7 @@ await loadPage();
                   </FormField>
                 </div>
                 <label class="checkbox-label"><input v-model="playerForm.photo_consent" type="checkbox" /> {{ t('match.imageConsent') }}</label>
-                <button class="button-primary" type="submit" :disabled="busy">{{ busy ? t('common.saving') : t('match.addPlayer') }}</button>
+                <Button variant="primary" class="button-primary" type="submit" :disabled="busy">{{ busy ? t('common.saving') : t('match.addPlayer') }}</Button>
               </form>
 
               <form v-if="canManageTournaments" class="panel" :aria-busy="busy" @submit.prevent="importRoster">
@@ -596,11 +597,11 @@ await loadPage();
                   <button v-if="rosterCsvFile || rosterZipFile" class="file-clear" type="button" @click="clearRosterFiles()">{{ t('setup.clearFiles') }}</button>
                 </div>
                 <div class="template-download">
-                  <button type="button" class="button-secondary" @click="downloadRosterTemplate">{{ t('setup.downloadRosterTemplate') }}</button>
+                  <Button variant="secondary" type="button" class="button-secondary" @click="downloadRosterTemplate">{{ t('setup.downloadRosterTemplate') }}</Button>
                   <span class="field-hint">{{ t('setup.rosterTemplateColumns') }}</span>
                 </div>
                 <p v-if="!rosterCsvFile" class="field-error" role="alert">{{ t('tournament.rosters.csvEmpty') }}</p>
-                <button class="button-primary import-submit" type="submit" :disabled="busy || !rosterCsvFile">{{ busy ? t('setup.importingRoster') : t('setup.importRoster') }}</button>
+                <Button variant="primary" class="button-primary import-submit" type="submit" :disabled="busy || !rosterCsvFile">{{ busy ? t('setup.importingRoster') : t('setup.importRoster') }}</Button>
               </form>
             </div>
 
@@ -646,74 +647,74 @@ await loadPage();
 </template>
 
 <style scoped>
-.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, rgba(212, 243, 106, 0.08), transparent 28rem), #0c0f0c; }
+.workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
 .section-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.section-hero h1 { max-width: 800px; margin: 14px 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: 0.92; letter-spacing: -0.08em; }
-.section-copy { max-width: 520px; color: var(--muted); font-size: 1.1rem; line-height: 1.6; }
-.return-link { margin-top: 18px; }
-.roster-content { display: grid; gap: 18px; padding-bottom: 6vh; }
-.roster-toolbar { display: grid; gap: 10px; }
+.section-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
+.section-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
+.return-link { margin-top: var(--space-4); }
+.roster-content { display: grid; gap: var(--space-4); padding-bottom: 6vh; }
+.roster-toolbar { display: grid; gap: var(--space-2); }
 .roster-toolbar select { width: min(100%, 420px); }
-.roster-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
-.roster-import-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; gap: 12px; }
-.selected-roster-files { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; }
-.roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
-.roster-card { display: grid; grid-template-columns: 42px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 12px; padding: 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(12, 15, 12, 0.3); transition: border-color 180ms ease, background-color 180ms ease; }
+.roster-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); }
+.roster-import-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; gap: var(--space-3); }
+.selected-roster-files { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-xs); }
+.roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.roster-card { display: grid; grid-template-columns: 42px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: var(--space-3); padding: var(--space-2); border: 1px solid var(--color-line); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-canvas) 30%, transparent); transition: border-color 180ms ease, background-color 180ms ease; }
 .roster-card .photo-actions { grid-column: 1 / -1; flex-direction: column; align-items: stretch; }
-.roster-card:hover { border-color: var(--accent); background: rgba(212, 243, 106, 0.04); }
-.roster-photo { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; }
-.roster-photo-empty { display: grid; place-items: center; background: rgba(212, 243, 106, 0.12); color: var(--accent); font-weight: 800; }
-.roster-card-info { display: grid; gap: 3px; min-width: 0; }
-.roster-card-info strong { overflow: hidden; font-size: 0.82rem; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.roster-card-info small { color: var(--muted); font-size: 0.72rem; }
-.photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 8px; }
-.template-download { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.checkbox-label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 0.82rem; cursor: pointer; }
-.checkbox-label input { width: 16px; height: 16px; accent-color: var(--accent); }
-.file-picker { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0.6rem 1rem; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
-.file-picker:hover { border-color: var(--accent); color: var(--accent); }
+.roster-card:hover { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 4%, transparent); }
+.roster-photo { width: 42px; height: 42px; border-radius: var(--radius-sm); object-fit: cover; }
+.roster-photo-empty { display: grid; place-items: center; background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); font-weight: 800; }
+.roster-card-info { display: grid; gap: var(--space-1); min-width: 0; }
+.roster-card-info strong { overflow: hidden; font-size: var(--text-sm); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.roster-card-info small { color: var(--color-muted); font-size: var(--text-xs); }
+.photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: var(--space-2); }
+.template-download { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.checkbox-label { display: flex; align-items: center; gap: var(--space-2); color: var(--color-ink); font-size: var(--text-sm); cursor: pointer; }
+.checkbox-label input { width: 16px; height: 16px; accent-color: var(--color-accent); }
+.file-picker { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
+.file-picker:hover { border-color: var(--color-accent); color: var(--color-accent); }
 .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
-.player-status { min-height: 34px; padding: 6px 12px; }
+.player-status { min-height: 34px; padding: var(--space-1) var(--space-3); }
 .roster-list button {
   min-height: 34px;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink);
-  font-size: 0.72rem;
+  color: var(--color-ink);
+  font-size: var(--text-xs);
   font-weight: 700;
   cursor: pointer;
   transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
 }
-.roster-list button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.roster-list button:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
 .roster-list button:disabled { opacity: 0.45; cursor: not-allowed; }
-.roster-lock-notice { display: grid; gap: 4px; margin: 0; padding: 12px 14px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.82rem; }
-.roster-size-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: var(--muted); font-size: 0.82rem; }
-.roster-size-status strong { color: var(--ink); }
-.roster-size-label { color: var(--accent); font-weight: 700; }
-.roster-size-status small { color: var(--muted); font-size: 0.74rem; }
-.roster-size-notice { margin: 0; padding: 11px 13px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 12px; background: rgba(255, 203, 122, 0.06); color: #ffcb7a; font-size: 0.8rem; }
-.player-status { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; }
-.player-status:hover { border-color: var(--accent); color: var(--accent); }
-.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
-.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--accent); color: var(--accent); background: rgba(212, 243, 106, 0.06); }
+.roster-lock-notice { display: grid; gap: var(--space-1); margin: 0; padding: var(--space-3) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-warning) 6%, transparent); color: var(--color-warning); font-size: var(--text-sm); }
+.roster-size-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+.roster-size-status strong { color: var(--color-ink); }
+.roster-size-label { color: var(--color-accent); font-weight: 700; }
+.roster-size-status small { color: var(--color-muted); font-size: var(--text-xs); }
+.roster-size-notice { margin: 0; padding: var(--space-3) var(--space-3); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-warning) 6%, transparent); color: var(--color-warning); font-size: var(--text-sm); }
+.player-status { padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font-size: var(--text-xs); }
+.player-status:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: var(--space-1) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font-size: var(--text-xs); font-weight: 700; cursor: pointer; transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
+.photo-picker:hover:not(:has(input:disabled)) { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
 .photo-picker:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
 .photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
-.warning-list { display: grid; gap: 5px; margin: 0; padding: 10px 12px 10px 28px; border: 1px solid rgba(255, 203, 122, 0.3); border-radius: 10px; color: #ffcb7a; font-size: 0.78rem; }
-.roster-grid .panel { padding: 24px; gap: 16px; }
-.roster-grid .field-grid { gap: 14px; align-items: end; }
-.roster-grid .button-primary { width: 100%; margin-top: 4px; }
-.roster-import-controls { align-items: end; gap: 12px; }
-.template-download { width: 100%; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; background: rgba(12, 15, 12, 0.2); }
+.warning-list { display: grid; gap: var(--space-1); margin: 0; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); border-radius: var(--radius-sm); color: var(--color-warning); font-size: var(--text-xs); }
+.roster-grid .panel { padding: var(--space-6); gap: var(--space-4); }
+.roster-grid .field-grid { gap: var(--space-3); align-items: end; }
+.roster-grid .button-primary { width: 100%; margin-top: var(--space-1); }
+.roster-import-controls { align-items: end; gap: var(--space-3); }
+.template-download { width: 100%; padding: var(--space-3); border: 1px dashed var(--color-line); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-canvas) 20%, transparent); }
 .template-download .button-secondary { width: 100%; justify-content: center; }
-.import-submit { width: 100%; margin-top: 4px; }
+.import-submit { width: 100%; margin-top: var(--space-1); }
 .roster-import-controls .file-picker { width: 100%; justify-content: center; }
-.roster-grid .field input { padding: 0.85rem 1rem; }
-.roster-grid .button-primary { min-height: 46px; font-size: 0.9rem; }
-.roster-import-controls { gap: 14px; }
+.roster-grid .field input { padding: var(--space-3) var(--space-4); }
+.roster-grid .button-primary { min-height: 46px; font-size: var(--text-md); }
+.roster-import-controls { gap: var(--space-3); }
 .roster-import-controls .button-secondary { min-height: 44px; }
-@media (max-width: 620px) {
+@media (max-width: 480px) {
   .roster-list { grid-template-columns: 1fr; }
   .roster-card { grid-template-columns: 42px minmax(0, 1fr); }
   .roster-card .photo-actions { grid-column: 1 / -1; justify-self: stretch; justify-content: stretch; }

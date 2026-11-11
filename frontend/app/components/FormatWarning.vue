@@ -31,12 +31,12 @@ const visible = computed(() => formatWarns(props.format));
 <style scoped>
 .format-warning {
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 203, 122, 0.35);
-  border-radius: 9px;
-  background: rgba(255, 203, 122, 0.08);
-  color: #ffcb7a;
-  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  color: var(--color-warning);
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 </style>

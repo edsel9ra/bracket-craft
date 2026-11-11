@@ -35,6 +35,7 @@ export const PALETTE = {
   home: '#d4f36a',
   away: '#ffcb7a',
   canvas: '#0c0f0c',
+  'canvas-raised': '#111611',
   shadow: '#000000',
   highlight: '#ffffff',
   'pitch-grass': '#315b35',
