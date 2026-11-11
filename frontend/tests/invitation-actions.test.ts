@@ -327,3 +327,10 @@ test('each invitation control names its role and expiry date, never the email (R
   assert.match(membersScript, /date: formatDate\(invitation\.expires_at\)/);
   assert.doesNotMatch(membersPage, /aria-label[^\n]*invitation\.email/);
 });
+
+test('a successful invitation resets the email validation along with the field', () => {
+  const body = functionBody('inviteMember');
+  const cleared = body.indexOf("inviteForm.email = '';");
+  assert.ok(cleared >= 0);
+  assert.ok(body.indexOf('inviteTouched.value = false;', cleared) > cleared);
+});
