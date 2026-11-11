@@ -1,9 +1,10 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import test from 'node:test';
 import { checklistPresentation } from '../app/utils/operationChecklist.ts';
 
-const source = (file: string) => readFileSync(new URL(`../app/${file}`, import.meta.url), 'utf8');
+const source = (file: string) => featureSource(new URL(`../app/${file}`, import.meta.url));
 
 test('every page declares a document title, including session and error destinations', () => {
   const pages = readdirSync(new URL('../app/pages/', import.meta.url), { recursive: true }) as string[];

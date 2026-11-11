@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { focusFormAnchor } from '~/utils/formAnchor';
+import PageHeader from '~/components/ui/PageHeader.vue';
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import type { StageFormat } from '~/constants/stageFormats';
@@ -417,11 +419,12 @@ loading.value = false;
     :tournament="{ id: tournamentId, name: tournamentName }"
   >
     <main id="main-content" class="workspace-shell">
-      <section class="container section-hero">
-        <p class="eyebrow">{{ t('tournament.calendar.eyebrow') }}</p>
-        <h1>{{ t('tournament.calendar.title') }}</h1>
-        <p class="section-copy">{{ t('tournament.calendar.copy') }}</p>
-      </section>
+      <PageHeader class="container" :title="t('tournament.calendar.title')">
+        <template #context>{{ tournamentLabel }}</template>
+        <template v-if="!loading && !loadError && canManageTournaments && activeVersion?.status === 'draft' && selectedStageId" #actions>
+          <a class="button-secondary" href="#match-entry" @click="focusFormAnchor">{{ t('tournament.calendar.addAction') }}</a>
+        </template>
+      </PageHeader>
 
       <section class="container calendar-content">
         <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('setup.loading') }}</div>
@@ -447,7 +450,11 @@ loading.value = false;
             </label>
           </div>
 
-          <form class="panel panel-wide" :aria-busy="saving || scheduleBusy" novalidate @submit.prevent="createMatch">
+            <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
+              <li v-for="match in visibleStageMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span><strong v-if="match.bracket_code">{{ match.bracket_code }} · </strong>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
+            </TransitionGroup>
+
+          <form id="match-entry" class="panel panel-wide" :aria-busy="saving || scheduleBusy" novalidate @submit.prevent="createMatch">
             <p class="eyebrow">{{ t('setup.calendarEyebrow') }}</p>
             <h2>{{ t('setup.scheduleMatch') }}</h2>
             <div class="match-form-grid">
@@ -527,9 +534,7 @@ loading.value = false;
                 <code>{{ scheduleResult.seed }}</code>
               </p>
             </div>
-            <TransitionGroup id="operacion" name="card-list" tag="ul" class="resource-list match-list">
-              <li v-for="match in visibleStageMatches" :key="match.id"><NuxtLink :to="`/workspace/matches/${match.id}`"><span><strong v-if="match.bracket_code">{{ match.bracket_code }} · </strong>{{ match.home_team_name || t('setup.noDefine') }} vs {{ match.away_team_name || t('setup.noDefine') }}</span><small>{{ formatMatchDate(match.match_date) }} · {{ t('public.matchday', { value: match.matchday || '-' }) }} · {{ statusLabel(match.status) }}</small></NuxtLink></li>
-            </TransitionGroup>
+
           </form>
           <div v-if="error" class="form-error" role="alert">{{ error }}</div>
         </template>
@@ -539,10 +544,8 @@ loading.value = false;
 </template>
 
 <style scoped>
+#match-entry { scroll-margin-top: var(--space-10); }
 .workspace-shell { min-height: 100vh; background: radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 28rem), var(--color-canvas); }
-.section-hero { padding: 4vh 0 4vh; animation: rise-in 700ms var(--ease-out) both; }
-.section-hero h1 { max-width: 800px; margin: var(--space-3) 0; font-size: var(--text-display); line-height: 0.92; letter-spacing: -0.08em; }
-.section-copy { max-width: 520px; color: var(--color-muted); font-size: var(--text-base); line-height: 1.6; }
 .calendar-content { display: grid; gap: var(--space-5); padding-bottom: var(--space-10); }
 .calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-5); }
 label { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }

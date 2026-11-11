@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -71,10 +72,7 @@ const SCOPE: ResolutionScope = {
   matchId: 'match-1',
 };
 
-const PAGE_SOURCE = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const PAGE_SOURCE = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const COMPOSABLE_SOURCE = readFileSync(
   new URL('../app/composables/useMatchResolution.ts', import.meta.url),
   'utf8',

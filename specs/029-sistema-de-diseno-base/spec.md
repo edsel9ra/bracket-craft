@@ -1,8 +1,8 @@
 # Spec 029 — Sistema de diseño base
 
-Estado: aprobada (2026-11-11; DT-1, MG-1, VI-1 y RV-1 resueltas)
+Estado: implementada (2026-11-11; cierre aprobado por el usuario tras fusionar los PR #41, #42 y #43)
 
-Implementación T1–T10 cerrada localmente (2026-11-11), en fase de Validación. El estado no pasa todavía a `implementada`: faltan CI verde sobre la entrega completa y la revisión final del usuario, conforme a los criterios de finalización y la skill SDD. Opción 3 hereda únicamente la migración visual pendiente de operación y asistentes, sin ampliar este alcance.
+Validación y cierre: PR [#41](https://github.com/edsel9ra/bracket-craft/pull/41) (T1–T5), [#42](https://github.com/edsel9ra/bracket-craft/pull/42) (T6) y [#43](https://github.com/edsel9ra/bracket-craft/pull/43) (T7–T10) fusionados, con CI verde; #43 terminó con 7 checks pasados, ninguno fallido, pendiente u omitido. Se conservan las evidencias y límites de `docs/inspeccion-accesibilidad.md` §10: cero violaciones nuevas de aplicación en axe, contraste incomplete sin certificar, sin lector de pantalla, dispositivos físicos ni OAuth real. Conforme a la fase Cambio de SDD, el rediseño del Workspace se estudia por separado en la spec 030, inicialmente en Spec/Clarificación. Opción 3 hereda las seis entradas PENDING_MIGRATION de operación y asistentes; este cierre no las declara migradas.
 
 ## Contexto y objetivo
 

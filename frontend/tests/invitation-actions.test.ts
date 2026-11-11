@@ -259,8 +259,8 @@ test('the invitation operation and the member directory keep separate busy state
 
   const invitePanelStart = membersTemplate.indexOf("members.inviteEyebrow");
   const directoryPanelStart = membersTemplate.indexOf("members.directoryEyebrow");
-  assert.ok(invitePanelStart > 0 && directoryPanelStart > invitePanelStart);
-  const invitationPanels = membersTemplate.slice(invitePanelStart, directoryPanelStart);
+  assert.ok(directoryPanelStart > 0 && invitePanelStart > directoryPanelStart);
+  const invitationPanels = membersTemplate.slice(invitePanelStart);
   assert.doesNotMatch(
     invitationPanels,
     /saving/,
@@ -326,4 +326,11 @@ test('each invitation control names its role and expiry date, never the email (R
   assert.match(membersScript, /role: t\(roleKey\(invitation\.role_code\)\)/);
   assert.match(membersScript, /date: formatDate\(invitation\.expires_at\)/);
   assert.doesNotMatch(membersPage, /aria-label[^\n]*invitation\.email/);
+});
+
+test('a successful invitation resets the email validation along with the field', () => {
+  const body = functionBody('inviteMember');
+  const cleared = body.indexOf("inviteForm.email = '';");
+  assert.ok(cleared >= 0);
+  assert.ok(body.indexOf('inviteTouched.value = false;', cleared) > cleared);
 });

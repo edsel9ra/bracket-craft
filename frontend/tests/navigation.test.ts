@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -127,10 +128,7 @@ test('sends a matchless operation fragment to the calendar match list', () => {
   });
 });
 
-const configurationPage = readFileSync(
-  new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url),
-  'utf8',
-);
+const configurationPage = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
 const calendarPage = readFileSync(
   new URL('../app/pages/workspace/tournaments/[id]/calendar.vue', import.meta.url),
   'utf8',
@@ -162,10 +160,7 @@ test('calendar owns match creation and the single schedule generator', () => {
   assert.doesNotMatch(calendarPage, /\/rosters/);
 });
 
-const matchPage = readFileSync(
-  new URL('../app/pages/workspace/matches/[id].vue', import.meta.url),
-  'utf8',
-);
+const matchPage = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
 const rostersPage = readFileSync(
   new URL('../app/pages/workspace/tournaments/[id]/rosters.vue', import.meta.url),
   'utf8',

@@ -1,3 +1,4 @@
+import { featureSource } from './support/sources.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -44,13 +45,13 @@ test('single-flight lock releases after rejection or navigation cancellation', a
 });
 
 test('version selector restores its value before waiting and route guards preserve cancellation', () => {
-  const page = readFileSync(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url), 'utf8');
+  const page = featureSource(new URL('../app/pages/workspace/tournaments/[id]/index.vue', import.meta.url));
   const handler = page.slice(page.indexOf('async function onVersionChange'), page.indexOf('onBeforeRouteLeave('));
   assert.ok(handler.indexOf('select.value = selectedVersionId.value') < handler.indexOf('await confirm('));
   assert.ok(handler.indexOf('if (!effect.proceed)') < handler.indexOf('selectedVersionId.value = next'));
   assert.match(page, /onBeforeRouteLeave\(async \(to\) =>/);
   assert.match(page, /if \(!effect.proceed\) return false;/);
-  const match = readFileSync(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url), 'utf8');
+  const match = featureSource(new URL('../app/pages/workspace/matches/[id].vue', import.meta.url));
   assert.match(match, /return confirm\(\{ title: t\('confirm.leaveMatch.title'\)/);
   assert.match(match, /closeResolutionDecision\(\{ \.\.\.closeInput, confirmed: true \}\)/);
   const resolutionHandler = match.slice(match.indexOf('async function onResolutionChange'), match.indexOf('const eventSubstitutionTeam'));
