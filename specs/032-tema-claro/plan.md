@@ -1,6 +1,6 @@
 # Plan 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Propuesto para revisión.** Spec/clarificación aprobadas por el usuario (D1–D4 A); plan y tareas aún no aprobados para implementar. Solo documentación en esta entrega. No backend, API, permisos, datos de negocio, dependencias ni política CSP nuevos.
+Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A (T1–T3) autorizado; PR B/C aún no implementados. Spec/clarificación aprobadas (D1–D4 A). No backend, API, permisos, datos de negocio, dependencias ni política CSP nuevos.
 
 ## 1. Alcance e interfaz
 
@@ -40,7 +40,7 @@ Rutas relativas a `frontend/`, salvo documentación. Nombres nuevos propuestos, 
 Cookie propuesta `bc_theme`: valores `dark|light|system`, `path=/`, `maxAge=31536000`, SameSite=Lax, Secure fuera de desarrollo, sin Domain y accesible a cliente para la elección. No HttpOnly: no es credencial. Ausencia representada por null, no por escribir `dark` como default.
 
 - Leer/normalizar no escribe, no repara valores inválidos, no refresca la duración ni emite Set-Cookie de apariencia al visitar. Solo `setTheme` llamado por una elección explícita modifica la cookie. Elegir Oscuro por primera vez también es una elección persistible.
-- `useState` de Nuxt por solicitud y payload de hidratación, nunca variable mutable de módulo. `useCookie` es la única persistencia; si falla, el estado reactivo permite seguir navegando y una visita nueva vuelve al oscuro. No fallback localStorage silencioso.
+- `useState` de Nuxt por solicitud y payload de hidratación, nunca variable mutable de módulo. La única persistencia es cookie: `useCookie` readonly sin default para leer y escritura síncrona explícita mediante document.cookie dentro de setTheme, atrapando excepciones. Esto evita escrituras automáticas del lector/refresh y permite recuperar un bloqueo real del setter sin depender de un watcher asíncrono. Si falla, el estado reactivo permite seguir navegando y una visita nueva vuelve al oscuro. No fallback localStorage silencioso.
 - `app.vue` obtiene la preferencia antes de renderizar y ejecuta `useHead` reactivo: `<html data-theme="dark|light|system">`. Los componentes consumen el mismo estado; no cambian clases del body en mounted ni usan un script anti-FOUC adicional.
 - Root sin preferencia o `dark`: valores oscuros originales. `light`: overrides claros. `system`: mismos overrides mediante `prefers-color-scheme: light`, con fallback CSS oscuro. El atributo y la etiqueta Sistema son idénticos en SSR/cliente: no se serializa una suposición del servidor sobre matchMedia.
 - `color-scheme` es dark/light para elecciones explícitas; para Sistema se resuelve por la misma media query antes del pintado. Los cambios del sistema solo afectan la preferencia Sistema.

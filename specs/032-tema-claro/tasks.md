@@ -1,20 +1,23 @@
 # Tareas 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Propuestas para revisión**, no implementación autorizada. Spec y D1–D4 aprobadas por el usuario; las diez tareas siguen pendientes. Node 24/pnpm 12.12.1. Todos los comandos siguientes son previstos, no resultados ejecutados; nombres nuevos corresponden a archivos definidos por el plan.
+Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** Implementación de PR A autorizada; B/C pendientes. Node 24/pnpm 12.12.1. Comandos de tareas pendientes son previstos, no resultados ejecutados.
 
 ## PR A — Paletas y resolución SSR (T1–T3)
 
-- [ ] **T1. Preferencia pura y descriptores de tema.** RF-002/003/005/006/013/014/015. 25 min.
+- [x] **T1. Preferencia pura y descriptores de tema.** RF-002/003/005/006/013/014/015. 25 min.
   - Hecho cuando: tests primero en rojo y luego verdes para ausencia/null/inválido, dark/light/system, metadatos y fallback oscuro; lógica pura sin reloj/DOM/red, constante anual y sin escritura al normalizar. Referencia frontend `8993a393` y su hash de árbol registrados para T7; ninguna aprobación de implementación se infiere del plan.
   - Comando: `cd frontend && pnpm test`.
+  - Evidencia: test primero rojo por módulo ausente; `node --test --experimental-strip-types tests/theme.test.ts`: 3 tests, 3 pass, 0 fail. Base main `8993a393`; rama 2 commits delante/0 detrás al comenzar.
 
-- [ ] **T2. Paletas y espejo de dos temas, contraste completo.** RF-008/009/012; RNF-001/003. Depende de T1. 30 min.
+- [x] **T2. Paletas y espejo de dos temas, contraste completo.** RF-008/009/012; RNF-001/003. Depende de T1. 30 min.
   - Hecho cuando: test rojo previo; PALETTE oscura compatible e idéntica, nueva clara y roles de isla espejados por scope; 29 pares oscuros existentes y los 158 claros identificados se recalculan con umbrales intactos. Guardián contempla hex/rgb/hsl, sin nuevos literales fuera de tokens ni exclusiones genéricas; CSS claro no altera reglas efectivas oscuras. Inputs inválidos/composición y scope faltante o extra fallan.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck`.
+  - Evidencia: test rojo por themeContrast ausente; suite focal theme-palette/design-contrast/design-scales: 9 pass, 0 fail; 29 pares oscuros y 158 claros calculados, espejo por scope y guardián hsl/hsla sin exclusiones nuevas.
 
-- [ ] **T3. Integrar cookie anual, head SSR y aplicación reactiva.** RF-002–006/013–015; RNF-004/005. Depende de T2. 30 min.
+- [x] **T3. Integrar cookie anual, head SSR y aplicación reactiva.** RF-002–006/013–015; RNF-004/005. Depende de T2. 30 min.
   - Hecho cuando: test rojo previo; cookie bc_theme solo al elegir, default null sin Set-Cookie de apariencia al visitar/normalizar; SameSite/path/Secure/maxAge definidos. SSR entrega html data-theme y head correctos, sin estado mutable entre solicitudes; CSS resuelve Sistema sin depender de mounted. color-scheme/theme-color coherentes; sin meta fijo duplicado, fetch, script anti-FOUC o cambio CSP. Bloqueo de persistencia mantiene estado UI sin romper navegación.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build`.
+  - Evidencia: cuatro tests primero rojos por composable/integración ausentes, después verdes; regresión adicional de metadatos tras hidratar y fallback de isla Sistema. Suite completa 883 tests/882 pass/1 skip/0 fail; typecheck/lint/build/typecheck:e2e salida 0 y operation-flow 2 passed (42.6s). SSR curl, CSS sin JavaScript, seis casos hidratados y ocho pares RGBA finales de 0 píxeles en `verificacion-pr-a.md`; no equivalen al cierre de T7–T10.
 
 ## PR B — Selector y superficies claras (T4–T6)
 
