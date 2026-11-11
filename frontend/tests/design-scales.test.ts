@@ -7,8 +7,6 @@ import { BREAKPOINTS, CSS_TOKENS, RADII, SPACING, TEXT_SIZES } from '../app/util
 const ROOT = new URL('../app/', import.meta.url).pathname;
 
 export const PENDING_MIGRATION = [
-  ['pages/workspace/matches/[id].vue', 'opción 3: operación'],
-  ['components/match/', 'opción 3: secciones y CSS de operación pendientes de T8'],
   ['components/RulesEditor.vue', 'opción 3: editor de reglas'],
   ['components/rules/', 'opción 3: asistentes de reglas'],
   ['components/TeamsWizard.vue', 'opción 3: asistente de equipos'],

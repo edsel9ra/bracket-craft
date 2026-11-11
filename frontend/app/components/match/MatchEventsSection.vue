@@ -19,7 +19,7 @@ const discardDraft = () => emit('discardDraft');
 </script>
 
 <template>
-<section class="panel panel-wide">
+<section class="panel panel-wide" id="seccion-eventos" tabindex="-1">
              <div class="panel-heading">
                <div><p class="eyebrow">04 · {{ t('match.events') }}</p><h2>{{ t('match.buildReport') }}</h2></div>
                <div class="draft-status-group">

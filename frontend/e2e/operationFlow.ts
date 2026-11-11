@@ -1105,9 +1105,10 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         .first();
       await expect(link).toBeVisible({ timeout: MAX_MS.initialConnected });
       await link.click();
-      const heading = page.getByRole('heading', { level: 1 });
-      await expect(heading).toContainText(homeTeam.name);
-      await expect(heading).toContainText(awayTeam.name);
+      const matchBar = page.getByRole('region').filter({ has: page.getByText(homeTeam.name, { exact: true }) });
+      await expect(matchBar).toContainText(homeTeam.name);
+      await expect(matchBar).toContainText(awayTeam.name);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
       await expect(page.getByText('Formato 7v7 · alineación sin esquema táctico', { exact: true })).toBeVisible();
     });
     record('operation-format-warning');

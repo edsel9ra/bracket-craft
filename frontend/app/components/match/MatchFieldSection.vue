@@ -24,7 +24,7 @@ const removeOfficial = (official: Official) => emit('removeOfficial', official);
 </script>
 
 <template>
-<section class="panel panel-wide">
+<section class="panel panel-wide" id="seccion-campo" tabindex="-1">
             <div class="panel-heading">
               <div><p class="eyebrow">01 · {{ t('match.matchReport') }}</p><h2>{{ t('match.prepareField') }}</h2></div>
               <span class="muted-note">{{ t('match.segments', { count: operation.segments.length }) }}</span>

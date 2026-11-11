@@ -23,12 +23,14 @@ Comandos en `frontend/` con node:24 y pnpm 12.12.1.
   - Capturas completas a 1440×900 y 390×844: seis pares con 0 píxeles distintos, mismos textos/campos y ningún error de página. Alturas antes=después: programado 3223/6606 px, en vivo 3099/4675 px, cerrado 3301/7109 px (escritorio/móvil). Dos baseline de escritorio se estabilizaron esperando red/fuentes antes de repetir la comparación, sin cambios de CSS. Rutas: `/home/ubuntu/ui-audit/030-b-{before,after}/`, `030-b-comparison.json`, `030-b-review-final.png`.
 
 **PR C**
-- [ ] **T6. `MatchBar` + `matchScoreDisplay`**: marcador, estado y nombres sin partir. RF-004, RF-005, RF-008
+- [x] **T6. `MatchBar` + `matchScoreDisplay`**: marcador, estado y nombres sin partir. RF-004, RF-005, RF-008
   - Hecho cuando: los tests puros pasan y las capturas cubren los estados programado, en vivo y cerrado, y un nombre largo.
-- [ ] **T7. `MatchSectionNav` + `MatchActionBar` + `primaryAction`**, con scroll-padding y ocultación con el teclado virtual. RF-006, RF-007, RNF-003, RNF-004
+- [x] **T7. `MatchSectionNav` + `MatchActionBar` + `primaryAction`**, con scroll-padding y ocultación con el teclado virtual. RF-006, RF-007, RNF-003, RNF-004
   - Hecho cuando: los tests puros y de ARIA pasan, la medición muestra una distancia a la acción ≤ 60 % del inventario y el E2E local pasa.
-- [ ] **T8. Escalas en la operación**: se quita de `PENDING_MIGRATION`. RF-013
+- [x] **T8. Escalas en la operación**: se quita de `PENDING_MIGRATION`. RF-013
   - Hecho cuando: el guardián pasa, y también `lint` y `build`.
+  - PR C: cabecera 101 px escritorio/125 px móvil; MatchBar 70/66 px y visible al desplazarse. Barra móvil Y=778 (botón Y=791), frente a guardar planilla Y=2521 y cerrar acta Y=4520 del inventario; en terminal no hay acción. Nombres largos creados por API, comprobados con ellipsis/title/nombre completo y retirados. Se conservan el orden y los handlers; el PUT de planilla desde la barra y desde la sección tiene el mismo cuerpo, también al rechazarlo. Los eventos pendientes llevan al cierre sin enviar ni cerrar (adaptación autorizada en plan §3); todas las acciones exigen el permiso operativo existente. Offset sticky medido para convivir con la navegación global; fallback CSS para las anclas sin JS. IntersectionObserver + actualización pasiva por scroll y tratamiento del final del documento mantienen aria-current.
+  - Node 24.22.2/pnpm 12.12.1: 847 tests (845 pass, 2 skip), typecheck, lint, build y typecheck:e2e; operation-flow local 2 passed. El E2E comprueba ahora los mismos dos equipos en la región del marcador y un único h1, no en el antiguo titular. Se mantiene la advertencia de formato en su propio span. Axe: cero violaciones en tres estados × dos resoluciones; Tab/Enter, foco y ocultación al editar verificados. Sin nuevas DESIGN_EXCEPTIONS; los cinco directorios/archivos de asistentes siguen pendientes hasta T9. Evidencias: `/home/ubuntu/ui-audit/030-c-{before,after,pr}/`, `030-c-final-{checks,operation-flow}.log`, `axe-030-c.json`, `030-c-{measurements,keyboard,tab,run-parity,cleanup}.*`, `030-c-nearest-steps.json`.
 
 **PR D**
 - [ ] **T9. Escalas en los asistentes** (solo estilos): `PENDING_MIGRATION` queda vacía. RF-013, RF-014

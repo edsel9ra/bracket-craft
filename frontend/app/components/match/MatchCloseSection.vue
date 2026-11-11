@@ -16,7 +16,7 @@ const closeMatch = () => emit('closeMatch');
 </script>
 
 <template>
-<section class="panel close-panel panel-wide" @focusin="beginClose">
+<section class="panel close-panel panel-wide" id="seccion-cierre" tabindex="-1" @focusin="beginClose">
             <div class="panel-heading"><div><p class="eyebrow">05 · {{ t('match.result') }}</p><h2>{{ t('match.closeReport') }}</h2></div><span class="muted-note">{{ rulesDefaults.extra_time_enabled ? t('match.overtimeEnabled') : t('match.noOvertime') }}</span></div>
              <div class="score-form">
                <p class="muted-note close-resolution full-width">{{ t('match.closeUsesResolution', { resolution: resolutionLabel(resolution) }) }}<template v-if="resolution !== 'walkover'"> · {{ t('match.resolutionMaximum', { max: resolutionLimits.maxMinute }) }}</template></p>

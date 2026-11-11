@@ -8,7 +8,7 @@ const { t, teamRosters, teamRosterLink } = props.context;
 </script>
 
 <template>
-<section class="panel">
+<section class="panel" id="seccion-plantillas" tabindex="-1">
             <div class="panel-heading"><div><p class="eyebrow">02 · {{ t('match.roster') }}</p><h2>{{ t('match.roster') }}</h2></div></div>
             <p class="muted-note">{{ t('match.rosterManagedInRosters') }}</p>
             <ul class="roster-links">
