@@ -12,7 +12,7 @@ const onResolutionChange = (event: Event) => emit('onResolutionChange', event);
 </script>
 
 <template>
-<section class="panel panel-wide resolution-panel" aria-labelledby="planned-resolution-heading">
+<section class="panel panel-wide resolution-panel" id="seccion-resolucion" tabindex="-1" aria-labelledby="planned-resolution-heading">
           <div class="panel-heading">
             <div><p class="eyebrow">{{ t('match.plannedResolution') }}</p><h2 id="planned-resolution-heading">{{ t('match.resolution') }}</h2></div>
             <span class="muted-note">{{ t('match.plannedResolutionHint') }}</span>

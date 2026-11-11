@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { FORMATION_OPTIONS } from '~/constants/formations';
+import Button from '~/components/ui/Button.vue';
 import { positionLabel } from '~/utils/positions';
 
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
@@ -17,8 +18,8 @@ const toggleLineupPublication = (teamId: string) => emit('toggleLineupPublicatio
 </script>
 
 <template>
-<section class="panel panel-wide">
-               <div class="panel-heading"><div><p class="eyebrow">03 · {{ t('match.roster') }}</p><h2>{{ t('match.definePlayers') }}</h2></div><button v-if="canOperateMatch" class="button-primary" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="saveLineup">{{ busyAction === 'lineup' ? t('match.savingLineup') : t('match.saveLineup') }}</button></div>
+<section class="panel panel-wide" id="seccion-planilla" tabindex="-1">
+               <div class="panel-heading"><div><p class="eyebrow">03 · {{ t('match.roster') }}</p><h2>{{ t('match.definePlayers') }}</h2></div><Button v-if="canOperateMatch" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="saveLineup">{{ busyAction === 'lineup' ? t('match.savingLineup') : t('match.saveLineup') }}</Button></div>
               <p class="panel-description">{{ t('match.selectRoles', { segment: selectedSegment?.segment_number || t('match.activeSegment') }) }}</p>
               <p v-if="!selectedSegmentIsActive" class="segment-warning">{{ t('match.noActiveSegment') }}</p>
              <div class="formation-config-grid">

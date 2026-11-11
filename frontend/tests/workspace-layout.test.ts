@@ -80,8 +80,9 @@ test('the migrated Workspace pages delegate their only h1 to PageHeader', () => 
     assert.equal(feature.match(/<PageHeader\b/g)?.length, 1, page);
     assert.doesNotMatch(feature, /<h1\b/, page);
   }
-  // PR B conserva la cabecera y su h1 sin migrar la presentación de PR C.
-  assert.equal(featureSource('pages/workspace/matches/[id].vue').match(/<h1\b/g)?.length, 1);
+  const operation = featureSource('pages/workspace/matches/[id].vue');
+  assert.equal(operation.match(/<PageHeader\b/g)?.length, 1);
+  assert.doesNotMatch(operation, /<h1\b/);
 });
 
 test('the setup orchestrator and extracted files respect their line budgets', () => {
@@ -110,8 +111,8 @@ test('the operation orchestrator and extracted files respect their line budgets'
   assert.ok(page.indexOf('await useAsyncData') < page.indexOf('onMounted(context.mountOperation)'));
   assert.ok(page.indexOf('loadPersistedDraft();') < page.indexOf('onBeforeUnmount(context.unmountOperation)'));
   for (const file of [
-    ...['useMatchOperation', 'useMatchOperationState', 'useMatchLineup', 'useMatchEvents', 'useMatchEventsDraft', 'useMatchClose'].map((name) => `composables/${name}.ts`),
-    ...['MatchOperationHeader', 'MatchResolutionPanel', 'MatchFieldSection', 'MatchRosterLinks', 'MatchLineupSection', 'MatchEventsSection', 'MatchCloseSection'].map((name) => `components/match/${name}.vue`),
+    ...['useMatchOperation', 'useMatchOperationState', 'useMatchLineup', 'useMatchEvents', 'useMatchEventsDraft', 'useMatchClose', 'useMatchOperationView'].map((name) => `composables/${name}.ts`),
+    ...['MatchOperationHeader', 'MatchResolutionPanel', 'MatchFieldSection', 'MatchRosterLinks', 'MatchLineupSection', 'MatchEventsSection', 'MatchCloseSection', 'MatchBar', 'MatchSectionNav', 'MatchActionBar'].map((name) => `components/match/${name}.vue`),
     'components/match/types.ts',
     'components/match/operation.css',
   ]) assert.ok(source(file).split('\n').length <= 600, file);
@@ -146,4 +147,39 @@ test('featureSource handles empty source and reports invalid entries and missing
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('operation navigation preserves section order, native anchor fallback and observer cleanup', () => {
+  const nav = source('components/match/MatchSectionNav.vue');
+  const files = ['MatchResolutionPanel', 'MatchFieldSection', 'MatchRosterLinks', 'MatchLineupSection', 'MatchEventsSection', 'MatchCloseSection'];
+  const ids = ['resolucion', 'campo', 'plantillas', 'planilla', 'eventos', 'cierre'];
+  let previous = -1;
+  for (const [index, id] of ids.entries()) {
+    assert.ok(nav.indexOf(`seccion-${id}`) > previous);
+    previous = nav.indexOf(`seccion-${id}`);
+    assert.ok(source(`components/match/${files[index]}.vue`).includes(`id="seccion-${id}"`));
+  }
+  assert.ok(nav.includes(':href="`#${id}`"'));
+  assert.ok(nav.includes("current === id ? 'location' : undefined"));
+  assert.match(nav, /IntersectionObserver/);
+  assert.match(nav, /typeof IntersectionObserver === 'undefined'/);
+  assert.match(nav, /observer\?\.disconnect\(\)/);
+  assert.doesNotMatch(nav, /@click\.prevent/);
+});
+
+test('the mobile action delegates only lineup saving, focuses closing and releases focus listeners', () => {
+  const bar = source('components/match/MatchActionBar.vue');
+  const view = source('composables/useMatchOperationView.ts');
+  assert.match(bar, /@media \(width < 760px\)/);
+  assert.match(bar, /position: fixed/);
+  assert.match(bar, /action && !textFocused/);
+  assert.match(bar, /element\.isContentEditable/);
+  assert.match(bar, /removeEventListener\('focusin'/);
+  assert.match(bar, /removeEventListener\('focusout'/);
+  assert.match(view, /context\.saveLineup\(\)/);
+  assert.match(view, /context\.selectedSegmentIsActive\.value/);
+  assert.match(view, /control\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(view, /scrollIntoView\(\{ block: 'start', behavior: 'auto' \}\)/);
+  assert.doesNotMatch(view, /context\.closeMatch\(|request\(|saveEvents/);
+  assert.match(source('components/match/operation.css'), /padding-bottom: calc\(var\(--operation-action-height/);
 });

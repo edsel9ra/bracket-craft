@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { useMatchOperation } from '~/composables/useMatchOperation';
 import MatchOperationHeader from '~/components/match/MatchOperationHeader.vue';
+import MatchBar from '~/components/match/MatchBar.vue';
+import MatchSectionNav from '~/components/match/MatchSectionNav.vue';
+import MatchActionBar from '~/components/match/MatchActionBar.vue';
+import { useMatchOperationView } from '~/composables/useMatchOperationView';
 import MatchResolutionPanel from '~/components/match/MatchResolutionPanel.vue';
 import MatchFieldSection from '~/components/match/MatchFieldSection.vue';
 import MatchRosterLinks from '~/components/match/MatchRosterLinks.vue';
@@ -13,6 +17,7 @@ import type { MatchOperation } from '~/components/match/types';
 definePageMeta({ middleware: 'auth' });
 
 const context = useMatchOperation();
+const { action, actionDisabled, activateAction } = useMatchOperationView(context);
 const { auth, t, matchId, operation, loading, error, actionError, openingBlocked, busyAction, match, isTerminal, canOperateMatch, workspaceBreadcrumbs, tournamentContext, operationChecklist, loadPersistedDraft, failureMessage, redirectOnSessionFailure, applyOperation, fetchOperation, retryOperation, createSegment, teamRosterLink, restoreSelectedSegment } = context;
 
 const { data: initialOperation, error: initialOperationError } = await useAsyncData<MatchOperation>(
@@ -47,7 +52,10 @@ onBeforeUnmount(context.unmountOperation);
     :tournament="tournamentContext"
   >
    <main id="main-content" class="operation-shell">
-    <MatchOperationHeader :context="context" @retry-realtime="context.realtime.retry()" />
+    <MatchOperationHeader :context="context" />
+    <MatchBar v-if="match" :context="context" @retry-realtime="context.realtime.retry()" />
+    <MatchSectionNav v-if="operation && match" />
+    <MatchActionBar v-if="operation && match" :action="action" :disabled="actionDisabled" :busy="Boolean(busyAction)" @activate="activateAction" />
 
     <section id="operacion" class="container operation-content">
       <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('match.loadingOperation') }}</div>
