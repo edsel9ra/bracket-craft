@@ -75,4 +75,8 @@ onBeforeUnmount(() => {
 .ui-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); }
 @keyframes confirm-in { from { opacity: 0; transform: translateY(var(--space-1)); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .ui-confirm[open] { animation: none; } }
+:root[data-theme="light"] .ui-confirm::backdrop { background: color-mix(in srgb, var(--color-shadow) 32%, transparent); opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .ui-confirm::backdrop { background: color-mix(in srgb, var(--color-shadow) 32%, transparent); opacity: 1; }
+}
 </style>

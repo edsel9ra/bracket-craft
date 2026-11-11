@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ThemeSwitcher from '~/components/ThemeSwitcher.vue';
 import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 import { safeInternalRedirect } from '~/utils/navigation';
 import {
@@ -198,7 +199,8 @@ onMounted(() => {
             </select>
             <span v-else class="workspace-organization-name">{{ organizationName }}</span>
           </div>
-          <LanguageSwitcher :inline="true" />
+          <LanguageSwitcher id="workspace-language-desktop" :inline="true" />
+          <ThemeSwitcher :inline="true" />
           <div class="workspace-account">
             <button
               class="workspace-account-button"
@@ -258,7 +260,10 @@ onMounted(() => {
               </select>
               <strong v-else>{{ organizationName }}</strong>
             </label>
-            <LanguageSwitcher :inline="true" />
+            <div class="workspace-mobile-preferences">
+              <LanguageSwitcher id="workspace-language-mobile" :inline="true" />
+              <ThemeSwitcher :inline="true" />
+            </div>
             <div class="workspace-mobile-account">
               <span>{{ t('shell.account') }}</span>
               <NuxtLink to="/account/google" class="workspace-mobile-account-link">{{ t('google.link.title') }}</NuxtLink>
@@ -344,6 +349,8 @@ onMounted(() => {
 .workspace-mobile-link { padding: var(--space-3) var(--space-3); border-radius: var(--radius-sm); color: var(--color-muted); font-size: var(--text-md); text-decoration: none; }
 .workspace-mobile-link:hover, .workspace-mobile-link[aria-current='page'] { background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-accent); }
 .workspace-mobile-controls { display: grid; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.workspace-mobile-preferences { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.workspace-mobile-preferences :deep(.language-switcher-inline label) { display: inline; }
 .workspace-mobile-organization { display: grid; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-xs); }
 .workspace-mobile-organization span { letter-spacing: 0.08em; text-transform: uppercase; }
 .workspace-mobile-organization strong { color: var(--color-ink); font-size: var(--text-md); }
@@ -373,6 +380,7 @@ onMounted(() => {
 .workspace-tournament-links a:hover, .workspace-tournament-links a.active { background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-accent); }
 .workspace-tournament-select { display: none; width: 100%; padding: var(--space-3) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-canvas); color: var(--color-ink); font: inherit; font-size: var(--text-sm); }
 @media (max-width: 1000px) {
+  .workspace-desktop-controls :deep(.language-switcher label), .workspace-desktop-controls :deep(.theme-switcher label) { display: none; }
   .workspace-topbar-inner { gap: var(--space-4); }
   .workspace-primary-nav { gap: 0; }
   .workspace-nav-link, .workspace-account-button { padding-inline: var(--space-2); }

@@ -9,6 +9,16 @@ Manual operativo alineado con el comportamiento real del producto. Complementa `
 - La administración global vive en `/admin` y es independiente; no edita resultados ni versiones publicadas.
 - La portada y el detalle de torneo son públicos: `/` y `/tournaments/{id}`. No requieren sesión.
 
+### Apariencia e idioma
+
+El selector **Tema** está junto a **Idioma**: en el grupo flotante de las vistas públicas y en la cabecera del Workspace o su menú móvil. El flotante público puede apilarse hacia arriba para no tapar contenido.
+
+- **Oscuro** es la apariencia inicial cuando no has elegido ninguna.
+- **Claro** mantiene siempre la paleta clara.
+- **Sistema** sigue la apariencia clara u oscura de tu dispositivo, también cuando cambia mientras usas la aplicación.
+
+En inglés las opciones son **Dark**, **Light** y **System**. Puedes usar el selector con el teclado. El cambio no recarga la página ni descarta tus formularios. La elección se guarda durante un año en una cookie opcional y se aplica ya al recargar; idioma y tema son preferencias independientes. Si el navegador bloquea esa cookie, el cambio funciona en la sesión actual, pero no se garantiza al recargar. El campo sigue verde en ambos temas y las fotos y escudos conservan su imagen original.
+
 ## 2. Crear un torneo
 
 1. En `/workspace`, crea un torneo con nombre, slug y configuración inicial.

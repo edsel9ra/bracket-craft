@@ -113,4 +113,8 @@ const removeCrest = (team: TeamSummary) => emit('remove-crest', team);
 .photo-picker:hover:not(:has(input:disabled)) { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent); }
 .photo-picker:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
 .photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+:root[data-theme="light"] .photo-picker:has(input:disabled) { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .photo-picker:has(input:disabled) { opacity: 1; }
+}
 </style>

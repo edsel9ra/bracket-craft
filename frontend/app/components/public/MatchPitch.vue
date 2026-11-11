@@ -141,4 +141,8 @@ function playerStyle(player: LineupPlayer, side: 'home' | 'away'): Record<string
 .bench-team-away { text-align: right; }
 @media (max-width: 480px) { .pitch { aspect-ratio: 0.92 / 1; } .pitch-player { width: 49px; } .pitch-player img, .player-avatar { width: 29px; height: 29px; line-height: 25px; } .pitch-player .player-name { max-width: 55px; font-size: 0.54rem; } }
 @media (max-width: 480px) { .bench-grid { grid-template-columns: 1fr; } .bench-team-away { text-align: left; } }
+:root[data-theme="light"] .pitch { --color-ink: var(--color-island-ink); --color-accent: var(--color-island-accent); --color-warning: var(--color-island-warning); --color-canvas: var(--color-pitch-player); --color-surface: var(--color-pitch-player); --color-accent-ink: var(--color-pitch-player); }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .pitch { --color-ink: var(--color-island-ink); --color-accent: var(--color-island-accent); --color-warning: var(--color-island-warning); --color-canvas: var(--color-pitch-player); --color-surface: var(--color-pitch-player); --color-accent-ink: var(--color-pitch-player); }
+}
 </style>

@@ -257,4 +257,8 @@ button:disabled { cursor: wait; opacity: 0.6; }
  .auth-secondary-action { width: 100%; justify-content: center; min-height: 44px; font-size: var(--text-md); }
  .back-link { text-decoration: none; }
 @media (max-width: 760px) { .auth-card { padding: var(--space-6); } }
+:root[data-theme="light"] button:disabled { opacity: 1; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] button:disabled { opacity: 1; }
+}
 </style>

@@ -21,15 +21,16 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** P
 
 ## PR B — Selector y superficies claras (T4–T6)
 
-- [ ] **T4. Selector accesible ES/EN y ubicación limitada a R.** RF-001/004/007/009; RNF-001/003. Depende de T3. 30 min.
-  - Hecho cuando: pruebas rojas antes del control; select etiquetado/IDs únicos/teclado junto al idioma en fila de cabecera o menú público y Workspace/admin; mismo estado reactivo y sin cambio de ruta/foco. LY-1 aprobada el 2026-11-11 permite reordenar organización/idioma/tema/cuenta dentro de la fila y el menú móvil abierto completo, sin mover nada fuera de cabecera. Etiqueta coherente con «Idioma», estilo propio y opciones Oscuro/Claro/Sistema ES/EN. Registrar cajas/R antes del diff a 1440/390/800, ES/EN: fila de preferencias desktop/tableta, menú completo móvil abierto y R vacía móvil cerrado. Si algo exterior se mueve, parar e informar, sin ampliar R. Validación final T7/T9.
+- [x] **T4. Selector accesible ES/EN y ubicación limitada a R.** RF-001/004/007/009; RNF-001/003. Depende de T3. 30 min.
+  - Hecho cuando: pruebas rojas antes del control; select etiquetado/IDs únicos/teclado junto al idioma en flotante público y fila de cabecera o menú Workspace/admin; mismo estado reactivo y sin cambio de ruta/foco. LY-1 aprobada y precisada el 2026-11-11 permite reordenar organización/idioma/tema/cuenta dentro de la fila y el menú móvil abierto completo, sin mover nada fuera de R. Etiqueta coherente con «Idioma», estilo propio y opciones Oscuro/Claro/Sistema ES/EN. Registrar cajas/R antes del diff a 1440/390/800, ES/EN: grupo flotante público en todos los anchos; fila Workspace desktop/tableta, menú completo móvil abierto y R vacía móvil cerrado. Si algo exterior se mueve, parar e informar, sin ampliar R. Validación final T7/T9.
+  - Resultado PR B: tests/teclado/IDs ES/EN y 14 pares RGBA a 0 fuera de las R congeladas; ver `verificacion-pr-b.md`.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T5. Iniciales, disabled, backdrops y superficies compartidas claras.** RF-008/010/011; RNF-001/002. Depende de T4. 30 min.
+- [x] **T5. Iniciales, disabled, backdrops y superficies compartidas claras.** RF-008/010/011; RNF-001/002. Depende de T4. 30 min.
   - Hecho cuando: test rojo previo; claro usa iniciales oscuras legibles, texto disabled opaco y velos/diálogos claros sin alfa duplicada; imágenes/URLs sin inversión y acceso/foco/Escape intactos. Revisados todos los consumidores con opacidad, incluidas reglas/asistentes/operación/admin/plantillas. Hover/autofill/selección/tablas/sticky/pistas siguen el tema; ningún ajuste de estos estados afecta oscuro. Render real en T9.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T6. Isla verde y gráficos sin cambios deportivos.** RF-008/009/010/012. Depende de T5. 25 min.
+- [x] **T6. Isla verde y gráficos sin cambios deportivos.** RF-008/009/010/012. Depende de T5. 25 min.
   - Hecho cuando: test rojo previo; MatchPitch/TeamPitch conservan césped/geometría y usan roles claros propios, visitante #ffd18a solo en claro y ámbar original en oscuro. Contenedor/banco/textual claros; mismo contenido y segmento, sin pérdida de nombres ni fotos. SVG de bracket conserva currentColor, pares, rondas y geometría. Pares de césped y trazos alfa pasan; no cambiar referencias para ocultar diferencias.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck`.
 
@@ -56,4 +57,4 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** P
 
 - Orden PR A → B → C; agrupación propuesta, no autorización para implementarla o abrirlos. En cada tarea de código: tests rojos primero, cambio mínimo, checks y solo entonces checkbox. Suites existentes siempre conservadas.
 - Los gates de CI y revisión humana no se sustituyen por capturas locales; no dar por ejecutadas las comprobaciones propuestas aquí. PR A/B no declaran cerrada la aceptación global de C.
-- R es la excepción visual LY-1 aprobada el 2026-11-11, no una excepción constitucional ni permiso para cambiar contenido/API o desplazar controles fuera de fila/menú. Si algo más se mueve fuera de la cabecera, parar e informar antes de proceder.
+- R es la excepción visual LY-1 aprobada y precisada el 2026-11-11: flotante público en todos los anchos, fila de preferencias Workspace escritorio/tableta y menú móvil abierto; Workspace móvil cerrado sin R. Público crece sin tapar texto esencial/controles y se apila hacia arriba si no cabe a 390 px; idioma no se traslada a cabecera pública. No es excepción constitucional ni permiso para cambiar contenido/API. Si aparece un cambio fuera de R, parar e informar.
