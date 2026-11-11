@@ -6,7 +6,7 @@ Spec: `specs/030-rediseno-workspace/spec.md` (aprobada el 2026-11-11). Solo fron
 
 LY-1: en `rosters.vue`, `calendar.vue` y `members.vue` la lista va antes del formulario; PageHeader incluye un acceso de ancla con foco al primer campo, bajo las condiciones actuales de acceso y respetando reduced-motion.
 
-Encargo de PR B: la división T4–T5 usa props hacia abajo y eventos hacia arriba, en lugar del `provide/inject` previsto inicialmente. Se conserva la cabecera actual en `MatchOperationHeader` y el CSS scoped compartido en `components/match/operation.css`, sin cambiar presentación; `PageHeader` y el rediseño de la operación quedan para PR C. `useMatchOperationState`, `useMatchLineup`, `useMatchEvents`, `useMatchEventsDraft` y `useMatchClose` mantienen cada archivo por debajo de 600 líneas.
+Desviación de PR B (2026-11-11): la división T4–T5 usa props hacia abajo y eventos hacia arriba, en lugar del `provide/inject` previsto inicialmente. Se conserva la cabecera actual en `MatchOperationHeader` y el CSS scoped compartido en `components/match/operation.css`, sin cambiar presentación; `PageHeader` y el rediseño de la operación quedan para PR C. `useMatchOperationState`, `useMatchLineup`, `useMatchEvents`, `useMatchEventsDraft` y `useMatchClose` mantienen cada archivo por debajo de 600 líneas.
 
 | Archivo | Responsabilidad | RF |
 |---|---|---|
@@ -16,7 +16,7 @@ Encargo de PR B: la división T4–T5 usa props hacia abajo y eventos hacia arri
 | `tests/*.test.ts` que leen la operación (14) o la configuración (9) | Pasan de `readFileSync(page)` a `featureSource(page)`, con las mismas aserciones. | RNF-005 |
 | `composables/useTournamentSetup.ts` + `components/workspace/setup/{SetupHeader,SetupChecklist,SetupRules,SetupTeams,SetupStages}.vue` | División de `tournaments/[id]/index.vue`. El composable concentra la carga, las versiones, el guardado, la publicación, el borrador y el avance de sección; los componentes reciben props, emiten eventos y montan los asistentes sin cambios. La página queda como orquestador de ≤ 250 líneas. | RF-011, RF-012 |
 | `composables/useMatchOperation.ts` (+ `useMatchLineup.ts` y `useMatchEventsDraft.ts` si hace falta para ≤ 600) | Script de la operación: tipos de transporte, estado, `fetchOperation`/`refreshOperation`, `runAction`, tiempo real, borrador local, formularios y errores por campo. Reutiliza `utils/` tal cual. | RF-010, RF-012 |
-| `components/match/{MatchResolutionPanel,MatchFieldSection,MatchRosterLinks,MatchLineupSection,MatchEventsSection,MatchCloseSection}.vue` | Una sección del acta por componente, con la plantilla y los estilos actuales. Reciben el contexto por props tipadas y emiten las acciones a la página, según el encargo de PR B. | RF-010 |
+| `components/match/{MatchResolutionPanel,MatchFieldSection,MatchRosterLinks,MatchLineupSection,MatchEventsSection,MatchCloseSection}.vue` | Una sección del acta por componente, con la plantilla y los estilos actuales. Reciben el contexto por props tipadas y emiten las acciones a la página (props hacia abajo, eventos hacia arriba). | RF-010 |
 | `components/match/MatchBar.vue` | Barra de partido `position: sticky` (escudo, nombre, marcador y estado), conexión en tiempo real y segmento o minuto. Los nombres van en una línea con `text-overflow: ellipsis`, `title` y el nombre completo accesible. | RF-004, RF-005, RF-008 |
 | `components/match/MatchSectionNav.vue` | `nav` con nombre accesible y enlaces de ancla a `#seccion-*`. `aria-current="location"` sigue la sección visible mediante `IntersectionObserver` (sin JS, los anclajes siguen funcionando). | RF-006 |
 | `components/match/MatchActionBar.vue` | Barra inferior fija **solo por debajo de `md` (760 px)**. Muestra la acción principal y se oculta mientras hay un campo de texto enfocado (teclado virtual). | RF-007, RNF-003 |
@@ -55,7 +55,7 @@ La división se hace en este orden: primero el script (la página sigue funciona
 
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
-| Contexto por props tipadas y acciones por eventos en las secciones | `provide/inject` tipado del plan inicial | El encargo de PR B exige props/eventos; el objeto de contexto tipado evita repetir decenas de props sin introducir inyección implícita. |
+| Contexto por props tipadas y acciones por eventos en las secciones | `provide/inject` tipado del plan inicial | Mantiene el flujo de datos explícito (props hacia abajo, eventos hacia arriba); el objeto de contexto tipado evita repetir decenas de props sin introducir inyección implícita. |
 | Barra de acción solo por debajo de `md` | Barra también en escritorio | En escritorio el índice y la barra superior bastan, y una barra fija resta espacio. |
 | `featureSource()` para los tests estáticos | Reescribir los tests como montaje | Conserva las aserciones actuales sin coste (RNF-005); el montaje queda fuera de alcance. |
 | Acciones con entrada → `focus` | Ejecutar todas desde la barra | Iniciar segmento o cerrar el acta exige datos del formulario; ejecutarlas desde la barra cambiaría el comportamiento (RF-009). |
