@@ -6,7 +6,7 @@ export function useMatchOperationView(context: MatchOperationContext) {
   const savedLineup = shallowRef<string | null>(null);
   watch([context.operation, context.selectedSegmentId], () => { savedLineup.value = snapshot.value; }, { flush: 'post' });
   const action = computed(() => primaryAction({
-    status: context.match.value?.status || '', canOperate: context.canOperateMatch.value,
+    status: context.match.value?.status || '', resolution: context.resolution.value, canOperate: context.canOperateMatch.value,
     canManage: context.canManageTournaments.value, activeSegment: Boolean(context.activeSegment.value),
     lineupDirty: savedLineup.value !== null && savedLineup.value !== snapshot.value,
     draftEvents: context.draftEvents.value.length, closeReady: context.closeValidationIssue() === null,

@@ -178,6 +178,7 @@ test('the mobile action delegates only lineup saving, focuses closing and releas
   assert.match(bar, /removeEventListener\('focusin'/);
   assert.match(bar, /removeEventListener\('focusout'/);
   assert.match(view, /context\.saveLineup\(\)/);
+  assert.match(view, /resolution: context\.resolution\.value/);
   assert.match(view, /context\.selectedSegmentIsActive\.value/);
   assert.match(view, /control\.focus\(\{ preventScroll: true \}\)/);
   assert.match(view, /scrollIntoView\(\{ block: 'start', behavior: 'auto' \}\)/);
