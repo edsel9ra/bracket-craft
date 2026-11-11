@@ -59,3 +59,15 @@ test('public scroll regions are named, keyboard reachable, hinted and motion-saf
     if (name !== 'PublicBracket') assert.match(component, /td:nth-child\(2\)[^}]*position: sticky; left: 0/);
   }
 });
+
+test('scroll hints follow measured overflow rather than the viewport breakpoint', () => {
+  const scroll = source('components/ui/HorizontalScroll.vue');
+  assert.match(scroll, /scrollWidth > .*clientWidth/);
+  assert.match(scroll, /new ResizeObserver\(measure\)/);
+  assert.match(scroll, /observer\?\.observe\(child\)/);
+  assert.match(scroll, /onUpdated\(observe\)/);
+  assert.match(scroll, /onBeforeUnmount\(\(\) => observer\?\.disconnect\(\)\)/);
+  assert.match(scroll, /v-show="hasOverflow" class="scroll-hint"/);
+  assert.match(scroll, /:class="\{ 'has-overflow': hasOverflow \}"/);
+  assert.doesNotMatch(scroll, /@media\s*\(min-width:/);
+});
