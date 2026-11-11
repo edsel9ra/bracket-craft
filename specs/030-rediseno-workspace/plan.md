@@ -6,6 +6,8 @@ Spec: `specs/030-rediseno-workspace/spec.md` (aprobada el 2026-11-11). Solo fron
 
 LY-1: en `rosters.vue`, `calendar.vue` y `members.vue` la lista va antes del formulario; PageHeader incluye un acceso de ancla con foco al primer campo, bajo las condiciones actuales de acceso y respetando reduced-motion.
 
+Desviación de PR B (2026-11-11): la división T4–T5 usa props hacia abajo y eventos hacia arriba, en lugar del `provide/inject` previsto inicialmente. Se conserva la cabecera actual en `MatchOperationHeader` y el CSS scoped compartido en `components/match/operation.css`, sin cambiar presentación; `PageHeader` y el rediseño de la operación quedan para PR C. `useMatchOperationState`, `useMatchLineup`, `useMatchEvents`, `useMatchEventsDraft` y `useMatchClose` mantienen cada archivo por debajo de 600 líneas.
+
 | Archivo | Responsabilidad | RF |
 |---|---|---|
 | `components/ui/PageHeader.vue` (nuevo) | Cabecera compacta: slot de contexto (rótulo o migas), `title` como único `h1` en tamaño de sección (`--text-xl` fijo, sin `clamp` de display), slot de estado y slot de acciones. Sustituye a los heroes de las páginas del Workspace. | RF-001–003 |
@@ -14,13 +16,13 @@ LY-1: en `rosters.vue`, `calendar.vue` y `members.vue` la lista va antes del for
 | `tests/*.test.ts` que leen la operación (14) o la configuración (9) | Pasan de `readFileSync(page)` a `featureSource(page)`, con las mismas aserciones. | RNF-005 |
 | `composables/useTournamentSetup.ts` + `components/workspace/setup/{SetupHeader,SetupChecklist,SetupRules,SetupTeams,SetupStages}.vue` | División de `tournaments/[id]/index.vue`. El composable concentra la carga, las versiones, el guardado, la publicación, el borrador y el avance de sección; los componentes reciben props, emiten eventos y montan los asistentes sin cambios. La página queda como orquestador de ≤ 250 líneas. | RF-011, RF-012 |
 | `composables/useMatchOperation.ts` (+ `useMatchLineup.ts` y `useMatchEventsDraft.ts` si hace falta para ≤ 600) | Script de la operación: tipos de transporte, estado, `fetchOperation`/`refreshOperation`, `runAction`, tiempo real, borrador local, formularios y errores por campo. Reutiliza `utils/` tal cual. | RF-010, RF-012 |
-| `components/match/{MatchResolutionPanel,MatchFieldSection,MatchRosterLinks,MatchLineupSection,MatchEventsSection,MatchCloseSection}.vue` | Una sección del acta por componente, con la plantilla y los estilos actuales. Reciben el contexto por `provide/inject` tipado (`MatchOperationKey`) para no encadenar decenas de props. | RF-010 |
+| `components/match/{MatchResolutionPanel,MatchFieldSection,MatchRosterLinks,MatchLineupSection,MatchEventsSection,MatchCloseSection}.vue` | Una sección del acta por componente, con la plantilla y los estilos actuales. Reciben el contexto por props tipadas y emiten las acciones a la página (props hacia abajo, eventos hacia arriba). | RF-010 |
 | `components/match/MatchBar.vue` | Barra de partido `position: sticky` (escudo, nombre, marcador y estado), conexión en tiempo real y segmento o minuto. Los nombres van en una línea con `text-overflow: ellipsis`, `title` y el nombre completo accesible. | RF-004, RF-005, RF-008 |
 | `components/match/MatchSectionNav.vue` | `nav` con nombre accesible y enlaces de ancla a `#seccion-*`. `aria-current="location"` sigue la sección visible mediante `IntersectionObserver` (sin JS, los anclajes siguen funcionando). | RF-006 |
 | `components/match/MatchActionBar.vue` | Barra inferior fija **solo por debajo de `md` (760 px)**. Muestra la acción principal y se oculta mientras hay un campo de texto enfocado (teclado virtual). | RF-007, RNF-003 |
 | `utils/matchScoreDisplay.ts` (nuevo, puro) | `matchScoreDisplay({ status, segments, score, resolution }) → { kind: 'pending' \| 'live' \| 'final', home, away, labelKey }`. Sin segmento iniciado devuelve `pending`; con segmento iniciado y sin goles, `0 – 0`. | RF-005 |
 | `utils/matchPrimaryAction.ts` (nuevo, puro) | `primaryAction(input) → { id, labelKey, mode: 'run' \| 'focus', target } \| null` (ver §3). | RF-007 |
-| `pages/workspace/matches/[id].vue` | Orquestador de ≤ 250 líneas: `useMatchOperation`, `provide`, `PageHeader`, `MatchBar`, `MatchSectionNav`, las secciones y `MatchActionBar`. | RF-010 |
+| `pages/workspace/matches/[id].vue` | Orquestador de ≤ 250 líneas: `useMatchOperation`, props/eventos y las secciones; conserva la cabecera actual en PR B y recibe `PageHeader`, `MatchBar`, `MatchSectionNav` y `MatchActionBar` en PR C. | RF-010 |
 | Asistentes (`RulesEditor`, `rules/*`, `TeamsWizard`, `StageTeamsWizard`, `wizard/*`) | Solo estilos: tokens, `nearestStep` y piezas `ui/` donde la sustitución sea directa. Sin tocar script ni flujo. | RF-013, RF-014 |
 | `tests/design-scales.test.ts` | `PENDING_MIGRATION` vacía; las excepciones nuevas se documentan con su motivo. | RF-013 |
 | `tests/match-score-display.test.ts`, `match-primary-action.test.ts`, `workspace-layout.test.ts` (nuevos) | Funciones puras; contrato de `PageHeader` (un `h1`); `MatchSectionNav` y `MatchActionBar` (nombre accesible, `aria-current`, ocultación por debajo de `md`, reduced-motion). | RF-001–008 |
@@ -53,7 +55,7 @@ La división se hace en este orden: primero el script (la página sigue funciona
 
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
-| `provide/inject` tipado para las secciones | Props y emits por sección | La operación comparte unas 40 refs y 60 funciones; pasarlas como props crearía interfaces enormes y frágiles. `inject` con una clave tipada sigue siendo explícito. |
+| Contexto por props tipadas y acciones por eventos en las secciones | `provide/inject` tipado del plan inicial | Mantiene el flujo de datos explícito (props hacia abajo, eventos hacia arriba); el objeto de contexto tipado evita repetir decenas de props sin introducir inyección implícita. |
 | Barra de acción solo por debajo de `md` | Barra también en escritorio | En escritorio el índice y la barra superior bastan, y una barra fija resta espacio. |
 | `featureSource()` para los tests estáticos | Reescribir los tests como montaje | Conserva las aserciones actuales sin coste (RNF-005); el montaje queda fuera de alcance. |
 | Acciones con entrada → `focus` | Ejecutar todas desde la barra | Iniciar segmento o cerrar el acta exige datos del formulario; ejecutarlas desde la barra cambiaría el comportamiento (RF-009). |

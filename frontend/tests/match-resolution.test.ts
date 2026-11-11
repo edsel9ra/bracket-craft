@@ -650,7 +650,7 @@ test('resolves the close maximum from the server limits', () => {
 // no se envía sin la confirmación explícita.
 test('gates the change and the close on the pure decisions', () => {
   const changeStart = PAGE_SOURCE.indexOf('function changeResolution(');
-  const changeBody = PAGE_SOURCE.slice(changeStart, PAGE_SOURCE.indexOf('const selectedResolution'));
+  const changeBody = PAGE_SOURCE.slice(changeStart, PAGE_SOURCE.indexOf('async function onResolutionChange', changeStart));
   assert.ok(changeStart > 0, 'the operation needs a resolution change handler');
   assert.match(changeBody, /resolutionChangeOutcome\(/);
   assert.match(changeBody, /outcome\.outcome === 'blocked'/);

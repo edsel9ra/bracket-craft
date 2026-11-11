@@ -14,7 +14,11 @@ export function featureSource(entry: string | URL): string {
     if (visited.has(file)) return;
     visited.add(file);
     const source = readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/^\s*import\s+(?:(?!['"])[^;]*?\s+from\s+)?(['"])([^'"]+)\1/gm)) {
+    const dependencies = [
+      ...source.matchAll(/^\s*import\s+(?:(?!['"])[^;]*?\s+from\s+)?(['"])([^'"]+)\1/gm),
+      ...source.matchAll(/<style\b[^>]*\bsrc=(['"])([^'"]+)\1/g),
+    ];
+    for (const match of dependencies) {
       const name = match[2]!;
       const local = name.startsWith('~/') || name.startsWith('@/')
         ? resolve(app, name.slice(2))
