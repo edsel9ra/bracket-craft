@@ -199,6 +199,14 @@ function openingTag(source: string, marker: string): string {
   return source.slice(start, end + 1);
 }
 
+test('workspace publication requires the management permission and a draft version', () => {
+  const page = readFileSync(new URL('../app/pages/workspace/index.vue', import.meta.url), 'utf8');
+  assert.match(page, /const canManageTournaments = computed\(\(\) => auth\.hasPermission\('MANAGE_TOURNAMENTS'\)\)/);
+  const publish = page.match(/<button\b[^>]*@click="publishTournament\(tournament\)"[^>]*>/)?.[0];
+  assert.ok(publish, 'the publish action must remain available to managers');
+  assert.match(publish, /v-if="canManageTournaments && tournament\.status === 'draft' && tournament\.draft_version_id"/);
+});
+
 // RF-038: la entrada «Configuración» del índice no depende de un permiso; el
 // único cambio es de visibilidad y ninguna capacidad se habilita por ello.
 test('the tournament index offers configuration without a permission condition', () => {
