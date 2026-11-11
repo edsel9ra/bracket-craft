@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Estado
-- 2026-11-11 · Spec activa 030 — rediseño del Workspace (opción 3), fase Spec/Clarificación; inventario factual previo en `/home/ubuntu/ui-audit/030-inventario.md`, capturas/mediciones en `030-before/`; spec, plan y tareas aún por redactar y aprobar, sin implementación autorizada.
+- 2026-11-11 · Spec activa: `specs/030-rediseno-workspace` (opción 3) — fase: Spec/Clarificación — estado: borrador (dudas OP-1, HD-1, SP-1, WZ-1 abiertas); hereda las 6 entradas PENDING_MIGRATION de la 029. Sin implementación autorizada.
 - 2026-11-11 · Spec 029 cerrada e implementada con aprobación del usuario y PR #41/#42/#43 fusionados, CI verde (#43: 7/7): tokens/Archivo local/piezas UI/19 confirmaciones, escalas con 37 excepciones, cero regresiones axe; line decorativo y límites de accesibilidad documentados; opción 3 (030) hereda las 6 entradas PENDING_MIGRATION de operación y asistentes, sin cambios de API/permisos/reglas.
 - 2026-11-10 · H10: router de torneos dividido mecánicamente en `access.py`, siete subrouters en `routes/` y fachada de 22 líneas sin reexports. OpenAPI normalizado idéntico a `5bf526c`, 31 operaciones y cinco solapamientos conservados; 2213 pass/480 skip sin BD y 2688 pass/5 skip con PostgreSQL aislado y migraciones 001–032. Ruff y Bandit `-ll` OK; sin cambios en contratos ni specs históricas.
 - Mantenimiento de auditoría (2026-11-09): ESLint gradual, Bandit con supresiones locales revisadas y Gitleaks sobre árbol versionado; Redis compartido para rate limit/readiness; migración **032** para revalidación de sockets en una llamada con RLS. Detalles: `docs/mantenimiento-auditoria.md`.
