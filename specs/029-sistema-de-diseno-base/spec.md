@@ -1,6 +1,6 @@
 # Spec 029 — Sistema de diseño base
 
-Estado: borrador
+Estado: aprobada (2026-11-11; DT-1, MG-1, VI-1 y RV-1 resueltas)
 
 ## Contexto y objetivo
 
@@ -9,7 +9,7 @@ La interfaz tiene una identidad visual reconocible (tema oscuro, acento lima, ti
 - Solo hay dos piezas compartidas de interfaz (campo de formulario y mensaje de error). Botones, tarjetas y paneles, píldoras de estado, pestañas, tablas y estados vacíos se redefinen en cada pantalla. Por ejemplo, el estilo de panel se repite en nueve pantallas.
 - Hay **40 tamaños de letra** distintos, unos **10 radios de borde** (8, 9, 10, 12, 16, 20, 24 px, 0.75 rem, 999 px, 50 %) y **10 puntos de corte** responsivos (375 a 1000 px). Además hay **9 colores fijos** fuera de la paleta declarada.
 - La tipografía declarada («Avenir Next») no se distribuye con la aplicación, así que cada sistema operativo la sustituye por otra y la marca se ve distinta según el dispositivo.
-- Las confirmaciones de acciones críticas (publicar una versión, regenerar el calendario, reemplazar reglas, cerrar el acta, retirar el consentimiento de imagen, eliminar un escudo…) usan el diálogo nativo del navegador en **10 lugares**. No sigue el estilo ni el idioma de la interfaz y no puede explicar las consecuencias de la acción.
+- Las confirmaciones de acciones críticas (publicar una versión, regenerar el calendario, reemplazar reglas, cerrar el acta, retirar el consentimiento de imagen, eliminar un escudo, descartar cambios de un asistente, salir con un borrador sin guardar…) usan el diálogo nativo del navegador en **19 lugares**. No sigue el estilo ni el idioma de la interfaz y no puede explicar las consecuencias de la acción.
 
 **Objetivo:** dotar al frontend de un sistema de diseño base, formado por escalas cerradas de tipografía, espaciado, radios, colores y puntos de corte, una tipografía propia distribuida con la aplicación y un conjunto mínimo de piezas reutilizables, entre ellas un diálogo de confirmación propio. Las pantallas existentes se migran a ese sistema **sin cambiar comportamiento, permisos, datos ni contratos** y conservando la identidad visual actual. Esta spec es la base de la opción 3 (rediseño del Workspace), que tendrá spec propia.
 
@@ -50,7 +50,7 @@ No aplica: la spec no cambia qué ve ni qué puede hacer ningún rol. Cada panta
 
 - RF-007: EL SISTEMA distribuye su propia tipografía con la aplicación, sin depender de servicios externos, de modo que el texto se ve con la misma familia en cualquier sistema operativo.
 - RF-008: MIENTRAS la tipografía propia no ha cargado, EL SISTEMA muestra el texto con una fuente de sustitución de métricas similares, sin bloquear ni ocultar el contenido.
-- RF-009: EL SISTEMA usa como máximo dos familias tipográficas, con funciones claramente distintas: una principal y, si hace falta, una para datos tabulares o código.
+- RF-009: EL SISTEMA usa como máximo dos familias tipográficas, con funciones claramente distintas: la principal es **Archivo** (licencia OFL), con su ancho normal para el texto y el ancho condensado para titulares, marcadores y cifras (DT-1); la segunda, si hace falta, es una monoespaciada del sistema para código o JSON.
 
 ### Piezas reutilizables
 
@@ -67,12 +67,12 @@ No aplica: la spec no cambia qué ve ni qué puede hacer ningún rol. Cada panta
 - RF-017: CUANDO el usuario inicia una de las acciones que hoy piden confirmación con el diálogo nativo, EL SISTEMA muestra el diálogo de confirmación propio con título, consecuencia y dos acciones con verbo explícito, en el idioma activo.
 - RF-018: MIENTRAS el diálogo está abierto, EL SISTEMA mueve el foco a él, lo mantiene dentro, impide interactuar con el fondo y lo cierra con Escape o con «Cancelar» como equivalente a cancelar. Al cerrarse, devuelve el foco al control que lo abrió.
 - RF-019: CUANDO el usuario confirma, EL SISTEMA ejecuta la acción exactamente como hoy. CUANDO cancela, EL SISTEMA no envía ninguna petición ni cambia ningún estado.
-- RF-020: SI la acción es destructiva o irreversible (regenerar calendario, reemplazar reglas, eliminar escudo, retirar consentimiento de imagen, cerrar acta, publicar), ENTONCES la acción de confirmar usa la variante de peligro y el foco inicial va a «Cancelar».
-- RF-021: EL SISTEMA no usa diálogos nativos del navegador (`confirm`, `alert`, `prompt`) en ninguna pantalla.
+- RF-020: SI la acción es destructiva o irreversible (regenerar calendario, reemplazar reglas, eliminar escudo, retirar consentimiento de imagen, cerrar acta, publicar, desactivar en administración, revocar invitación, descartar cambios o un borrador), ENTONCES la acción de confirmar usa la variante de peligro y el foco inicial va a «Cancelar».
+- RF-021: EL SISTEMA no usa diálogos nativos del navegador (`confirm`, `alert`, `prompt`) en ninguna pantalla, incluidas la operación de partido y los asistentes (MG-1). Queda fuera solo el aviso de `beforeunload` al cerrar la pestaña o recargar, porque el navegador no permite sustituirlo.
 
 ### Migración
 
-- RF-022: EL SISTEMA aplica las escalas y piezas en todas las pantallas públicas, de autenticación, de cuenta, de organización, del Workspace y de administración, conservando la identidad visual actual. Solo se admiten diferencias visuales debidas a la normalización a la escala.
+- RF-022: EL SISTEMA aplica las escalas y piezas en todas las pantallas públicas, de autenticación, de cuenta, de organización, del Workspace y de administración, conservando la identidad visual actual. **Excepción (MG-1):** la operación de partido y los asistentes (reglas, equipos, fases y su contenedor) no se migran en esta spec y quedan para la spec de la opción 3; solo reciben el diálogo de confirmación. Se admiten diferencias pequeñas debidas a la normalización a la escala (VI-1), revisadas con capturas antes/después en el PR (RV-1); no hay regresión visual automatizada.
 - RF-023: La migración no altera textos de la interfaz salvo los nuevos del diálogo de confirmación, ni la navegación, los permisos, las llamadas a la API o los datos mostrados.
 
 ## Requisitos no funcionales
@@ -110,14 +110,18 @@ No aplica: no se tratan, muestran ni exponen datos nuevos. Las proyecciones púb
 
 - Las verificaciones automáticas de RNF-002 pasan, sin excepciones de escala fuera de la lista documentada.
 - No queda ningún uso de diálogo nativo (`grep` vacío y test de RF-021 en verde).
-- Las 10 confirmaciones actuales usan el diálogo propio y el E2E de operación pasa con él.
+- Las 19 confirmaciones actuales usan el diálogo propio y el E2E de operación pasa con él.
 - Las capturas antes y después de las pantallas del informe muestran la misma identidad visual (revisión del usuario).
 - La medición de contraste de la paleta está registrada en `docs/inspeccion-accesibilidad.md`.
 - Los jobs de CI están en verde.
 
+## Decisiones registradas
+
+- **DT-1 (2026-11-11):** tipografía Archivo (OFL), distribuida con la aplicación; ancho condensado para titulares y marcadores.
+- **MG-1 (2026-11-11):** se migran todas las pantallas excepto la operación de partido y los asistentes, que pasan a la spec de la opción 3. El diálogo de confirmación se aplica en los 19 sitios.
+- **VI-1 (2026-11-11):** se admiten diferencias pequeñas por normalización a la escala, revisadas con capturas.
+- **RV-1 (2026-11-11):** la revisión visual se hace con capturas antes/después en el PR, sin regresión visual automatizada en CI.
+
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DT-1 Tipografía.** ¿Qué familia se distribuye? Opciones: (a) una sans geométrica-grotesca con carácter deportivo y licencia OFL, como «Archivo», de la que se usaría el ancho condensado para titulares y marcadores; (b) una neutra, como «Inter»; (c) mantener la pila del sistema y eliminar «Avenir Next». Recomendación: (a), porque da coherencia de marca y el ancho condensado encaja con marcadores y tablas.
-- [NECESITA ACLARACIÓN] **MG-1 Alcance de la migración.** ¿Se migran todas las pantallas en esta spec, incluidos la operación de partido (2110 líneas) y los asistentes, o solo las públicas, autenticación, cuenta, miembros, administración, el listado del Workspace y el calendario/plantillas, dejando la operación y los asistentes para la spec de la opción 3? Recomendación: la segunda opción, para limitar el riesgo. El diálogo de confirmación sí se aplicaría a las 10 acciones, incluidas las de la operación.
-- [NECESITA ACLARACIÓN] **VI-1 Tolerancia visual.** ¿Se admiten diferencias pequeñas por normalización a la escala (por ejemplo, un radio de 9 px que pasa a 10 px o un tamaño de 0.53 rem que pasa al valor más cercano de la escala) o se exige igualdad visual píxel a píxel? Recomendación: admitirlas, siempre que la identidad visual se mantenga y lo revises en las capturas.
-- [NECESITA ACLARACIÓN] **RV-1 Revisión visual.** ¿Basta con capturas antes/después en el PR o quieres pruebas de regresión visual automatizadas (capturas Playwright comparadas en CI)? Recomendación: capturas en el PR. La regresión visual automática añade mantenimiento y falsos positivos por diferencias de fuentes entre entornos.
+Ninguna.
