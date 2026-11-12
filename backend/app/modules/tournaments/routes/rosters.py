@@ -524,7 +524,7 @@ async def create_roster_players_bulk(
             # active after the uploads, the request fails without rows and the
             # `finally` below compensates the objects (RF-025).
             await _enforce_roster_lock(db, context.organization_id, tournament_id)
-            for row, (roster_id, photo_key) in zip(rows, prepared):
+            for row, (roster_id, photo_key) in zip(rows, prepared, strict=True):
                 try:
                     await _create_roster_player_record(
                         db,

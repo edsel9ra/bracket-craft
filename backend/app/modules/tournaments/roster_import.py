@@ -83,7 +83,7 @@ def parse_roster_csv(raw: bytes, team_id: UUID) -> list[ImportedRosterRow]:
             continue
         if len(values) > len(columns):
             raise RosterImportError(f"Fila {line_number}: contiene más valores que columnas")
-        row = dict(zip(columns, values + [""] * (len(columns) - len(values))))
+        row = dict(zip(columns, values + [""] * (len(columns) - len(values)), strict=True))
         document_type = row.get("document_type", "").strip() or "internal"
         issuing_country = row.get("issuing_country", "").strip() or "COL"
         national_id = row.get("national_id", "").strip()

@@ -1092,7 +1092,7 @@ async def _write_swiss_schedule(
                         ),
                     },
                 )
-    for match_id, pairing in zip(swiss_draw.placeholder_ids, active_pairings):
+    for match_id, pairing in zip(swiss_draw.placeholder_ids, active_pairings, strict=True):
         await db.execute(
             text("""
                 UPDATE matches

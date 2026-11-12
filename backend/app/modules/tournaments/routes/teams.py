@@ -355,7 +355,7 @@ async def create_tournament_teams_bulk(
 
         created: list[dict[str, str]] = []
         try:
-            for (team_id, _), team in zip(planned, payload.teams):
+            for (team_id, _), team in zip(planned, payload.teams, strict=True):
                 await db.execute(
                     text("""
                         INSERT INTO teams (id, organization_id, name, short_code, logo_url)
