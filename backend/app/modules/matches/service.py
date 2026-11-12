@@ -1,6 +1,8 @@
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 from uuid import UUID
 
@@ -24,6 +26,7 @@ from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
+    MatchOutcome,
     compute_match_outcome,
     drop_recorded_red_sanctions,
     effective_stage_rules,
@@ -607,6 +610,130 @@ def next_segment_proposal(
     return {"segment_number": segment_number, "minute_start": None, "derived": False}
 
 
+def _freeze_report_value(value):
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_report_value(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_report_value(item) for item in value)
+    return value
+
+
+def _thaw_report_value(value):
+    if isinstance(value, Mapping):
+        return {key: _thaw_report_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_report_value(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
+class ReportPayloadSnapshot:
+    match: Mapping[str, Any]
+    rosters: Sequence[Mapping[str, Any]]
+    segments: Sequence[Mapping[str, Any]]
+    known_team_ids: frozenset[UUID] = frozenset()
+    has_suspended_players: bool = False
+    require_active_segment: bool = False
+    active_segment_id: UUID | None = None
+
+    def __post_init__(self):
+        for name in ("match", "rosters", "segments"):
+            object.__setattr__(self, name, _freeze_report_value(getattr(self, name)))
+        object.__setattr__(self, "known_team_ids", frozenset(self.known_team_ids))
+
+
+async def load_report_payload_snapshot(
+    db: AsyncSession,
+    context: AuthContext,
+    match: Mapping[str, Any],
+    payload: CloseMatchReportDTO,
+    *,
+    rosters: Sequence[Mapping[str, Any]] | None = None,
+    segments: Sequence[Mapping[str, Any]] | None = None,
+    require_active_segment: bool = False,
+    active_segment_id: UUID | None = None,
+    exclude_suspensions_from_match_id: UUID | None = None,
+) -> ReportPayloadSnapshot:
+    """Read validation facts within the caller's tenant transaction; take no locks."""
+    if payload.resolution_type == "walkover":
+        return ReportPayloadSnapshot(match, (), ())
+    service = CloseMatchReportService(db)
+    if rosters is None:
+        rosters = await service._load_match_rosters(context, match["id"])
+    if segments is None:
+        segments = await service._load_match_segments(context, match["id"])
+    known = await service._load_event_team_scope(context, payload, match)
+    suspended = await service._has_suspended_players(
+        context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
+        exclude_origin_match_id=exclude_suspensions_from_match_id,
+    )
+    return ReportPayloadSnapshot(
+        match, rosters, segments, known, suspended, require_active_segment, active_segment_id
+    )
+
+
+def validate_report_payload(
+    snapshot: ReportPayloadSnapshot, payload: CloseMatchReportDTO, now: datetime
+) -> MatchOutcome:
+    """Validate loaded facts in closing order, without I/O or reading the clock."""
+    match = _thaw_report_value(snapshot.match)
+    service = CloseMatchReportService
+    minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
+    if not resolution_enabled(minutes, payload.resolution_type):
+        raise ResolutionNotEnabled()
+    if payload.resolution_type == "walkover":
+        pair = derive_walkover_score(
+            match["rules_config"], match["stage_id"], match["home_team_id"],
+            match["away_team_id"], payload.winner_team_id,
+        )
+        if pair is None:
+            raise ValueError("El ganador informado no participa en el partido")
+        if not pair.is_coherent:
+            raise WalkoverConfigInconsistent(pair.winner_score, pair.loser_score)
+        for field_name, expected in (
+            ("home_score_regular", pair.home_score), ("away_score_regular", pair.away_score),
+            ("home_score", pair.home_score), ("away_score", pair.away_score),
+        ):
+            value = getattr(payload, field_name)
+            if value is not None and value != expected:
+                raise WalkoverScoreMismatch(pair.winner_score, pair.loser_score)
+        return compute_match_outcome(
+            match["rules_config"], [], "walkover", match["home_team_id"], match["away_team_id"],
+            pair.home_score, pair.away_score, pair.home_score, pair.away_score,
+            None, None, payload.winner_team_id,
+        )
+    if snapshot.require_active_segment and snapshot.active_segment_id is None:
+        raise ValueError("El partido necesita un segmento activo antes de cerrar el acta")
+    service._validate_segments(payload, snapshot.segments, minutes)
+    if payload.resolution_type not in {"walkover", "administrative"}:
+        participants = {match["home_team_id"], match["away_team_id"]}
+        named = {event.team_id for event in payload.events}
+        named.update(event.beneficiary_team_id for event in payload.events if event.beneficiary_team_id is not None)
+        if named - participants - snapshot.known_team_ids:
+            raise LookupError("Equipo no encontrado")
+    service._validate_event_participants(payload, match, snapshot.rosters)
+    service._validate_rosters(match, snapshot.rosters)
+    limits = SubstitutionLimits.from_config(effective_substitutions(match["rules_config"]))
+    service._validate_substitutions(payload, match, snapshot.rosters, limits)
+    service._validate_double_yellow(payload)
+    service._validate_event_score_consistency(
+        payload, match["home_team_id"], match["away_team_id"],
+        regular_time_minutes=minutes["regular_time_minutes"],
+    )
+    if snapshot.has_suspended_players:
+        raise ValueError("La planilla contiene un jugador suspendido")
+    outcome = compute_match_outcome(
+        match["rules_config"], service._request_events(payload), payload.resolution_type,
+        match["home_team_id"], match["away_team_id"],
+        payload.home_score_regular, payload.away_score_regular,
+        payload.home_score, payload.away_score, payload.home_penalties,
+        payload.away_penalties, payload.winner_team_id,
+    )
+    if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
+        raise ValueError("La gran final de doble eliminación debe tener un ganador")
+    return outcome
+
+
 class CloseMatchReportService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -718,7 +845,7 @@ class CloseMatchReportService:
             # 10 (doble amarilla), 11 (marcador contra eventos) y 12
             # (sanciones): un partido que no se juega no tiene acta que
             # validar (RF-003, RF-009). Las exenciones preexistentes de
-            # `walkover` en `_validate_event_team_scope`,
+            # `walkover` en `_load_event_team_scope`,
             # `_validate_event_participants`, `_validate_substitutions` y
             # `_validate_event_score_consistency` quedan **inalcanzables** por
             # esta rama y se conservan como la exención de la resolución
@@ -737,79 +864,14 @@ class CloseMatchReportService:
                 await self._lock_player(match["tournament_id"], player_id)
             segments = await self._load_match_segments(context, match_id)
 
-            # --- 6. Estructura del acta: segmento activo, segmentos, tiempos,
-            #        intervalo y máximo efectivo -----------------------------
-            if active_segment is None:
-                raise ValueError("El partido necesita un segmento activo antes de cerrar el acta")
-            self._validate_segments(dto, segments, minutes)
-
-            # --- 7. Participantes y plantilla -------------------------------
-            # La regla de identificadores es única (RF-020): un equipo o
-            # beneficiario de **otra organización** es 404 y se resuelve antes
-            # del 409 de «no participa»; un jugador de otra organización sigue
-            # siendo 409.
-            await self._validate_event_team_scope(context, dto, match)
-            self._validate_event_participants(dto, match, rosters)
-            self._validate_rosters(match, rosters)
-
-            # --- 8. Estado en campo y sustituciones --------------------------
-            # El motor puro los valida antes de escribir (RF-005). Primero el
-            # paso 8 —estado en campo, sustituciones, ventanas, reentrada y
-            # minutos de plantilla—, que se informa aunque su defecto aparezca
-            # después en el acta que un asistente inválido.
+            snapshot = await load_report_payload_snapshot(
+                self.db, context, match, dto, rosters=rosters, segments=segments,
+                require_active_segment=True, active_segment_id=active_segment,
+            )
+            outcome = validate_report_payload(snapshot, dto, datetime.now(timezone.utc))
             limits = SubstitutionLimits.from_config(
                 effective_substitutions(match["rules_config"])
             )
-            # --- 9. Asistente del gol ---------------------------------------
-            # La misma llamada informa después el asistente (409 con su código),
-            # solo si el paso 8 no falló: el replay retiene ese error y lo lanza
-            # al terminar su única pasada (RF-001).
-            self._validate_substitutions(dto, match, rosters, limits)
-
-            # --- 10. Coherencia disciplinaria (doble amarilla) --------------
-            # Puro y sobre el acta de la **petición**: una roja marcada como
-            # doble amarilla exige exactamente dos amarillas previas del mismo
-            # jugador en el mismo partido (RF-006). No deriva rojas (DU-10) y no
-            # escribe (el defecto es 409 con su código).
-            self._validate_double_yellow(dto)
-
-            # --- 11. Marcador frente a eventos ------------------------------
-            self._validate_event_score_consistency(
-                dto,
-                match["home_team_id"],
-                match["away_team_id"],
-                regular_time_minutes=minutes["regular_time_minutes"],
-            )
-
-            # --- 12. Sanciones vigentes de la plantilla ---------------------
-            await self._validate_suspensions(context, match["tournament_id"], player_ids)
-
-            # --- 13. Coherencia de la resolución y del ganador --------------
-            # El resultado se calcula **antes de escribir** (RF-007, RF-009) y
-            # sobre los eventos de la **petición**, no sobre los persistidos.
-            # Es equivalente por la reutilización idempotente (RF-008): el paso
-            # 14 solo reutiliza una fila existente cuando es idéntica (tipo,
-            # equipo, beneficiario, jugadores, minuto, segmento, `metadata` y
-            # asistente) y responde **409** «inmutable» si difiere; para el
-            # marcador solo cuentan `event_type`, `team_id` y
-            # `beneficiary_team_id` (`_goal_credit`), que esa comparación
-            # cubre. Un acta inválida no deja ninguna escritura.
-            outcome = compute_match_outcome(
-                match["rules_config"],
-                self._request_events(dto),
-                dto.resolution_type,
-                match["home_team_id"],
-                match["away_team_id"],
-                dto.home_score_regular,
-                dto.away_score_regular,
-                dto.home_score,
-                dto.away_score,
-                dto.home_penalties,
-                dto.away_penalties,
-                dto.winner_team_id,
-            )
-            if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
-                raise ValueError("La gran final de doble eliminación debe tener un ganador")
 
             # --- 14. Escritura atómica, clasificación, avance, auditoría y
             #         outbox ---------------------------------------------------
@@ -977,57 +1039,9 @@ class CloseMatchReportService:
         """
 
         match_id = match["id"]
-        pair = derive_walkover_score(
-            match["rules_config"],
-            match["stage_id"],
-            match["home_team_id"],
-            match["away_team_id"],
-            dto.winner_team_id,
+        outcome = validate_report_payload(
+            ReportPayloadSnapshot(match, (), ()), dto, datetime.now(timezone.utc)
         )
-        if pair is None:
-            # Mismo mensaje que el motor: el defecto es de participantes y no
-            # lleva ``code`` (plan §6.2).
-            raise ValueError("El ganador informado no participa en el partido")
-        # D-4: la guarda de la pareja va **antes** que la comprobación del
-        # marcador informado. El motor aceptaría la pareja incoherente (solo la
-        # compara con la configurada) y la clasificación daría la victoria al
-        # otro equipo; al revés, el 409 del motor ganaría y se perdería el
-        # ``code`` y la salida documentada (la resolución administrativa).
-        if not pair.is_coherent:
-            raise WalkoverConfigInconsistent(pair.winner_score, pair.loser_score)
-        # D-10: un marcador informado que coincide se acepta (un cliente antiguo
-        # sigue funcionando); uno distinto es el 409 aditivo y no se escribe.
-        informed_pair = (
-            ("home_score_regular", pair.home_score),
-            ("away_score_regular", pair.away_score),
-            ("home_score", pair.home_score),
-            ("away_score", pair.away_score),
-        )
-        for field_name, expected in informed_pair:
-            value = getattr(dto, field_name)
-            if value is not None and value != expected:
-                raise WalkoverScoreMismatch(pair.winner_score, pair.loser_score)
-
-        # Paso 13′: el motor sigue siendo la autoridad del desenlace (D-3).
-        # Revalida la participación del ganador, la pareja frente a la
-        # configuración publicada y devuelve el resultado; sin eventos, el
-        # marcador es exactamente el derivado.
-        outcome = compute_match_outcome(
-            match["rules_config"],
-            [],
-            "walkover",
-            match["home_team_id"],
-            match["away_team_id"],
-            pair.home_score,
-            pair.away_score,
-            pair.home_score,
-            pair.away_score,
-            None,
-            None,
-            dto.winner_team_id,
-        )
-        if requires_decisive_winner(match.get("bracket_code")) and outcome.winner_team_id is None:
-            raise ValueError("La gran final de doble eliminación debe tener un ganador")
 
         final_status = "finished"
         await self.db.execute(
@@ -1099,8 +1113,8 @@ class CloseMatchReportService:
             # motivo; el motivo va en la raíz (D-12) además de en la petición.
             "resolution_reason": dto.reason,
             "walkover_score": {
-                "home": pair.home_score,
-                "away": pair.away_score,
+                "home": outcome.home_score,
+                "away": outcome.away_score,
             },
             "outcome": outcome.__dict__,
             "event_ids": [],
@@ -1211,7 +1225,8 @@ class CloseMatchReportService:
         )
         return result.mappings().all()
 
-    def _validate_rosters(self, match, rosters) -> None:
+    @staticmethod
+    def _validate_rosters(match, rosters) -> None:
         participants = {match["home_team_id"], match["away_team_id"]}
         roster_counts = {team_id: 0 for team_id in participants}
         for roster in rosters:
@@ -1284,24 +1299,16 @@ class CloseMatchReportService:
                 maximum=maximum_minute,
             )
 
-    async def _validate_event_team_scope(
+    async def _load_event_team_scope(
         self,
         context: AuthContext,
         dto: CloseMatchReportDTO,
         match: Mapping[str, Any],
-    ) -> None:
-        """Single identifier rule for the teams named by the events (RF-014).
-
-        A team of another organization is **404** (existence is never revealed);
-        a team of the organization that does not play this match keeps the
-        **409** it already had. The lookup only runs when some event names a team
-        that is not a participant, so a normal report adds no query. Walkover and
-        administrative resolutions admit no events, and their own 409 keeps
-        precedence.
-        """
+    ) -> frozenset[UUID]:
+        """Load tenant teams named outside the participants, without deciding errors."""
 
         if dto.resolution_type in {"walkover", "administrative"}:
-            return
+            return frozenset()
         participants = {match["home_team_id"], match["away_team_id"]}
         named = set()
         for event in dto.events:
@@ -1310,7 +1317,7 @@ class CloseMatchReportService:
                 named.add(event.beneficiary_team_id)
         foreign = {team_id for team_id in named if team_id not in participants}
         if not foreign:
-            return
+            return frozenset()
         result = await self.db.execute(
             text("""
                 SELECT id
@@ -1323,9 +1330,7 @@ class CloseMatchReportService:
                 "team_ids": [team_id for team_id in sorted(foreign, key=str)],
             },
         )
-        known = {row["id"] for row in result.mappings().all()}
-        if foreign - known:
-            raise LookupError("Equipo no encontrado")
+        return frozenset(row["id"] for row in result.mappings().all())
 
     @staticmethod
     def _validate_event_participants(
@@ -1340,8 +1345,8 @@ class CloseMatchReportService:
         de la plantilla válida o del equipo indicado, antes de entrar o después
         de salir, y un beneficiario que no participa son el **409** de este
         paso. La **existencia** de un equipo de otra organización no se decide
-        aquí: es el **404** de :meth:`_validate_event_team_scope`, que corre
-        antes (regla única de identificadores, RF-020).
+        aquí: lo decide antes :func:`validate_report_payload` con los equipos
+        del snapshot (regla única de identificadores, RF-020).
         """
 
         if dto.resolution_type in {"walkover", "administrative"}:
@@ -1544,9 +1549,12 @@ class CloseMatchReportService:
         lock_key = int.from_bytes(raw, byteorder="big", signed=True)
         await self.db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
 
-    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID]) -> None:
+    async def _has_suspended_players(
+        self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
+        *, exclude_origin_match_id: UUID | None = None,
+    ) -> bool:
         if not player_ids:
-            return
+            return False
         result = await self.db.execute(
             text("""
                 SELECT ps.player_id
@@ -1557,6 +1565,8 @@ class CloseMatchReportService:
                 WHERE ps.organization_id = :organization_id
                   AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
                   AND ps.status = 'active'
+                  AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
+                       OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
                 GROUP BY ps.id, ps.player_id, ps.matches_suspended
                 HAVING COUNT(pss.id) < ps.matches_suspended
@@ -1565,9 +1575,13 @@ class CloseMatchReportService:
                 "organization_id": str(context.organization_id),
                 "player_ids": player_ids,
                 "tournament_id": str(tournament_id),
+                "exclude_origin_match_id": exclude_origin_match_id,
             },
         )
-        if result.first() is not None:
+        return result.first() is not None
+
+    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID]) -> None:
+        if await self._has_suspended_players(context, tournament_id, player_ids):
             raise ValueError("La planilla contiene un jugador suspendido")
 
     @staticmethod

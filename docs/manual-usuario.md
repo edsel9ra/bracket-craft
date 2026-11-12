@@ -88,6 +88,10 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 - Una expulsión por doble amarilla exige exactamente dos amarillas previas del mismo jugador en el mismo acta; si no, 409 `DOUBLE_YELLOW_INCONSISTENT`.
 - Al cerrar se crean sanciones (una por expulsión por doble amarilla, absorbiendo las amarillas), se actualiza clasificación y avance de llave, se emiten eventos al outbox. Las actas cerradas son inmutables.
 
+### Delegación excepcional de una rectificación (API, spec 033)
+
+La interfaz de rectificación aún está pendiente. Mediante la API, un dueño activo puede autorizar a un administrador de plataforma activo (no soporte) a decidir una solicitud pendiente concreta, indicando su correo y el motivo. Puede revocar una autorización vigente antes de la decisión. El administrador solo accede a las solicitudes para las que está autorizado; la autorización deja de servir al revocarla, consumirla, cerrar la solicitud o perder el autorizante su condición de dueño activo. No se admite decidir una solicitud propia. La decisión se registra con el usuario real de plataforma y no le concede pertenencia permanente a la organización. En esta etapa siguen pendientes los efectos deportivos y las notificaciones: el flujo de rectificación todavía no está completo.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.

@@ -56,6 +56,8 @@ from app.modules.matches.router import router as matches_router
 from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
 from app.modules.platform.router import router as platform_router
+from app.modules.rectifications.router import router as rectifications_router
+from app.modules.rectifications.service import RectificationConflict, RectificationSelfApproval
 from app.modules.tournaments.roster_status import RosterSizeOutOfRange
 from app.modules.tournaments.router import router as tournaments_router
 
@@ -765,6 +767,8 @@ api.add_exception_handler(PublishedFormationMustBeUnpublished, _coded_exception_
 api.add_exception_handler(RosterSizeOutOfRange, _coded_exception_handler)
 api.add_exception_handler(OrganizationSlugTaken, _coded_exception_handler)
 api.add_exception_handler(CrestError, _coded_exception_handler)
+api.add_exception_handler(RectificationConflict, _coded_exception_handler)
+api.add_exception_handler(RectificationSelfApproval, _coded_exception_handler)
 api.add_exception_handler(GoogleAuthError, _google_auth_exception_handler)
 api.add_exception_handler(HTTPException, _identity_http_exception_handler)
 api.add_exception_handler(DBAPIError, _dbapi_exception_handler)
@@ -938,6 +942,7 @@ api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")
 api.include_router(matches_router, prefix="/api/v1")
+api.include_router(rectifications_router, prefix="/api/v1")
 api.include_router(crests_router, prefix="/api/v1")
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=api)
