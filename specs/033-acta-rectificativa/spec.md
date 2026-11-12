@@ -55,7 +55,7 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 - **Versión vigente.** La última versión publicada. Es la única que alimenta resultado, clasificación, estadísticas, sanciones y avance.
 - **Solicitud de rectificación.** Propuesta de una versión nueva, con estado `pendiente`, `rechazada`, `retirada` o `publicada`. Aprobar publica en el mismo acto (DA-6), así que no existe un estado aprobado sin publicar.
 - **Contenido rectificable.** Lo que el cierre confirmó: resolución, marcadores, ganador, penales, motivo de la resolución y eventos (goles, autogoles, asistencias, tarjetas, sustituciones). Las alineaciones y formaciones publicadas no son rectificables (DA-3).
-- **Efecto.** Cada cambio derivado de publicar una versión: filas de clasificación, sanciones creadas o anuladas, cumplimientos anulados, participantes de un partido posterior, eventos de outbox.
+- **Efecto.** Cada cambio derivado de publicar una versión: filas de clasificación, sanciones creadas o anuladas, participantes de un partido posterior, eventos de outbox.
 - **Impacto competitivo.** Efecto que alcanzaría a un partido posterior ya disputado o en juego, o a un equipo ya asignado a una fase posterior.
 
 ## Decisiones cerradas
