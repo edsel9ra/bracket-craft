@@ -1520,8 +1520,10 @@ async def list_tournament_matches(
                 SELECT m.id, m.tournament_version_id, m.stage_id, m.group_id, m.bracket_code, m.matchday,
                        m.match_date, m.home_team_id, home_team.name AS home_team_name,
                        m.away_team_id, away_team.name AS away_team_name, m.status,
-                       m.home_score, m.away_score, m.winner_team_id
+                       r.home_score, r.away_score, r.winner_team_id
                 FROM matches m
+                JOIN v_match_current_report r
+                  ON r.match_id = m.id AND r.organization_id = m.organization_id
                 LEFT JOIN teams home_team
                   ON home_team.id = m.home_team_id AND home_team.organization_id = m.organization_id
                 LEFT JOIN teams away_team

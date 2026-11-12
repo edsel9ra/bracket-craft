@@ -92,7 +92,7 @@ class StandingsService:
         discipline_result = await self.db.execute(
             text("""
                 SELECT me.team_id, me.event_type, me.metadata
-                FROM match_events me
+                FROM v_match_current_events me
                 JOIN matches m
                   ON m.id = me.match_id
                  AND m.organization_id = me.organization_id
@@ -132,14 +132,16 @@ class StandingsService:
 
         matches_result = await self.db.execute(
             text("""
-                SELECT group_id, home_team_id, away_team_id, home_score, away_score,
-                       winner_team_id, resolution_type
-                FROM matches
-                WHERE organization_id = :organization_id
-                  AND tournament_id = :tournament_id
-                  AND stage_id = :stage_id
-                  AND status IN ('finished', 'administrative_resolution')
-                  AND result_confirmed = TRUE
+                SELECT m.group_id, m.home_team_id, m.away_team_id, r.home_score, r.away_score,
+                       r.winner_team_id, r.resolution_type
+                FROM matches m
+                JOIN v_match_current_report r
+                  ON r.match_id = m.id AND r.organization_id = m.organization_id
+                WHERE m.organization_id = :organization_id
+                  AND m.tournament_id = :tournament_id
+                  AND m.stage_id = :stage_id
+                  AND m.status IN ('finished', 'administrative_resolution')
+                  AND m.result_confirmed = TRUE
             """),
             {
                 "organization_id": str(context.organization_id),

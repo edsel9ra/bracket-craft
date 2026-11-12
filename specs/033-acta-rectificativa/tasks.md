@@ -19,7 +19,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - Hecho cuando: el test de migración demuestra que, en partidos sin rectificar, la salida de las vistas públicas es la misma que en la 034, y `test_public_field_allowlist.py` y `test_public_access_matrix.py` solo admiten el campo nuevo `rectified_at`.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_migration_035.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py`.
 - Decisiones T4 aprobadas: internas `security_invoker`; públicas como propietario con filtros de publicación y overlay directo sobre tablas, contrastado con el interno. La pública conserva eventos anulados del original; la interna los excluye y ambas excluyen los anulados de la versión rectificativa.
-- [ ] **T5. Lectores sobre la versión vigente y test de inventario.** RF-014, RF-021
+- [x] **T5. Lectores sobre la versión vigente y test de inventario.** RF-014, RF-021
 - Hecho cuando:
   - clasificación, historial disciplinario del cierre, estadísticas públicas y lecturas del Workspace usan las vistas;
   - `test_rectification_readers.py` falla si un lector nuevo consulta el original;

@@ -1706,7 +1706,7 @@ class CloseMatchReportService:
             text("""
                 SELECT me.id, me.player_id, me.event_type, me.metadata,
                        me.match_id, m.match_date, me.minute, me.added_minute
-                FROM match_events me
+                FROM v_match_current_events me
                 JOIN matches m ON m.id = me.match_id AND m.organization_id = me.organization_id
                 WHERE me.organization_id = :organization_id
                   AND m.tournament_id = :tournament_id

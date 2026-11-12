@@ -364,6 +364,7 @@ class RecordingSession:
 def operation_match(*, status: str = "scheduled", version_status: str = "published") -> dict:
     return {
         "id": MATCH_ID,
+        "result_confirmed": False,
         "tournament_id": TOURNAMENT_ID,
         "stage_id": STAGE_ID,
         "status": status,
