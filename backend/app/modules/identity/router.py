@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -229,6 +230,7 @@ async def register(
         account_identifier=str(payload.email),
         max_body_bytes=settings.max_request_body_bytes,
     )
+    password_hash = await asyncio.to_thread(hash_password, payload.password)
     try:
         async with db.begin():
             result = await db.execute(
@@ -239,7 +241,7 @@ async def register(
                 """),
                 {
                     "email": payload.email,
-                    "password_hash": hash_password(payload.password),
+                    "password_hash": password_hash,
                     "full_name": payload.full_name,
                 },
             )
@@ -280,7 +282,7 @@ async def login(
         )
         user = result.mappings().one_or_none()
         stored_hash = user["password_hash"] if user is not None else None
-        password_valid = verify_password(payload.password, stored_hash or DUMMY_PASSWORD_HASH)
+        password_valid = await asyncio.to_thread(verify_password, payload.password, stored_hash or DUMMY_PASSWORD_HASH)
         if user is None or not stored_hash or not password_valid:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 

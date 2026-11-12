@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -6,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from app.core.config import get_settings
 from app.core.database import get_db, set_rls_context
 from app.core.email import send_invitation_email
 from app.core.permissions import require_permission
+from app.core.rate_limit import enforce_rate_limit
 from app.core.roles import ROLE_PRECEDENCE_SQL
 from app.core.security import (
     create_user_session,
@@ -507,7 +509,23 @@ async def preview_invitation(token: str, db: AsyncSession = Depends(get_db)) -> 
     return dict(invitation)
 
 
-@router.post("/invitations/{token}/accept", response_model=AcceptInvitationResponse)
+async def _limit_invitation_accept(token: str, request: Request) -> None:
+    settings = get_settings()
+    await enforce_rate_limit(
+        request,
+        "invitation_accept",
+        settings.auth_login_rate_limit,
+        60,
+        connection_identifier=_token_hash(token),
+        max_body_bytes=settings.max_request_body_bytes,
+    )
+
+
+@router.post(
+    "/invitations/{token}/accept",
+    response_model=AcceptInvitationResponse,
+    dependencies=[Depends(_limit_invitation_accept)],
+)
 async def accept_invitation(
     token: str,
     payload: AcceptInvitationRequest,
@@ -532,6 +550,11 @@ async def accept_invitation(
                 detail="Debe iniciar sesión con el email de la invitación antes de aceptarla",
             )
 
+    password_hash = (
+        await asyncio.to_thread(hash_password, payload.password)
+        if not preview["requires_login"] and payload.password else None
+    )
+    async with db.begin():
         await set_rls_context(db, None, current_user_id)
         try:
             result = await db.execute(
@@ -545,7 +568,7 @@ async def accept_invitation(
                 """),
                 {
                     "token_hash": token_hash,
-                    "password_hash": hash_password(payload.password) if not preview["requires_login"] and payload.password else None,
+                    "password_hash": password_hash,
                     "full_name": payload.full_name,
                 },
             )

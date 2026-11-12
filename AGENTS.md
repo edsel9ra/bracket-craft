@@ -34,6 +34,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
   readiness comparten cliente Redis perezoso y lo cierran en el lifespan de la API.
 
 - **Login y enumeración temporal:** verificar siempre la contraseña; si no hay cuenta activa o hash, usar `DUMMY_PASSWORD_HASH` precalculado. Nunca autenticar por coincidencia con ese hash. `test_auth_login.py` fija parámetros Argon2 y llamadas al verificador; al cambiar parámetros de hashing hay que regenerar el ficticio. No modificar 401 genérico, 409 de registro ni rate limit.
+- **A1/A2:** Argon2 corre en hilos; aceptar invitaciones limita por IP y hash de token con el límite de login/60 s, y Socket.IO público por IP a 60 conexiones/60 s (Redis caído: 503 HTTP o rechazo del socket). Las lecturas públicas HTTP y el preview de invitación se limitan en el proxy, no en la app, por el SSR compartido.
 
 - **Cadena de suministro CI:** todas las acciones `uses:` se fijan al SHA completo del commit (no al objeto de tag anotado), con tag exacto en comentario. Resolver mediante `git ls-remote` y desreferenciar `^{}` cuando exista. Dependabot revisa semanalmente acciones, pip y npm, agrupando minor/patch. Trivy conserva la versión v0.36.0 fijada por la constitución.
 

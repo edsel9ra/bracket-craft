@@ -8,15 +8,20 @@ del acceso con contraseña (RNF-9).
 
 from __future__ import annotations
 
+from threading import get_ident
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
+from fastapi import Response
 from httpx import ASGITransport, AsyncClient
+from starlette.requests import Request
 
 from app.core.database import get_db
 from app.core.security import DUMMY_PASSWORD_HASH, hash_password, verify_password
 from app.main import api
 from app.modules.identity import router as identity_router
+from app.modules.identity.schemas import RegisterRequest
 
 USER_ID = UUID("00000000-0000-4000-8000-0000000000aa")
 
@@ -129,6 +134,7 @@ async def test_password_login_rejects_a_google_only_account_without_writing(
 async def test_login_always_verifies_a_hash_before_generic_rejection(client, monkeypatch, rows, expected_hash):
     database = FakeDatabase(rows)
     calls = []
+    loop_thread = get_ident()
 
     async def fake_database():
         yield database
@@ -137,6 +143,7 @@ async def test_login_always_verifies_a_hash_before_generic_rejection(client, mon
         return None
 
     def verify(value, hashed):
+        assert get_ident() != loop_thread
         calls.append((value, hashed))
         return False
 
@@ -153,6 +160,36 @@ async def test_login_always_verifies_a_hash_before_generic_rejection(client, mon
     assert response.json() == {"detail": "Credenciales inválidas"}
     assert response.headers.get_list("set-cookie") == []
     assert len(database.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_registration_hashes_in_a_worker_before_opening_the_transaction(monkeypatch):
+    database = AsyncMock()
+    database.begin = MagicMock(return_value=FakeTransaction())
+    user = MagicMock()
+    user.scalar_one.return_value = USER_ID
+    database.execute.return_value = user
+    loop_thread = get_ident()
+
+    def hash_in_worker(value):
+        assert get_ident() != loop_thread
+        database.begin.assert_not_called()
+        assert value == "prueba-contraseña"
+        return "hash-de-cuenta"
+
+    monkeypatch.setattr(identity_router, "enforce_rate_limit", AsyncMock())
+    monkeypatch.setattr(identity_router, "hash_password", hash_in_worker)
+    monkeypatch.setattr(identity_router, "_create_organization", AsyncMock(return_value=USER_ID))
+    monkeypatch.setattr(identity_router, "create_user_session", AsyncMock(return_value="session-token"))
+    result = await identity_router.register(
+        RegisterRequest(
+            email="nuevo@example.com", password="prueba-contraseña", full_name="Nuevo Usuario",
+            organization_name="Organización", organization_slug="organizacion",
+        ),
+        Request({"type": "http", "headers": []}), Response(), database,
+    )
+    assert result.user_id == str(USER_ID)
+    assert database.execute.call_args.args[1]["password_hash"] == "hash-de-cuenta"
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from inspect import getsource
+from unittest.mock import AsyncMock
 from urllib.parse import unquote
 from uuid import UUID, uuid4
 
@@ -39,6 +40,11 @@ from app.modules.invitations.router import (
 )
 from assertion_messages import describe_response
 from db_helpers import TenantContext, create_test_organization
+
+
+@pytest.fixture(autouse=True)
+def invitation_rate_limit(monkeypatch):
+    monkeypatch.setattr(invitations_router, "enforce_rate_limit", AsyncMock())
 
 
 @dataclass(frozen=True)
