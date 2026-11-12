@@ -165,7 +165,8 @@ class RectificationService:
                 """), {"match_id": match_id, "organization_id": context.organization_id})).scalar_one_or_none()
                 if pending is not None:
                     raise _already_open()
-                snapshot = await load_report_payload_snapshot(self.db, context, match, payload.proposed_report)
+                snapshot = await load_report_payload_snapshot(self.db, context, match, payload.proposed_report,
+                    exclude_suspensions_from_match_id=match["id"])
                 outcome = validate_report_payload(snapshot, payload.proposed_report, datetime.now(timezone.utc))
                 events = (await self.db.execute(text("""
                     SELECT * FROM v_match_current_events
@@ -345,7 +346,8 @@ class RectificationService:
         if match["version_status"] == "archived":
             raise RectificationConflict("TOURNAMENT_ARCHIVED", "El torneo está archivado")
         payload = CloseMatchReportDTO.model_validate(request["proposed_report"])
-        snapshot = await load_report_payload_snapshot(self.db, context, match, payload)
+        snapshot = await load_report_payload_snapshot(self.db, context, match, payload,
+            exclude_suspensions_from_match_id=match["id"])
         outcome = validate_report_payload(snapshot, payload, now)
         report = _proposal_report(match, payload)
         report.update(home_score=outcome.home_score, away_score=outcome.away_score,

@@ -13,9 +13,12 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from app.core.database import get_db
+from app.core.database import get_db, set_rls_context
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
+from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.service import load_report_payload_snapshot
+from app.modules.rectifications.service import RectificationService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from migration_helpers import throwaway_database
 from test_migration_031 import (
@@ -662,3 +665,34 @@ async def test_not_pending_precedes_self_approval(flow):
     response = await decide(flow, request["id"])
     assert response.status_code == 409 and response.json()["code"] == "RECTIFICATION_NOT_PENDING"
     assert await database_snapshot(flow.admin) == before
+
+
+@pytest.mark.parametrize("origin", [MATCH, UNCONFIRMED])
+async def test_rectification_ignores_only_suspensions_originating_in_its_match(flow, origin):
+    await flow.admin.execute("""
+        INSERT INTO player_suspensions (organization_id, source_tournament_id, player_id,
+            origin_match_id, reason, matches_suspended, scope_type, source_type, dedupe_key)
+        VALUES ($1, $2, $3, $4, 'red_card', 1, 'tournament', 'administrative_resolution', 'self-match-regression')
+    """, ORG, TOURNAMENT, PLAYER_HOME_FIRST, origin)
+    async with flow.engine.connect() as connection:
+        await connection.execute(text("SET ROLE bracket_app"))
+        await connection.commit()
+        async with AsyncSession(bind=connection) as db, db.begin():
+            await set_rls_context(db, flow.context.organization_id, flow.context.user_id)
+            match = await RectificationService(db)._match(flow.context, UUID(MATCH))
+            snapshot = await load_report_payload_snapshot(db, flow.context, match,
+                CloseMatchReportDTO.model_validate(proposal()["proposed_report"]))
+            assert snapshot.has_suspended_players is True
+    before = await database_snapshot(flow.admin)
+    response = await create(flow)
+    if origin != MATCH:
+        assert response.status_code == 409 and "suspendido" in response.json()["detail"]
+        assert await database_snapshot(flow.admin) == before
+        return
+    assert response.status_code == 201, response.text
+    request = response.json()
+    flow.context = await add_approver(flow)
+    assert (await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")).status_code == 200
+    assert (await decide(flow, request["id"])).status_code == 200
+    assert await flow.admin.fetchval("SELECT count(*) FROM player_suspensions") == 1
+    assert await flow.admin.fetchval("SELECT status FROM player_suspensions") == "active"

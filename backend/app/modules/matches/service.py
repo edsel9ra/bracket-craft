@@ -652,6 +652,7 @@ async def load_report_payload_snapshot(
     segments: Sequence[Mapping[str, Any]] | None = None,
     require_active_segment: bool = False,
     active_segment_id: UUID | None = None,
+    exclude_suspensions_from_match_id: UUID | None = None,
 ) -> ReportPayloadSnapshot:
     """Read validation facts within the caller's tenant transaction; take no locks."""
     if payload.resolution_type == "walkover":
@@ -663,7 +664,8 @@ async def load_report_payload_snapshot(
         segments = await service._load_match_segments(context, match["id"])
     known = await service._load_event_team_scope(context, payload, match)
     suspended = await service._has_suspended_players(
-        context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str)
+        context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
+        exclude_origin_match_id=exclude_suspensions_from_match_id,
     )
     return ReportPayloadSnapshot(
         match, rosters, segments, known, suspended, require_active_segment, active_segment_id
@@ -1547,7 +1549,10 @@ class CloseMatchReportService:
         lock_key = int.from_bytes(raw, byteorder="big", signed=True)
         await self.db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
 
-    async def _has_suspended_players(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID]) -> bool:
+    async def _has_suspended_players(
+        self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
+        *, exclude_origin_match_id: UUID | None = None,
+    ) -> bool:
         if not player_ids:
             return False
         result = await self.db.execute(
@@ -1560,6 +1565,8 @@ class CloseMatchReportService:
                 WHERE ps.organization_id = :organization_id
                   AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
                   AND ps.status = 'active'
+                  AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
+                       OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
                 GROUP BY ps.id, ps.player_id, ps.matches_suspended
                 HAVING COUNT(pss.id) < ps.matches_suspended
@@ -1568,6 +1575,7 @@ class CloseMatchReportService:
                 "organization_id": str(context.organization_id),
                 "player_ids": player_ids,
                 "tournament_id": str(tournament_id),
+                "exclude_origin_match_id": exclude_origin_match_id,
             },
         )
         return result.first() is not None
