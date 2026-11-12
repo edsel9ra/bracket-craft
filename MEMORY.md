@@ -2,10 +2,11 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
-- specs/034-apelaciones-sanciones — fase actual: Clarificación — estado: borrador.
-- Pendiente: obtener aprobación expresa de la spec completa; DA-1–DA-18 cerradas, sin dudas abiertas. Sigue borrador en Clarificación, sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
+- specs/034-apelaciones-sanciones — fase actual: Plan — estado de spec: aprobada por el usuario el 2026-11-12.
+- Pendiente: redactar y aprobar el plan técnico; DA-1–DA-18 cerradas, sin dudas abiertas de spec. Sin tareas ni implementación F9. La spec 033 permanece implementada.
 
 ## Decisiones tomadas
+- 2026-11-12 · Spec 034 · El usuario aprobó expresamente la spec completa; fase Spec cerrada y fase actual Plan. La aprobación no se extiende al plan técnico ni autoriza implementación.
 - 2026-11-12 · Spec 034 · DA-17 cerrada: avisos privados por notificación interna y correo, registrados/reintentables vía outbox, al interponente/proponente y miembros con permiso de resolver de su organización. Solo decisión/retirada/cierre rectificativo y motivo, nunca evidencia; sin destinatarios por ser jugador/representante. Fallo de entrega no revierte la decisión.
 - 2026-11-12 · Spec 034 · DA-18 cerrada: motivo obligatorio y evidencia opcional de texto/enlaces; sin archivos. Evidencia privada, fuera de avisos y público; no se relaja la 033. Todas las DA cerradas, spec aún borrador pendiente de aprobación expresa.
 - 2026-11-12 · Spec 034 · DA-13 cerrada: actas y origen administrativo/regla de competición, ámbitos de torneo/organización; sin reapertura automática de anuladas y respetando DA-9/DA-12.
@@ -27,6 +28,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - 2026-11-12 · Spec 034 · DA-5 cerrada por el usuario: sin efecto suspensivo ni suspensión provisional por el recurso; la sanción sigue bloqueando conforme a los controles actuales hasta una resolución aplicable.
 
 ## Estado (entrada más reciente primero; el resto es histórico)
+- 2026-11-12 · **034 aprobada por el usuario:** fase Spec cerrada, fase actual Plan; 34 RF y DA-1–DA-18 cerradas. Sin implementación F9.
 - 2026-11-12 · **034, clarificación sin dudas abiertas:** DA-1–DA-18 cerradas, 34 RF EARS; revisión integral de coherencia y constitución. Sigue borrador pendiente de aprobación expresa del usuario, sin plan, tareas ni implementación F9.
 - 2026-11-12 · **034 F9, borrador:** separa apelación y resolución auditada, conserva la inmutabilidad y la vía 033, cumplimientos/procedencia y privacidad de la 020. Investigación de código: sin escritura operativa de `appealed` ni API propia de recursos; `cancelled` sí lo escribe la publicación rectificativa; cierre valida solo sanciones activas pendientes, no el guardado/publicación de alineación. DA-1–DA-18 sin decidir. Solo documentación, sin afirmar datos ni pruebas de producción.
 - 2026-11-12 · **033 T18 cerrada, PR #67:** CI remota sobre `232eb6c1`, verificada con `git_pr_checks(wait_mode="all")`: 6 pass, 0 fail/pending/skip. Arreglos separados: normalización por tipo (`bdde78e8`), identidad histórica exacta con UUID solo para eventos nuevos (`a69f4808`), orden significativo en igualdad/diff y preview (`0d4718e0`). Integrado `2670ba0f` de #66 mediante merge, sin rebase. DB afectados 196 pass; inventario estricto 141 pass; concurrencia 006 con todas las migraciones 12 pass; frontend 921 pass/1 skip, typecheck/lint/build OK. Sin cambios en migraciones o triggers históricos ni inspección visual manual nueva.

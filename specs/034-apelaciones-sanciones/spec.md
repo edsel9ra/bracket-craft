@@ -1,6 +1,8 @@
 # Spec 034 — Apelaciones y resoluciones de sanciones
 
-Estado: borrador
+Estado: aprobada
+
+Aprobada expresamente por el usuario el 2026-11-12. Fase Spec cerrada; siguiente fase: Plan.
 
 Fecha: 2026-11-12. Desarrolla F9 y la §3.6 de la constitución 2.0.0. Complementa la spec 033; no la sustituye ni amplía la excepción de inmutabilidad de las actas. Conserva la matriz pública de la spec 020.
 
@@ -14,7 +16,7 @@ La constitución 2.0.0, §3.6, establece literalmente:
 
 **Objetivo:** permitir tramitar recursos y conocer la sanción que rige como consecuencia de una resolución identificable y motivada, manteniendo la trazabilidad, los cumplimientos históricos, el aislamiento organizativo y la inmutabilidad de lo ya disputado.
 
-Este borrador permanece en fase de clarificación: DA-1–DA-18 están cerradas por el usuario y recogidas en los requisitos; DA-6 se revisó por su indicación para exigir propuesta y decisión por personas distintas. No quedan dudas abiertas, pero falta la aprobación expresa de la spec completa: sigue en estado borrador y no autoriza avanzar al plan ni implementar F9.
+DA-1–DA-18 están cerradas por el usuario y recogidas en los requisitos; DA-6 se revisó por su indicación para exigir propuesta y decisión por personas distintas. La spec completa está aprobada expresamente desde el 2026-11-12 y pasa a fase Plan; esto no declara implementado F9 ni aprueba su diseño técnico.
 
 ### Estado actual comprobado (2026-11-12)
 
@@ -79,7 +81,7 @@ Revisión del comportamiento descrito por el código, los contratos de pruebas y
 
 ## Requisitos funcionales
 
-Las remisiones a DA cerradas recogen las decisiones del usuario; la aprobación de la spec completa sigue pendiente y no se deduce del cierre de esas decisiones.
+Las remisiones a DA cerradas recogen las decisiones del usuario incorporadas a esta spec aprobada.
 
 ### Recurso y resolución separados
 
@@ -190,7 +192,7 @@ El acceso privado requiere las nuevas facultades de DA-2 o la autorización exce
 
 ## Criterios de finalización
 
-DA-1–DA-18 están cerradas e incorporadas a los requisitos, incluida la revisión de DA-6 con segunda persona. No quedan dudas abiertas, pero la spec permanece en borrador hasta su aprobación expresa por el usuario. La futura entrega deberá demostrar, como mínimo:
+DA-1–DA-18 están cerradas e incorporadas a la spec aprobada, incluida la revisión de DA-6 con segunda persona. La futura entrega deberá demostrar, como mínimo:
 
 1. Presentar y tramitar un recurso o propuesta conserva la sanción y su elegibilidad mientras no exista resolución que las altere; el estado de tramitación no crea una excepción.
 2. Una resolución autorizada, con responsable, fecha, motivo y decisión, determina y muestra el estado y los efectos resultantes sin perder los anteriores.
@@ -244,4 +246,4 @@ DA-1–DA-18 están cerradas e incorporadas a los requisitos, incluida la revisi
 
 ### Pendientes
 
-Ninguna duda abierta. Solo falta la aprobación expresa de la spec completa por el usuario; hasta entonces se conserva el estado borrador y no se avanza al plan, tareas ni implementación.
+Ninguna duda abierta. Spec aprobada expresamente por el usuario el 2026-11-12; el plan técnico requiere su propia revisión y aprobación antes de avanzar a tareas e implementación.
