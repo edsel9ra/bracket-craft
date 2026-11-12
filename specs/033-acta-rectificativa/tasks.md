@@ -1,6 +1,6 @@
 # Tareas 033 — Acta rectificativa
 
-Estado: **borrador**, pendiente de aprobación. Plan aprobado el 2026-11-12. Cada tarea sigue la Fase 5: tests primero en rojo, código mínimo, verde y marca.
+Estado: **aprobado** por el usuario el 2026-11-12 («Apruebo las tareas.»). Plan aprobado el 2026-11-12. Cada tarea sigue la Fase 5: tests primero en rojo, código mínimo, verde y marca.
 
 Son 18 tareas, más de las 10 que fija el proceso como límite. En lugar de dividir la spec, que ya tiene sus decisiones cerradas, las agrupo en los cuatro PRs secuenciales del plan (§8). Cada PR se valida y fusiona antes de empezar el siguiente.
 
