@@ -22,6 +22,7 @@ PLAYER_TENANT_TABLES = (
     "rosters",
     "match_lineup_snapshots",
     "match_events",
+    "match_report_version_events",
     "player_suspensions",
 )
 
@@ -206,6 +207,7 @@ async def test_player_references_use_composite_foreign_keys(db_session):
             ("assist_player_id", "organization_id"),
         }
     )
+    allowed_pairs["match_report_version_events"] = allowed_pairs["match_events"].copy()
 
     by_table: dict[str, list] = {table: [] for table in PLAYER_TENANT_TABLES}
     for row in rows:
