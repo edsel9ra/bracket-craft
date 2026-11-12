@@ -5,6 +5,7 @@ import type { PublicMatch } from '../app/utils/publicTournament.ts';
 
 function match(id: string, overrides: Partial<PublicMatch> = {}): PublicMatch {
   return {
+    rectified_at: null,
     id, stage_id: 'stage', stage_name: 'Stage', stage_order: 1,
     group_id: null, group_name: null, bracket_code: null, matchday: 1, match_date: null,
     home_team_id: 'a', home_team_name: 'Same name', home_team_short_code: null, home_team_crest_url: null,

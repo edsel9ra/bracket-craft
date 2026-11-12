@@ -22,6 +22,7 @@ from app.core.config import DEVELOPMENT_ENVS, get_settings
 from app.core.database import SessionFactory, engine, set_rls_context
 from app.core.security import hash_password
 from app.core.tenancy import AuthContext
+from app.modules.advancement.assignments import record_match_slot_assignments
 from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
 from app.modules.matches.service import CloseMatchReportService
@@ -822,7 +823,9 @@ async def _ensure_match(
             "match_date": _match_datetime(start_date, match.days_from_start),
         },
     )
-    return result.scalar_one()
+    match_id = result.scalar_one()
+    await record_match_slot_assignments(db, organization_id, match_id)
+    return match_id
 
 
 async def _refresh_slot_references(

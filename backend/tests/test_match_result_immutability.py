@@ -1176,10 +1176,7 @@ async def test_seed_demo_still_closes_and_confirms_matches(
         admin_connection = await _connect(database_admin_url, database)
         try:
             await _apply_init(admin_connection)
-            # The seed closes reports with the current application code, which
-            # writes the substitution pair added by 021 and the assist added
-            # by 026.
-            await _apply_migrations(admin_connection, first=1, last=26)
+            await _apply_migrations(admin_connection, first=1, last=35)
         finally:
             await admin_connection.close()
 

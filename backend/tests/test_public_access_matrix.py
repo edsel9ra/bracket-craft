@@ -16,6 +16,7 @@ código de estado y la forma básica de la respuesta.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database import get_db
 from app.main import api
+from test_public_field_allowlist import EXPECTED_FIELDS
 from db_helpers import (
     admin_database_url,
     clear_rls_context,
@@ -387,6 +389,45 @@ async def test_two_tenants_do_not_mix_public_data(db_session, tenant_factory):
         for row in a_matches.json():
             assert row["home_team_id"] != str(second_team)
             assert row["away_team_id"] != str(second_team)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rectified", [False, True])
+async def test_public_matches_rectified_at_is_the_only_new_field(db_session, tenant_factory, rectified):
+    tenant = await tenant_factory("Rectified Public Owner")
+    await set_tenant_context(db_session, tenant)
+    tournament_id, version_id, stage_id = await _create_tournament(db_session, tenant)
+    match_id = (await db_session.execute(text("""
+        INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id)
+        VALUES (:org, :tournament, :version, :stage) RETURNING id
+    """), {"org": tenant.organization_id, "tournament": tournament_id, "version": version_id, "stage": stage_id})).scalar_one()
+    published_at = None
+    if rectified:
+        request_id = (await db_session.execute(text("""
+            INSERT INTO match_report_rectification_requests
+                (organization_id, match_id, base_version_number, proposed_report, reason,
+                 requested_by_user_id, requested_by_member_id)
+            VALUES (:org, :match, 1, '{}', 'Correction', :user, :member) RETURNING id
+        """), {"org": tenant.organization_id, "match": match_id, "user": tenant.user_id, "member": tenant.member_id})).scalar_one()
+        published_at = (await db_session.execute(text("""
+            INSERT INTO match_report_versions
+                (organization_id, match_id, version_number, supersedes_version_number,
+                 resolution_type, home_score, away_score, request_id, published_by_user_id)
+            VALUES (:org, :match, 2, 1, 'regular', 2, 1, :request, :user) RETURNING published_at
+        """), {"org": tenant.organization_id, "match": match_id, "request": request_id, "user": tenant.user_id})).scalar_one()
+    await _publish_tournament(db_session, tournament_id, version_id)
+    await clear_rls_context(db_session)
+    async with _public_api(db_session) as client:
+        response = await client.get(f"/api/v1/tournaments/public/{tournament_id}/matches")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    row = response.json()[0]
+    assert set(row) == EXPECTED_FIELDS["PublicMatchResponse"]
+    if rectified:
+        assert datetime.fromisoformat(row["rectified_at"]) == published_at
+        assert (row["home_score"], row["away_score"]) == (2, 1)
+    else:
+        assert row["rectified_at"] is None
 
 
 @pytest.mark.asyncio

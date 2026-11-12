@@ -264,6 +264,10 @@ async def test_clone_never_touches_stage_edges_and_clones_phase_slots(
     assert len(match_inserts) == 1
     assert match_inserts[0]["home_slot_id"] == cloned_slot["id"]
     assert match_inserts[0]["away_slot_id"] is None
+    assignments = session.parameters_for("INSERT INTO match_slot_assignments")
+    assert len(assignments) == 1
+    assert assignments[0]["match_id"] == match_inserts[0]["id"]
+    assert assignments[0]["origin"] == "manual"
 
     assert result["version_number"] == 2
 
@@ -498,3 +502,6 @@ async def test_bracket_generation_emits_only_supported_slot_sources():
     # The bracket keeps its internal advancement structure.
     link_inserts = session.parameters_for("INSERT INTO advancement_links")
     assert len(link_inserts) == len(generated.advancement_links)
+    assignments = session.parameters_for("INSERT INTO match_slot_assignments")
+    assert {params["match_id"] for params in assignments} == {params["id"] for params in match_inserts}
+    assert all(params["origin"] == "manual" for params in assignments)

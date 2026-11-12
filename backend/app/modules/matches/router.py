@@ -595,24 +595,66 @@ async def get_match_operation(
         )
         event_result = await db.execute(
             text("""
+                WITH operation_events AS (
+                    SELECT me.id, me.organization_id, me.match_id, me.segment_id, me.team_id,
+                           me.beneficiary_team_id, me.player_id, me.event_type, me.minute,
+                           me.added_minute, me.client_event_id, me.metadata, me.is_voided,
+                           me.voided_at, me.voided_by_member_id, me.void_reason, me.created_at,
+                           me.player_out_id, me.player_in_id, me.assist_player_id
+                    FROM match_events me
+                    WHERE me.match_id = :match_id AND me.organization_id = :organization_id
+                      AND :result_confirmed = FALSE
+                    UNION ALL
+                    SELECT me.id, me.organization_id, me.match_id, me.segment_id, me.team_id,
+                           me.beneficiary_team_id, me.player_id, me.event_type, me.minute,
+                           me.added_minute, me.client_event_id, me.metadata, me.is_voided,
+                           me.voided_at, me.voided_by_member_id, me.void_reason, me.created_at,
+                           me.player_out_id, me.player_in_id, me.assist_player_id
+                    FROM v_match_current_events me
+                    WHERE me.match_id = :match_id AND me.organization_id = :organization_id
+                      AND :result_confirmed = TRUE
+                )
                 SELECT me.id, me.client_event_id, me.event_type, me.team_id,
                        t.name AS team_name, me.beneficiary_team_id, me.player_id,
                        me.player_out_id, me.player_in_id, me.assist_player_id,
                        p.first_name, p.last_name, me.minute, me.added_minute,
-                       me.segment_id, me.metadata, me.is_voided, me.created_at
-                FROM match_events me
-                JOIN players p ON p.id = me.player_id AND p.organization_id = me.organization_id
-                JOIN teams t ON t.id = me.team_id AND t.organization_id = me.organization_id
-                WHERE me.match_id = :match_id AND me.organization_id = :organization_id
+                       me.segment_id, me.metadata, me.is_voided, me.created_at,
+                       r.home_score_regular AS current_home_score_regular,
+                       r.away_score_regular AS current_away_score_regular,
+                       r.home_score AS current_home_score,
+                       r.away_score AS current_away_score,
+                       r.home_penalties AS current_home_penalties,
+                       r.away_penalties AS current_away_penalties,
+                       r.winner_team_id AS current_winner_team_id,
+                       r.resolution_type AS current_resolution_type,
+                       r.resolution_reason AS current_resolution_reason
+                FROM v_match_current_report r
+                LEFT JOIN operation_events me
+                  ON me.match_id = r.match_id AND me.organization_id = r.organization_id
+                LEFT JOIN players p ON p.id = me.player_id AND p.organization_id = me.organization_id
+                LEFT JOIN teams t ON t.id = me.team_id AND t.organization_id = me.organization_id
+                WHERE r.match_id = :match_id AND r.organization_id = :organization_id
                 ORDER BY me.minute, me.added_minute, me.created_at, me.id
             """),
-            {"match_id": str(match_id), "organization_id": str(context.organization_id)},
+            {
+                "match_id": str(match_id), "organization_id": str(context.organization_id),
+                "result_confirmed": bool(match["result_confirmed"]),
+            },
         )
         lineup = await _load_match_lineup(db, context.organization_id, match_id)
         tactical_lineups = await _load_match_tactical_lineups(db, context.organization_id, match_id)
         segments = [dict(row) for row in segment_result.mappings().all()]
         interruptions = [dict(row) for row in interruption_result.mappings().all()]
-        event_rows = [dict(row) for row in event_result.mappings().all()]
+        report_rows = [dict(row) for row in event_result.mappings().all()]
+        if match["result_confirmed"]:
+            match.update({
+                field.removeprefix("current_"): value
+                for field, value in report_rows[0].items() if field.startswith("current_")
+            })
+        event_rows = [
+            {field: value for field, value in row.items() if not field.startswith("current_")}
+            for row in report_rows if row["id"] is not None
+        ]
 
     # N-2: the read transaction is closed before signing. Both participants go
     # in the same batch; a storage failure is the Workspace 503.

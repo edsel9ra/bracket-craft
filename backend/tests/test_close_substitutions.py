@@ -1251,6 +1251,7 @@ def _operation_session(event_rows: list[dict]) -> RecordingSession:
 async def _call_operation(monkeypatch, session, lineup: list[dict]):
     match = {
         "id": MATCH_ID,
+        "result_confirmed": False,
         "tournament_id": TOURNAMENT_ID,
         "status": "scheduled",
         "home_team_id": HOME,

@@ -320,7 +320,7 @@ async def test_023_clone_copies_two_legs(database_admin_url):
 
 @pytest.mark.asyncio
 async def test_023_league_draw_persists_two_legs(database_admin_url):
-    async with throwaway_database(database_admin_url, last=23) as connection:
+    async with throwaway_database(database_admin_url, last=35) as connection:
         await connection.execute(SEED_SQL)
         database = await connection.fetchval("SELECT current_database()")
 

@@ -382,7 +382,10 @@ async def test_sixty_four_teams_are_accepted(monkeypatch, allow_management):
     assert body["round_number"] == 1
     assert len(calls) == 1
     assert len(calls[0]["team_ids"]) == 64
-    assert len(session.write_statements) == 64  # 32 inserts + 32 updates
+    assert len(session.write_statements) == 96
+    assert sum(sql.startswith("INSERT INTO matches ") for sql in session.write_statements) == 32
+    assert sum(sql.startswith("UPDATE matches ") for sql in session.write_statements) == 32
+    assert sum(sql.startswith("INSERT INTO match_slot_assignments ") for sql in session.write_statements) == 32
 
 
 async def test_calculation_runs_after_the_read_transaction_closes(
@@ -411,9 +414,11 @@ async def test_round_one_creates_placeholders_and_pairings_in_the_write_transact
 
     assert response.status_code == 201
     assert len(calls) == 1
-    inserts = [sql for sql in session.write_statements if sql.startswith("INSERT INTO")]
+    inserts = [sql for sql in session.write_statements if sql.startswith("INSERT INTO matches ")]
+    assignments = [sql for sql in session.write_statements if sql.startswith("INSERT INTO match_slot_assignments ")]
     updates = [sql for sql in session.write_statements if sql.startswith("UPDATE ")]
     assert len(inserts) == 4
+    assert len(assignments) == 4
     assert len(updates) == 4
     assert all(session.write_transaction_states)
     # No writes were confirmed by the read transaction.
@@ -473,11 +478,12 @@ async def test_later_rounds_do_not_delete_placeholders_or_previous_matches(
     assert len(calls) == 1
     assert session.clear_requested is False
     assert not any(
-        sql.startswith(("INSERT INTO", "DELETE FROM"))
+        sql.startswith(("INSERT INTO matches ", "DELETE FROM"))
         for sql in session.write_statements
     )
-    assert len(session.write_statements) == 4
-    assert all(sql.startswith("UPDATE ") for sql in session.write_statements)
+    assert len(session.write_statements) == 8
+    assert sum(sql.startswith("UPDATE matches ") for sql in session.write_statements) == 4
+    assert sum(sql.startswith("INSERT INTO match_slot_assignments ") for sql in session.write_statements) == 4
     assert calls[0]["kwargs"]["prior_pairs"] == {
         frozenset((UUID(int=1), UUID(int=2))),
         frozenset((UUID(int=1), UUID(int=3))),

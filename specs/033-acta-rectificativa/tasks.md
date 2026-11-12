@@ -8,17 +8,18 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 
 ## PR A — Esquema y lectura de la versión vigente
 
-- [ ] **T1. Migración 035: tablas de rectificación, RLS y triggers *append-only*.** RNF-001, RF-002, RF-013
+- [x] **T1. Migración 035: tablas de rectificación, RLS y triggers *append-only*.** RNF-001, RF-002, RF-013
 - Hecho cuando: `test_migration_035.py` comprueba tablas, RLS/FORCE, políticas, `GRANT`, rechazo de `UPDATE`/`DELETE` y el índice de una solicitud pendiente sobre volumen limpio y sobre 034→035. Pasan `cd backend && RUN_DATABASE_TESTS=1 … pytest -q tests/test_migration_035.py`, `sh -n infra/postgres/migrate.sh` y `sh infra/scripts/test_migrate_target.sh`.
-- [ ] **T2. Migración 035: trigger de autoaprobación, permisos nuevos y transición de estados.** RF-007, DA-1
+- [x] **T2. Migración 035: trigger de autoaprobación, permisos nuevos y transición de estados.** RF-007, DA-1
 - Hecho cuando: el test inserta una decisión del solicitante y recibe el error del trigger, y verifica los permisos en `role_definitions` y `roles` de `owner`/`administrator` sin duplicados, así como las transiciones de estado permitidas y prohibidas.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_migration_035.py`.
-- [ ] **T3. Migración 035: `match_slot_assignments`, backfill inequívoco y escritura desde cierre y avance.** Plan §5.2
+- [x] **T3. Migración 035: `match_slot_assignments`, backfill inequívoco y escritura desde cierre y avance.** Plan §5.2
 - Hecho cuando: el test de migración cubre el backfill (inequívoco → `advancement_link`; ambiguo → `manual`) y `test_close_match*.py` comprueba que cerrar un acta registra la asignación del destino. `pytest -q` en verde.
-- [ ] **T4. Vistas `v_match_current_report`/`v_match_current_events` y públicas recreadas con `rectified_at`.** RF-021, RF-022
+- [x] **T4. Vistas `v_match_current_report`/`v_match_current_events` y públicas recreadas con `rectified_at`.** RF-021, RF-022
 - Hecho cuando: el test de migración demuestra que, en partidos sin rectificar, la salida de las vistas públicas es la misma que en la 034, y `test_public_field_allowlist.py` y `test_public_access_matrix.py` solo admiten el campo nuevo `rectified_at`.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_migration_035.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py`.
-- [ ] **T5. Lectores sobre la versión vigente y test de inventario.** RF-014, RF-021
+- Decisiones T4 aprobadas: internas `security_invoker`; públicas como propietario con filtros de publicación y overlay directo sobre tablas, contrastado con el interno. La pública conserva eventos anulados del original; la interna los excluye y ambas excluyen los anulados de la versión rectificativa.
+- [x] **T5. Lectores sobre la versión vigente y test de inventario.** RF-014, RF-021
 - Hecho cuando:
   - clasificación, historial disciplinario del cierre, estadísticas públicas y lecturas del Workspace usan las vistas;
   - `test_rectification_readers.py` falla si un lector nuevo consulta el original;

@@ -309,6 +309,7 @@ def match_row() -> dict:
         "winner_team_id": None,
         "status": "scheduled",
         "resolution_type": None,
+        "rectified_at": None,
     }
 
 

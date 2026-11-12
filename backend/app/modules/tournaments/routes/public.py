@@ -151,7 +151,7 @@ async def public_matches(
                        m.away_team_id, m.away_team_name, m.away_team_short_code,
                        m.home_score_regular, m.away_score_regular, m.home_score,
                        m.away_score, m.home_penalties, m.away_penalties,
-                       m.winner_team_id, m.status, m.resolution_type,
+                       m.winner_team_id, m.status, m.resolution_type, m.rectified_at,
                        ht.crest_object_key AS home_team_crest_object_key,
                        at.crest_object_key AS away_team_crest_object_key
                 FROM v_public_matches m

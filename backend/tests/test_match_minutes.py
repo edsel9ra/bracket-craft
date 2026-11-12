@@ -446,6 +446,7 @@ def _loader(match: dict):
 def _match(config: dict) -> dict:
     return {
         "id": MATCH_ID,
+        "result_confirmed": False,
         "tournament_id": TOURNAMENT_ID,
         "stage_id": STAGE_ID,
         "status": "scheduled",

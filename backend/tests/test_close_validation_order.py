@@ -344,7 +344,7 @@ class CloseOrderSession:
             return Result(
                 rows=[row for row in self.existing_events if row.get("client_event_id") == wanted]
             )
-        if "FROM match_events" in sql:
+        if "FROM match_events" in sql or "FROM v_match_current_events" in sql:
             return Result(rows=[])
         if sql.startswith("INSERT INTO match_events"):
             return Result(rows=[self._persist_event_row(params)])
