@@ -36,19 +36,20 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** P
 
 ## PR C — Regresión y aceptación (T7–T10)
 
-- [ ] **T7. Comparador visual exacto y referencia oscura.** RF-007/009; RNF-001. Depende de T6. 30 min activos; capturas aparte.
+- [x] **T7. Comparador visual exacto y referencia oscura.** RF-007/009; RNF-001. Depende de T6. 30 min activos; capturas aparte.
   - Hecho cuando: test primero rojo con un píxel alterado fuera de R; comparación RGBA exacta con 0 fuera y dimensiones/R según LY-1, sin tolerancia. Baseline fijada, motor/fixture/fuentes/reloj iguales; manifiesto previo al diff y cajas exteriores intactas, incluido contenido inferior. Desktop/tableta R es fila de preferencias; móvil abierto es menú completo; móvil cerrado R vacía y captura completa idéntica. Todas las vistas/estados acordados, ES/EN, 1440×900/390×844/800×900, PNG originales/diff anotado en `/home/ubuntu/ui-audit/032-{before,after,pr}/`. Cambio solo dentro de R válido; máscara ampliada fuera de LY-1, tamaños distintos o referencia alterada fallan. No declarar verde sin capturas.
-  - Comando: `cd frontend && pnpm test && pnpm exec playwright test --config e2e/theme-audit.config.ts --grep @visual`.
+  - Comando: `cd frontend && pnpm test && pnpm exec playwright test --config e2e/theme-audit.config.ts --grep @visual`, con `THEME_RGBA_MANIFEST` y SHA previo según [verificación](verificacion.md). Solo local: 28 pares a 0, sin determinismo acreditado entre runners CI; controles históricos A/B conservados.
 
-- [ ] **T8. E2E de elección, persistencia y primer pintado.** RF-001–007/013–015; RNF-004/005/006. Depende de T7. 30 min.
+- [x] **T8. E2E de elección, persistencia y primer pintado.** RF-001–007/013–015; RNF-004/005/006. Depende de T7. 30 min.
   - Hecho cuando: escenarios inicialmente rojos y luego verdes anónimos y Workspace, storageState apropiado, trace/video apagados. Verificar cookie anual solo tras elegir, recarga/reapertura, inválida/bloqueada, Sistema y cambios de media, solicitudes concurrentes opuestas. SSR con hidratación retenida y observación primer paint/rAF, también ralentizado: ninguna muestra inicial de tema opuesto, sin warnings ni llamadas API extra; no basta esperar mounted. Formulario/foco/scroll/filtro y diálogos sobreviven. Integrar testMatch en public/workspace sin reemplazar realtime/21 public-polish/operation-flow ni modificar veredictos.
   - Comando: `cd frontend && pnpm run typecheck:e2e && pnpm exec playwright test e2e/theme-public.spec.ts --project public --no-deps && pnpm exec playwright test e2e/theme-workspace.spec.ts --project workspace`.
 
-- [ ] **T9. Axe y contraste efectivo de todas las vistas en ambos temas.** RF-001/007–013; RNF-002/003. Depende de T8. 30 min activos; auditoría automatizada aparte.
+- [x] **T9. Axe y contraste efectivo de todas las vistas en ambos temas.** RF-001/007–013; RNF-002/003. Depende de T8. 30 min activos; auditoría automatizada aparte.
   - Hecho cuando: matriz de rutas/roles/estados alcanzables y tres tamaños documentada; claro 0 violaciones de app y oscuro ninguna nueva, sin excluir reglas/nodos. Campo/gráficos, todas las estadísticas, sticky, vacíos/errores, disabled, overlays y teclado revisados; contraste efectivo de textos ≥4.5 y señales ≥3, además de los 158 pares. Cada vista debe renderizar, no redirigir por permisos. JSON de axe con versión y capturas claras/oscuras revisadas; límites reales declarados, sin certificar dispositivos/lectores no usados.
-  - Comando: `cd frontend && pnpm exec playwright test --config e2e/theme-audit.config.ts --grep @axe`.
+  - Comando: `cd frontend && pnpm exec playwright test e2e/theme-public.spec.ts e2e/theme-workspace.spec.ts --grep axe`. Matriz local: 30 auditorías persistentes +48 privadas reales +6 admin/alta en claro, sin violaciones; límites en [verificación](verificacion.md).
 
 - [ ] **T10. Gates, documentación, limpieza y cierre aprobado.** RF-001–015; RNF-001–006. Depende de T9. 30 min activos; espera CI aparte.
+  - Estado: documentación y gates locales realizados; CI del PR C, recuentos del job, las 21 `public-polish` en esa corrida y aprobación del usuario pendientes. No cerrar ni declarar la spec implementada globalmente.
   - Hecho cuando: cinco gates frontend y nuevos E2E, 21 public-polish, operation-flow y CI aplicables verdes, cantidades de nuevos E2E verificadas en logs del job. RF por RF, criterios de finalización/constitución §4 y evidencia documentados; manual/accesibilidad/AGENTS/MEMORY actualizados. Datos temporales retirados por IDs si se crearon, sin cookies/headers/auth en artefactos. Revisión humana y aprobación antes de marcar implementada; si falta un gate o revisión, T10 sigue sin marcar. No abrir ni fusionar PR sin encargo.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run typecheck:e2e && pnpm exec playwright test e2e/public-polish.spec.ts --project public --no-deps && pnpm exec playwright test --project operation-flow`.
   - Además: ejecutar los comandos T7–T9, `git diff --check` y esperar CI con git_pr_checks wait_mode=all cuando exista PR.

@@ -195,4 +195,4 @@ Sin excepciones constitucionales. La región R es una precisión de aceptación 
 | §4 Backend: contexto, routers, pytest/compileall | No cambio específico | No módulos/modelos/rutas; backend CI sigue requerido y público mínimo intacto. |
 | §4 Frontend: useApi, tests/typecheck/build | Sí | Cinco gates frontend indicados y E2E; no omitir lint ni typecheck:e2e. |
 | §4 Infra/deploy: compose/defaults | No cambio específico | Sin compose/proxy/despliegue; infrastructure CI se conserva. |
-| §4 Dependencias/lockfiles/auditoría | No cambio | Usar Playwright/Canvas y utilidades existentes, sin dependencia PNG ni runtime nueva; security CI se conserva. |
+| §4 Dependencias/lockfiles/auditoría | Solo desarrollo | Playwright/Canvas sin dependencia PNG ni runtime nueva; axe-core 4.10.3 fijado como devDependency para CI, lockfile actualizado; security CI se conserva. |

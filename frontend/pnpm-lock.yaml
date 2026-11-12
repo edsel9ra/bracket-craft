@@ -45,6 +45,9 @@ importers:
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.5
+      axe-core:
+        specifier: 4.10.3
+        version: 4.10.3
       eslint:
         specifier: ^10.14.0
         version: 10.14.0(jiti@2.7.0)(supports-color@10.2.2)
@@ -1556,6 +1559,10 @@ packages:
     hasBin: true
     peerDependencies:
       postcss: ^8.1.0
+
+  axe-core@4.10.3:
+    resolution: {integrity: sha512-Xm7bpRXnDSX2YE2YFfBk2FnF0ep6tmG7xPh8iHee8MIcrgq762Nkce856dYtJYLkuIoYZvGfTs/PbZhideTcEg==}
+    engines: {node: '>=4'}
 
   b4a@1.9.0:
     resolution: {integrity: sha512-dpfcF9fDNR6++cthXR67iyhgqWy9CBouAvIWhIntzBG6cvK/cnIPiZQjBwi/ZqjjBEDGfoNDtmB0kTjroOJ3pQ==}
@@ -5978,6 +5985,8 @@ snapshots:
       picocolors: 1.1.1
       postcss: 8.5.32
       postcss-value-parser: 4.2.0
+
+  axe-core@4.10.3: {}
 
   b4a@1.9.0: {}
 
