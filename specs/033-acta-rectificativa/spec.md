@@ -32,7 +32,7 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 
 ## Roles y visibilidad
 
-- **Público:** ve solo la versión vigente del resultado y de los datos que ya publica (marcador, clasificación, estadísticas). No ve solicitudes, motivos, evidencias, responsables ni versiones anteriores, salvo lo que decida DA-4.
+- **Público:** ve solo la versión vigente del resultado y de los datos que ya publica (marcador, clasificación, estadísticas). No ve solicitudes, motivos, evidencias, responsables ni versiones anteriores. Sí ve una marca «resultado rectificado» con la fecha de la última publicación (DA-4).
 - **Miembro sin permiso de solicitud o aprobación:** consulta el acta vigente, su historial de versiones y el estado de las solicitudes de su organización; no puede escribir.
 - **Solicitante:** miembro con el permiso `REQUEST_MATCH_REPORT_RECTIFICATION`, que se asigna por defecto a `owner` y `administrator` (DA-1). Puede presentar una solicitud y retirarla mientras está pendiente.
 - **Aprobador:** miembro con el permiso `APPROVE_MATCH_REPORT_RECTIFICATION`, que se asigna por defecto a `owner` y `administrator` (DA-1), y distinto del solicitante. Puede aprobar o rechazar.
@@ -54,7 +54,7 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 - **Versión del acta.** El acta original es la versión 1; cada rectificación publicada es la versión siguiente y referencia a la que sustituye y al acta original.
 - **Versión vigente.** La última versión publicada. Es la única que alimenta resultado, clasificación, estadísticas, sanciones y avance.
 - **Solicitud de rectificación.** Propuesta de una versión nueva, con estado `pendiente`, `rechazada`, `retirada` o `publicada`. Aprobar publica en el mismo acto (DA-6), así que no existe un estado aprobado sin publicar.
-- **Contenido rectificable.** Lo que el cierre confirmó: resolución, marcadores, ganador, penales, motivo de la resolución y eventos (goles, autogoles, asistencias, tarjetas, sustituciones). Las alineaciones publicadas quedan pendientes de DA-3.
+- **Contenido rectificable.** Lo que el cierre confirmó: resolución, marcadores, ganador, penales, motivo de la resolución y eventos (goles, autogoles, asistencias, tarjetas, sustituciones). Las alineaciones y formaciones publicadas no son rectificables (DA-3).
 - **Efecto.** Cada cambio derivado de publicar una versión: filas de clasificación, sanciones creadas o anuladas, cumplimientos anulados, participantes de un partido posterior, eventos de outbox.
 - **Impacto competitivo.** Efecto que alcanzaría a un partido posterior ya disputado o en juego, o a un equipo ya asignado a una fase posterior.
 
@@ -66,13 +66,17 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 | **DA-2** (2026-11-12) | El administrador de plataforma solo decide con la autorización expresa del dueño para esa solicitud concreta. | Excepción acotada y trazable, sin autoridad general de plataforma sobre los resultados. |
 | **DA-6** (2026-11-12) | Aprobar publica en el mismo acto. | No quedan versiones aprobadas sin efecto. |
 | **DA-8** (2026-11-12) | Una sanción que deja de corresponder se anula con registro, pero los partidos ya cumplidos se conservan como hecho consumado. Una sanción nueva cuenta desde el siguiente partido del jugador. | No se reescribe lo ya disputado. |
+| **DA-3** (2026-11-12) | Solo se rectifican el resultado y los eventos; las alineaciones y formaciones publicadas no. | Alcance acotado; las alineaciones tienen su propia publicación. |
+| **DA-4** (2026-11-12) | El público ve una marca «resultado rectificado» con la fecha, sin motivo ni responsables. | Transparencia sin exponer datos internos (§2.5). |
+| **DA-5** (2026-11-12) | La evidencia es un texto obligatorio, con enlaces si hace falta; no se admiten archivos. | Sin almacenamiento nuevo en esta spec. |
+| **DA-7** (2026-11-12) | El procedimiento de impacto solo se cierra manteniendo lo jugado, con motivo registrado, y bloquea iniciar los partidos afectados no comenzados mientras está abierto. La repetición de partido queda fuera: exige insertar partidos en una versión publicada. | §2.3 y el trigger de estructura publicada lo impiden sin otra enmienda. |
 
 ## Requisitos funcionales
 
 ### Solicitud
 
 - **RF-001.** CUANDO un miembro con permiso de solicitud presente una solicitud sobre un acta confirmada de su organización, EL SISTEMA la registrará como `pendiente` con la versión vigente de referencia, el acta original, el contenido propuesto completo, el motivo, la evidencia, el solicitante y la fecha.
-  - El motivo es obligatorio y no vacío; la evidencia es obligatoria cuando lo exija DA-5.
+  - El motivo es obligatorio y no vacío; la evidencia es un texto obligatorio, que puede incluir enlaces, y no admite archivos (DA-5).
   - El contenido propuesto pasa por las mismas validaciones de dominio que el cierre (spec 017, RF-001 a RF-007) sobre la configuración de la versión de torneo del partido; un incumplimiento responde **409** con el mismo `code` que el cierre y no registra nada.
   - Una propuesta idéntica a la versión vigente responde **409** `RECTIFICATION_NO_CHANGES`.
 - **RF-002.** SI ya existe una solicitud `pendiente` para ese partido, ENTONCES EL SISTEMA rechazará otra con **409** `RECTIFICATION_ALREADY_OPEN`.
@@ -97,7 +101,8 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 - **RF-014.** CUANDO se publique una versión, EL SISTEMA recalculará la clasificación de la fase del partido y las estadísticas que dependan de él a partir de la versión vigente de cada partido.
 - **RF-015.** CUANDO la versión publicada cambie el ganador o el perdedor de un partido con enlaces de avance, EL SISTEMA actualizará los participantes de cada partido destino que aún no haya comenzado y registrará cada cambio como efecto.
 - **RF-016.** SI un efecto alcanza un partido posterior ya comenzado o confirmado, o un equipo ya asignado a una fase posterior, ENTONCES EL SISTEMA no modificará ese partido ni esa asignación, publicará la versión y abrirá un **procedimiento de impacto competitivo** (RF-017).
-- **RF-017.** EL SISTEMA registrará cada procedimiento de impacto competitivo con el partido rectificado, los partidos o asignaciones afectados, el efecto que se habría aplicado y el estado `abierto`. Solo un aprobador puede cerrarlo con una decisión y un motivo registrados; la decisión no modifica actas confirmadas (las opciones las fija DA-7).
+- **RF-017.** EL SISTEMA registrará cada procedimiento de impacto competitivo con el partido rectificado, los partidos o asignaciones afectados, el efecto que se habría aplicado y el estado `abierto`. Solo un aprobador puede cerrarlo con una decisión y un motivo registrados; la única decisión admitida es mantener los partidos y asignaciones posteriores tal como se jugaron (DA-7), y nunca modifica actas confirmadas.
+- **RF-017b.** MIENTRAS un procedimiento de impacto competitivo esté abierto, SI se intenta abrir un segmento o cerrar el acta de un partido afectado que aún no haya comenzado, ENTONCES EL SISTEMA responderá 409 `COMPETITIVE_IMPACT_OPEN`.
 - **RF-018.** CUANDO la versión publicada cambie tarjetas o expulsiones, EL SISTEMA recalculará las sanciones de ese partido con las reglas de la versión de torneo: creará las nuevas, anulará con registro las que ya no correspondan y no editará ninguna (DA-8). Una sanción anulada conserva como hecho consumado los partidos ya cumplidos, que no se anulan ni se devuelven. Una sanción nueva empieza a cumplirse en el siguiente partido del jugador que no haya comenzado cuando se publica la versión.
 - **RF-019.** CUANDO se publique una versión, EL SISTEMA registrará cada efecto y cada notificación emitida, y emitirá los eventos de tiempo real del partido y de la clasificación por la outbox, sin enviarlos en la propia petición.
 
@@ -105,6 +110,7 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 
 - **RF-020.** EL SISTEMA ofrecerá a los miembros de la organización el historial de versiones de un acta, con número de versión, fecha, responsables, motivo, evidencia y diferencias, y la lista de solicitudes y procedimientos de impacto con su estado.
 - **RF-021.** EL SISTEMA servirá en todas las lecturas públicas y del Workspace la versión vigente; ninguna lectura mezcla datos de versiones distintas de un mismo partido.
+- **RF-022.** EL SISTEMA añadirá a las lecturas públicas de un partido rectificado una marca de rectificación con la fecha de publicación de la versión vigente, sin motivo, evidencia, responsables ni versiones anteriores (DA-4).
 
 ## Requisitos no funcionales
 
@@ -119,8 +125,8 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 
 - Datos involucrados: identificadores de jugadores en los eventos, nombres de solicitante y aprobadores, motivos y evidencias.
 - Los ven solo los miembros de la organización; el administrador de plataforma, solo la solicitud que decide.
-- El motivo y la evidencia no deben contener documentos de identidad ni fechas de nacimiento; si la evidencia es un archivo, sigue las reglas de almacenamiento existentes (DA-5).
-- Nada de esto se publica, salvo lo que decida DA-4.
+- El motivo y la evidencia no deben contener documentos de identidad ni fechas de nacimiento.
+- Nada de esto se publica; el público solo ve la marca de rectificación con su fecha (RF-022).
 
 ## Casos límite
 
@@ -134,6 +140,10 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 - Partido destino de avance ya con participantes asignados a mano: se trata como impacto competitivo, no se sobrescribe.
 
 ## Fuera de alcance
+
+- Rectificar alineaciones y formaciones publicadas (DA-3).
+- Evidencia en archivos adjuntos (DA-5).
+- Ordenar un partido de repetición: exigiría insertar partidos en una versión de torneo publicada, que la constitución (§2.3) y el trigger `prevent_published_structure_mutation` prohíben (DA-7).
 
 - Apelación, anulación o modificación de sanciones que no deriven de rectificar un acta (spec F9).
 - Corrección de versiones de torneo publicadas (la §3.6 no la crea).
@@ -154,15 +164,11 @@ Hoy un acta confirmada no tiene ninguna vía de corrección: el resultado y sus 
 | 4 | Con una solicitud pendiente, rechazada o retirada, la versión vigente y sus derivados no cambian. | RF-011 |
 | 5 | La publicación crea la versión nueva y sus efectos en una transacción; el acta original y las anteriores siguen intactas y consultables. | RF-012, RF-013 |
 | 6 | Clasificación, estadísticas, sanciones y avance pendiente reflejan la versión vigente. | RF-014, RF-015, RF-018, RF-021 |
-| 7 | Ningún partido posterior ya comenzado o confirmado cambia; se abre un procedimiento de impacto con su decisión registrada. | RF-016, RF-017 |
+| 7 | Ningún partido posterior ya comenzado o confirmado cambia; se abre un procedimiento de impacto con su decisión registrada. | RF-016, RF-017, RF-017b |
 | 8 | Efectos y notificaciones quedan registrados y el tiempo real se emite por la outbox. | RF-019 |
 | 9 | Ninguna organización ve ni modifica solicitudes, versiones o procedimientos de otra. | Roles y visibilidad |
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-3. Alineaciones.** ¿Son rectificables las alineaciones y formaciones publicadas o solo resultado y eventos? Recomendación: solo resultado y eventos en esta spec.
-- [NECESITA ACLARACIÓN] **DA-4. Visibilidad pública.** ¿El público ve que un resultado fue rectificado? Opciones: (a) nada, solo la versión vigente; (b) una marca «resultado rectificado» con fecha, sin motivo ni responsables. Recomendación: (b).
-- [NECESITA ACLARACIÓN] **DA-5. Evidencia.** ¿Texto o enlace, o también archivos adjuntos? ¿Cuándo es obligatoria? Recomendación: texto obligatorio siempre y archivos fuera de esta spec.
-- [NECESITA ACLARACIÓN] **DA-7. Procedimiento de impacto competitivo.** ¿Qué decisiones admite? Por ejemplo: mantener los partidos posteriores, ordenar repetir el partido (partido nuevo), o resolver administrativamente otro partido aún no confirmado. ¿Bloquea operar los partidos afectados mientras está abierto?
 - [NECESITA ACLARACIÓN] **DA-9. Torneos archivados.** ¿Se pueden rectificar actas de un torneo archivado?
 - [NECESITA ACLARACIÓN] **DA-10. Notificaciones.** ¿Basta con registrar las notificaciones y emitir el tiempo real, o hay que avisar por correo a solicitante, aprobadores o equipos?
