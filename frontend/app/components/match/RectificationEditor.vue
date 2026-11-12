@@ -42,7 +42,17 @@ function move(index: number, delta: number) {
 async function submit() {
   if (busy.value || !operation.value) return;
   error.value = '';
-  const events = draft.events.map((event) => buildDraftEvent({ ...event, red_card_type: event.metadata?.red_card_type }, event.segment_id, event.client_event_id));
+  const events = draft.events.map((event) => {
+    const fields = visibleEventFields(event.event_type);
+    return buildDraftEvent({ ...event,
+      player_id: fields.includes('player') ? event.player_id : null,
+      assist_player_id: fields.includes('assist') ? event.assist_player_id : null,
+      beneficiary_team_id: fields.includes('beneficiary') ? event.beneficiary_team_id : null,
+      player_out_id: fields.includes('player_out') ? event.player_out_id : null,
+      player_in_id: fields.includes('player_in') ? event.player_in_id : null,
+      red_card_type: fields.includes('red_card_type') ? event.metadata?.red_card_type : undefined,
+    }, event.segment_id, event.client_event_id);
+  });
   if (!reason.value.trim() || !evidence.value.trim() || events.some((event) => !event)) { error.value = t('rectification.invalid'); return; }
   busy.value = true;
   try {

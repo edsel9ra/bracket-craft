@@ -7,6 +7,7 @@ import * as vue from 'vue';
 import { compileScript, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import * as helpers from '../app/utils/rectifications.ts';
+import * as eventHelpers from '../app/utils/matchEvents.ts';
 
 function component(name: string, globals: Record<string, unknown> = {}) {
   const source = readFileSync(new URL(`../app/components/match/${name}.vue`, import.meta.url), 'utf8');
@@ -15,7 +16,7 @@ function component(name: string, globals: Record<string, unknown> = {}) {
   const exports: { default?: vue.Component } = {};
   const passthrough = vue.defineComponent({ setup(_, { slots }) { return () => vue.h('div', slots.default?.()); } });
   runInNewContext(javascript, { exports, ...vue,
-    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : helpers,
+    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchEvents') ? eventHelpers : helpers,
     useI18n: () => ({ t: (key: string) => key, formatDateTime: (value: string) => value }),
     useConfirm: () => ({ confirm: async () => true }), useAuthStore: () => ({ access: null }),
     useMatchRectifications: () => ({}), useCompetitiveImpacts: () => ({}),
@@ -25,6 +26,49 @@ function component(name: string, globals: Record<string, unknown> = {}) {
 }
 
 const request = { id: 'r', match_id: 'm', status: 'pending', base_version_number: 1, requested_by_member_id: 'author', reason: 'Correction', evidence: null, requested_at: 'now', proposed_report: { events: [] }, diff: { fields: [], events: { added: [], removed: [], changed: [] } } };
+
+async function editorFor(events: Record<string, unknown>[]) {
+  const requests: { proposed_report: helpers.ReportProposal }[] = [];
+  let mounted = async () => {};
+  const Editor = component('RectificationEditor', {
+    useId: () => 'editor', onMounted: (fn: () => Promise<void>) => { mounted = fn; },
+    useMatchRectifications: () => ({ operation: async () => ({ match: {}, rosters: [], segments: [] }), create: async (_id: string, body: { proposed_report: helpers.ReportProposal }) => { requests.push(body); } }),
+  }) as { setup: (props: unknown, context: unknown) => (context: unknown, cache: unknown[]) => vue.VNode };
+  const render = Editor.setup({ matchId: 'm', version: { report: { resolution_type: 'regular', events } } }, { expose() {}, emit() {} });
+  await mounted();
+  function nodes(value: unknown): vue.VNode[] {
+    if (Array.isArray(value)) return value.flatMap(nodes);
+    if (typeof value === 'function') return nodes(value());
+    if (!value || typeof value !== 'object') return [];
+    if (vue.isVNode(value)) return [value, ...nodes(value.children)];
+    return Object.values(value).flatMap(nodes);
+  }
+  const all = () => nodes(render({}, []));
+  for (const id of ['editor-reason', 'editor-evidence']) all().find((node) => node.props?.id === id)!.props!['onUpdate:modelValue']('Verified');
+  return { requests, all, submit: () => all().find((node) => node.type === 'form')!.props!.onSubmit({ preventDefault() {} }) };
+}
+
+const assistedGoal = { client_event_id: 'aaaaaaaa-0000-4000-8000-000000000001', event_type: 'goal', team_id: 'home', player_id: 'scorer', assist_player_id: 'assistant', segment_id: 'segment', minute: 10, added_minute: 0 };
+
+test('editor clears hidden type-specific fields before validating and sending a changed goal', async () => {
+  for (const type of ['yellow_card', 'red_card', 'penalty_goal', 'foul']) {
+  const editor = await editorFor([assistedGoal]);
+  editor.all().find((node) => node.type === 'select' && node.props?.['onUpdate:modelValue'] && JSON.stringify(node.children).includes('event.goal'))!.props!['onUpdate:modelValue'](type);
+  await editor.submit();
+  assert.equal(editor.requests.length, 1);
+  assert.equal(editor.requests[0]!.proposed_report.events[0]!.assist_player_id, null);
+  assert.equal(editor.requests[0]!.proposed_report.events[0]!.event_type, type);
+  }
+});
+
+test('editor preserves an applicable assist but still rejects a missing required player', async () => {
+  const valid = await editorFor([assistedGoal]);
+  await valid.submit();
+  assert.equal(valid.requests[0]!.proposed_report.events[0]!.assist_player_id, 'assistant');
+  const invalid = await editorFor([{ ...assistedGoal, player_id: null }]);
+  await invalid.submit();
+  assert.equal(invalid.requests.length, 0);
+});
 
 test('review never renders decision controls to requester, unauthorized member or finished request', async () => {
   const Review = component('RectificationReview');
