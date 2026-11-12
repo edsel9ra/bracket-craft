@@ -437,3 +437,158 @@ async def test_035_slot_assignment_backfill(database_admin_url, incremental):
         await db.execute("DELETE FROM advancement_links WHERE target_match_id = $1", ambiguous)
         await db.execute("DELETE FROM matches WHERE id = $1", ambiguous)
         assert await db.fetchval("SELECT count(*) FROM match_slot_assignments WHERE match_id = $1", ambiguous) == 1
+
+
+async def seed_original_view_events(db, *, alternate=False):
+    sql = f"""
+        INSERT INTO rosters (organization_id, tournament_id, team_id, player_id,
+                             dorsal_number, valid_from, eligible_from)
+        SELECT organization_id, tournament_id, home_team_id, '{PLAYER_HOME_FIRST}',
+               1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM matches WHERE id = '{MATCH}';
+        INSERT INTO match_rosters
+            (organization_id, match_id, roster_id, player_id, team_id, tournament_id, role)
+        SELECT organization_id, '{MATCH}', id, player_id, team_id, tournament_id, 'starter'
+        FROM rosters WHERE player_id = '{PLAYER_HOME_FIRST}';
+        INSERT INTO match_events
+            (organization_id, match_id, segment_id, team_id, player_id, event_type,
+             minute, client_event_id, is_voided, voided_at, voided_by_member_id, void_reason)
+        VALUES
+            ('{ORG}', '{MATCH}', '{SEGMENT_FIRST}', '{TEAM_HOME}', '{PLAYER_HOME_FIRST}',
+             'goal', 15, 'original-goal', FALSE, NULL, NULL, NULL),
+            ('{ORG}', '{MATCH}', '{SEGMENT_FIRST}', '{TEAM_HOME}', '{PLAYER_HOME_FIRST}',
+             'goal', 20, 'voided-goal', TRUE, CURRENT_TIMESTAMP, '{MEMBER}', 'Duplicate');
+        UPDATE matches SET status = 'finished', result_confirmed = TRUE,
+            resolution_type = 'penalties', home_score_regular = 1, away_score_regular = 1,
+            home_score = 1, away_score = 1, home_penalties = 5, away_penalties = 4,
+            winner_team_id = home_team_id WHERE id = '{MATCH}';
+    """
+    await db.execute(sql.replace("31000000", "32000000") if alternate else sql)
+
+
+@pytest.mark.parametrize("incremental", [False, True], ids=["clean", "034-to-035"])
+async def test_035_current_views_original_equivalence(database_admin_url, incremental):
+    async with throwaway_database(database_admin_url, last=34 if incremental else 0) as db:
+        if not incremental:
+            for number in range(1, 35):
+                await apply_migration(db, number)
+        await db.execute(SEED_SQL)
+        await seed_original_view_events(db)
+        before_matches = [dict(row) for row in await db.fetch("SELECT * FROM v_public_matches ORDER BY id")]
+        before_events = await db.fetch("SELECT * FROM v_public_match_events ORDER BY id")
+        grants = await db.fetch("""
+            SELECT table_name, grantee, privilege_type FROM information_schema.table_privileges
+            WHERE table_name IN ('v_public_matches', 'v_public_match_events')
+            ORDER BY table_name, grantee, privilege_type
+        """)
+        await apply_migration(db, 35)
+        after_matches = [dict(row) for row in await db.fetch("SELECT * FROM v_public_matches ORDER BY id")]
+        assert all(row.pop("rectified_at") is None for row in after_matches)
+        assert after_matches == before_matches
+        assert await db.fetch("SELECT * FROM v_public_match_events ORDER BY id") == before_events
+        assert await db.fetch("""
+            SELECT table_name, grantee, privilege_type FROM information_schema.table_privileges
+            WHERE table_name IN ('v_public_matches', 'v_public_match_events')
+            ORDER BY table_name, grantee, privilege_type
+        """) == grants
+        original = await db.fetchrow("SELECT * FROM v_match_current_report WHERE match_id = $1", MATCH)
+        assert original["version_number"] == 1
+        assert original["rectified_at"] is None
+        result_fields = ("resolution_type", "home_score_regular", "away_score_regular", "home_score",
+                         "away_score", "home_penalties", "away_penalties", "winner_team_id")
+        assert all(original[field] == before_matches[0][field] for field in result_fields)
+        assert await db.fetchval("SELECT count(*) FROM v_match_current_events") == 1
+        assert len(before_events) == 2 and any(row["is_voided"] for row in before_events)
+        for name in ("v_match_current_report", "v_match_current_events", "v_public_matches", "v_public_match_events"):
+            options = await db.fetchval("SELECT reloptions FROM pg_class WHERE oid = $1::regclass", name)
+            assert "security_barrier=true" in options
+            if name.startswith("v_match_current"):
+                assert "security_invoker=true" in options
+                assert await db.fetchval("SELECT has_table_privilege('bracket_app', $1, 'SELECT')", name)
+            else:
+                assert "security_invoker=true" not in options
+        async with db.transaction():
+            await db.execute("SET LOCAL ROLE bracket_app")
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_report") == 0
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_events") == 0
+            assert await db.fetchval("SELECT count(*) FROM v_public_matches") == 1
+            assert await db.fetchval("SELECT count(*) FROM v_public_match_events") == 2
+
+
+@pytest.mark.parametrize("incremental", [False, True], ids=["clean", "034-to-035"])
+async def test_035_current_views_latest_version_and_tenant_isolation(database_admin_url, incremental):
+    async with throwaway_database(database_admin_url, last=34 if incremental else 0) as db:
+        if not incremental:
+            for number in range(1, 35):
+                await apply_migration(db, number)
+        await apply_migration(db, 35)
+        request = await seed(db)
+        await seed_original_view_events(db)
+        await db.execute(SEED_SQL.replace("31000000", "32000000").replace("migration-031", "migration-032"))
+        await seed_original_view_events(db, alternate=True)
+        original = await db.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH)
+        original_events = await db.fetch("SELECT * FROM match_events ORDER BY id")
+        version = await db.fetchrow("SELECT * FROM match_report_versions WHERE request_id = $1", request)
+
+        async def assert_public_matches_internal():
+            internal = await db.fetchrow("SELECT * FROM v_match_current_report WHERE match_id = $1", MATCH)
+            public = await db.fetchrow("SELECT * FROM v_public_matches WHERE id = $1", MATCH)
+            for field in ("resolution_type", "home_score_regular", "away_score_regular", "home_score",
+                          "away_score", "home_penalties", "away_penalties", "winner_team_id", "rectified_at"):
+                assert internal[field] == public[field]
+            events = [dict(row) for row in await db.fetch("SELECT * FROM v_match_current_events WHERE match_id = $1 ORDER BY id", MATCH)]
+            public_events = [dict(row) for row in await db.fetch("SELECT * FROM v_public_match_events WHERE match_id = $1 ORDER BY id", MATCH)]
+            public_fields = ("id", "match_id", "team_id", "player_id", "event_type", "minute", "added_minute",
+                             "player_out_id", "player_in_id", "beneficiary_team_id", "metadata", "is_voided")
+            assert [tuple(event[field] for field in public_fields) for event in events] == [
+                tuple(event[field] for field in public_fields) for event in public_events
+            ]
+            return internal, public_events
+
+        current, events = await assert_public_matches_internal()
+        assert current["version_number"] == 2
+        assert current["rectified_at"] == version["published_at"]
+        assert current["home_penalties"] is None and current["winner_team_id"] is None
+        assert len(events) == 1 and events[0]["minute"] == 10
+        assert events[0]["is_voided"] is False
+        async with db.transaction():
+            await db.execute("SET LOCAL ROLE bracket_app")
+            await db.execute("SELECT set_config('app.current_organization_id', $1, true), set_config('app.current_user_id', $2, true)", ORG, USER)
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_report") == 1
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_events") == 1
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_report WHERE match_id = $1", MATCH.replace("31000000", "32000000")) == 0
+            await db.execute("SELECT set_config('app.current_organization_id', $1, true), set_config('app.current_user_id', $2, true)", ORG.replace("31000000", "32000000"), USER.replace("31000000", "32000000"))
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_report WHERE match_id = $1", MATCH) == 0
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_events WHERE match_id = $1", MATCH) == 0
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_events") == 1
+            await db.execute("SELECT set_config('app.current_organization_id', $1, true)", ORG)
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_report") == 0
+            assert await db.fetchval("SELECT count(*) FROM v_match_current_events") == 0
+
+        await db.execute("UPDATE match_report_rectification_requests SET status = 'published', resulting_version_id = $1 WHERE id = $2", version["id"], request)
+        next_request = await db.fetchval("""
+            INSERT INTO match_report_rectification_requests
+                (organization_id, match_id, base_version_number, proposed_report, reason,
+                 requested_by_user_id, requested_by_member_id)
+            VALUES ($1, $2, 2, '{}', 'Next correction', $3, $4) RETURNING id
+        """, ORG, MATCH, USER, MEMBER)
+        latest = await db.fetchval("""
+            INSERT INTO match_report_versions
+                (organization_id, match_id, version_number, supersedes_version_number,
+                 resolution_type, home_score, away_score, request_id, published_by_user_id, published_at)
+            VALUES ($1, $2, 3, 2, 'regular', 0, 0, $3, $4, TIMESTAMPTZ '2020-01-01') RETURNING id
+        """, ORG, MATCH, next_request, USER)
+        current, events = await assert_public_matches_internal()
+        assert current["version_number"] == 3
+        assert current["home_score"] == 0 and current["home_score_regular"] is None
+        assert not events
+        await db.execute("""
+            INSERT INTO match_report_version_events
+                (organization_id, version_id, match_id, segment_id, team_id, player_id,
+                 event_type, minute, client_event_id, is_voided)
+            SELECT $1, $2, $3, $4, $5, $6, 'goal', 35, event.client_id, event.is_voided
+            FROM (VALUES ('latest-goal', FALSE), ('voided-latest', TRUE)) event(client_id, is_voided)
+        """, ORG, latest, MATCH, SEGMENT_FIRST, TEAM_HOME, PLAYER_HOME_FIRST)
+        _, events = await assert_public_matches_internal()
+        assert len(events) == 1 and events[0]["minute"] == 35 and not events[0]["is_voided"]
+        assert await db.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH) == original
+        assert await db.fetch("SELECT * FROM match_events ORDER BY id") == original_events

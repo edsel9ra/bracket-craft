@@ -43,6 +43,7 @@ function standing(stage_id: string, group_id: string | null, group_name: string 
 
 function match(overrides: Partial<PublicMatch> = {}): PublicMatch {
   return {
+    rectified_at: null,
     id: 'm1',
     stage_id: 's1',
     stage_name: 's1',

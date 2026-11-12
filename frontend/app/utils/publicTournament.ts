@@ -74,6 +74,7 @@ export interface PublicMatchLineup {
 }
 
 export interface PublicMatch {
+  rectified_at: string | null;
   id: string;
   stage_id: string;
   stage_name: string;

@@ -441,6 +441,7 @@ class PublicMatchResponse(BaseModel):
     status: str
     resolution_type: str | None = None
     lineup: PublicMatchLineupResponse | None = None
+    rectified_at: datetime | None = None
 
 
 class PublicPlayerStatsResponse(BaseModel):

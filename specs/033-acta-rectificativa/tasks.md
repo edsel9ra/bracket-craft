@@ -15,9 +15,10 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_migration_035.py`.
 - [x] **T3. Migración 035: `match_slot_assignments`, backfill inequívoco y escritura desde cierre y avance.** Plan §5.2
 - Hecho cuando: el test de migración cubre el backfill (inequívoco → `advancement_link`; ambiguo → `manual`) y `test_close_match*.py` comprueba que cerrar un acta registra la asignación del destino. `pytest -q` en verde.
-- [ ] **T4. Vistas `v_match_current_report`/`v_match_current_events` y públicas recreadas con `rectified_at`.** RF-021, RF-022
+- [x] **T4. Vistas `v_match_current_report`/`v_match_current_events` y públicas recreadas con `rectified_at`.** RF-021, RF-022
 - Hecho cuando: el test de migración demuestra que, en partidos sin rectificar, la salida de las vistas públicas es la misma que en la 034, y `test_public_field_allowlist.py` y `test_public_access_matrix.py` solo admiten el campo nuevo `rectified_at`.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_migration_035.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py`.
+- Decisiones T4 aprobadas: internas `security_invoker`; públicas como propietario con filtros de publicación y overlay directo sobre tablas, contrastado con el interno. La pública conserva eventos anulados del original; la interna los excluye y ambas excluyen los anulados de la versión rectificativa.
 - [ ] **T5. Lectores sobre la versión vigente y test de inventario.** RF-014, RF-021
 - Hecho cuando:
   - clasificación, historial disciplinario del cierre, estadísticas públicas y lecturas del Workspace usan las vistas;

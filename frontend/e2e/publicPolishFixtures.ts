@@ -10,6 +10,7 @@ const teamName = (n: number) => `Club Deportivo Nombre Extenso Sin Abreviar ${n}
 function match(n: number, round: number, code: string, home: number | null, away: number | null): PublicMatch {
   const known = home !== null && away !== null;
   return {
+    rectified_at: null,
     id: uuid(1000 + n), stage_id: bracketId, stage_name: 'Eliminatoria', stage_order: 2,
     group_id: null, group_name: null, bracket_code: code, matchday: round,
     match_date: '2026-11-12T18:00:00Z', home_team_id: home === null ? null : uuid(home + 100),

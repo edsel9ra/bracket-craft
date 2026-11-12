@@ -40,7 +40,7 @@ EXPECTED_FIELDS = {
         "away_team_short_code", "home_team_crest_url", "away_team_crest_url",
         "home_score_regular", "away_score_regular", "home_score", "away_score",
         "home_penalties", "away_penalties", "winner_team_id", "status",
-        "resolution_type", "lineup",
+        "resolution_type", "lineup", "rectified_at",
     },
     "PublicPlayerStatsResponse": {
         "rank", "player_id", "first_name", "last_name", "team_name", "team_id",
