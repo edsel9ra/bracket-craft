@@ -44,7 +44,7 @@ def proposal(**changes):
 
 
 @pytest.fixture
-async def flow(database_admin_url):
+async def flow(database_admin_url, request):
     async with throwaway_database(database_admin_url, last=35) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         seed = seed.replace("UPDATE public.tournament_versions", f"""
@@ -77,6 +77,12 @@ async def flow(database_admin_url):
             FROM rosters r JOIN matches m ON m.tournament_id = r.tournament_id
             WHERE r.organization_id = $1;
         """.replace("$1", f"'{ORG}'"))
+        for minute, identity in enumerate(getattr(request, "param", ()), start=15):
+            await admin.execute("""
+                INSERT INTO match_events (organization_id, match_id, segment_id, team_id,
+                    player_id, client_event_id, event_type, minute)
+                VALUES ($1, $2, $3, $4, $5, $6, 'yellow_card', $7)
+            """, ORG, MATCH, SEGMENT_FIRST, TEAM_HOME, PLAYER_HOME_FIRST, identity, minute)
         await admin.execute("""
             UPDATE matches SET status = 'finished', result_confirmed = TRUE,
                 resolution_type = 'regular', home_score_regular = 0, away_score_regular = 0,
@@ -696,3 +702,16 @@ async def test_rectification_ignores_only_suspensions_originating_in_its_match(f
     assert (await decide(flow, request["id"])).status_code == 200
     assert await flow.admin.fetchval("SELECT count(*) FROM player_suspensions") == 1
     assert await flow.admin.fetchval("SELECT status FROM player_suspensions") == "active"
+
+
+@pytest.mark.parametrize("flow", [("A", "a")], indirect=True)
+async def test_detail_preserves_case_distinct_historical_event_identities(flow):
+    request = await create(flow)
+    assert request.status_code == 201, request.text
+    before = await database_snapshot(flow.admin)
+    detail = await flow.client.get(f"/api/v1/rectifications/{request.json()['id']}")
+    assert detail.status_code == 200, detail.text
+    difference = detail.json()["diff"]["events"]
+    assert [row["client_event_id"] for row in difference["removed"]] == ["A", "a"]
+    assert len(difference["added"]) == 1 and difference["changed"] == []
+    assert await database_snapshot(flow.admin) == before

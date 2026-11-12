@@ -24,7 +24,7 @@ def _events(report):
         if row.get("is_voided", False):
             continue
         event = {name: _json_value(row.get(name)) for name in MatchEventPayload.model_fields}
-        identity = str(event["client_event_id"]).lower()
+        identity = str(event["client_event_id"])
         if identity in events:
             raise ValueError("client_event_id duplicado")
         event.update(client_event_id=identity, metadata=event["metadata"] or {},
