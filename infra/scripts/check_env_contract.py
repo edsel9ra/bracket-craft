@@ -107,10 +107,10 @@ API_ENV = frozenset(
     }
 )
 
-#: Variables del worker del outbox. Solo necesita la conexión de datos y Redis
-#: en desarrollo; fuera de desarrollo también instancia ``Settings``, de ahí las
-#: dos claves de producción de ``PRODUCTION_ONLY_ENV``.
-WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "REDIS_URL"})
+#: Variables del outbox: datos, Redis y correo de decisiones de rectificación.
+WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "REDIS_URL"}) | frozenset(
+    variable for variable in API_ENV if variable.startswith("SMTP_")
+)
 
 #: Variables del servidor Nuxt. ``CI`` la fija el compose de desarrollo.
 WEB_ENV = frozenset(
