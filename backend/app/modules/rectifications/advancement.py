@@ -47,13 +47,13 @@ async def advancement_changes(db: AsyncSession, context: AuthContext, version: M
                 FROM matches m WHERE m.id=:target AND m.organization_id=:organization_id"""),
                 {**params, "team": team, "side": link["target_side"], "target": link["target_match_id"]})).mappings().one()
             old_team = target[f"{link['target_side']}_team_id"]
+            if team == old_team:
+                continue
             targets[target["id"]] = target
             rejection = target["rejection"] or ("bracket_reset" if target["id"] in reset else None)
             if rejection:
                 candidates.append(AdvancementImpactCandidate(version["match_id"], target["id"], link["target_side"],
                     old_team, team, link["id"], rejection))
-                continue
-            if team == old_team:
                 continue
             prior = (await db.execute(text("""SELECT id FROM match_slot_assignments
                 WHERE organization_id=:organization_id AND match_id=:target AND side=:side

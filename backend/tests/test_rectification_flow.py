@@ -53,7 +53,16 @@ async def flow(database_admin_url, request):
         if advancement is not None:
             team = TEAM_HOME if advancement.get("outcome", "winner") == "winner" else TEAM_AWAY
             if advancement.get("wrong_origin"):
-                team = TEAM_AWAY if team == TEAM_HOME else TEAM_HOME
+                team = "31000000-0000-4000-8000-000000000072"
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO teams (id,organization_id,name,short_code)
+                    VALUES ('{team}','{ORG}','Third','TH');
+                    INSERT INTO tournament_teams (organization_id,tournament_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','{team}');
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','{VERSION}','{STAGE}','{team}');
+                    UPDATE public.tournament_versions
+                """)
             side = advancement.get("side", "home")
             home, away = (f"'{team}'", "NULL") if side == "home" else ("NULL", f"'{team}'")
             if advancement.get("both_sides"):
