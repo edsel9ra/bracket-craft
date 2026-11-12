@@ -39,6 +39,34 @@ class RectificationDecisionRequest(BaseModel):
         return value
 
 
+class PlatformAuthorizationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform_admin_email: str
+    reason: str = Field(min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def nonempty_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("El motivo no puede estar vacío")
+        return value.strip()
+
+
+class PlatformAuthorizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    organization_id: UUID
+    request_id: UUID
+    granted_by_member_id: UUID
+    platform_admin_user_id: UUID
+    reason: str
+    granted_at: datetime
+    revoked_at: datetime | None
+    consumed_at: datetime | None
+
+
 class RectificationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

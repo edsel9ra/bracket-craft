@@ -4,9 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.platform import PlatformContext, get_platform_context
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.rectifications.platform import RectificationPlatformService
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
+    PlatformAuthorizationRequest,
+    PlatformAuthorizationResponse,
     RectificationDecisionRequest,
     RectificationDetailResponse,
     RectificationPreviewResponse,
@@ -16,6 +20,44 @@ from app.modules.rectifications.schemas import (
 from app.modules.rectifications.service import RectificationService
 
 router = APIRouter(tags=["rectifications"])
+
+
+@router.post("/rectifications/{request_id}/platform-authorizations", response_model=PlatformAuthorizationResponse, status_code=201)
+async def grant_platform_authorization(
+    request_id: UUID, payload: PlatformAuthorizationRequest,
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).grant(context, request_id, payload))
+
+
+@router.delete("/rectifications/{request_id}/platform-authorizations/{authorization_id}", response_model=PlatformAuthorizationResponse)
+async def revoke_platform_authorization(
+    request_id: UUID, authorization_id: UUID,
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).revoke(context, request_id, authorization_id))
+
+
+@router.get("/platform/rectifications", response_model=list[RectificationResponse])
+async def list_platform_rectifications(
+    context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).list_authorized(context))
+
+
+@router.get("/platform/rectifications/{request_id}", response_model=RectificationDetailResponse)
+async def get_platform_rectification(
+    request_id: UUID, context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).detail(context, request_id))
+
+
+@router.post("/platform/rectifications/{request_id}/decision", response_model=RectificationResponse)
+async def decide_platform_rectification(
+    request_id: UUID, payload: RectificationDecisionRequest,
+    context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).platform_decide(context, request_id, payload))
 
 
 async def _execute(operation):

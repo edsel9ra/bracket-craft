@@ -272,42 +272,72 @@ class RectificationService:
                 await set_rls_context(self.db, context.organization_id, context.user_id)
                 request = await self._request(context, request_id, lock=True)
                 match = await self._match(context, request["match_id"], lock=True)
-                self._require_pending(request)
-                self._require_distinct_actor(request, context)
-                await self._approval_permission(context, request)
-                now = datetime.now(timezone.utc)
-                decision_id = (await self.db.execute(text("""
-                    INSERT INTO match_report_rectification_decisions (organization_id, request_id,
-                        decision, reason, decided_by_user_id, decided_by_member_id, decided_as, decided_at)
-                    VALUES (:organization_id, :request_id, :decision, :reason,
-                        :user_id, :member_id, 'member', :now) RETURNING id
-                """), {"organization_id": context.organization_id, "request_id": request_id,
-                    "decision": payload.decision, "reason": payload.reason, "user_id": context.user_id,
-                    "member_id": context.organization_user_id, "now": now})).scalar_one()
-                version_id = None
-                status = "rejected"
-                if payload.decision == "approve":
-                    if match["version_number"] != payload.expected_base_version:
-                        raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
-                    result = await self._publish(context, request, match, now)
-                    version_id, status = result["version_id"], "published"
-                row = (await self.db.execute(text("""
-                    UPDATE match_report_rectification_requests
-                    SET status = :status, resulting_version_id = :version_id
-                    WHERE id = :request_id AND organization_id = :organization_id RETURNING *
-                """), {"status": status, "version_id": version_id, "request_id": request_id,
-                    "organization_id": context.organization_id})).mappings().one()
-                await record_match_audit(self.db, organization_id=context.organization_id,
-                    member_id=context.organization_user_id, match_id=request["match_id"],
-                    action="DECIDE_MATCH_REPORT_RECTIFICATION", payload={
-                        "request_id": request_id, "decision_id": decision_id,
-                        "decision": payload.decision, "version_id": version_id,
-                    })
-                return self._request_response(row)
+                return await self._decide_locked(context, request, match, payload)
         except DBAPIError as exc:
             if _self_approval_violation(exc):
                 raise RectificationSelfApproval() from exc
             raise
+
+    async def _decide_locked(self, context, request, match, payload, authorization=None):
+        self._require_pending(request)
+        self._require_distinct_actor(request, context)
+        if authorization is None:
+            await self._approval_permission(context, request)
+        else:
+            valid = (await self.db.execute(text("SELECT EXISTS (SELECT 1 FROM rectification_platform_scopes() WHERE id = :id)"),
+                {"id": authorization["id"]})).scalar_one()
+            if not valid:
+                raise PermissionError("Autorización de plataforma requerida")
+        now = datetime.now(timezone.utc)
+        request_id = request["id"]
+        decision_id = (await self.db.execute(text("""
+                    INSERT INTO match_report_rectification_decisions (organization_id, request_id,
+                        decision, reason, decided_by_user_id, decided_by_member_id, decided_as, decided_at, authorization_id)
+                    VALUES (:organization_id, :request_id, :decision, :reason,
+                        :user_id, :member_id, :decided_as, :now, :authorization_id) RETURNING id
+                """), {"organization_id": context.organization_id, "request_id": request_id,
+                    "decision": payload.decision, "reason": payload.reason, "user_id": context.user_id,
+                    "member_id": context.organization_user_id, "now": now,
+                    "decided_as": "member" if authorization is None else "platform_admin",
+                    "authorization_id": authorization["id"] if authorization else None})).scalar_one()
+        version_id, status = None, "rejected"
+        if payload.decision == "approve":
+            if match["version_number"] != payload.expected_base_version:
+                raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
+            result = await self._publish(context, request, match, now)
+            version_id, status = result["version_id"], "published"
+        params = {"status": status, "version_id": version_id, "request_id": request_id,
+            "organization_id": context.organization_id}
+        audit = {"request_id": request_id, "decision_id": decision_id,
+            "decision": payload.decision, "version_id": version_id}
+        if authorization is not None:
+            await self.db.execute(text("""
+                INSERT INTO administrative_audit_logs (organization_id, entity_type, entity_id,
+                    action, payload, performed_by_user_id)
+                VALUES (:organization_id, 'matches', :match_id, 'DECIDE_MATCH_REPORT_RECTIFICATION',
+                    CAST(:payload AS jsonb), :user_id)
+            """), {"organization_id": context.organization_id, "match_id": request["match_id"],
+                "user_id": context.user_id, "payload": json.dumps(audit, default=str)})
+            await self.db.execute(text("SELECT record_rectification_platform_audit(:id)"), {"id": decision_id})
+            row = (await self.db.execute(text("""
+                WITH consumed AS (
+                    UPDATE match_report_platform_authorizations SET consumed_at = :now
+                    WHERE id = :authorization_id AND organization_id = :organization_id RETURNING id
+                )
+                UPDATE match_report_rectification_requests q
+                SET status = :status, resulting_version_id = :version_id FROM consumed
+                WHERE q.id = :request_id AND q.organization_id = :organization_id RETURNING q.*
+            """), {**params, "now": now, "authorization_id": authorization["id"]})).mappings().one()
+        else:
+            row = (await self.db.execute(text("""
+                    UPDATE match_report_rectification_requests
+                    SET status = :status, resulting_version_id = :version_id
+                    WHERE id = :request_id AND organization_id = :organization_id RETURNING *
+                """), params)).mappings().one()
+            await record_match_audit(self.db, organization_id=context.organization_id,
+                member_id=context.organization_user_id, match_id=request["match_id"],
+                action="DECIDE_MATCH_REPORT_RECTIFICATION", payload=audit)
+        return self._request_response(row)
 
     async def _publish(self, context, request, match, now) -> dict:
         if match["version_number"] != request["base_version_number"]:

@@ -39,7 +39,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - [x] **T9. Decisión de miembro: rechazo y aprobación con versión nueva (sin efectos aún).** RF-006–RF-008, RF-010–RF-013, RNF-003
 - Hecho cuando: los tests cubren autoaprobación (403 desde el servicio y desde el trigger), sin permiso (403), motivo vacío (422), `STALE`, dos aprobaciones concurrentes que producen una sola versión, versión 3 sobre la 2 y original intacto.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py`.
-- [ ] **T10. Autorización de plataforma y decisión excepcional.** RF-008, RF-009, RF-009b; plan §5.1
+- [x] **T10. Autorización de plataforma y decisión excepcional.** RF-008, RF-009, RF-009b; plan §5.1
 - Hecho cuando: los tests cubren conceder (solo `owner`, solo `platform_admin` activo, 422 uniforme), revocar, consumir y la verificación al ejecutar; la ausencia de acceso fuera de la transacción, el registro en `platform_audit_logs` y la autoaprobación de un administrador de plataforma que también es solicitante.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py tests/test_rectification_platform.py`.
 
