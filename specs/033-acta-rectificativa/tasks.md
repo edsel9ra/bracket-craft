@@ -8,7 +8,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 
 ## PR A — Esquema y lectura de la versión vigente
 
-- [ ] **T1. Migración 035: tablas de rectificación, RLS y triggers *append-only*.** RNF-001, RF-002, RF-013
+- [x] **T1. Migración 035: tablas de rectificación, RLS y triggers *append-only*.** RNF-001, RF-002, RF-013
 - Hecho cuando: `test_migration_035.py` comprueba tablas, RLS/FORCE, políticas, `GRANT`, rechazo de `UPDATE`/`DELETE` y el índice de una solicitud pendiente sobre volumen limpio y sobre 034→035. Pasan `cd backend && RUN_DATABASE_TESTS=1 … pytest -q tests/test_migration_035.py`, `sh -n infra/postgres/migrate.sh` y `sh infra/scripts/test_migrate_target.sh`.
 - [ ] **T2. Migración 035: trigger de autoaprobación, permisos nuevos y transición de estados.** RF-007, DA-1
 - Hecho cuando: el test inserta una decisión del solicitante y recibe el error del trigger, y verifica los permisos en `role_definitions` y `roles` de `owner`/`administrator` sin duplicados, así como las transiciones de estado permitidas y prohibidas.
