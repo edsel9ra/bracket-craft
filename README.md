@@ -867,6 +867,8 @@ Guardar la planilla de un partido, publicar o despublicar la formación de un eq
 
 ## Rendimiento, fotos y conexión
 
+Desde **034**, el worker ejecuta al arrancar y cada hora una purga por lotes (máximo 500 sesiones y 500 eventos por ejecución). Elimina sesiones vencidas o revocadas hace más de 30 días y outbox con `status='processed'`, `processed_at` de hace más de 7 días y sin bloqueo; conserva pendientes, reintentos y todas las invitaciones. Usa el rol de aplicación mediante una función `SECURITY DEFINER` acotada, sin conceder DELETE global, y registra solo los conteos. Si falla, registra el error y reintenta en el siguiente intervalo sin detener el procesamiento del outbox. Aplicar 034 antes de arrancar el worker actualizado.
+
 Desde la migración **033**, las invitaciones conservan solo el hash del token: se elimina `token_encrypted`. `INVITATION_TOKEN_KEY` queda obsoleta, es opcional y Compose ya no la inyecta; el valor de desarrollo explícito sigue rechazándose fuera de desarrollo. Crear, reenviar y reabrir generan un enlace nuevo sin recuperar el token anterior. Aplicar 033 antes de arrancar este código y retirar los procesos antiguos durante la actualización; el código anterior no es compatible con la columna eliminada. La eliminación es irreversible: restaurar un backup es necesario para recuperar el esquema y los valores anteriores.
 
 Los límites de esta sección son constantes del backend: no hay variables de entorno, migraciones ni dependencias nuevas.
