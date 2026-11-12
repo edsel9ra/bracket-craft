@@ -54,6 +54,45 @@ async def test_purge_once_passes_cutoffs_and_logs_counts(monkeypatch, caplog, co
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("batches,totals", [
+    ([(500, 1), (2, 500), (3, 4)], (505, 505)),
+    ([(0, 500), (0, 0)], (0, 500)),
+    ([(500, 0)] * 20, (10000, 0)),
+])
+async def test_purge_repeats_full_batches_in_separate_transactions(monkeypatch, caplog, batches, totals):
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    transactions = [AsyncMock() for _ in batches]
+    db.begin = MagicMock(side_effect=transactions)
+    calls = 0
+
+    async def execute(_query, parameters):
+        nonlocal calls
+        assert transactions[calls].__aenter__.await_count == 1
+        if calls:
+            assert transactions[calls - 1].__aexit__.await_count == 1
+        assert parameters == {
+            "sessions": NOW - timedelta(days=30),
+            "outbox": NOW - timedelta(days=7),
+            "batch_limit": 500,
+        }
+        result = MagicMock()
+        result.one.return_value = batches[calls]
+        calls += 1
+        return result
+
+    db.execute.side_effect = execute
+    monkeypatch.setattr(retention, "SessionFactory", lambda: db)
+    caplog.set_level("INFO", logger=retention.__name__)
+    assert await retention.purge_once(NOW) == totals
+    assert calls == len(batches)
+    assert db.begin.call_count == len(batches)
+    for transaction in transactions:
+        transaction.__aexit__.assert_awaited_once_with(None, None, None)
+    assert f"sesiones={totals[0]}, eventos outbox={totals[1]}" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, caplog):
     clock = SimpleNamespace(now=0)
     process = AsyncMock(return_value=0)
