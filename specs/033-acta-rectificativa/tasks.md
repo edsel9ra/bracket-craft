@@ -30,7 +30,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - [x] **T6. Extraer `validate_report_payload` del cierre sin cambiar su comportamiento.** RF-001, RNF-005
 - Hecho cuando: un test de equivalencia recorre los casos actuales del cierre con los mismos `code`, y las suites `test_close_match*` pasan sin cambios.
 - Comando: `cd backend && pytest -q tests/test_report_payload_validation.py tests/test_close_match*.py`.
-- [ ] **T7. Presentar, listar y retirar solicitudes.** RF-001–RF-004, RF-020, RF-023
+- [x] **T7. Presentar, listar y retirar solicitudes.** RF-001–RF-004, RF-020, RF-023
 - Hecho cuando: `test_rectification_flow.py` cubre propuesta válida, inválida (409 con el `code` del cierre y nada registrado), `NO_CHANGES`, `ALREADY_OPEN`, `MATCH_NOT_CONFIRMED`, `TOURNAMENT_ARCHIVED`, retirada solo por el solicitante y 404 entre organizaciones.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py`.
 - [ ] **T8. Diferencias y vista previa con `ROLLBACK`.** RF-005

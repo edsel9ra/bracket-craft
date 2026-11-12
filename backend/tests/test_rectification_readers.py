@@ -25,6 +25,8 @@ from test_migration_031 import (
 
 
 ORIGINAL_READ_ALLOWLIST = {
+    ("modules/rectifications/service.py", "RectificationService._original_report"):
+        "Version 1 is the immutable original, including voided events; only historical detail reads it.",
     ("modules/matches/router.py", "_load_operation_match"):
         "Locks and validates the original for write operations; confirmed GET overlays it afterwards.",
     ("modules/matches/router.py", "get_match_operation"):
