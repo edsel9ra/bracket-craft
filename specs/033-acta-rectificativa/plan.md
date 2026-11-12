@@ -92,7 +92,7 @@ Toda la decisión ocurre en una sola transacción: cualquier excepción la desha
    - Los cumplimientos ya registrados se conservan.
 
    Una sanción nueva no cuenta como cumplida en ningún partido que ya tuviera un segmento antes de su creación. Para eso se añade esa condición a la elegibilidad de cumplimiento en el cierre (`service.py:1760–1791`). Si el cambio altera una acumulación de amarillas cuya sanción se originó en un partido posterior ya confirmado, esa sanción **no** se toca: se abre un elemento de impacto competitivo (decisión D5).
-3. **Avance (RF-015, RF-016):** si cambia el ganador o el perdedor, se revisa cada destino de `advancement_links` (y el reinicio de la gran final). Un destino **no comenzado** (`scheduled`, sin `match_segments`, sin confirmar) recibe el equipo nuevo, sustituyendo al antiguo solo si este llegó por ese enlace. En cualquier otro caso se abre impacto. Además, si cambia el orden final de una fase y una fase posterior de la misma versión ya tiene equipos asignados, se abre impacto, porque el paso entre fases es manual y no se reasigna.
+3. **Avance (RF-015, RF-016):** si cambia el ganador o el perdedor, se revisa cada destino de `advancement_links` (y el reinicio de la gran final). Un destino **no comenzado** (`scheduled`, sin `match_segments`, sin confirmar) recibe el equipo nuevo, sustituyendo al antiguo solo si este llegó por ese enlace. En cualquier otro caso se abre impacto. Las condiciones exactas están en 5.2. Además, si cambia el orden final de una fase y una fase posterior de la misma versión ya tiene equipos asignados, se abre impacto, porque el paso entre fases es manual y no se reasigna.
 4. **Impacto (RF-016, RF-017, RF-017b):** se crea un procedimiento por versión con todos sus elementos afectados. Mientras siga abierto, abrir un segmento (`matches/router.py:705`) o cerrar el acta de un partido afectado responde **409** `COMPETITIVE_IMPACT_OPEN`. Se cierra solo con `keep_as_played` y motivo.
 5. **Tiempo real y registro (RF-019):** se encolan en la outbox `MATCH_UPDATED`, `STANDINGS_UPDATED` y `MATCH_REPORT_RECTIFIED` (este último solo para la organización), y cada efecto y cada notificación quedan registrados. Para no duplicar el SQL del cierre, se extrae un helper `enqueue_outbox(session, …)` en `core/outbox.py`.
 
@@ -136,12 +136,33 @@ Todo pasa por `useApi.ts`. Textos en ES/EN (`useI18n.ts`), componentes de `compo
 |---|---|---|---|
 | D1 | Versiones en tablas nuevas y lectores sobre vistas de versión vigente. | Sobrescribir `matches`. | RF-013 y §2.3 prohíben relajar la 016. |
 | D2 | Vista previa ejecutando la publicación y haciendo `ROLLBACK`. | Un planificador puro paralelo. | Una sola ruta de cálculo; sin divergencias entre lo previsto y lo publicado. |
-| D3 | La plataforma decide con el contexto RLS de la organización, habilitado solo por una autorización vigente fijada en la transacción. | Función SQL `SECURITY DEFINER` que publique. | Duplicaría en SQL todos los efectos; la excepción queda limitada a esa solicitud y a esa transacción. |
-| D4 | El trigger de estructura publicada permite sustituir el equipo de un destino no comenzado solo bajo una versión publicada que registre ese efecto. | Tratar todo destino ya asignado como impacto. | Hoy el cierre ya asigna los destinos al cerrar, así que sin D4 RF-015 nunca se aplicaría. Cambia un trigger de endurecimiento: **requiere tu confirmación**. |
+| D3 | La plataforma decide con el contexto RLS de la organización, habilitado solo por una autorización vigente fijada en la transacción. **Confirmada el 2026-11-12** (ver 5.1). | Función SQL `SECURITY DEFINER` que publique. | Duplicaría en SQL todos los efectos; la excepción queda limitada a esa solicitud y a esa transacción. |
+| D4 | El trigger de estructura publicada permite sustituir el equipo de un destino no comenzado solo bajo una versión publicada que registre ese efecto. **Confirmada el 2026-11-12** (ver 5.2). | Tratar todo destino ya asignado como impacto. | Hoy el cierre ya asigna los destinos al cerrar, así que sin D4 RF-015 nunca se aplicaría. Cambia un trigger de endurecimiento, con las condiciones de 5.2. |
 | D5 | Las sanciones por acumulación originadas en partidos posteriores confirmados no se anulan ni se crean automáticamente; se abre impacto. | Recalcular toda la disciplina del torneo. | Esas sanciones pertenecen a actas posteriores ya confirmadas (§3.6). |
 | D6 | El correo pasa por la outbox con un manejador propio en el worker. | Envío síncrono tras la transacción, como las invitaciones. | La spec exige la outbox y el registro de la notificación (RF-019, RF-024). |
 | D7 | La autoaprobación se impide en el servicio **y** con un trigger en la tabla de decisiones. | Solo el servicio. | «Técnicamente» (§3.6): ni un error de código la permite. |
 | D8 | La autorización de plataforma se designa por correo y solo para `platform_admin` activo. | Incluir `platform_support`. | El soporte no tiene permisos de escritura (`require_platform_write`). |
+
+### 5.1 Condiciones de D3 (confirmadas por el usuario)
+
+- La plataforma solo opera sobre datos de la organización con una autorización **vigente y verificable** del dueño. Vigente quiere decir no revocada, no consumida, solicitud `pending` y dueño todavía con rol `owner` activo. Se verifica al ejecutar la decisión, con la autorización bloqueada `FOR UPDATE`.
+- La autorización vincula la organización, la solicitud, el administrador ejecutor (`user_id` con `platform_admin` activo) y el dueño autorizante (`member_id`).
+- `app.rectification_authorization_id` se fija con `set_config(…, true)`, local a la transacción. `fn_verify_user_org_membership` solo la acepta si coinciden la organización de la sesión, el usuario de la sesión y una autorización vigente. Al terminar la transacción no queda ningún permiso persistente.
+- Las políticas RLS siguen aplicándose a todas las tablas. Sin `BYPASSRLS`, sin cambios de rol y sin `SECURITY DEFINER` que escriba datos de la organización.
+- La decisión, la publicación de la versión y todos sus efectos van en una única transacción, que además consume la autorización.
+- Test: fuera de esa transacción, la misma sesión de plataforma vuelve a recibir 404 o 0 filas sobre la organización.
+
+### 5.2 Condiciones de D4 (confirmadas por el usuario)
+
+El trigger permite sustituir `home_team_id`/`away_team_id` de un partido de una versión publicada **solo si se cumplen todas** estas condiciones. Si falla cualquiera, rechaza la sustitución y el servicio abre un procedimiento de impacto competitivo en su lugar:
+
+1. El partido destino está `scheduled`, no tiene filas en `match_segments` y no tiene `result_confirmed`.
+2. El equipo sustituido llegó **exclusivamente** por el enlace de avance del partido origen. Hoy el cierre no registra cómo se asigna un equipo. Por eso la 035 añade `match_slot_assignments` (*append-only*: partido, lado, equipo, origen `advancement_link`/`manual`/`rectification`, enlace, versión, fecha), y el cierre y el servicio de avance escriben en ella. Para asignaciones anteriores a la 035, la migración solo infiere el origen `advancement_link` si el equipo coincide con el resultado del enlace del origen confirmado y ningún otro enlace apunta a ese lado. Si no, las marca `manual` y su sustitución automática queda prohibida.
+3. El equipo nuevo es el que el enlace determina con la versión publicada: el nuevo ganador o, en enlaces `loser`, el nuevo perdedor.
+4. La sesión fija `app.rectification_version_id`, que pertenece a la misma transacción que publica la versión, y esa versión registra el efecto `advancement` sobre ese partido y lado.
+5. La sustitución añade una fila `rectification` en `match_slot_assignments` y un efecto con el acta original, la versión, el partido origen, el destino, el equipo anterior y el nuevo. La asignación anterior no se modifica ni se elimina.
+
+No se puede modificar una inscripción manual, sustituir un equipo de forma arbitraria ni alterar un partido que ya comenzó.
 
 ## 6. Estrategia de tests
 
@@ -151,7 +172,7 @@ Siempre primero en rojo (Fase 5).
 - **Base de datos** (`RUN_DATABASE_TESTS=1`):
   - `test_migration_035.py`.
   - `test_rectification_flow.py`: solicitud, retirada, rechazo, publicación, versión 3 sobre versión 2, `STALE`, dos aprobaciones concurrentes que producen una sola versión, autoaprobación por servicio y por trigger, plataforma con autorización, sin ella, revocada y consumida, aislamiento 404 entre dos organizaciones y torneo archivado.
-  - `test_rectification_effects.py`: clasificación, sanciones (nueva, anulada con cumplimientos conservados y no cumplida en un partido ya comenzado), avance a un destino libre, impacto por destino comenzado, por fase posterior y por acumulación, bloqueo `COMPETITIVE_IMPACT_OPEN` y outbox.
+  - `test_rectification_effects.py`: D4, una prueba por cada condición de 5.2 que falla (destino con segmento, destino confirmado, asignación manual, equipo distinto del enlace, sin versión en la sesión), que demuestra el rechazo del trigger y la apertura de impacto; clasificación, sanciones (nueva, anulada con cumplimientos conservados y no cumplida en un partido ya comenzado), avance a un destino libre, impacto por destino comenzado, por fase posterior y por acumulación, bloqueo `COMPETITIVE_IMPACT_OPEN` y outbox.
   - `test_rectification_readers.py`.
 - **Públicos:** `test_public_field_allowlist.py` y `test_public_access_matrix.py` se amplían solo con `rectified_at`. Para partidos no rectificados, las estadísticas públicas devuelven lo mismo que antes.
 - **Worker:** el manejador del correo, con fallo y reintento, y que el correo no incluye la evidencia.
