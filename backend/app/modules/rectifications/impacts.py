@@ -61,6 +61,23 @@ class CompetitiveImpactService:
     def __init__(self, db):
         self.db = db
 
+    async def list_organization(self, context, filters):
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            params = {**filters.model_dump(), "org": context.organization_id}
+            total = (await self.db.execute(text("""SELECT count(*) FROM competitive_impact_procedures q
+                JOIN matches m ON m.id=q.match_id AND m.organization_id=q.organization_id
+                WHERE q.organization_id=:org
+                  AND (CAST(:status AS text) IS NULL OR q.status=:status)
+                  AND (CAST(:tournament_id AS uuid) IS NULL OR m.tournament_id=:tournament_id)"""), params)).scalar_one()
+            rows = (await self.db.execute(text("""SELECT q.* FROM competitive_impact_procedures q
+                JOIN matches m ON m.id=q.match_id AND m.organization_id=q.organization_id
+                WHERE q.organization_id=:org
+                  AND (CAST(:status AS text) IS NULL OR q.status=:status)
+                  AND (CAST(:tournament_id AS uuid) IS NULL OR m.tournament_id=:tournament_id)
+                ORDER BY q.created_at DESC,q.id DESC LIMIT :limit OFFSET :offset"""), params)).mappings().all()
+            return {"items": rows, "total": total, "limit": filters.limit, "offset": filters.offset}
+
     async def list(self, context, tournament_id: UUID):
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
@@ -68,7 +85,6 @@ class CompetitiveImpactService:
                 {"id": tournament_id, "org": context.organization_id})
             if exists.scalar_one_or_none() is None:
                 raise LookupError("Torneo no encontrado")
-            await require_permission(self.db, context, "APPROVE_MATCH_REPORT_RECTIFICATION")
             return (await self.db.execute(text("""SELECT p.* FROM competitive_impact_procedures p
                 JOIN matches m ON m.id=p.match_id AND m.organization_id=p.organization_id
                 WHERE p.organization_id=:org AND m.tournament_id=:id ORDER BY p.created_at,p.id"""),

@@ -26,6 +26,8 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 ## Stack
 
+- **Workspace rectificativo (033 T16):** `useMatchRectifications` y `useCompetitiveImpacts` solo usan `useApi`; componentes en `components/match/`, sin administración ni marca pública (T17 pendiente). Bandejas organizativas paginadas (`GET /rectifications`, `/competitive-impacts`): miembro, RLS, filtros estrictos de estado/torneo, orden fecha/ID descendente; torneo ajeno/inexistente produce la misma página vacía. Leer impactos no exige aprobación; cerrarlos sí. Lectura de autorizaciones: owner, 404 indistinguible al resto. Ocultar decisiones al solicitante; aprobar requiere preview y su base, invalidada ante conflicto. Editor e historial mantienen el orden del payload o del primer audit de cierre (fallback determinista si falta); campos y eventos editables, originales intactos. Confirmaciones single-flight y ES/EN; tests `test_rectification_workspace_reads.py`, `rectification-components.test.ts` y `rectification-composables.test.ts`.
+
 - Mantenimiento de auditoría: ejecutar `pnpm run lint` además de tests/typecheck/build.
   CI añade `bandit -r app -ll` y Gitleaks sobre `git archive HEAD`;
   excepciones específicas, nunca exclusiones globales de B608 ni del árbol de tests.

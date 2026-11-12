@@ -68,7 +68,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 
 ## PR D — Frontend, documentación y E2E
 
-- [ ] **T16. Workspace: versiones del acta, editor de solicitud, bandeja y revisión.** RF-001, RF-004–RF-006, RF-009, RF-017, RF-020, RNF-006
+- [x] **T16. Workspace: versiones del acta, editor de solicitud, bandeja y revisión.** RF-001, RF-004–RF-006, RF-009, RF-017, RF-020, RNF-006
 - Hecho cuando: los tests de componentes y composables, el no mostrar el botón de decisión al solicitante y el i18n ES/EN pasan con `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build`.
 - [ ] **T17. `/admin/rectifications` y marca pública «Resultado rectificado».** RF-009b, RF-022
 - Hecho cuando: los tests de la pantalla de administración y de la marca en tarjetas, modal y llave pasan con los mismos comandos de T16, y la marca no muestra motivo ni responsables.

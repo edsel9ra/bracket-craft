@@ -24,6 +24,18 @@ class AuthorizedPlatformActor:
 
 
 class RectificationPlatformService(RectificationService):
+    async def list_authorizations(self, context, request_id):
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            try:
+                await self._owner(context)
+            except PermissionError as exc:
+                raise LookupError("Solicitud no encontrada") from exc
+            await self._request(context, request_id)
+            return (await self.db.execute(text("""SELECT * FROM match_report_platform_authorizations
+                WHERE organization_id=:org AND request_id=:request ORDER BY granted_at,id"""),
+                {"org": context.organization_id, "request": request_id})).mappings().all()
+
     async def _owner(self, context):
         owner = (await self.db.execute(text("SELECT rectification_owner(:id)"),
             {"id": context.organization_id})).scalar_one()

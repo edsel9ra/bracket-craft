@@ -198,6 +198,40 @@ class RectificationDetailResponse(RectificationResponse):
     diff: ReportDifference
 
 
+class OrganizationListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tournament_id: UUID | None = None
+    limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class RectificationListQuery(OrganizationListQuery):
+    status: Literal["pending", "rejected", "withdrawn", "published"] | None = None
+
+
+class CompetitiveImpactListQuery(OrganizationListQuery):
+    status: Literal["open", "closed"] | None = None
+
+
+class RectificationPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[RectificationResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class CompetitiveImpactPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CompetitiveImpactResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class RectificationPreviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
