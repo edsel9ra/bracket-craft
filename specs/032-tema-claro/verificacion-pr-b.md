@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-11. Rama `devin/1794426037-spec-032-selector-superficies`.
 Base de comparación: `origin/main` `53a7ef06f8ad80ec461281a612c07ddf4d248cea`.
-Spec aprobada; esta entrega no cierra T7–T10 ni la aceptación global del PR C.
+Registro histórico de PR B, limitado a T4–T6. T7–T10 y la aceptación global se cerraron posteriormente con #55 fusionado, CI verde y aprobación del usuario el 2026-11-12: [verificación final](verificacion.md).
 
 ## Implementación y TDD
 

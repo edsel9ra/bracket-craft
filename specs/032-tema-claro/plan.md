@@ -1,6 +1,6 @@
 # Plan 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A (T1–T3) fusionado; PR B autorizado con LY-1 y aún no implementado; PR C pendiente. Spec/clarificación aprobadas (D1–D4 A, geometría revisada LY-1). No backend, API, permisos, datos de negocio, dependencias ni política CSP nuevos.
+Fecha: 2026-11-11; cierre 2026-11-12. **Plan/tareas aprobados y T1–T10 completas; spec implementada.** PR A/B/C fusionados (#53/#54/#55); CI de #55 verde (run 43109805246, E2E 41 passed) y cierre aprobado por el usuario. D1–D4 A y LY-1 conservadas. Sin cambios de backend, API, permisos, datos de negocio ni CSP; axe-core 4.10.3 solo como dependencia de desarrollo. Evidencia en [verificación](verificacion.md).
 
 ## 1. Alcance e interfaz
 
