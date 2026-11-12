@@ -20,10 +20,10 @@ from app.modules.matches.schemas import CloseMatchReportDTO
 from app.modules.matches.service import load_report_payload_snapshot
 from app.modules.rectifications.service import RectificationService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from migration_helpers import throwaway_database
+from migration_helpers import apply_migration, throwaway_database
 from test_migration_031 import (
     MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEED_SQL, SEGMENT_FIRST,
-    TEAM_HOME, TOURNAMENT, USER, VERSION,
+    STAGE, TEAM_AWAY, TEAM_HOME, TOURNAMENT, USER, VERSION,
 )
 
 UNCONFIRMED = "31000000-0000-4000-8000-000000000053"
@@ -45,8 +45,79 @@ def proposal(**changes):
 
 @pytest.fixture
 async def flow(database_admin_url, request):
-    async with throwaway_database(database_admin_url, last=35) as admin:
+    legacy = isinstance(getattr(request, "param", None), dict) and request.param.get("legacy_confirmation")
+    options = request.param if isinstance(getattr(request, "param", None), dict) else {}
+    advancement = options.get("advancement")
+    async with throwaway_database(database_admin_url, last=36 if legacy else 39) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
+        if advancement is not None:
+            team = TEAM_HOME if advancement.get("outcome", "winner") == "winner" else TEAM_AWAY
+            if advancement.get("wrong_origin"):
+                team = "31000000-0000-4000-8000-000000000072"
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO teams (id,organization_id,name,short_code)
+                    VALUES ('{team}','{ORG}','Third','TH');
+                    INSERT INTO tournament_teams (organization_id,tournament_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','{team}');
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','{VERSION}','{STAGE}','{team}');
+                    UPDATE public.tournament_versions
+                """)
+            side = advancement.get("side", "home")
+            home, away = (f"'{team}'", "NULL") if side == "home" else ("NULL", f"'{team}'")
+            if advancement.get("both_sides"):
+                home, away = f"'{TEAM_HOME}'", f"'{TEAM_AWAY}'"
+            seed = seed.replace("UPDATE public.tournament_versions", f"""
+                INSERT INTO matches (id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
+                SELECT '31000000-0000-4000-8000-000000000070',organization_id,tournament_id,tournament_version_id,
+                    stage_id,{home},{away},'scheduled' FROM matches WHERE id='{MATCH}';
+                INSERT INTO advancement_links (organization_id,source_match_id,target_match_id,outcome,target_side)
+                VALUES ('{ORG}','{MATCH}','31000000-0000-4000-8000-000000000070',
+                    '{advancement.get("outcome", "winner")}','{side}');
+                INSERT INTO stages (id,organization_id,tournament_id,tournament_version_id,name,stage_type,stage_order)
+                SELECT '31000000-0000-4000-8000-000000000071',organization_id,tournament_id,tournament_version_id,
+                    'Later','single_elimination',2 FROM matches WHERE id='{MATCH}';
+                UPDATE public.tournament_versions
+            """)
+            condition = getattr(getattr(request.node, "callspec", None), "params", {}).get("condition")
+            if condition == "wrong_team":
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO teams (id,organization_id,name,short_code)
+                    VALUES ('31000000-0000-4000-8000-000000000072','{ORG}','Third','TH');
+                    INSERT INTO tournament_teams (organization_id,tournament_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','31000000-0000-4000-8000-000000000072');
+                    UPDATE public.tournament_versions
+                """)
+            if condition == "later_phase" or advancement.get("later_phase"):
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    SELECT organization_id,tournament_id,tournament_version_id,'31000000-0000-4000-8000-000000000071',team_id
+                    FROM stage_teams WHERE stage_id='{STAGE}' AND team_id='{TEAM_HOME}' LIMIT 1;
+                    UPDATE public.tournament_versions
+                """)
+            if advancement.get("no_link"):
+                seed = seed.replace("INSERT INTO stages", f"DELETE FROM advancement_links WHERE source_match_id='{MATCH}'; INSERT INTO stages")
+            if advancement.get("reset"):
+                seed = seed.replace("INSERT INTO stages", f"""
+                    UPDATE matches SET bracket_code='GF1' WHERE id='{MATCH}';
+                    UPDATE matches SET bracket_code='GF2' WHERE id='31000000-0000-4000-8000-000000000070';
+                    INSERT INTO stages
+                """)
+            if advancement.get("both_sides"):
+                seed = seed.replace("INSERT INTO stages", f"""
+                    INSERT INTO advancement_links (organization_id,source_match_id,target_match_id,outcome,target_side)
+                    VALUES ('{ORG}','{MATCH}','31000000-0000-4000-8000-000000000070','loser','away');
+                    INSERT INTO stages
+                """)
+            if advancement.get("target_in_later"):
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    SELECT organization_id,tournament_id,tournament_version_id,'31000000-0000-4000-8000-000000000071',team_id
+                    FROM stage_teams WHERE stage_id='{STAGE}' AND team_id='{TEAM_AWAY}';
+                    UPDATE matches SET stage_id='31000000-0000-4000-8000-000000000071'
+                    WHERE id='31000000-0000-4000-8000-000000000070';
+                    UPDATE public.tournament_versions
+                """)
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches (id, organization_id, tournament_id, tournament_version_id,
                 stage_id, home_team_id, away_team_id, status)
@@ -54,6 +125,11 @@ async def flow(database_admin_url, request):
                 stage_id, home_team_id, away_team_id, 'scheduled' FROM matches WHERE id = '{MATCH}';
             UPDATE public.tournament_versions
         """)
+        if advancement is not None and advancement.get("target_in_later"):
+            seed = seed.replace("UPDATE public.tournament_versions", f"""
+                UPDATE matches SET stage_id='31000000-0000-4000-8000-000000000071' WHERE id='{UNCONFIRMED}';
+                UPDATE public.tournament_versions
+            """)
         await admin.execute(seed)
         await admin.execute(seed.replace("31000000", "32000000").replace("migration-031", "rectification-other"))
         await admin.execute("""
@@ -77,7 +153,12 @@ async def flow(database_admin_url, request):
             FROM rosters r JOIN matches m ON m.tournament_id = r.tournament_id
             WHERE r.organization_id = $1;
         """.replace("$1", f"'{ORG}'"))
-        for minute, identity in enumerate(getattr(request, "param", ()), start=15):
+        events = getattr(request, "param", ())
+        if isinstance(events, dict):
+            events = events.get("events", ())
+        for minute, identity in enumerate(events, start=15):
+            if isinstance(identity, dict):
+                minute, identity = identity["minute"], identity["client_event_id"]
             await admin.execute("""
                 INSERT INTO match_events (organization_id, match_id, segment_id, team_id,
                     player_id, client_event_id, event_type, minute)
@@ -85,9 +166,22 @@ async def flow(database_admin_url, request):
             """, ORG, MATCH, SEGMENT_FIRST, TEAM_HOME, PLAYER_HOME_FIRST, identity, minute)
         await admin.execute("""
             UPDATE matches SET status = 'finished', result_confirmed = TRUE,
-                resolution_type = 'regular', home_score_regular = 0, away_score_regular = 0,
-                home_score = 0, away_score = 0 WHERE id IN ($1, $2)
-        """, MATCH, MATCH.replace("31000000", "32000000"))
+                resolution_type = 'regular', home_score_regular = $3, away_score_regular = 0,
+                home_score = $3, away_score = 0, winner_team_id = CASE WHEN $3=1 THEN home_team_id END
+                WHERE id IN ($1, $2)
+        """, MATCH, MATCH.replace("31000000", "32000000"), 1 if advancement is not None else 0)
+        if advancement is not None:
+            await admin.execute("""INSERT INTO match_slot_assignments
+                (organization_id,tournament_id,match_id,side,team_id,origin,advancement_link_id)
+                SELECT m.organization_id,m.tournament_id,m.id,al.target_side,
+                    CASE WHEN al.target_side='home' THEN m.home_team_id ELSE m.away_team_id END,
+                    CASE WHEN al.target_side=$3 THEN 'manual' ELSE $1 END,al.id
+                FROM matches m JOIN advancement_links al ON al.target_match_id=m.id
+                WHERE m.organization_id=$2""", advancement.get("origin", "advancement_link"), ORG, advancement.get("manual_side"))
+        if legacy:
+            await apply_migration(admin, 37)
+            await apply_migration(admin, 38)
+            await apply_migration(admin, 39)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
         state = SimpleNamespace(admin=admin, engine=engine,
@@ -119,6 +213,28 @@ async def flow(database_admin_url, request):
 
 async def create(flow, payload=None):
     return await flow.client.post(f"/api/v1/matches/{MATCH}/rectifications", json=payload or proposal())
+
+
+@pytest.mark.parametrize("flow", [(str(uuid4()), str(uuid4()))], indirect=True)
+@pytest.mark.parametrize("future_status", ["active", "served"])
+async def test_request_can_recalculate_accumulation_with_active_sanction_from_later_confirmed_match(flow, future_status):
+    segment = await flow.admin.fetchval("""INSERT INTO match_segments
+        (organization_id, match_id, segment_number, minute_start)
+        VALUES ($1,$2,1,0) RETURNING id""", ORG, UNCONFIRMED)
+    event = await flow.admin.fetchval("""INSERT INTO match_events
+        (organization_id, match_id, segment_id, team_id, player_id, event_type, minute, client_event_id)
+        VALUES ($1,$2,$3,$4,$5,'yellow_card',20,$6) RETURNING id""",
+        ORG, UNCONFIRMED, segment, TEAM_HOME, PLAYER_HOME_FIRST, str(uuid4()))
+    await flow.admin.execute("""UPDATE matches SET status='finished', result_confirmed=TRUE,
+        resolution_type='regular', home_score_regular=0, away_score_regular=0,
+        home_score=0, away_score=0 WHERE id=$1""", UNCONFIRMED)
+    await flow.admin.execute("""INSERT INTO player_suspensions
+        (organization_id, source_tournament_id, player_id, origin_match_id, source_event_id,
+         source_type, dedupe_key, scope_type, matches_suspended, reason, status)
+        VALUES ($1,$2,$3,$4,$5,'match_event','later-accumulation','organization',1,'yellow_card_accumulation',$6)""",
+        ORG, TOURNAMENT, PLAYER_HOME_FIRST, UNCONFIRMED, event, future_status)
+    response = await create(flow)
+    assert response.status_code == 201, response.text
 
 
 async def assert_empty(flow):
@@ -404,7 +520,10 @@ async def test_preview_and_detail_diff_leave_every_table_unchanged(flow):
     assert response.json()["version"]["version_number"] == 2
     assert response.json()["version"]["report"]["home_score"] == 1
     assert len(response.json()["version"]["report"]["events"]) == 1
-    assert response.json()["effects"] == []
+    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings", "outbox", "outbox", "outbox"]
+    effect = response.json()["effects"][0]
+    assert (effect["entity_type"], effect["entity_id"], effect["payload"]["before"]) == ("stage", STAGE, [])
+    assert len(effect["payload"]["after"]) == 2
     assert await database_snapshot(flow.admin) == before
 
 
@@ -623,7 +742,8 @@ async def test_publication_and_preview_share_hook_and_versions_2_3_preserve_orig
     assert public_match["home_score"] == 2 and public_match["rectified_at"]
     assert await flow.admin.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH) == original
     assert await flow.admin.fetchval("SELECT count(*) FROM match_events") == 0
-    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events") == 0
+    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type='RECTIFICATION_DECISION_EMAIL'") == 2
+    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type<>'RECTIFICATION_DECISION_EMAIL'") == 0
 
 
 @pytest.mark.parametrize("failure", ["validation", "effects", "audit"])
@@ -677,9 +797,10 @@ async def test_not_pending_precedes_self_approval(flow):
 async def test_rectification_ignores_only_suspensions_originating_in_its_match(flow, origin):
     await flow.admin.execute("""
         INSERT INTO player_suspensions (organization_id, source_tournament_id, player_id,
-            origin_match_id, reason, matches_suspended, scope_type, source_type, dedupe_key)
-        VALUES ($1, $2, $3, $4, 'red_card', 1, 'tournament', 'administrative_resolution', 'self-match-regression')
-    """, ORG, TOURNAMENT, PLAYER_HOME_FIRST, origin)
+            origin_match_id, reason, matches_suspended, scope_type, source_type, dedupe_key, created_at)
+        SELECT $1, $2, $3, $4, 'red_card', 1, 'tournament', 'administrative_resolution', 'self-match-regression',
+            original_report_confirmed_at - interval '1 second' FROM matches WHERE id = $5
+    """, ORG, TOURNAMENT, PLAYER_HOME_FIRST, origin, MATCH)
     async with flow.engine.connect() as connection:
         await connection.execute(text("SET ROLE bracket_app"))
         await connection.commit()

@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
+from app.core.locking import lock_matches, lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
@@ -17,6 +18,9 @@ from app.modules.matches.service import (
     canonical_client_event_id, derive_walkover_score, load_report_payload_snapshot, validate_report_payload,
 )
 from app.modules.rectifications.diff import diff_reports
+from app.modules.rectifications.effects import apply_effects, capture_standings
+from app.modules.rectifications.notifications import enqueue_decision_email
+from app.modules.rectifications.sanctions import capture_discipline
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     RectificationDecisionRequest,
@@ -80,10 +84,6 @@ def _same_report(current: Mapping[str, Any], events, payload: CloseMatchReportDT
     return not difference["fields"] and not any(difference["events"].values())
 
 
-async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:
-    return []
-
-
 def _proposal_report(match, payload):
     report = payload.model_dump()
     report["resolution_reason"] = report.pop("reason")
@@ -113,19 +113,25 @@ class RectificationService:
         query = """
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id,
                 m.home_team_id, m.away_team_id, m.match_date, m.matchday, m.bracket_code,
-                m.status, m.result_confirmed, tv.status AS version_status, tv.rules_config
+                m.status, m.result_confirmed, m.original_report_confirmed_at, tv.status AS version_status, tv.rules_config
             FROM matches m
             JOIN tournament_versions tv ON tv.id = m.tournament_version_id
                 AND tv.organization_id = m.organization_id
             WHERE m.id = :match_id AND m.organization_id = :organization_id
         """
-        if lock:
-            query += " FOR UPDATE OF m"
-        row = (await self.db.execute(text(query), {
+        params = {
             "match_id": match_id, "organization_id": context.organization_id,
-        })).mappings().one_or_none()
+        }
+        row = (await self.db.execute(text(query), params)).mappings().one_or_none()
         if row is None:
             raise LookupError("Partido no encontrado")
+        if lock:
+            await lock_stage_and_version(self.db, context.organization_id, row["tournament_id"], row["stage_id"])
+            match_ids = (await self.db.execute(text("""SELECT id FROM matches
+                WHERE organization_id=:organization_id AND tournament_id=:tournament_id ORDER BY id"""),
+                {**params, "tournament_id": row["tournament_id"]})).scalars().all()
+            await lock_matches(self.db, context.organization_id, match_ids)
+            row = (await self.db.execute(text(query), params)).mappings().one()
         match = dict(row)
         current = (await self.db.execute(text("""
             SELECT * FROM v_match_current_report
@@ -298,6 +304,7 @@ class RectificationService:
                 raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
             result = await self._publish(context, request, match, now)
             version_id, status = result["version_id"], "published"
+        await enqueue_decision_email(self.db, context, request, payload.decision, payload.reason, version_id)
         params = {"status": status, "version_id": version_id, "request_id": request_id,
             "organization_id": context.organization_id}
         audit = {"request_id": request_id, "decision_id": decision_id,
@@ -344,6 +351,8 @@ class RectificationService:
         report.update(home_score=outcome.home_score, away_score=outcome.away_score,
             home_penalties=outcome.home_penalties, away_penalties=outcome.away_penalties,
             winner_team_id=outcome.winner_team_id)
+        standings_before = await capture_standings(self.db, context, match)
+        discipline_before = await capture_discipline(self.db, context, match)
         version = (await self.db.execute(text("""
             INSERT INTO match_report_versions (organization_id, match_id, version_number,
                 supersedes_version_number, resolution_type, resolution_reason,
@@ -373,7 +382,9 @@ class RectificationService:
                 "version_id": version["id"], "match_id": request["match_id"]})
         await self.db.execute(text("SELECT set_config('app.rectification_version_id', :version_id, true)"),
             {"version_id": str(version["id"])})
-        effects = await apply_effects(self.db, context, version, now)
+        effects = await apply_effects(self.db, context, {**version, "tournament_id": match["tournament_id"],
+            "stage_id": match["stage_id"], "standings_before": standings_before,
+            "discipline_before": discipline_before, "advancement_before": match}, now)
         return {"version_id": version["id"],
             "version": await self._version(context, request["match_id"], version["version_number"]),
             "effects": effects}

@@ -37,6 +37,8 @@ ORIGINAL_READ_ALLOWLIST = {
         "Replays substitutions from the report currently being closed, not a historical result.",
     ("modules/matches/service.py", "CloseMatchReportService._persist_events"):
         "Idempotency check against the original events being written by close.",
+    ("modules/rectifications/sanctions.py", "recalculate_sanctions"):
+        "Resolves immutable original sanction provenance to its logical event ID, not current report events.",
     ("modules/tournaments/routes/matches.py", "_clear_stage_schedule"):
         "Draft schedule cleanup checks for original events before deleting draft matches.",
 }

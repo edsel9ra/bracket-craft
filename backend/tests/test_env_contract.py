@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -50,6 +51,28 @@ def _load_module() -> Any:
 
 contract_module = _load_module()
 CONTRACT = contract_module.DEFAULT_CONTRACT
+
+
+SMTP_VARIABLES = {
+    "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
+    "SMTP_USE_TLS", "SMTP_TIMEOUT_SECONDS",
+}
+
+
+def test_worker_contract_includes_decision_email_configuration():
+    assert SMTP_VARIABLES <= contract_module.WORKER_ENV
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.production.yml"])
+def test_worker_receives_the_same_smtp_bindings_as_api(filename):
+    source = (REPO_ROOT / filename).read_text()
+
+    def bindings(service):
+        section = re.search(rf"(?ms)^  {service}:\n(.*?)(?=^  [a-z][\w-]*:|\Z)", source).group(1)
+        return dict(re.findall(r"(?m)^      (SMTP_\w+): (.+)$", section))
+
+    assert set(bindings("api")) == SMTP_VARIABLES
+    assert bindings("worker") == bindings("api")
 
 
 def _documented() -> dict[str, str]:

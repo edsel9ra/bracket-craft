@@ -67,6 +67,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:?PLAYER_DATA_KEY must be set}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST must be set}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM must be set}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
     volumes: !reset []
     networks:
       - internal

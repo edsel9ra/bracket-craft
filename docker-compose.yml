@@ -119,6 +119,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://bracket_app:${BRACKET_DB_PASSWORD:-bracket_app_dev_password}@db:5432/${POSTGRES_DB:-bracket_craft}}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       APP_ENV: ${APP_ENV:-development}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@bracketcraft.local}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
     depends_on:
       db:
         condition: service_healthy

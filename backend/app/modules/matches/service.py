@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
 from app.core.locking import lock_stage_and_version
+from app.core.outbox import enqueue_outbox
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
@@ -666,6 +667,7 @@ async def load_report_payload_snapshot(
     suspended = await service._has_suspended_players(
         context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
         exclude_origin_match_id=exclude_suspensions_from_match_id,
+        created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
     )
     return ReportPayloadSnapshot(
         match, rosters, segments, known, suspended, require_active_segment, active_segment_id
@@ -793,6 +795,9 @@ class CloseMatchReportService:
                     )
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
+
+            await self.db.execute(text("SELECT assert_no_open_competitive_impact(:id,:org)"),
+                {"id": match_id, "org": context.organization_id})
 
             # --- 3. Estado del partido y versión publicada -------------------
             if match["status"] in {"finished", "cancelled", "administrative_resolution", "suspended"}:
@@ -981,19 +986,9 @@ class CloseMatchReportService:
                     "member_id": str(context.organization_user_id),
                 },
             )
-            event_payload = json.dumps({"match_id": str(match_id), "tournament_id": str(match["tournament_id"])})
+            event_payload = {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
             for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
-                await self.db.execute(
-                    text("""
-                        INSERT INTO outbox_events (organization_id, event_type, payload)
-                        VALUES (:organization_id, :event_type, CAST(:payload AS jsonb))
-                    """),
-                    {
-                        "organization_id": str(context.organization_id),
-                        "event_type": event_type,
-                        "payload": event_payload,
-                    },
-                )
+                await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
 
         return {
             "status": "success",
@@ -1135,22 +1130,10 @@ class CloseMatchReportService:
                 "member_id": str(context.organization_user_id),
             },
         )
-        event_payload = json.dumps(
-            {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
-        )
+        event_payload = {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
         # RNF-011: exactamente los mismos tres eventos que un cierre normal.
         for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
-            await self.db.execute(
-                text("""
-                    INSERT INTO outbox_events (organization_id, event_type, payload)
-                    VALUES (:organization_id, :event_type, CAST(:payload AS jsonb))
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "event_type": event_type,
-                    "payload": event_payload,
-                },
-            )
+            await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
 
         return {
             "status": "success",
@@ -1551,7 +1534,7 @@ class CloseMatchReportService:
 
     async def _has_suspended_players(
         self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
-        *, exclude_origin_match_id: UUID | None = None,
+        *, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
     ) -> bool:
         if not player_ids:
             return False
@@ -1565,6 +1548,7 @@ class CloseMatchReportService:
                 WHERE ps.organization_id = :organization_id
                   AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
                   AND ps.status = 'active'
+                  AND (CAST(:created_before AS timestamptz) IS NULL OR ps.created_at <= :created_before)
                   AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
                        OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
@@ -1576,6 +1560,7 @@ class CloseMatchReportService:
                 "player_ids": player_ids,
                 "tournament_id": str(tournament_id),
                 "exclude_origin_match_id": exclude_origin_match_id,
+                "created_before": created_before,
             },
         )
         return result.first() is not None
@@ -1784,6 +1769,11 @@ class CloseMatchReportService:
                  AND r.is_active = TRUE
                 WHERE ps.organization_id = :organization_id
                   AND ps.status = 'active'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM match_segments ms
+                      WHERE ms.organization_id = ps.organization_id AND ms.match_id = :match_id
+                        AND ms.created_at < ps.created_at
+                  )
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
                   AND r.team_id IN (CAST(:home_team_id AS UUID), CAST(:away_team_id AS UUID))
                   AND NOT EXISTS (

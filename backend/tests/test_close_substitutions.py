@@ -356,7 +356,7 @@ class CloseSession(RecordingSession):
         self.active_segment = active_segment
 
     def handle(self, sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code" in sql:
             return Result(
@@ -1180,7 +1180,7 @@ async def test_post_segments_creates_state_rows_for_the_present_teams(monkeypatc
     inserted: dict[str, dict] = {}
 
     def handle(sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "ORDER BY segment_number DESC" in sql:
             return Result(rows=[])
@@ -1228,7 +1228,7 @@ def _operation_session(event_rows: list[dict]) -> RecordingSession:
     session = RecordingSession()
 
     def handle(sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "FROM match_segments" in sql:
             return Result(rows=[])

@@ -11,6 +11,7 @@ OPERATIONS = {
     ("POST", ""),
     ("GET", ""),
     ("GET", "/{tournament_id}/versions"),
+    ("GET", "/{tournament_id}/competitive-impacts"),
     ("POST", "/{tournament_id}/versions"),
     ("PATCH", "/{tournament_id}/versions/{version_id}"),
     ("PATCH", "/{tournament_id}/versions/{version_id}/rules"),
@@ -42,7 +43,7 @@ OPERATIONS = {
 }
 
 
-def test_all_31_tournament_operations_remain_registered():
+def test_all_32_tournament_operations_remain_registered():
     crest_path = PREFIX + "/{tournament_id}/teams/{team_id}/crest"
     actual = {
         (method.upper(), path.removeprefix(PREFIX))
@@ -51,7 +52,7 @@ def test_all_31_tournament_operations_remain_registered():
         for method in operations
         if method in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
     }
-    assert len(actual) == 31
+    assert len(actual) == 32
     assert actual == OPERATIONS
 
 
