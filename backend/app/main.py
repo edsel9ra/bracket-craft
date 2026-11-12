@@ -334,7 +334,7 @@ async def emit_domain_event(event: ParsedEvent) -> None:
         room=f"organization:{event.organization_id}",
     )
     tournament_id = event.payload.get("tournament_id")
-    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS:
+    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS and event.payload.get("scope") != "organization":
         await sio.emit(
             event.event_type,
             payload,
@@ -646,6 +646,10 @@ async def _dbapi_exception_handler(_request: Request, exc: DBAPIError) -> JSONRe
     """
 
     sqlstate = _dbapi_sqlstate(exc)
+    if sqlstate == "BC409":
+        return JSONResponse(status_code=409, content={
+            "detail": "El partido tiene un procedimiento de impacto competitivo abierto",
+            "code": "COMPETITIVE_IMPACT_OPEN"})
     if sqlstate == "ZZ409":
         logger.warning("Conflicto de estructura publicada (SQLSTATE ZZ409)")
         return JSONResponse(

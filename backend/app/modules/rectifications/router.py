@@ -6,8 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.platform import PlatformContext, get_platform_context
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.rectifications.impacts import CompetitiveImpactService
 from app.modules.rectifications.platform import RectificationPlatformService
 from app.modules.rectifications.schemas import (
+    CloseCompetitiveImpactRequest,
+    CompetitiveImpactResponse,
     CreateRectificationRequest,
     PlatformAuthorizationRequest,
     PlatformAuthorizationResponse,
@@ -20,6 +23,21 @@ from app.modules.rectifications.schemas import (
 from app.modules.rectifications.service import RectificationService
 
 router = APIRouter(tags=["rectifications"])
+
+
+@router.get("/tournaments/{tournament_id}/competitive-impacts", response_model=list[CompetitiveImpactResponse])
+async def list_competitive_impacts(
+    tournament_id: UUID, context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(CompetitiveImpactService(db).list(context, tournament_id))
+
+
+@router.post("/competitive-impacts/{procedure_id}/close", response_model=CompetitiveImpactResponse)
+async def close_competitive_impact(
+    procedure_id: UUID, payload: CloseCompetitiveImpactRequest,
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(CompetitiveImpactService(db).close(context, procedure_id, payload))
 
 
 @router.post("/rectifications/{request_id}/platform-authorizations", response_model=PlatformAuthorizationResponse, status_code=201)

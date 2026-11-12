@@ -39,6 +39,35 @@ class RectificationDecisionRequest(BaseModel):
         return value
 
 
+class CloseCompetitiveImpactRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def nonempty_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("El motivo no puede estar vacío")
+        return value.strip()
+
+
+class CompetitiveImpactResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    organization_id: UUID
+    version_id: UUID
+    match_id: UUID
+    affected_items: list[dict[str, Any]]
+    status: Literal["open", "closed"]
+    resolution: Literal["keep_as_played"] | None
+    reason: str | None
+    closed_by_user_id: UUID | None
+    closed_at: datetime | None
+    created_at: datetime
+
+
 class PlatformAuthorizationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -10,6 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.core.database import SessionFactory, validate_application_role
+from app.core.email import send_rectification_decision_email
 from app.core.config import get_settings
 from app.core.outbox import OUTBOX_STREAM, OUTBOX_STREAM_MAXLEN
 from app.workers.heartbeat import (
@@ -90,7 +91,12 @@ async def process_once(redis: Redis | None = None) -> int:
 
         for event in events:
             try:
-                await publish_stream_event(redis, event)
+                if event["event_type"] == "RECTIFICATION_DECISION_EMAIL":
+                    payload = event["payload"]
+                    await send_rectification_decision_email(payload["recipient"], payload["request_id"],
+                        payload["decision"], payload["reason"])
+                else:
+                    await publish_stream_event(redis, event)
             except Exception as exc:
                 async with db.begin():
                     await db.execute(
