@@ -23,7 +23,7 @@ from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from migration_helpers import throwaway_database
 from test_migration_031 import (
     MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEED_SQL, SEGMENT_FIRST,
-    TEAM_HOME, TOURNAMENT, USER, VERSION,
+    STAGE, TEAM_HOME, TOURNAMENT, USER, VERSION,
 )
 
 UNCONFIRMED = "31000000-0000-4000-8000-000000000053"
@@ -404,7 +404,10 @@ async def test_preview_and_detail_diff_leave_every_table_unchanged(flow):
     assert response.json()["version"]["version_number"] == 2
     assert response.json()["version"]["report"]["home_score"] == 1
     assert len(response.json()["version"]["report"]["events"]) == 1
-    assert response.json()["effects"] == []
+    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings"]
+    effect = response.json()["effects"][0]
+    assert (effect["entity_type"], effect["entity_id"], effect["payload"]["before"]) == ("stage", STAGE, [])
+    assert len(effect["payload"]["after"]) == 2
     assert await database_snapshot(flow.admin) == before
 
 

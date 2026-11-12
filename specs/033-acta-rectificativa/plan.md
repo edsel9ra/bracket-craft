@@ -85,7 +85,7 @@ Toda la decisión ocurre en una sola transacción: cualquier excepción la desha
 
 ### 3.4 Efectos (`effects.py`)
 
-1. **Clasificación (RF-014):** `StandingsService.recalculate(stage)` lee `v_match_current_report`/`v_match_current_events` en lugar de `matches`/`match_events`. Si cambia el grupo empatado de un desempate por sorteo ya resuelto, se registra `tiebreak_draw_invalidated` (caso límite) y el sorteo previo deja de aplicarse.
+1. **Clasificación (RF-014):** `StandingsService.recalculate(stage)` lee `v_match_current_report`/`v_match_current_events` en lugar de `matches`/`match_events`. Si cambia el grupo empatado de un desempate por sorteo ya resuelto, se registra `tiebreak_draw_invalidated` (caso límite) y el sorteo previo deja de aplicarse. **Aclaración confirmada:** resuelto significa que el grupo llegó empatado a `random_draw` en la clasificación persistida. Se registra un efecto por cada grupo anterior sin los mismos integrantes después, incluyendo los integrantes anteriores y los grupos posteriores relacionados. El recálculo conserva el algoritmo y la semilla actuales; no introduce otro sorteo ni persistencia adicional de sorteos. El estado anterior se captura bajo el bloqueo de fase antes de insertar la versión nueva.
 2. **Sanciones (RF-018, DA-8):** se recalculan las sanciones originadas en el partido con `evaluate_suspensions`, alimentado por el historial disciplinario vigente. Se comparan por clave de deduplicación:
    - Las sanciones nuevas se insertan como `active`.
    - Las que ya no corresponden pasan a `cancelled` y quedan anotadas en `player_suspension_annulments`.

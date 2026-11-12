@@ -45,8 +45,9 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 
 ## PR C — Efectos de la publicación
 
-- [ ] **T11. Clasificación y desempate por sorteo invalidado.** RF-014
+- [x] **T11. Clasificación y desempate por sorteo invalidado.** RF-014
 - Hecho cuando: `test_rectification_effects.py` demuestra la clasificación recalculada desde la versión vigente y el efecto `tiebreak_draw_invalidated`.
+- Aclaración confirmada: resuelto si el grupo llegó empatado a `random_draw` en la clasificación persistida. Se registra cada grupo anterior sin los mismos integrantes después, con integrantes anteriores y grupos posteriores; se conserva el algoritmo y la semilla existentes, sin nueva persistencia de sorteos.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.
 - [ ] **T12. Sanciones: crear, anular con registro y cumplimiento desde el siguiente partido.** RF-018, DA-8, D5
 - Hecho cuando: los tests cubren la sanción nueva, la anulada que conserva sus cumplimientos, que una sanción nueva no se cumpla en un partido ya comenzado y que la acumulación de amarillas de un partido posterior abra impacto. El trigger impide editar otras columnas de una sanción.

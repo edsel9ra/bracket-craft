@@ -17,6 +17,7 @@ from app.modules.matches.service import (
     canonical_client_event_id, derive_walkover_score, load_report_payload_snapshot, validate_report_payload,
 )
 from app.modules.rectifications.diff import diff_reports
+from app.modules.rectifications.effects import apply_effects, capture_standings
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     RectificationDecisionRequest,
@@ -78,10 +79,6 @@ def _same_report(current: Mapping[str, Any], events, payload: CloseMatchReportDT
     difference = diff_reports({**current, "events": events},
         {**proposed, "events": payload.model_dump()["events"]})
     return not difference["fields"] and not any(difference["events"].values())
-
-
-async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:
-    return []
 
 
 def _proposal_report(match, payload):
@@ -344,6 +341,7 @@ class RectificationService:
         report.update(home_score=outcome.home_score, away_score=outcome.away_score,
             home_penalties=outcome.home_penalties, away_penalties=outcome.away_penalties,
             winner_team_id=outcome.winner_team_id)
+        standings_before = await capture_standings(self.db, context, match)
         version = (await self.db.execute(text("""
             INSERT INTO match_report_versions (organization_id, match_id, version_number,
                 supersedes_version_number, resolution_type, resolution_reason,
@@ -373,7 +371,8 @@ class RectificationService:
                 "version_id": version["id"], "match_id": request["match_id"]})
         await self.db.execute(text("SELECT set_config('app.rectification_version_id', :version_id, true)"),
             {"version_id": str(version["id"])})
-        effects = await apply_effects(self.db, context, version, now)
+        effects = await apply_effects(self.db, context, {**version, "tournament_id": match["tournament_id"],
+            "stage_id": match["stage_id"], "standings_before": standings_before}, now)
         return {"version_id": version["id"],
             "version": await self._version(context, request["match_id"], version["version_number"]),
             "effects": effects}
