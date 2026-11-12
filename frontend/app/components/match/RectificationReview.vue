@@ -19,7 +19,7 @@ const current = ref<ReportVersion | null>(null);
 const authorizations = ref<PlatformAuthorization[]>([]);
 const decisionAllowed = computed(() => canDecide(props.platform ? props.detail.requested_by_user_id : props.detail.requested_by_member_id, props.memberId, props.canApprove, props.detail.status));
 const comparison = computed(() => {
-  const orderChanges = current.value ? compareReports(current.value.report, props.detail.proposed_report as unknown as Record<string, unknown>).fields.filter((field) => field.field === 'event_order') : [];
+  const orderChanges = current.value && !props.detail.diff.fields.some((field) => field.field === 'event_order') ? compareReports(current.value.report, props.detail.proposed_report as unknown as Record<string, unknown>).fields.filter((field) => field.field === 'event_order') : [];
   return { ...props.detail.diff, fields: [...props.detail.diff.fields, ...orderChanges] };
 });
 let generation = 0;

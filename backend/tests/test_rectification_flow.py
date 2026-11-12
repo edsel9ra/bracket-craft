@@ -360,6 +360,42 @@ async def test_new_non_uuid_event_id_is_rejected_in_a_rectification(flow):
     await assert_empty(flow)
 
 
+@pytest.mark.parametrize("flow", [[
+    {"minute": 15, "client_event_id": "ffffffff-0000-4000-8000-000000000001"},
+    {"minute": 15, "client_event_id": "aaaaaaaa-0000-4000-8000-000000000002"},
+]], indirect=True)
+async def test_order_only_request_uses_audit_order_and_previews_without_writes(flow):
+    rows = await flow.admin.fetch("SELECT id, client_event_id FROM match_events WHERE match_id=$1 ORDER BY client_event_id DESC", MATCH)
+    original_order = list(reversed([row["client_event_id"] for row in rows]))
+    await flow.admin.execute("""INSERT INTO administrative_audit_logs
+        (organization_id,entity_type,entity_id,action,payload,performed_by_member_id)
+        VALUES ($1,'matches',$2,'CLOSE_MATCH_REPORT',$3::jsonb,$4)""",
+        ORG, MATCH, json.dumps({"event_ids": [str(row["id"]) for row in reversed(rows)]}), MEMBER)
+    version = (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions/1")).json()
+    assert [event["client_event_id"] for event in version["report"]["events"]] == original_order
+    events = [{"client_event_id": row["client_event_id"], "segment_id": SEGMENT_FIRST,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST,
+        "event_type": "yellow_card", "minute": 15} for row in rows]
+    response = await create(flow, proposal(home_score_regular=0, home_score=0,
+        winner_team_id=None, events=events))
+    assert response.status_code == 201, response.text
+    request = response.json()
+    detail = (await flow.client.get(f"/api/v1/rectifications/{request['id']}")).json()
+    assert detail["diff"] == {"fields": [{"field": "event_order", "before": original_order,
+        "after": [event["client_event_id"] for event in events]}],
+        "events": {"added": [], "removed": [], "changed": []}}
+    before = await database_snapshot(flow.admin)
+    preview = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    assert preview.status_code == 200, preview.text
+    assert [event["client_event_id"] for event in preview.json()["version"]["report"]["events"]] == [event["client_event_id"] for event in events]
+    assert await database_snapshot(flow.admin) == before
+    flow.context = await add_approver(flow)
+    assert (await decide(flow, request["id"])).status_code == 200
+    assert (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions/1")).json() == version
+    identical = await create(flow, {**proposal(), "proposed_report": request["proposed_report"]})
+    assert identical.status_code == 409 and identical.json()["code"] == "RECTIFICATION_NO_CHANGES"
+
+
 async def test_pending_unique_index_and_match_lock(flow, monkeypatch):
     from app.modules.rectifications.service import RectificationService
 

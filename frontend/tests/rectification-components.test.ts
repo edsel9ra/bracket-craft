@@ -176,3 +176,23 @@ test('editor and review use shared confirmation, and approval requires a fresh p
   assert.match(read('RectificationEditor'), /api\.create\(/);
   assert.match(read('RectificationEditor'), /buildDraftEvent/);
 });
+
+test('review renders a server-provided order difference once, including after loading the current version', async () => {
+  const order = { field: 'event_order', before: ['a', 'b'], after: ['b', 'a'] };
+  let mounted = async () => {};
+  const Review = component('RectificationReview', {
+    useId: () => 'order-review', onMounted: (fn: () => Promise<void>) => { mounted = fn; }, onBeforeUnmount: () => {},
+    useMatchRectifications: () => ({ versions: async () => [{ version_number: 1, report: { events: [{ client_event_id: 'a' }, { client_event_id: 'b' }] } }] }),
+  }) as { setup: (props: unknown, context: unknown) => (context: unknown, cache: unknown[]) => vue.VNode };
+  const render = Review.setup({ detail: { ...request, proposed_report: { events: [{ client_event_id: 'b' }, { client_event_id: 'a' }] }, diff: { ...request.diff, fields: [order] } }, memberId: 'reviewer', canApprove: true, owner: false }, { expose() {}, emit() {} });
+  await mounted();
+  function nodes(value: unknown): vue.VNode[] {
+    if (Array.isArray(value)) return value.flatMap(nodes);
+    if (typeof value === 'function') return nodes(value());
+    if (!value || typeof value !== 'object') return [];
+    if (vue.isVNode(value)) return [value, ...nodes(value.children)];
+    return Object.values(value).flatMap(nodes);
+  }
+  const diff = nodes(render({}, [])).find((node) => node.props?.diff)!.props!.diff;
+  assert.deepEqual(JSON.parse(JSON.stringify(diff.fields)), [order]);
+});

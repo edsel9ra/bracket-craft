@@ -164,10 +164,8 @@ class RectificationService:
                 """), {"match_id": match_id, "organization_id": context.organization_id})).scalar_one_or_none()
                 if pending is not None:
                     raise _already_open()
-                events = (await self.db.execute(text("""
-                    SELECT * FROM v_match_current_events
-                    WHERE match_id = :match_id AND organization_id = :organization_id
-                """), {"match_id": match_id, "organization_id": context.organization_id})).mappings().all()
+                current = await self._version(context, match_id, match["version_number"])
+                events = current["report"]["events"]
                 existing_ids = {event["client_event_id"] for event in events}
                 for event in payload.proposed_report.events:
                     if event.client_event_id not in existing_ids and not re.fullmatch(CLIENT_EVENT_ID_PATTERN, event.client_event_id):
