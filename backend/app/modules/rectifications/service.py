@@ -375,7 +375,7 @@ class RectificationService:
             {"version_id": str(version["id"])})
         effects = await apply_effects(self.db, context, {**version, "tournament_id": match["tournament_id"],
             "stage_id": match["stage_id"], "standings_before": standings_before,
-            "discipline_before": discipline_before}, now)
+            "discipline_before": discipline_before, "advancement_before": match}, now)
         return {"version_id": version["id"],
             "version": await self._version(context, request["match_id"], version["version_number"]),
             "effects": effects}

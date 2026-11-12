@@ -162,11 +162,14 @@ Todo pasa por `useApi.ts`. Textos en ES/EN (`useI18n.ts`), componentes de `compo
 
 El trigger permite sustituir `home_team_id`/`away_team_id` de un partido de una versión publicada **solo si se cumplen todas** estas condiciones. Si falla cualquiera, rechaza la sustitución y el servicio abre un procedimiento de impacto competitivo en su lugar:
 
-1. El partido destino está `scheduled`, no tiene filas en `match_segments` y no tiene `result_confirmed`.
+1. El partido destino está y permanece `scheduled` durante la sustitución, no tiene filas en `match_segments` y no tiene `result_confirmed` ni lo adquiere en esa sentencia.
 2. El equipo sustituido llegó **exclusivamente** por el enlace de avance del partido origen. Hoy el cierre no registra cómo se asigna un equipo. Por eso la 035 añade `match_slot_assignments` (*append-only*: partido, lado, equipo, origen `advancement_link`/`manual`/`rectification`, enlace, versión, fecha), y el cierre y el servicio de avance escriben en ella. Para asignaciones anteriores a la 035, la migración solo infiere el origen `advancement_link` si el equipo coincide con el resultado del enlace del origen confirmado y ningún otro enlace apunta a ese lado. Si no, las marca `manual` y su sustitución automática queda prohibida.
 3. El equipo nuevo es el que el enlace determina con la versión publicada: el nuevo ganador o, en enlaces `loser`, el nuevo perdedor.
 4. La sesión fija `app.rectification_version_id`, que pertenece a la misma transacción que publica la versión, y esa versión registra el efecto `advancement` sobre ese partido y lado.
 5. La sustitución añade una fila `rectification` en `match_slot_assignments` y un efecto con el acta original, la versión, el partido origen, el destino, el equipo anterior y el nuevo. La asignación anterior no se modifica ni se elimina.
+6. No hay equipos asignados en una fase posterior de la misma versión. Si los hay, no se sustituye automáticamente (aclaración del brief de T13).
+
+**Implementación T13 confirmada:** la 038 redefine `prevent_published_match_structure_mutation` con copia literal de las demás prohibiciones y solo la excepción D4. La BD verifica el contexto local, la versión del origen creada en esa transacción, sus equipos, el enlace exclusivo, la procedencia anterior y el efecto `advancement` del destino/lado con trazabilidad exacta. El trigger bloquea el destino y añade la asignación `rectification`; el servicio registra primero los efectos y actualiza conjuntamente ambos lados si es necesario. T13 entrega `AdvancementImpactCandidate` al mismo `apply_competitive_impacts` que las acumulaciones de T12, sin abrir procedimientos hasta T14. Los cambios de clasificación con fases posteriores asignadas y los del reinicio GF2 también producen candidatos, no reasignaciones manuales ni activación/cancelación implícita del reinicio.
 
 No se puede modificar una inscripción manual, sustituir un equipo de forma arbitraria ni alterar un partido que ya comenzó.
 

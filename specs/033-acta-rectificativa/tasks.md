@@ -52,8 +52,9 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - [x] **T12. Sanciones: crear, anular con registro y cumplimiento desde el siguiente partido.** RF-018, DA-8, D5
 - Hecho cuando: los tests cubren la sanción nueva, la anulada que conserva sus cumplimientos, que una sanción nueva no se cumpla en un partido ya comenzado y que la acumulación de amarillas de un partido posterior produzca candidatos tipados de impacto para T14, sin tocar sus sanciones ni persistir un estado transitorio (aclaración aprobada). El trigger impide editar otras columnas de una sanción. La 037 cubre procedencia, fecha original, backfill y conservación del criterio sin fecha.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_sanctions.py tests/test_migration_037.py tests/test_rectification_effects.py tests/test_migration_035.py`.
-- [ ] **T13. Avance con las condiciones de D4.** RF-015, RF-016; plan §5.2
-- Hecho cuando: hay una prueba de sustitución válida (enlaces de ganador y de perdedor) y una prueba por cada condición que falla, que demuestra el rechazo del trigger y la apertura de impacto. La asignación anterior sigue presente.
+- [x] **T13. Avance con las condiciones de D4.** RF-015, RF-016; plan §5.2
+- Hecho cuando: hay una prueba de sustitución válida (ganador y nuevo perdedor, ambos lados), una de rechazo del trigger por cada condición que falla y candidatos de impacto tipados entregados al hook transaccional de T14, todavía sin apertura. La asignación anterior sigue presente, la nueva y su efecto conservan la trazabilidad, y preview revierte todo. La 038 compara literalmente el guard anterior y comprueba las mismas prohibiciones sin contexto.
+- Comando adicional de migración: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL=… pytest -q tests/test_migration_038.py`.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.
 - [ ] **T14. Procedimiento de impacto: apertura, bloqueo y cierre.** RF-016, RF-017, RF-017b
 - Hecho cuando: los tests cubren la apertura por destino comenzado y por fase posterior asignada; abrir un segmento o cerrar el acta de un partido afectado responde 409 `COMPETITIVE_IMPACT_OPEN`, y el cierre `keep_as_played` exige motivo y el permiso de aprobación.

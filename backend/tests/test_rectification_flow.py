@@ -23,7 +23,7 @@ from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from migration_helpers import apply_migration, throwaway_database
 from test_migration_031 import (
     MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEED_SQL, SEGMENT_FIRST,
-    STAGE, TEAM_HOME, TOURNAMENT, USER, VERSION,
+    STAGE, TEAM_AWAY, TEAM_HOME, TOURNAMENT, USER, VERSION,
 )
 
 UNCONFIRMED = "31000000-0000-4000-8000-000000000053"
@@ -46,8 +46,60 @@ def proposal(**changes):
 @pytest.fixture
 async def flow(database_admin_url, request):
     legacy = isinstance(getattr(request, "param", None), dict) and request.param.get("legacy_confirmation")
-    async with throwaway_database(database_admin_url, last=36 if legacy else 37) as admin:
+    options = request.param if isinstance(getattr(request, "param", None), dict) else {}
+    advancement = options.get("advancement")
+    async with throwaway_database(database_admin_url, last=36 if legacy else 38) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
+        if advancement is not None:
+            team = TEAM_HOME if advancement.get("outcome", "winner") == "winner" else TEAM_AWAY
+            if advancement.get("wrong_origin"):
+                team = TEAM_AWAY if team == TEAM_HOME else TEAM_HOME
+            side = advancement.get("side", "home")
+            home, away = (f"'{team}'", "NULL") if side == "home" else ("NULL", f"'{team}'")
+            if advancement.get("both_sides"):
+                home, away = f"'{TEAM_HOME}'", f"'{TEAM_AWAY}'"
+            seed = seed.replace("UPDATE public.tournament_versions", f"""
+                INSERT INTO matches (id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
+                SELECT '31000000-0000-4000-8000-000000000070',organization_id,tournament_id,tournament_version_id,
+                    stage_id,{home},{away},'scheduled' FROM matches WHERE id='{MATCH}';
+                INSERT INTO advancement_links (organization_id,source_match_id,target_match_id,outcome,target_side)
+                VALUES ('{ORG}','{MATCH}','31000000-0000-4000-8000-000000000070',
+                    '{advancement.get("outcome", "winner")}','{side}');
+                INSERT INTO stages (id,organization_id,tournament_id,tournament_version_id,name,stage_type,stage_order)
+                SELECT '31000000-0000-4000-8000-000000000071',organization_id,tournament_id,tournament_version_id,
+                    'Later','single_elimination',2 FROM matches WHERE id='{MATCH}';
+                UPDATE public.tournament_versions
+            """)
+            condition = getattr(getattr(request.node, "callspec", None), "params", {}).get("condition")
+            if condition == "wrong_team":
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO teams (id,organization_id,name,short_code)
+                    VALUES ('31000000-0000-4000-8000-000000000072','{ORG}','Third','TH');
+                    INSERT INTO tournament_teams (organization_id,tournament_id,team_id)
+                    VALUES ('{ORG}','{TOURNAMENT}','31000000-0000-4000-8000-000000000072');
+                    UPDATE public.tournament_versions
+                """)
+            if condition == "later_phase" or advancement.get("later_phase"):
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    SELECT organization_id,tournament_id,tournament_version_id,'31000000-0000-4000-8000-000000000071',team_id
+                    FROM stage_teams WHERE stage_id='{STAGE}' LIMIT 1;
+                    UPDATE public.tournament_versions
+                """)
+            if advancement.get("no_link"):
+                seed = seed.replace("INSERT INTO stages", f"DELETE FROM advancement_links WHERE source_match_id='{MATCH}'; INSERT INTO stages")
+            if advancement.get("reset"):
+                seed = seed.replace("INSERT INTO stages", f"""
+                    UPDATE matches SET bracket_code='GF1' WHERE id='{MATCH}';
+                    UPDATE matches SET bracket_code='GF2' WHERE id='31000000-0000-4000-8000-000000000070';
+                    INSERT INTO stages
+                """)
+            if advancement.get("both_sides"):
+                seed = seed.replace("INSERT INTO stages", f"""
+                    INSERT INTO advancement_links (organization_id,source_match_id,target_match_id,outcome,target_side)
+                    VALUES ('{ORG}','{MATCH}','31000000-0000-4000-8000-000000000070','loser','away');
+                    INSERT INTO stages
+                """)
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches (id, organization_id, tournament_id, tournament_version_id,
                 stage_id, home_team_id, away_team_id, status)
@@ -91,11 +143,21 @@ async def flow(database_admin_url, request):
             """, ORG, MATCH, SEGMENT_FIRST, TEAM_HOME, PLAYER_HOME_FIRST, identity, minute)
         await admin.execute("""
             UPDATE matches SET status = 'finished', result_confirmed = TRUE,
-                resolution_type = 'regular', home_score_regular = 0, away_score_regular = 0,
-                home_score = 0, away_score = 0 WHERE id IN ($1, $2)
-        """, MATCH, MATCH.replace("31000000", "32000000"))
+                resolution_type = 'regular', home_score_regular = $3, away_score_regular = 0,
+                home_score = $3, away_score = 0, winner_team_id = CASE WHEN $3=1 THEN home_team_id END
+                WHERE id IN ($1, $2)
+        """, MATCH, MATCH.replace("31000000", "32000000"), 1 if advancement is not None else 0)
+        if advancement is not None:
+            await admin.execute("""INSERT INTO match_slot_assignments
+                (organization_id,tournament_id,match_id,side,team_id,origin,advancement_link_id)
+                SELECT m.organization_id,m.tournament_id,m.id,al.target_side,
+                    CASE WHEN al.target_side='home' THEN m.home_team_id ELSE m.away_team_id END,
+                    CASE WHEN al.target_side=$3 THEN 'manual' ELSE $1 END,al.id
+                FROM matches m JOIN advancement_links al ON al.target_match_id=m.id
+                WHERE m.organization_id=$2""", advancement.get("origin", "advancement_link"), ORG, advancement.get("manual_side"))
         if legacy:
             await apply_migration(admin, 37)
+            await apply_migration(admin, 38)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
         state = SimpleNamespace(admin=admin, engine=engine,

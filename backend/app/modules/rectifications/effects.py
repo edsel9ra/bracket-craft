@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
+from app.modules.rectifications.advancement import AdvancementImpactCandidate, advancement_changes, substitute_slots
 from app.modules.rectifications.sanctions import AccumulationImpactCandidate, recalculate_sanctions
 from app.modules.standings.service import StandingsService
 
@@ -39,7 +40,7 @@ async def record_effect(db, context, version_id, effect, now):
 
 async def apply_competitive_impacts(
     db: AsyncSession, context: AuthContext, version: Mapping[str, Any],
-    candidates: list[AccumulationImpactCandidate], now: datetime,
+    candidates: list[AccumulationImpactCandidate | AdvancementImpactCandidate], now: datetime,
 ) -> list[dict]:
     return []
 
@@ -53,7 +54,11 @@ async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping
         for payload in invalidated_draws(before["draw_groups"], draw_groups))
     sanctions = await recalculate_sanctions(db, context, version, now)
     effects.extend(sanctions.effects)
-    effects.extend(await apply_competitive_impacts(db, context, version, sanctions.impact_candidates, now))
+    advancements, advancement_candidates = await advancement_changes(db, context, version, rows)
+    effects.extend(advancements)
+    effects.extend(await apply_competitive_impacts(db, context, version,
+        [*sanctions.impact_candidates, *advancement_candidates], now))
     for effect in effects:
         await record_effect(db, context, version["id"], effect, now)
+    await substitute_slots(db, context, advancements)
     return effects
