@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
+from app.core.locking import lock_matches, lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
@@ -118,13 +119,19 @@ class RectificationService:
                 AND tv.organization_id = m.organization_id
             WHERE m.id = :match_id AND m.organization_id = :organization_id
         """
-        if lock:
-            query += " FOR UPDATE OF m"
-        row = (await self.db.execute(text(query), {
+        params = {
             "match_id": match_id, "organization_id": context.organization_id,
-        })).mappings().one_or_none()
+        }
+        row = (await self.db.execute(text(query), params)).mappings().one_or_none()
         if row is None:
             raise LookupError("Partido no encontrado")
+        if lock:
+            await lock_stage_and_version(self.db, context.organization_id, row["tournament_id"], row["stage_id"])
+            match_ids = (await self.db.execute(text("""SELECT id FROM matches
+                WHERE organization_id=:organization_id AND tournament_id=:tournament_id ORDER BY id"""),
+                {**params, "tournament_id": row["tournament_id"]})).scalars().all()
+            await lock_matches(self.db, context.organization_id, match_ids)
+            row = (await self.db.execute(text(query), params)).mappings().one()
         match = dict(row)
         current = (await self.db.execute(text("""
             SELECT * FROM v_match_current_report
