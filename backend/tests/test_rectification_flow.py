@@ -48,7 +48,7 @@ async def flow(database_admin_url, request):
     legacy = isinstance(getattr(request, "param", None), dict) and request.param.get("legacy_confirmation")
     options = request.param if isinstance(getattr(request, "param", None), dict) else {}
     advancement = options.get("advancement")
-    async with throwaway_database(database_admin_url, last=36 if legacy else 38) as admin:
+    async with throwaway_database(database_admin_url, last=36 if legacy else 39) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         if advancement is not None:
             team = TEAM_HOME if advancement.get("outcome", "winner") == "winner" else TEAM_AWAY
@@ -83,7 +83,7 @@ async def flow(database_admin_url, request):
                 seed = seed.replace("UPDATE public.tournament_versions", f"""
                     INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
                     SELECT organization_id,tournament_id,tournament_version_id,'31000000-0000-4000-8000-000000000071',team_id
-                    FROM stage_teams WHERE stage_id='{STAGE}' LIMIT 1;
+                    FROM stage_teams WHERE stage_id='{STAGE}' AND team_id='{TEAM_HOME}' LIMIT 1;
                     UPDATE public.tournament_versions
                 """)
             if advancement.get("no_link"):
@@ -100,6 +100,15 @@ async def flow(database_admin_url, request):
                     VALUES ('{ORG}','{MATCH}','31000000-0000-4000-8000-000000000070','loser','away');
                     INSERT INTO stages
                 """)
+            if advancement.get("target_in_later"):
+                seed = seed.replace("UPDATE public.tournament_versions", f"""
+                    INSERT INTO stage_teams (organization_id,tournament_id,tournament_version_id,stage_id,team_id)
+                    SELECT organization_id,tournament_id,tournament_version_id,'31000000-0000-4000-8000-000000000071',team_id
+                    FROM stage_teams WHERE stage_id='{STAGE}' AND team_id='{TEAM_AWAY}';
+                    UPDATE matches SET stage_id='31000000-0000-4000-8000-000000000071'
+                    WHERE id='31000000-0000-4000-8000-000000000070';
+                    UPDATE public.tournament_versions
+                """)
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches (id, organization_id, tournament_id, tournament_version_id,
                 stage_id, home_team_id, away_team_id, status)
@@ -107,6 +116,11 @@ async def flow(database_admin_url, request):
                 stage_id, home_team_id, away_team_id, 'scheduled' FROM matches WHERE id = '{MATCH}';
             UPDATE public.tournament_versions
         """)
+        if advancement is not None and advancement.get("target_in_later"):
+            seed = seed.replace("UPDATE public.tournament_versions", f"""
+                UPDATE matches SET stage_id='31000000-0000-4000-8000-000000000071' WHERE id='{UNCONFIRMED}';
+                UPDATE public.tournament_versions
+            """)
         await admin.execute(seed)
         await admin.execute(seed.replace("31000000", "32000000").replace("migration-031", "rectification-other"))
         await admin.execute("""
@@ -158,6 +172,7 @@ async def flow(database_admin_url, request):
         if legacy:
             await apply_migration(admin, 37)
             await apply_migration(admin, 38)
+            await apply_migration(admin, 39)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
         state = SimpleNamespace(admin=admin, engine=engine,

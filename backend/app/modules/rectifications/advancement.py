@@ -88,7 +88,7 @@ async def advancement_changes(db: AsyncSession, context: AuthContext, version: M
             candidates.append(AdvancementImpactCandidate(version["match_id"], match_id, None, None, None, None, "bracket_reset"))
     def order(table):
         return sorted((str(row.get("group_id")), str(row["team_id"]), row["rank"]) for row in table)
-    if order(version["standings_before"]["rows"]) != order(rows) and not any(c.reason == "later_phase" for c in candidates):
+    if order(version["standings_before"]["rows"]) != order(rows):
         stages = (await db.execute(text("""SELECT DISTINCT later.id FROM stages current_stage
             JOIN stages later ON later.organization_id=current_stage.organization_id
               AND later.tournament_version_id=current_stage.tournament_version_id

@@ -795,6 +795,9 @@ class CloseMatchReportService:
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
 
+            await self.db.execute(text("SELECT assert_no_open_competitive_impact(:id,:org)"),
+                {"id": match_id, "org": context.organization_id})
+
             # --- 3. Estado del partido y versión publicada -------------------
             if match["status"] in {"finished", "cancelled", "administrative_resolution", "suspended"}:
                 if dto.resolution_type == "walkover":

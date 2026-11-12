@@ -152,7 +152,7 @@ class RecordingSession:
 
     # -- routing ---------------------------------------------------------
     def handle(self, sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT 1 FROM tournaments" in sql:
             return Result(scalar=1)
@@ -430,7 +430,7 @@ class CloseSession(RecordingSession):
         return self.handle(sql, dict(params or {}))
 
     def handle(self, sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code" in sql:
             return Result(
@@ -580,7 +580,7 @@ async def test_advancement_reset_does_not_lock_gf2_again():
     session = RecordingSession()
 
     def handle(sql, params):
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "bracket_code = :reset_code" in sql:
             return Result(rows=[{"id": RESET_ID}])
@@ -679,7 +679,7 @@ async def test_publish_locks_only_the_version():
     session = stage_session(stop_on="FROM tournament_versions tv")
 
     def handle(sql, params):
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "FROM tournament_versions tv" in sql:
             return Result(
@@ -719,7 +719,7 @@ def _official_session() -> RecordingSession:
     session = stage_session()
 
     def handle(sql, params):
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "id = ANY(CAST(:match_ids AS uuid[]))" in sql:
             return Result(rows=[{"id": MATCH_ID}])

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
 from app.modules.rectifications.advancement import AdvancementImpactCandidate, advancement_changes, substitute_slots
+from app.modules.rectifications.impacts import open_impacts
 from app.modules.rectifications.sanctions import AccumulationImpactCandidate, recalculate_sanctions
 from app.modules.standings.service import StandingsService
 
@@ -42,7 +43,7 @@ async def apply_competitive_impacts(
     db: AsyncSession, context: AuthContext, version: Mapping[str, Any],
     candidates: list[AccumulationImpactCandidate | AdvancementImpactCandidate], now: datetime,
 ) -> list[dict]:
-    return []
+    return await open_impacts(db, context, version, candidates, now)
 
 
 async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:

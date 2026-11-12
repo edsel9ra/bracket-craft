@@ -56,9 +56,9 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - Hecho cuando: hay una prueba de sustitución válida (ganador y nuevo perdedor, ambos lados), una de rechazo del trigger por cada condición que falla y candidatos de impacto tipados entregados al hook transaccional de T14, todavía sin apertura. La asignación anterior sigue presente, la nueva y su efecto conservan la trazabilidad, y preview revierte todo. La 038 compara literalmente el guard anterior y comprueba las mismas prohibiciones sin contexto.
 - Comando adicional de migración: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_ADMIN_URL=… pytest -q tests/test_migration_038.py`.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.
-- [ ] **T14. Procedimiento de impacto: apertura, bloqueo y cierre.** RF-016, RF-017, RF-017b
+- [x] **T14. Procedimiento de impacto: apertura, bloqueo y cierre.** RF-016, RF-017, RF-017b
 - Hecho cuando: los tests cubren la apertura por destino comenzado y por fase posterior asignada; abrir un segmento o cerrar el acta de un partido afectado responde 409 `COMPETITIVE_IMPACT_OPEN`, y el cierre `keep_as_played` exige motivo y el permiso de aprobación.
-- Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.
+- Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py tests/test_migration_039.py`.
 - [ ] **T15. Outbox, registro de notificaciones y correo al solicitante.** RF-019, RF-024
 - Hecho cuando:
   - se encolan `MATCH_UPDATED`, `STANDINGS_UPDATED` y `MATCH_REPORT_RECTIFIED`, solo para la organización;

@@ -1,23 +1,187 @@
 """Publication effects share the preview transaction and preserve original reports."""
 
+import asyncio
 from copy import deepcopy
+from datetime import datetime
+from unittest.mock import AsyncMock
 import json
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
+from app.core.tenancy import AuthContext
+from app.modules.rectifications import effects, impacts
 from app.modules.standings.service import StandingsService
-from test_migration_031 import MATCH, ORG, PLAYER_AWAY, SEGMENT_FIRST, STAGE, TEAM_AWAY, TEAM_HOME, TOURNAMENT
+from test_migration_031 import MATCH, MEMBER, ORG, PLAYER_AWAY, PLAYER_HOME_FIRST, SEGMENT_FIRST, STAGE, TEAM_AWAY, TEAM_HOME, TOURNAMENT, USER
 import test_rectification_flow as flow_module
-from test_rectification_flow import add_approver, create, database_snapshot, decide, proposal
+from test_rectification_flow import UNCONFIRMED, add_approver, create, database_snapshot, decide, proposal
 from test_rectification_flow import flow as flow
 
 TARGET = "31000000-0000-4000-8000-000000000070"
 LATER = "31000000-0000-4000-8000-000000000071"
+
+
+@pytest.mark.parametrize("flow", [pytest.param({"advancement": {"origin": origin, "later_phase": True, "target_in_later": True}}, id=origin)
+    for origin in ["manual", "advancement_link"]], indirect=True)
+async def test_impact_phase_snapshot_deduplicates_preview_and_close(flow):
+    request = await pending(flow, reversed_report())
+    before = await database_snapshot(flow.admin)
+    preview = await flow.client.get(f"/api/v1/rectifications/{request}/preview")
+    assert preview.status_code == 200, preview.text
+    assert len([e for e in preview.json()["effects"] if e["effect_type"] == "impact_opened"]) == 1
+    assert await database_snapshot(flow.admin) == before
+    response = await decide(flow, request)
+    assert response.status_code == 200, response.text
+    listing = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT}/competitive-impacts")
+    assert listing.status_code == 200, listing.text
+    assert len(listing.json()) == 1
+    procedure = listing.json()[0]
+    assert procedure["version_id"] == response.json()["resulting_version_id"]
+    matches = [item for item in procedure["affected_items"] if item.get("match_id")]
+    assert len(matches) == 2 and {item["match_id"] for item in matches} == {TARGET, UNCONFIRMED}
+    target = next(item for item in matches if item["match_id"] == TARGET)
+    assert target["home_team_id"] == TEAM_HOME and target["slot_assignments"]
+    phase = next(item for item in procedure["affected_items"] if item.get("stage_assignments"))
+    assert phase["stage_id"] == LATER and {row["team_id"] for row in phase["stage_assignments"]} == {TEAM_HOME, TEAM_AWAY}
+    assert len(target["effects"]) >= 2
+    blocked = await flow.client.post(f"/api/v1/matches/{UNCONFIRMED}/segments", json={"segment_number": 1, "minute_start": 0})
+    assert blocked.status_code == 409 and blocked.json()["code"] == "COMPETITIVE_IMPACT_OPEN"
+    original = dict(await flow.admin.fetchrow("SELECT * FROM matches WHERE id=$1", MATCH))
+    responses = await asyncio.gather(*(flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close",
+        json={"reason": "Mantener lo jugado"}) for _ in range(2)))
+    assert sorted(response.status_code for response in responses) == [200, 409]
+    closed = next(response for response in responses if response.status_code == 200)
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["status"] == "closed" and closed.json()["resolution"] == "keep_as_played"
+    assert closed.json()["affected_items"] == procedure["affected_items"]
+    assert await flow.admin.fetchval("SELECT count(*) FROM administrative_audit_logs WHERE action='CLOSE_COMPETITIVE_IMPACT'") == 1
+    again = await flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close", json={"reason": "Otra vez"})
+    assert again.status_code == 409
+    assert dict(await flow.admin.fetchrow("SELECT * FROM matches WHERE id=$1", MATCH)) == original
+
+
+@pytest.mark.parametrize("flow", [{"advancement": {"origin": "manual"}}], indirect=True)
+@pytest.mark.parametrize("status", ["scheduled", "live", "cancelled"])
+async def test_impact_blocks_api_and_database_then_releases_on_close(flow, status):
+    await flow.admin.execute("UPDATE matches SET status=$2 WHERE id=$1", TARGET, status)
+    request = await pending(flow, reversed_report())
+    assert (await decide(flow, request)).status_code == 200
+    procedure = await flow.admin.fetchrow("SELECT * FROM competitive_impact_procedures WHERE organization_id=$1", ORG)
+    assert procedure is not None
+    before = await database_snapshot(flow.admin)
+    for route, body in [(f"/api/v1/matches/{TARGET}/segments", {"segment_number": 1, "minute_start": 0}),
+                        (f"/api/v1/matches/{TARGET}/close", proposal()["proposed_report"])]:
+        response = await flow.client.post(route, json=body)
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "COMPETITIVE_IMPACT_OPEN"
+        assert await database_snapshot(flow.admin) == before
+    for statement in ["INSERT INTO match_segments (organization_id,match_id,segment_number,minute_start) VALUES ($2,$1,1,0)",
+                      """UPDATE matches SET status='finished',result_confirmed=TRUE,resolution_type='regular',
+                         home_score=0,away_score=0,home_score_regular=0,away_score_regular=0 WHERE id=$1 AND organization_id=$2"""]:
+        with pytest.raises(asyncpg.PostgresError, match="COMPETITIVE_IMPACT_OPEN"):
+            async with flow.admin.transaction():
+                await flow.admin.execute(statement, TARGET, ORG)
+    closed = await flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close", json={"reason": "Conservar"})
+    assert closed.status_code == 200
+    await flow.admin.execute("SELECT assert_no_open_competitive_impact($1,$2)", TARGET, ORG)
+    if status == "scheduled":
+        await flow.admin.execute("INSERT INTO match_segments (organization_id,match_id,segment_number,minute_start) VALUES ($1,$2,1,0)", ORG, TARGET)
+
+
+@pytest.mark.parametrize("flow", [{"advancement": {"origin": "manual"}}], indirect=True)
+async def test_impact_strict_permissions_isolation_and_started_match(flow):
+    await fail_d4(flow, "segments")
+    requester = flow.context
+    request = await pending(flow, reversed_report())
+    assert (await decide(flow, request)).status_code == 200
+    procedure = await flow.admin.fetchrow("SELECT * FROM competitive_impact_procedures WHERE organization_id=$1", ORG)
+    assert procedure is not None
+    for body in [{}, {"reason": " "}, {"reason": "ok", "resolution": "replay"}]:
+        invalid = await flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close", json=body)
+        assert invalid.status_code == 422
+    flow.context = AuthContext(UUID(USER.replace("31000000", "32000000")), UUID(ORG.replace("31000000", "32000000")), UUID(MEMBER.replace("31000000", "32000000")))
+    foreign = await flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close", json={"reason": "No"})
+    absent = await flow.client.post("/api/v1/competitive-impacts/ffffffff-ffff-4fff-8fff-ffffffffffff/close", json={"reason": "No"})
+    assert foreign.status_code == absent.status_code == 404 and foreign.json() == absent.json()
+    flow.context = requester
+    await flow.admin.execute("UPDATE roles SET permissions='[]'::jsonb WHERE organization_id=$1", ORG)
+    denied = await flow.client.post(f"/api/v1/competitive-impacts/{procedure['id']}/close", json={"reason": "No"})
+    assert denied.status_code == 403
+    await flow.admin.execute("UPDATE match_segments SET status='completed',minute_end=45 WHERE match_id=$1", TARGET)
+    await flow.admin.execute("INSERT INTO match_segments (organization_id,match_id,segment_number,minute_start) VALUES ($1,$2,2,45)", ORG, TARGET)
+
+
+async def test_impact_empty_candidates_have_no_effects_or_database_writes():
+    db = AsyncMock()
+    assert await effects.apply_competitive_impacts(db, None, {}, [], datetime(2026, 1, 1)) == []
+    db.execute.assert_not_awaited()
+
+
+async def test_impact_list_empty_permissions_and_indistinguishable_tournaments(flow):
+    response = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT}/competitive-impacts")
+    assert response.status_code == 200 and response.json() == []
+    foreign = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT.replace('31000000', '32000000')}/competitive-impacts")
+    missing = await flow.client.get("/api/v1/tournaments/ffffffff-ffff-4fff-8fff-ffffffffffff/competitive-impacts")
+    assert foreign.status_code == missing.status_code == 404 and foreign.json() == missing.json()
+    await flow.admin.execute("UPDATE roles SET permissions='[]'::jsonb WHERE organization_id=$1", ORG)
+    denied = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT}/competitive-impacts")
+    assert denied.status_code == 403
+
+
+@pytest.mark.parametrize("flow", [{"advancement": {"origin": "manual"}, "events": [str(uuid4()), str(uuid4())]}], indirect=True)
+async def test_impact_groups_accumulation_and_advancement_without_changing_later_sanctions(flow):
+    segment = await flow.admin.fetchval("""INSERT INTO match_segments (organization_id,match_id,segment_number,minute_start)
+        VALUES ($1,$2,1,0) RETURNING id""", ORG, UNCONFIRMED)
+    event = await flow.admin.fetchval("""INSERT INTO match_events
+        (organization_id,match_id,segment_id,team_id,player_id,event_type,minute,client_event_id)
+        VALUES ($1,$2,$3,$4,$5,'yellow_card',20,$6) RETURNING id""", ORG, UNCONFIRMED, segment, TEAM_HOME, PLAYER_HOME_FIRST, str(uuid4()))
+    await flow.admin.execute("""UPDATE matches SET status='finished',result_confirmed=TRUE,resolution_type='regular',
+        home_score_regular=0,away_score_regular=0,home_score=0,away_score=0 WHERE id=$1""", UNCONFIRMED)
+    await flow.admin.execute("""INSERT INTO player_suspensions
+        (organization_id,source_tournament_id,player_id,origin_match_id,source_event_id,source_type,dedupe_key,scope_type,matches_suspended,reason)
+        VALUES ($1,$2,$3,$4,$5,'match_event','later','organization',1,'yellow_card_accumulation')""",
+        ORG, TOURNAMENT, PLAYER_HOME_FIRST, UNCONFIRMED, event)
+    sanctions = await flow.admin.fetch("SELECT * FROM player_suspensions ORDER BY id")
+    original = dict(await flow.admin.fetchrow("SELECT * FROM matches WHERE id=$1", UNCONFIRMED))
+    request = await pending(flow, reversed_report())
+    response = await decide(flow, request)
+    assert response.status_code == 200, response.text
+    procedures = await flow.admin.fetch("SELECT affected_items FROM competitive_impact_procedures WHERE organization_id=$1", ORG)
+    assert len(procedures) == 1
+    items = json.loads(procedures[0]["affected_items"])
+    assert {item["match_id"] for item in items} == {TARGET, UNCONFIRMED}
+    assert {effect["kind"] for item in items for effect in item["effects"]} == {"accumulation", "advancement"}
+    assert await flow.admin.fetch("SELECT * FROM player_suspensions ORDER BY id") == sanctions
+    assert dict(await flow.admin.fetchrow("SELECT * FROM matches WHERE id=$1", UNCONFIRMED)) == original
+
+
+@pytest.mark.parametrize("flow", [{"advancement": {"origin": "manual"}}], indirect=True)
+async def test_impact_opening_and_closing_roll_back_if_audit_or_effect_fails(flow, monkeypatch):
+    request = await pending(flow, reversed_report())
+    before = await database_snapshot(flow.admin)
+    original_record = effects.record_effect
+    async def fail_record(db, context, version_id, effect, now):
+        await original_record(db, context, version_id, effect, now)
+        if effect["effect_type"] == "impact_opened":
+            raise ValueError("injected effect failure")
+    monkeypatch.setattr(effects, "record_effect", fail_record)
+    assert (await decide(flow, request)).status_code == 409
+    assert await database_snapshot(flow.admin) == before
+    monkeypatch.setattr(effects, "record_effect", original_record)
+    assert (await decide(flow, request)).status_code == 200
+    procedure_id = await flow.admin.fetchval("SELECT id FROM competitive_impact_procedures WHERE organization_id=$1", ORG)
+    before = await database_snapshot(flow.admin)
+    async def fail_audit(*args):
+        raise ValueError("injected audit failure")
+    monkeypatch.setattr(impacts, "audit_impact", fail_audit)
+    response = await flow.client.post(f"/api/v1/competitive-impacts/{procedure_id}/close", json={"reason": "Mantener"})
+    assert response.status_code == 409
+    assert await database_snapshot(flow.admin) == before
 
 
 def reversed_report():
@@ -208,7 +372,11 @@ async def test_d4_failed_condition_delivers_typed_impact_without_substitution(fl
     request = await pending(flow, reversed_report())
     response = await decide(flow, request)
     assert response.status_code == 200, response.text
-    assert len(observed) == 1 and isinstance(observed[0], AdvancementImpactCandidate)
+    linked = [candidate for candidate in observed if candidate.match_id == UUID(TARGET)]
+    assert len(linked) == 1 and isinstance(linked[0], AdvancementImpactCandidate)
+    assert len(observed) == (2 if condition == "later_phase" else 1)
+    if condition == "later_phase":
+        assert observed[1].stage_id == UUID(LATER) and observed[1].match_id is None
     assert str(observed[0].match_id) == TARGET and observed[0].reason == condition
     assert await flow.admin.fetchval("SELECT home_team_id FROM matches WHERE id=$1", TARGET) == UUID(TEAM_HOME)
     assert [dict(r) for r in await flow.admin.fetch("SELECT * FROM match_slot_assignments ORDER BY id")] == before
