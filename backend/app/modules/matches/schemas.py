@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -38,6 +39,10 @@ CLIENT_EVENT_ID_PATTERN = (
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
+
+
+def client_event_identity(value: str) -> str:
+    return value.lower() if re.fullmatch(CLIENT_EVENT_ID_PATTERN, value) else value
 
 
 OfficialRole = Literal[
@@ -245,7 +250,7 @@ class CloseMatchReportDTO(BaseModel):
         # La identidad del evento no distingue caja: el UUID se compara en su
         # forma canónica (RF-012), igual que la escritura y la búsqueda de un
         # evento ya persistido.
-        event_ids = [event.client_event_id.lower() for event in self.events]
+        event_ids = [client_event_identity(event.client_event_id) for event in self.events]
         if len(event_ids) != len(set(event_ids)):
             raise ValueError("No se permiten client_event_id duplicados en la misma acta")
         return self

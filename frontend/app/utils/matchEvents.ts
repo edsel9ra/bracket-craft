@@ -415,21 +415,24 @@ export interface BuiltMatchEvent extends DraftEvent<EventType> {
  * (nunca con valor) y `metadata` se omite salvo en una roja, porque el servidor
  * rechaza con 422 una clave desconocida y un `beneficiary_team_id` no nulo fuera
  * del autogol. Devuelve `null` si el formulario no es construible —estructura
- * incompleta, minuto fuera del tope estructural o identificador que no es
- * UUID—, de modo que ningún evento inválido llega al borrador.
+ * incompleta, minuto fuera del tope estructural o identificador nuevo que no es
+ * UUID—. Los identificadores publicados se aceptan solo si constan literalmente
+ * en `existingClientEventIds`.
  */
 export function buildDraftEvent(
   form: EventFormValues,
   segmentId: unknown,
   clientEventId: unknown,
+  existingClientEventIds: ReadonlySet<string> = new Set(),
 ): BuiltMatchEvent | null {
   if (!validateEventValues(form).ok) return null;
 
   const type = form.event_type as EventType;
-  const clientId = text(clientEventId);
+  const existing = typeof clientEventId === 'string' && existingClientEventIds.has(clientEventId);
+  const clientId = existing ? clientEventId : text(clientEventId);
   const segment = text(segmentId);
   const team = text(form.team_id);
-  if (!clientId || !isUuid(clientId) || !segment || !team) return null;
+  if (clientId === null || (!existing && !isUuid(clientId)) || !segment || !team) return null;
 
   const minute = integerBetween(form.minute, 0, MAX_MINUTE);
   const rawAdded = form.added_minute;

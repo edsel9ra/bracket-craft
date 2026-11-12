@@ -12,6 +12,7 @@ const api = useMatchRectifications();
 const { t } = useI18n();
 const { confirm } = useConfirm({ singleFlight: true });
 const draft = reactive(reportProposal(props.version.report));
+const existingClientEventIds = new Set(draft.events.map((event) => event.client_event_id));
 const reason = ref(''); const evidence = ref(''); const error = ref(''); const busy = ref(false);
 const operation = ref<MatchOperation | null>(null);
 const prefix = useId();
@@ -51,7 +52,7 @@ async function submit() {
       player_out_id: fields.includes('player_out') ? event.player_out_id : null,
       player_in_id: fields.includes('player_in') ? event.player_in_id : null,
       red_card_type: fields.includes('red_card_type') ? event.metadata?.red_card_type : undefined,
-    }, event.segment_id, event.client_event_id);
+    }, event.segment_id, event.client_event_id, existingClientEventIds);
   });
   if (!reason.value.trim() || !evidence.value.trim() || events.some((event) => !event)) { error.value = t('rectification.invalid'); return; }
   busy.value = true;

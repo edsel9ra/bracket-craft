@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import UUID
@@ -13,7 +14,7 @@ from app.core.locking import lock_matches, lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.schemas import CLIENT_EVENT_ID_PATTERN, CloseMatchReportDTO
 from app.modules.matches.service import (
     canonical_client_event_id, derive_walkover_score, load_report_payload_snapshot, validate_report_payload,
 )
@@ -25,6 +26,7 @@ from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     RectificationDecisionRequest,
     RectificationResponse,
+    RectificationReportDTO,
     ReportContentResponse,
     ReportEventResponse,
     ReportVersionResponse,
@@ -162,13 +164,17 @@ class RectificationService:
                 """), {"match_id": match_id, "organization_id": context.organization_id})).scalar_one_or_none()
                 if pending is not None:
                     raise _already_open()
-                snapshot = await load_report_payload_snapshot(self.db, context, match, payload.proposed_report,
-                    exclude_suspensions_from_match_id=match["id"])
-                outcome = validate_report_payload(snapshot, payload.proposed_report, datetime.now(timezone.utc))
                 events = (await self.db.execute(text("""
                     SELECT * FROM v_match_current_events
                     WHERE match_id = :match_id AND organization_id = :organization_id
                 """), {"match_id": match_id, "organization_id": context.organization_id})).mappings().all()
+                existing_ids = {event["client_event_id"] for event in events}
+                for event in payload.proposed_report.events:
+                    if event.client_event_id not in existing_ids and not re.fullmatch(CLIENT_EVENT_ID_PATTERN, event.client_event_id):
+                        raise HTTPException(status_code=422, detail="Los eventos nuevos requieren client_event_id UUID")
+                snapshot = await load_report_payload_snapshot(self.db, context, match, payload.proposed_report,
+                    exclude_suspensions_from_match_id=match["id"])
+                outcome = validate_report_payload(snapshot, payload.proposed_report, datetime.now(timezone.utc))
                 if _same_report(match, events, payload.proposed_report, outcome):
                     raise RectificationConflict("RECTIFICATION_NO_CHANGES", "La propuesta no cambia el acta vigente")
                 request = await self._insert_request(context, match_id, match["version_number"], payload)
@@ -250,7 +256,7 @@ class RectificationService:
             request = await self._request(context, request_id)
             match = await self._match(context, request["match_id"])
             current = await self._version(context, request["match_id"], match["version_number"])
-            proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
+            proposal = _proposal_report(match, RectificationReportDTO.model_validate(request["proposed_report"]))
             return {**request, "diff": diff_reports(current["report"], proposal)}
 
     @staticmethod
@@ -362,7 +368,7 @@ class RectificationService:
             raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
         if match["version_status"] == "archived":
             raise RectificationConflict("TOURNAMENT_ARCHIVED", "El torneo está archivado")
-        payload = CloseMatchReportDTO.model_validate(request["proposed_report"])
+        payload = RectificationReportDTO.model_validate(request["proposed_report"])
         snapshot = await load_report_payload_snapshot(self.db, context, match, payload,
             exclude_suspensions_from_match_id=match["id"])
         outcome = validate_report_payload(snapshot, payload, now)

@@ -1,5 +1,6 @@
 import type { DraftEvent, MatchOperation } from '../components/match/types';
 import type { ResolutionType } from './matchResolution.ts';
+import { isUuid } from './matchEvents.ts';
 
 export interface ReportProposal {
   resolution_type: ResolutionType;
@@ -75,7 +76,7 @@ export function reportProposal(report: Record<string, unknown>): ReportProposal 
   const eventFields = ['client_event_id', 'event_type', 'team_id', 'beneficiary_team_id', 'player_id', 'minute', 'added_minute', 'segment_id', 'assist_player_id', 'player_out_id', 'player_in_id', 'metadata'];
   const events = source.filter((row) => !row.is_voided).map((row) => ({
     ...Object.fromEntries(eventFields.map((key) => [key, row[key] ?? (key === 'metadata' ? {} : null)])),
-    client_event_id: typeof row.client_event_id === 'string' ? row.client_event_id.toLowerCase() : row.client_event_id,
+    client_event_id: isUuid(row.client_event_id) ? row.client_event_id.toLowerCase() : row.client_event_id,
   })) as unknown as DraftEvent[];
   return { resolution_type: resolution, reason: (report.resolution_reason ?? report.reason ?? null) as string | null,
     winner_team_id: report.winner_team_id as string | null, events,

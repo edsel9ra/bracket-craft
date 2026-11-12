@@ -70,6 +70,14 @@ test('editor preserves an applicable assist but still rejects a missing required
   assert.equal(invalid.requests.length, 0);
 });
 
+test('editor accepts stored non-UUID identities exactly as read', async () => {
+  const editor = await editorFor([{ ...assistedGoal, client_event_id: 'Legacy-GOAL ' }]);
+  await editor.submit();
+  assert.equal(editor.requests.length, 1);
+  assert.equal(editor.requests[0]!.proposed_report.events[0]!.client_event_id, 'Legacy-GOAL ');
+  assert.equal(eventHelpers.buildDraftEvent(assistedGoal, 'segment', 'new-legacy-id'), null);
+});
+
 test('review never renders decision controls to requester, unauthorized member or finished request', async () => {
   const Review = component('RectificationReview');
   for (const [memberId, canApprove, status, visible] of [['author', true, 'pending', false], ['reviewer', false, 'pending', false], ['reviewer', true, 'published', false], ['reviewer', true, 'pending', true]] as const) {

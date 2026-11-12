@@ -4,13 +4,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
+
+
+class RectificationEventPayload(MatchEventPayload):
+    client_event_id: str
+
+
+class RectificationReportDTO(CloseMatchReportDTO):
+    events: list[RectificationEventPayload] = Field(default_factory=list, max_length=500)
 
 
 class CreateRectificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    proposed_report: CloseMatchReportDTO
+    proposed_report: RectificationReportDTO
     reason: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
 

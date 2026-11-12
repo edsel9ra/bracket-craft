@@ -23,7 +23,7 @@ from app.modules.matches.errors import (
     WalkoverScoreMismatch,
     WalkoverStateNotAllowed,
 )
-from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
+from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload, client_event_identity
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
@@ -416,7 +416,7 @@ def canonical_client_event_id(value: str) -> str:
     different rows for ``uq_event_client_id``.
     """
 
-    return value.lower()
+    return client_event_identity(value)
 
 
 def normalize_event_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:

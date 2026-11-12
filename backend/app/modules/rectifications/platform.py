@@ -9,7 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.database import set_rls_context
 from app.core.platform import require_platform_write
 from app.modules.matches.audit import record_match_audit
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.rectifications.schemas import RectificationReportDTO
 from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.service import (
     RectificationConflict, RectificationSelfApproval, RectificationService, _proposal_report, _self_approval_violation,
@@ -156,7 +156,7 @@ class RectificationPlatformService(RectificationService):
             await set_rls_context(self.db, None, platform.user_id)
             actor, request, match, _ = await self._authorized_request(platform, request_id)
             current = await self._version(actor, request["match_id"], match["version_number"])
-            proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
+            proposal = _proposal_report(match, RectificationReportDTO.model_validate(request["proposed_report"]))
             return {**request, "diff": diff_reports(current["report"], proposal), "current_version": current}
 
     async def platform_preview(self, platform, request_id):

@@ -319,6 +319,47 @@ async def test_no_changes_uses_effective_scores_and_event_defaults(flow):
     await assert_empty(flow)
 
 
+@pytest.mark.parametrize("flow", [["Legacy-CARD ", "legacy-card "]], indirect=True)
+async def test_rectification_preserves_existing_non_uuid_event_ids(flow):
+    from app.modules.rectifications.sanctions import _load_discipline_rows
+
+    original = await flow.admin.fetch("SELECT * FROM match_events WHERE match_id=$1 ORDER BY id", MATCH)
+    events = [{"client_event_id": identity, "segment_id": SEGMENT_FIRST,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST,
+        "event_type": "yellow_card", "minute": minute}
+        for identity, minute in [("Legacy-CARD ", 15), ("legacy-card ", 17)]]
+    response = await create(flow, proposal(home_score_regular=0, home_score=0,
+        winner_team_id=None, events=events))
+    assert response.status_code == 201, response.text
+    request = response.json()
+    detail = await flow.client.get(f"/api/v1/rectifications/{request['id']}")
+    assert detail.status_code == 200, detail.text
+    assert not detail.json()["diff"]["events"]["added"]
+    assert not detail.json()["diff"]["events"]["removed"]
+    preview = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    assert preview.status_code == 200, preview.text
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_versions") == 0
+    flow.context = await add_approver(flow)
+    published = await decide(flow, request["id"])
+    assert published.status_code == 200, published.text
+    assert await flow.admin.fetch("SELECT client_event_id FROM match_report_version_events ORDER BY client_event_id") == await flow.admin.fetch("SELECT client_event_id FROM match_events WHERE match_id=$1 ORDER BY client_event_id", MATCH)
+    assert await flow.admin.fetch("SELECT * FROM match_events WHERE match_id=$1 ORDER BY id", MATCH) == original
+    async with flow.engine.begin() as connection:
+        await connection.execute(text("SET LOCAL ROLE bracket_app"))
+        async with AsyncSession(bind=connection) as session:
+            await set_rls_context(session, flow.context.organization_id, flow.context.user_id)
+            rows = await _load_discipline_rows(session, flow.context, UUID(TOURNAMENT), UUID(MATCH))
+    assert [row["client_event_id"] for row in rows] == [event["client_event_id"] for event in events]
+
+
+async def test_new_non_uuid_event_id_is_rejected_in_a_rectification(flow):
+    payload = proposal()
+    payload["proposed_report"]["events"][0]["client_event_id"] = "not-stored"
+    response = await create(flow, payload)
+    assert response.status_code == 422
+    await assert_empty(flow)
+
+
 async def test_pending_unique_index_and_match_lock(flow, monkeypatch):
     from app.modules.rectifications.service import RectificationService
 
