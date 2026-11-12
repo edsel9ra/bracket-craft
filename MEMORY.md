@@ -3,9 +3,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Clarificación — estado: borrador.
-- Pendiente: aclarar DA-3, DA-6–DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
+- Pendiente: aclarar DA-7 y DA-10–DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
 
 ## Decisiones tomadas
+- 2026-11-12 · Spec 034 · DA-3 cerrada por el usuario: el interponente no resuelve su apelación aunque acumule permisos/roles o autorización de plataforma; bloqueo técnico y responsable, fecha, motivo y decisión registrados.
+- 2026-11-12 · Spec 034 · DA-6 cerrada por el usuario: iniciativa administrativa sin apelación ficticia, con permiso de resolver, motivo y auditoría; solo anular/reducir, sin interponente que excluir ni segunda persona exigida por ese concepto.
+- 2026-11-12 · Spec 034 · DA-8 cerrada por el usuario: plataforma solo resuelve con autorización F9 puntual, vigente y revocable del dueño activo, vinculada a organización/expediente/administrador/dueño y verificada al ejecutar; consumida al decidir, ambas auditorías, sin BYPASSRLS, permisos persistentes, membresía, platform_support ni reutilización de la 033.
+- 2026-11-12 · Spec 034 · DA-9 cerrada por el usuario: cumplimientos conservados, efectos solo sobre pendientes; reducción inferior a lo cumplido deja cumplida, anulación de totalmente cumplida declarativa, sin crédito futuro.
 - 2026-11-12 · Spec 034 · DA-1 cerrada por el usuario: solo miembros con permiso presentan, registrando equipo/jugador representado; sin acceso propio de delegados externos o jugador/tutor.
 - 2026-11-12 · Spec 034 · DA-2 cerrada por el usuario: consulta, presentación y resolución con facultades nuevas y separadas, por defecto para dueño/administrador, sin herencia de permisos existentes.
 - 2026-11-12 · Spec 034 · DA-4 cerrada por el usuario: mantener, anular o reducir partidos; fuera de alcance aumentar o cambiar ámbito.

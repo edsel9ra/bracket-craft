@@ -14,7 +14,7 @@ La constitución 2.0.0, §3.6, establece literalmente:
 
 **Objetivo:** permitir tramitar recursos y conocer la sanción que rige como consecuencia de una resolución identificable y motivada, manteniendo la trazabilidad, los cumplimientos históricos, el aislamiento organizativo y la inmutabilidad de lo ya disputado.
 
-Este borrador está en fase de clarificación: DA-1, DA-2, DA-4 y DA-5 están cerradas por el usuario y recogidas en los requisitos. Las recomendaciones de las otras 14 DA **no son decisiones aprobadas** ni autorizan implementación. Siguen pendientes, entre otras políticas, los estados del recurso, los plazos y la separación entre interponente y resolutor.
+Este borrador está en fase de clarificación: DA-1–DA-6, DA-8 y DA-9 están cerradas por el usuario y recogidas en los requisitos. Las recomendaciones de las otras 10 DA **no son decisiones aprobadas** ni autorizan implementación. Siguen pendientes, entre otras políticas, los estados del recurso, los plazos y la coordinación con la rectificación de actas.
 
 ### Estado actual comprobado (2026-11-12)
 
@@ -37,19 +37,19 @@ Revisión del comportamiento descrito por el código, los contratos de pruebas y
 ## Usuarios
 
 - **Persona legitimada para recurrir:** miembro de la organización con el nuevo permiso de presentación; registra en nombre de qué equipo o jugador presenta el recurso (DA-1).
-- **Persona autorizada para resolver:** dispone del nuevo permiso de resolución y puede mantener, anular o reducir los partidos de sanción (DA-2 y DA-4); la separación respecto del interponente sigue pendiente de DA-3.
+- **Persona autorizada para resolver:** dispone del nuevo permiso de resolución y no puede ser quien presentó la apelación, aunque acumule permisos o roles (DA-3). Puede mantener, anular o reducir al resolver un recurso; sin recurso solo anular o reducir, mediante iniciativa administrativa motivada y auditada (DA-6).
 - **Responsable operativo del partido:** necesita distinguir la tramitación del recurso de la elegibilidad disciplinaria vigente para preparar la convocatoria y cerrar el acta.
 - **Jugador afectado y, en su caso, representante:** personas cuyos datos y situación disciplinaria se tratan; no se presupone una cuenta ni un acceso propio.
-- **Administrador de plataforma:** posible intervención excepcional pendiente de DA-8; no tiene facultades F9 implícitas.
+- **Administrador de plataforma:** puede resolver excepcionalmente, no presentar, con autorización propia de F9, puntual, vigente y revocable del dueño activo para el expediente concreto (DA-8); no tiene facultades generales sobre la organización ni se admite soporte de plataforma.
 - **Público:** no participa en este procedimiento ni accede a sus datos.
 
 ## Roles y visibilidad
 
 - **Público:** no ve sanciones, suspensiones, recursos, resoluciones, responsables, motivos, evidencias ni cumplimientos. No se añade una marca pública de apelación.
 - **Miembros de la organización:** consultar, presentar y resolver requieren facultades nuevas y separadas, asignadas por defecto a dueño y administrador (DA-2). No se presupone lectura de expedientes para todos los miembros ni se hereda ninguna facultad de permisos existentes.
-- **Interponente y resolutor:** solo actúan con legitimación y autorización vigentes según DA-1–DA-3; sus capacidades no se deducen de poder operar un partido o aprobar un acta rectificativa.
+- **Interponente y resolutor:** solo actúan con legitimación y autorización vigentes según DA-1–DA-3; el interponente nunca resuelve su apelación. Sus capacidades no se deducen de poder operar un partido o aprobar un acta rectificativa. En iniciativa administrativa sin recurso no hay interponente que excluir ni se exige una segunda persona por ese concepto.
 - **Delegados externos y jugador/tutor:** no tienen acceso propio al procedimiento; quedan fuera de alcance (DA-1). La representación registrada por un miembro autorizado no les concede acceso ni permisos.
-- **Plataforma:** su eventual actuación y visibilidad requieren aclaración expresa en DA-8, separación de la organización y auditoría de plataforma. Nunca habilitan edición directa de actas o resultados cerrados.
+- **Plataforma:** la autorización F9 vincula organización, expediente, administrador y dueño activo; se verifica al ejecutar, es revocable y se consume al decidir. La actuación queda en auditoría de organización y de plataforma, sin BYPASSRLS, permisos persistentes ni membresía. No admite `platform_support`, no permite presentar apelaciones y no hereda ni reutiliza autorizaciones de la spec 033. El administrador tampoco puede resolver una apelación que haya presentado con otra condición o rol. Nunca habilita edición directa de actas o resultados cerrados.
 - **Aislamiento:** ninguna organización puede ver ni modificar sanciones, recursos, resoluciones, evidencias, cumplimientos o historial de otra; tampoco debe poder averiguar su existencia mediante una referencia ajena.
 
 ## Historias de usuario
@@ -64,8 +64,9 @@ Revisión del comportamiento descrito por el código, los contratos de pruebas y
 
 - **Sanción:** consecuencia disciplinaria atribuida a un jugador, con motivo, origen y ámbito; en el comportamiento actual se materializa como una suspensión por partidos.
 - **Apelación:** solicitud formal de revisión contra una sanción. Tiene interponente, motivo y estado de tramitación propios; no es una anulación ni una modificación de la sanción.
-- **Resolución administrativa de sanción:** decisión auditada que determina el nuevo estado o mantiene la sanción y, cuando se permita, concreta qué cambia y su efecto. No es la resolución administrativa de un partido ni una rectificación de acta.
-- **Anulación:** decisión que deja sin efecto la sanción en los términos que se aprueben, conservando su existencia y los hechos ya cumplidos. No borra el evento deportivo de origen.
+- **Resolución administrativa de sanción:** decisión auditada que determina el nuevo estado o mantiene la sanción al resolver un recurso. También puede anular o reducir por iniciativa administrativa sin apelación previa, con motivo obligatorio, sin crear un recurso ficticio ni requerir un interponente que excluir. No es la resolución administrativa de un partido ni una rectificación de acta.
+- **Expediente F9:** antecedentes de la revisión de una sanción y sus decisiones, con apelación o por iniciativa administrativa sin ella; no se confunde con una solicitud de la spec 033.
+- **Anulación:** decisión que deja sin efecto los partidos pendientes de la sanción, conservando su existencia y los hechos ya cumplidos. Si estaba totalmente cumplida, queda como declaración registrada sin crédito futuro. No borra el evento deportivo de origen.
 - **Modificación administrativa:** reducción de los partidos de sanción mediante resolución auditada, sin reescribir el acta; no permite aumentar la duración ni cambiar el ámbito (DA-4).
 - **Cumplimiento:** hecho registrado de un partido computado para servir una suspensión; no es un plazo de tiempo ni una apelación.
 - **Procedencia:** relación trazable de la sanción con su causa, distinguiendo, cuando corresponda, el evento del acta original del evento de una versión rectificada.
@@ -80,22 +81,26 @@ Las remisiones a DA cerradas recogen decisiones aprobadas; las condiciones que d
 - **RF-001.** EL SISTEMA distinguirá el estado de tramitación de una apelación del estado y de los efectos de la sanción recurrida, dentro de su organización.
 - **RF-002.** CUANDO un miembro de la organización con permiso de presentación presente una apelación conforme a las reglas de admisión que se aprueben, EL SISTEMA registrará la sanción recurrida, la organización, el interponente responsable, el equipo o jugador en cuyo nombre actúa, la fecha y el motivo, sin modificar por ese acto la sanción ni sus cumplimientos.
 - **RF-003.** MIENTRAS una apelación no tenga una resolución que altere los efectos disciplinarios, EL SISTEMA conservará los efectos vigentes de la sanción, sin efecto suspensivo ni medidas provisionales de suspensión por el recurso; la sanción seguirá bloqueando el cierre del acta cuando resulte aplicable y tenga partidos pendientes, conforme a las comprobaciones actuales.
-- **RF-004.** CUANDO una persona autorizada dicte una resolución, EL SISTEMA registrará el responsable, la fecha, el motivo, la decisión, la sanción afectada, su estado anterior y el resultante y, si hay modificación, los valores anteriores y resultantes y el momento de efecto autorizado. Vinculará el recurso cuando la resolución responda a uno; la posibilidad de resolver sin recurso depende de DA-6.
+- **RF-004.** CUANDO una persona autorizada dicte una resolución, EL SISTEMA registrará el responsable, la fecha, el motivo obligatorio, la decisión, la sanción afectada, su estado anterior y el resultante y, si hay modificación, los valores anteriores y resultantes y el momento de efecto autorizado. Vinculará el recurso cuando la resolución responda a uno; si procede por iniciativa administrativa sin apelación, registrará ese origen sin crear una apelación ficticia.
 - **RF-005.** SI no existe una resolución auditada y autorizada que lo sustente, ENTONCES EL SISTEMA impedirá anular o modificar administrativamente una sanción. La etiqueta de apelación no será una vía alternativa para cambiar sus efectos.
-- **RF-006.** CUANDO se consulte un expediente con el nuevo permiso de consulta, EL SISTEMA mostrará el recurso, su estado, las resoluciones relacionadas, la sanción que rige y sus cumplimientos históricos, sin mezclar expedientes de organizaciones distintas; la eventual intervención de plataforma sigue pendiente de DA-8.
+- **RF-006.** CUANDO se consulte un expediente con el nuevo permiso de consulta o al amparo de una autorización excepcional F9 vigente para decidir sobre él, EL SISTEMA mostrará el recurso y su estado, si existe, o su origen por iniciativa administrativa, las resoluciones relacionadas, la sanción que rige y sus cumplimientos históricos, sin mezclar expedientes de organizaciones distintas ni extender la autorización de plataforma a otros expedientes.
 
 ### Legitimación, facultades y decisiones permitidas
 
 - **RF-018.** SI quien intenta presentar una apelación no es miembro de la organización de la sanción o carece del nuevo permiso de presentación, ENTONCES EL SISTEMA impedirá presentarla, sin crear el recurso ni modificar la sanción; registrar representación de un equipo o jugador no concederá acceso a delegados externos, jugadores o tutores.
-- **RF-019.** EL SISTEMA exigirá facultades nuevas y separadas para consultar, presentar y resolver apelaciones y resoluciones de sanciones dentro de la organización, asignadas por defecto a dueño y administrador; no concederá ninguna por herencia de permisos existentes de cierre, resolución administrativa de partidos o rectificación de actas. Disponer de las facultades de presentación y resolución no decide la separación de personas pendiente de DA-3, ni la asignación por defecto resuelve la excepción de plataforma pendiente de DA-8.
-- **RF-020.** CUANDO una persona autorizada resuelva sobre una sanción, EL SISTEMA limitará la decisión a mantenerla, anularla o reducir los partidos de sanción, e impedirá aumentarlos o cambiar su ámbito; mantendrá el aislamiento de la organización y el historial auditado, sin modificar el acta de origen.
+- **RF-019.** EL SISTEMA exigirá facultades nuevas y separadas para consultar, presentar y resolver apelaciones y resoluciones de sanciones dentro de la organización, asignadas por defecto a dueño y administrador; no concederá ninguna por herencia de permisos existentes de cierre, resolución administrativa de partidos o rectificación de actas. La acumulación de facultades no permitirá resolver la propia apelación; la excepción de plataforma solo operará con la autorización F9 de RF-023 y RF-024, sin permisos persistentes ni membresía.
+- **RF-020.** CUANDO una persona autorizada resuelva una apelación, EL SISTEMA limitará la decisión a mantener la sanción, anularla o reducir los partidos de sanción; por iniciativa administrativa sin recurso solo permitirá anular o reducir. En ambos casos impedirá aumentar los partidos o cambiar el ámbito y mantendrá el aislamiento de la organización y el historial auditado, sin modificar el acta de origen.
+- **RF-021.** SI quien intenta resolver una apelación es el usuario que la presentó, ENTONCES EL SISTEMA impedirá técnicamente la decisión y sus efectos, aunque tenga ambos permisos, otros roles o una autorización de plataforma; identificará a la persona con independencia de la condición con la que actúe.
+- **RF-022.** CUANDO una persona con el nuevo permiso de resolver actúe por iniciativa administrativa sin apelación previa, EL SISTEMA permitirá anular o reducir la sanción con motivo obligatorio y registro auditado conforme a RF-004, sin permitir mantenerla ni crear una apelación ficticia. No exigirá excluir a un interponente inexistente ni una segunda persona por ese concepto; la actuación excepcional de plataforma requerirá RF-023 y RF-024.
+- **RF-023.** CUANDO un administrador de plataforma intente resolver excepcionalmente un expediente F9, EL SISTEMA verificará al ejecutar una autorización puntual, vigente y revocable otorgada por el dueño activo de la organización, vinculada a la organización, el expediente, el administrador y el dueño. Rechazará la actuación sin esa autorización, si está revocada o consumida, si el autorizante dejó de ser dueño activo o si el actor es `platform_support`; no admitirá autorizaciones heredadas o reutilizadas de la spec 033 ni permitirá presentar apelaciones por esa autorización.
+- **RF-024.** CUANDO un administrador de plataforma autorizado decida un expediente F9, EL SISTEMA consumirá su autorización al decidir y registrará responsable, fecha, motivo y decisión en las auditorías de organización y de plataforma, junto con la referencia a la autorización y sus vinculaciones. La actuación no eludirá el aislamiento por organización, no usará BYPASSRLS, no otorgará permisos persistentes ni creará membresía, y respetará RF-021 y el catálogo de RF-020.
 
 ### Actas, procedencia y hechos consumados
 
 - **RF-007.** SI corregir una sanción exige cambiar, retirar o reasignar una tarjeta u otro contenido confirmado de un acta, ENTONCES EL SISTEMA exigirá la vía de rectificación de la spec 033 para ese cambio: solicitud, revisión y aprobación por otra persona autorizada y publicación de una versión nueva. Resolver una apelación no modificará el acta ni sustituirá esos pasos.
 - **RF-008.** CUANDO una resolución no requiera rectificar un acta, EL SISTEMA conservará sus eventos confirmados y las estadísticas derivadas de ellos; anular una suspensión no eliminará por sí mismo la tarjeta registrada.
 - **RF-009.** EL SISTEMA conservará el historial de recursos, decisiones y cambios de estado con sus responsables, fechas y motivos, sin borrar registros ni ocultar valores anteriores mediante una corrección posterior.
-- **RF-010.** CUANDO se anule o modifique una sanción, EL SISTEMA conservará como hechos históricos los cumplimientos ya registrados. Su cómputo para un saldo pendiente o una obligación posterior se concretará en DA-9, sin borrar ni devolver hechos consumados de la spec 033.
+- **RF-010.** CUANDO se anule o reduzca una sanción, EL SISTEMA conservará todos los partidos ya cumplidos y limitará los efectos a los pendientes, sin crédito para partidos futuros. Si la duración reducida es menor o igual a lo ya cumplido, la sanción quedará cumplida sin saldo negativo ni crédito; si es mayor, solo quedará pendiente la diferencia. Anular una sanción totalmente cumplida quedará como declaración registrada, sin devolver cumplimientos ni trasladarlos a otra sanción.
 - **RF-011.** CUANDO una sanción proceda de un acta original o rectificada, EL SISTEMA conservará la identificación de esa procedencia y sus decisiones asociadas; no trasladará silenciosamente una resolución a una sanción distinta creada después. La coordinación y prioridad entre procedimientos se concretarán en DA-10.
 - **RF-012.** CUANDO intervenga una rectificación de la spec 033, EL SISTEMA respetará su DA-8 y RF-018: las sanciones anuladas conservan los cumplimientos, las nuevas empiezan a cumplirse en el siguiente partido del jugador no comenzado al publicarse la versión y los partidos posteriores confirmados y sus sanciones no se reescriben automáticamente.
 - **RF-013.** SI una decisión tiene consecuencias sobre partidos ya disputados, ENTONCES EL SISTEMA no modificará automáticamente sus resultados, actas, alineaciones publicadas, clasificación o avance para compensarlas. El tratamiento del impacto pendiente de DA-11 no autoriza excepciones a la inmutabilidad.
@@ -120,23 +125,25 @@ Las remisiones a DA cerradas recogen decisiones aprobadas; las condiciones que d
 
 Se tratan la identidad del jugador sancionado, la del interponente y los responsables de las decisiones, sus fechas, motivos y, si se admite, la documentación justificativa. Los textos pueden contener información personal sensible y se limitan a la finalidad de tramitar y auditar el caso.
 
-El acceso privado requiere las nuevas facultades de DA-2. La presentación se limita a miembros autorizados que identifican al equipo o jugador representado (DA-1); esa representación no otorga acceso propio al representado. La eventual intervención de plataforma sigue pendiente de DA-8. No se presupone que todo miembro pueda leer la evidencia ni que el jugador tenga acceso por disponer de una ficha deportiva. Las comunicaciones y sus destinatarios requieren DA-17; el contenido justificativo y sus límites, DA-18. Nada de ello se publica ni se incorpora a registros operativos generales que permitan eludir esos accesos.
+El acceso privado requiere las nuevas facultades de DA-2 o la autorización excepcional F9 de DA-8 limitada al expediente. La presentación se limita a miembros autorizados que identifican al equipo o jugador representado (DA-1); esa representación no otorga acceso propio al representado. La autorización de plataforma no concede acceso a otros expedientes ni membresía. No se presupone que todo miembro pueda leer la evidencia ni que el jugador tenga acceso por disponer de una ficha deportiva. Las comunicaciones y sus destinatarios requieren DA-17; el contenido justificativo y sus límites, DA-18. Nada de ello se publica ni se incorpora a registros operativos generales que permitan eludir esos accesos.
 
 ## Casos límite
 
 1. **Partido próximo con recurso pendiente:** no hay efecto suspensivo ni medida provisional por el recurso (DA-5). La sanción sigue bloqueando el cierre cuando sea aplicable y tenga partidos pendientes; el momento de efecto de una resolución sigue pendiente de DA-15 y los controles adicionales de alineación, de DA-16.
-2. **Sanción parcialmente o totalmente cumplida:** los partidos cumplidos siguen siendo hechos; admisibilidad y consecuencias sobre el saldo pendientes de DA-9 y DA-13.
+2. **Sanción parcialmente o totalmente cumplida:** se conservan los cumplimientos y solo se afectan los pendientes. Reducir por debajo de lo cumplido la deja cumplida, sin crédito; anular una totalmente cumplida es una declaración registrada sin crédito futuro (DA-9). La admisión del recurso por origen/estado sigue pendiente de DA-13 y la política de archivo, de DA-12.
 3. **Tarjeta atribuida al jugador equivocado o inexistente:** corregir el evento confirmado exige la spec 033; F9 no lo elimina ni lo reasigna.
 4. **Resolución F9 y rectificación simultáneas:** puede cambiar la sanción a revisar o nacer otra con procedencia versionada. No se supone que la resolución anterior se traslade a la nueva; tratamiento en DA-10.
 5. **Sanción ya anulada que reaparece por rectificación:** la spec 033 crea una nueva, no reactiva la anterior. La revisión de una resolución administrativa previa queda pendiente de DA-10.
 6. **Jugador ausente por una sanción luego anulada:** su ausencia no se convierte retroactivamente en participación, ni se cambia automáticamente el resultado del partido (DA-11).
 7. **Torneo archivado:** conservar el historial no decide si puede abrirse un recurso o dictarse una resolución; DA-12. La rectificación de actas sigue las restricciones de la spec 033.
 8. **Dos recursos o decisiones sobre la misma sanción:** no se duplican efectos por reintento; admisión de recursos paralelos, retirada y revisión de decisiones en DA-14.
-9. **Responsable que pierde permiso o membresía:** se conserva su atribución histórica; no se deduce que pueda continuar actuando con autorización caducada.
+9. **Responsable que pierde permiso o membresía:** se conserva su atribución histórica; no se deduce que pueda continuar actuando con autorización caducada. La autorización excepcional F9 se verifica al ejecutar y no vale si fue revocada, consumida o si el dueño autorizante dejó de estar activo.
 10. **Sanción de ámbito organizativo y partido de otro torneo de la misma organización:** el ámbito actual no debe confundirse con aislamiento entre organizaciones; una resolución F9 no puede cambiarlo (DA-4). La admisión de recursos en cada ámbito sigue pendiente de DA-13.
 11. **Referencia a sanción, jugador, recurso o acta de otra organización:** no se vincula ni revela el expediente ajeno.
 12. **Dato histórico `appealed`:** su existencia no habilita efecto suspensivo en F9 (DA-5). La correspondencia entre los datos previos y el nuevo procedimiento deberá aclararse en DA-14, sin presumir recursos ni decisiones administrativas inexistentes.
-13. **Miembro con facultades de presentación y resolución:** la asignación por defecto no autoriza ni prohíbe por sí sola resolver su propio recurso; esa regla sigue pendiente de DA-3.
+13. **Miembro con facultades de presentación y resolución:** no puede resolver su propia apelación, tampoco actuando con otro rol o como administrador de plataforma autorizado (DA-3).
+14. **Iniciativa administrativa sin recurso:** solo permite anular o reducir, con motivo y auditoría, sin apelación ficticia ni interponente que excluir; no se introduce una exigencia adicional de segunda persona (DA-6).
+15. **Autorización excepcional concurrente o reutilizada:** se verifica la autorización F9 vigente al ejecutar y se consume al decidir; su auditoría se conserva, no permite una segunda decisión y una autorización de la spec 033 no la sustituye (DA-8).
 
 ## Fuera de alcance
 
@@ -147,16 +154,18 @@ El acceso privado requiere las nuevas facultades de DA-2. La presentación se li
 - Presentación y acceso propios de delegados externos o de jugador/tutor; la presentación corresponde a miembros autorizados que registran a quién representan.
 - Aumentar los partidos de sanción o cambiar su ámbito mediante una resolución F9.
 - Efecto suspensivo y medidas provisionales de suspensión de la sanción durante la apelación.
+- Mantener una sanción por iniciativa administrativa sin recurso, resolver la propia apelación, conceder crédito por cumplimientos pasados o devolverlos mediante una resolución.
+- Presentación excepcional desde plataforma, intervención de `platform_support`, autorizaciones F9 reutilizadas de la spec 033 y permisos persistentes o membresías derivados de la autorización excepcional.
 - Definir en este borrador contratos técnicos, pantallas o estructura de almacenamiento; corresponden al plan una vez aclarada y aprobada la spec.
 - Implementar F9 o dar por aprobada cualquiera de las recomendaciones de las dudas abiertas.
 
 ## Criterios de finalización
 
-DA-1, DA-2, DA-4 y DA-5 están cerradas e incorporadas a los requisitos. La aprobación de la spec completa exige resolver las otras 14 DA y convertir sus respuestas en requisitos verificables, sin recomendaciones tácitamente adoptadas. La futura entrega deberá demostrar, como mínimo:
+DA-1–DA-6, DA-8 y DA-9 están cerradas e incorporadas a los requisitos. La aprobación de la spec completa exige resolver las otras 10 DA y convertir sus respuestas en requisitos verificables, sin recomendaciones tácitamente adoptadas. La futura entrega deberá demostrar, como mínimo:
 
 1. Presentar y tramitar un recurso conserva la sanción y su elegibilidad mientras no exista resolución que las altere; el estado de apelación no crea una excepción.
 2. Una resolución autorizada, con responsable, fecha, motivo y decisión, determina y muestra el estado y los efectos resultantes sin perder los anteriores.
-3. Una anulación o modificación sin resolución auditada o sin permiso no produce cambios, incluida la actuación excepcional que eventualmente se apruebe.
+3. Una anulación o modificación sin resolución auditada, sin permiso de resolver o sin la autorización excepcional F9 exigida para plataforma no produce cambios.
 4. Una corrección de tarjeta u otro contenido confirmado usa la spec 033; el original y sus versiones anteriores no se editan ni se eliminan.
 5. Los cumplimientos y la procedencia original o versionada se conservan; se cumplen DA-8 y RF-018 de la spec 033 en su ámbito, incluidos sus límites sobre partidos posteriores.
 6. La política que se apruebe para parcialidad, plazos, archivo e interacción entre procedimientos tiene casos normales, límites y de rechazo demostrables; no se admite efecto suspensivo ni medidas provisionales de suspensión por apelar.
@@ -164,8 +173,10 @@ DA-1, DA-2, DA-4 y DA-5 están cerradas e incorporadas a los requisitos. La apro
 8. Los fallos, reintentos y decisiones concurrentes no generan efectos parciales, duplicados ni decisiones vigentes incompatibles.
 9. La documentación del producto y las verificaciones de aceptación reflejan las decisiones aprobadas; no se presenta el borrador como funcionalidad disponible.
 10. Solo un miembro con permiso presenta, dejando constancia del equipo o jugador representado; delegados externos y jugador/tutor no adquieren acceso propio por esa representación.
-11. Consulta, presentación y resolución requieren facultades nuevas y separadas, asignadas por defecto a dueño y administrador; los permisos existentes no las conceden y la separación de personas se verifica según la futura respuesta a DA-3.
-12. Solo se permiten mantener, anular o reducir los partidos de sanción; aumentar o cambiar el ámbito se rechaza sin alterar la sanción ni el acta.
+11. Consulta, presentación y resolución requieren facultades nuevas y separadas, asignadas por defecto a dueño y administrador; los permisos existentes no las conceden y el interponente no puede resolver su apelación con ningún rol o autorización.
+12. Solo se permiten mantener, anular o reducir al resolver un recurso; sin recurso solo anular o reducir con motivo obligatorio, auditoría y sin apelación ficticia ni interponente que excluir. Aumentar o cambiar el ámbito se rechaza sin alterar la sanción ni el acta.
+13. Plataforma solo decide con autorización F9 puntual, vigente y revocable del dueño activo, con todas sus vinculaciones verificadas al ejecutar; se consume al decidir, registra ambas auditorías y no concede BYPASSRLS, permisos persistentes ni membresía. Se rechazan revocación, consumo previo, dueño inactivo, `platform_support` y autorizaciones de la spec 033.
+14. Las reducciones se calculan sobre los pendientes conservando los cumplimientos; duración menor o igual a lo cumplido deja la sanción cumplida, y anular una totalmente cumplida es declarativo, sin saldo negativo ni crédito futuro.
 
 ## Dudas abiertas
 
@@ -174,36 +185,21 @@ DA-1, DA-2, DA-4 y DA-5 están cerradas e incorporadas a los requisitos. La apro
 | Código | Decisión del usuario (2026-11-12) | Requisitos y alcance |
 |---|---|---|
 | **DA-1** | Solo miembros de la organización con permiso presentan la apelación, registrando en nombre de qué equipo o jugador actúan. Delegados externos y jugador/tutor quedan fuera de alcance. | RF-002 y RF-018; la representación no concede acceso propio. |
-| **DA-2** | Facultades nuevas y separadas para consultar, presentar y resolver apelaciones/resoluciones, asignadas por defecto a dueño y administrador; ninguna se hereda de permisos existentes. | RF-006 y RF-019; no resuelve la separación de personas de DA-3 ni la excepción de plataforma de DA-8. |
-| **DA-4** | La resolución puede mantener, anular o reducir los partidos de sanción; aumentar o cambiar el ámbito queda fuera de alcance. | RF-020 y definición de modificación administrativa; efectos sobre cumplimientos pendientes de DA-9. |
+| **DA-2** | Facultades nuevas y separadas para consultar, presentar y resolver apelaciones/resoluciones, asignadas por defecto a dueño y administrador; ninguna se hereda de permisos existentes. | RF-006 y RF-019; separación y excepción de plataforma concretadas por DA-3 y DA-8. |
+| **DA-3** | Quien presentó la apelación no puede resolverla aunque acumule permisos, otros roles o autorización de plataforma; se impide técnicamente y toda decisión registra responsable, fecha, motivo y decisión. | RF-004 y RF-021; sin recurso no hay interponente que excluir (DA-6). |
+| **DA-4** | La resolución puede mantener, anular o reducir los partidos de sanción; aumentar o cambiar el ámbito queda fuera de alcance. | RF-020; sin recurso mantener no aplica (DA-6); cumplimientos según DA-9. |
 | **DA-5** | Sin efecto suspensivo: presentar la apelación nunca suspende ni altera por sí mismo la sanción, que sigue bloqueando conforme a las comprobaciones actuales hasta una resolución aplicable. | RF-003 y caso límite 1; no se admiten medidas provisionales de suspensión por el recurso. |
+| **DA-6** | Se admite iniciativa administrativa sin apelación, con motivo obligatorio, permiso de resolver y auditoría, sin recurso ficticio. Solo anular o reducir; no hay interponente que excluir ni requisito de segunda persona por ese concepto. | RF-004, RF-020 y RF-022. |
+| **DA-8** | Plataforma puede resolver excepcionalmente, no presentar, con autorización propia de F9, puntual, vigente y revocable del dueño activo, vinculada a organización, expediente, administrador y dueño, verificada al ejecutar y consumida al decidir. Ambas auditorías; sin BYPASSRLS, permisos persistentes, membresía, `platform_support` ni reutilización de autorizaciones de la spec 033. | RF-006, RF-019, RF-021, RF-023 y RF-024. |
+| **DA-9** | Los cumplimientos se conservan y solo se afectan pendientes. Reducir por debajo de lo cumplido deja la sanción cumplida, sin crédito; anular una totalmente cumplida queda como declaración registrada sin crédito futuro. | RF-010 y caso límite 2. |
 
 ### Pendientes
 
 Ordenadas por impacto en autorización, efectos disciplinarios e integridad, conservando su numeración. Cada recomendación pendiente es una propuesta para clarificación, no un valor por defecto.
 
-### DA-3. [NECESITA ACLARACIÓN] ¿Debe resolver otra persona distinta de quien interpone o propone?
-- **Opciones:** A) misma persona si tiene ambos permisos; B) otra persona; C) órgano con varias personas y reglas de decisión.
-- **Recomendación:** B, sin excepciones por acumular roles. La separación exigida para actas rectificativas sigue siendo obligatoria; no se da por extendida automáticamente a todo F9.
-- **Límite ya decidido:** DA-2 asigna ambas facultades por defecto a dueño y administrador, pero no responde si una misma persona puede ejercerlas en su propio expediente.
-
-### DA-6. [NECESITA ACLARACIÓN] ¿Puede dictarse una resolución administrativa sin apelación previa?
-- **Opciones:** A) solo se resuelve un recurso existente; B) también se permite iniciativa administrativa motivada y auditada, con igual control de permisos y separación que se apruebe.
-- **Recomendación:** B, diferenciando esa iniciativa de una apelación y sin fabricar un recurso ficticio para justificarla.
-- **Límite ya decidido:** tanto si se exige recurso como si se admite iniciativa administrativa, se necesitan las nuevas facultades de DA-2 y solo se permiten las decisiones de DA-4; no habilita medidas suspensivas excluidas por DA-5. La separación personal sigue pendiente de DA-3.
-
 ### DA-7. [NECESITA ACLARACIÓN] ¿Qué plazo existe para apelar y desde qué hecho se cuenta?
 - **Opciones:** A) sin caducidad de presentación; B) plazo desde la creación de la sanción; C) plazo desde su notificación acreditada. Para B/C faltan duración, unidad, referencia temporal y tratamiento de notificaciones fallidas.
 - **Recomendación:** A hasta que exista una política de notificación acreditada; no inventar un plazo ni suponer que la creación equivale al conocimiento por el afectado.
-
-### DA-8. [NECESITA ACLARACIÓN] ¿Puede intervenir excepcionalmente un administrador de plataforma?
-- **Opciones:** A) ninguna decisión F9 desde plataforma; B) autorización expresa del dueño para un expediente concreto, revocable, limitada y auditada, sin edición directa del acta; C) otro mandato excepcional explícito por definir dentro de los límites constitucionales.
-- **Recomendación:** B si se confirma la necesidad operativa, con los límites de separación y autorización que se aprueben; no reutilizar implícitamente una autorización de la spec 033 ni conceder acceso general por ser administrador de plataforma.
-- **Límite ya decidido:** esta duda no habilita presentación por plataforma al margen de la membresía y el permiso exigidos en DA-1, ni amplía el catálogo de decisiones de DA-4. La eventual excepción para decidir sigue sin aprobarse.
-
-### DA-9. [NECESITA ACLARACIÓN] ¿Cómo afectan reducción o anulación a sanciones parcial o totalmente cumplidas?
-- **Opciones:** A) solo efecto sobre lo pendiente, conservando todos los cumplimientos; B) permitir también revisar sanciones ya cumplidas con efecto declarativo; C) reconocer además crédito futuro mediante una decisión específica, sin borrar hechos anteriores.
-- **Recomendación:** A y B, sin crédito transferible automático. Definir expresamente el saldo cuando la duración resultante es menor o igual a lo ya cumplido; no devolver partidos consumados ni trasladar cumplimientos entre sanciones por defecto.
 
 ### DA-10. [NECESITA ACLARACIÓN] ¿Cómo se coordina una apelación o resolución con una rectificación de acta?
 - **Opciones:** A) impedir decisiones mientras esté pendiente el otro procedimiento; B) permitir tramitación paralela y revalidar la sanción y su procedencia antes de decidir; C) cerrar o exigir nueva presentación si la rectificación sustituye la sanción.
@@ -215,15 +211,16 @@ Ordenadas por impacto en autorización, efectos disciplinarios e integridad, con
 
 ### DA-12. [NECESITA ACLARACIÓN] ¿Qué se permite en torneos archivados?
 - **Opciones:** A) solo consulta histórica; B) admitir recursos y resoluciones declarativas sin efecto deportivo futuro; C) admitir también efectos pendientes sobre sanciones que siguen vigentes en la organización.
-- **Recomendación:** C si la sanción sigue afectando a la elegibilidad actual, sin reabrir el torneo ni modificar lo disputado; concretar la admisión de recursos sobre sanciones agotadas. La prohibición de rectificar actas de versiones archivadas de la spec 033 no cambia.
+- **Recomendación:** C si la sanción sigue afectando a la elegibilidad actual, sin reabrir el torneo ni modificar lo disputado; concretar la admisión de recursos sobre sanciones agotadas en torneos archivados. DA-9 ya fija que anular una cumplida tiene efecto declarativo y sin crédito; no decide la política de archivo. La prohibición de rectificar actas de versiones archivadas de la spec 033 no cambia.
 
 ### DA-13. [NECESITA ACLARACIÓN] ¿Qué sanciones son recurribles por origen, ámbito y estado?
 - **Opciones:** A) solo sanciones activas derivadas de actas; B) también las de origen administrativo o regla de competición, en ambos ámbitos; C) también sanciones cumplidas o anuladas para revisión histórica, distinguiendo los efectos posibles.
-- **Recomendación:** B y revisión declarativa de las cumplidas según DA-9, sin reapertura automática de las anuladas. Definir el tratamiento de datos históricos `appealed` y la admisión por origen/estado, sin reabrir la legitimación de DA-1 ni permitir el cambio de ámbito excluido por DA-4.
+- **Recomendación:** B y revisión declarativa de las cumplidas según DA-9, sin reapertura automática de las anuladas. Sigue pendiente la admisión de apelaciones por origen/estado y el tratamiento de datos históricos `appealed`; no se reabre la legitimación de DA-1, el ámbito inalterable de DA-4 ni el efecto declarativo sin crédito ya cerrado en DA-9.
 
-### DA-14. [NECESITA ACLARACIÓN] ¿Cuál es el ciclo del recurso y de la revisión de decisiones?
-- **Opciones:** A) un recurso abierto por sanción, con retirada y resolución definitiva; B) varios recursos coordinados; C) nueva instancia o resolución correctora vinculada a la anterior. Falta fijar estados, transiciones, admisión/inadmisión y tratamiento de registros históricos sin expediente.
+### DA-14. [NECESITA ACLARACIÓN] ¿Cuál es el ciclo del recurso, del expediente sin recurso y de la revisión de decisiones?
+- **Opciones:** A) un recurso abierto por sanción, con retirada y resolución definitiva; B) varios recursos coordinados; C) nueva instancia o resolución correctora vinculada a la anterior. Falta fijar estados, transiciones, admisión/inadmisión, tratamiento de registros históricos sin expediente y ciclo e identificación del expediente sin recurso para su eventual autorización puntual.
 - **Recomendación:** A, y C solo como nueva decisión auditada si se autoriza revisar lo resuelto; conservar cada antecedente. No convertir un antiguo estado `appealed` en prueba de una apelación inexistente ni en habilitación de efecto suspensivo. Las transiciones no pueden crear medidas provisionales excluidas por DA-5, decisiones fuera del catálogo de DA-4 ni facultades heredadas contra DA-2.
+- **Límite ya decidido:** DA-6 permite expedientes sin apelación ficticia, sin interponente que excluir y sin la decisión mantener; si hay recurso se aplica DA-3. Cualquier revisión conserva los cumplimientos y no genera crédito (DA-9). La autorización excepcional F9 se consume al decidir (DA-8); no habilita decisiones posteriores por sí sola.
 
 ### DA-15. [NECESITA ACLARACIÓN] ¿Desde cuándo rige una resolución y qué ocurre con partidos comenzados?
 - **Opciones:** A) desde la decisión, incluso durante un partido en curso sin reescribir lo ya ocurrido; B) desde el siguiente partido no comenzado; C) fecha futura explícita con reglas de aplicación por definir.
@@ -238,6 +235,7 @@ Ordenadas por impacto en autorización, efectos disciplinarios e integridad, con
 - **Opciones:** A) solo consulta privada del historial; B) avisos privados al interponente y a responsables autorizados de la decisión; C) también al jugador o representantes legitimados, por canales que se definan.
 - **Recomendación:** B, con registro y reintento de avisos, contenido mínimo y acceso autorizado al expediente; concretar correo u otros canales y destinatarios antes de implementarlos. No emitir datos disciplinarios en canales públicos ni heredar los destinatarios de la spec 033.
 - **Límite ya decidido:** los posibles destinatarios de un aviso no adquieren por recibirlo el acceso propio al procedimiento excluido por DA-1 ni las facultades de DA-2.
+- **Pendiente específico:** concretar destinatarios para la iniciativa administrativa sin interponente; su admisión en DA-6 no decide a quién notificar ni por qué canal.
 
 ### DA-18. [NECESITA ACLARACIÓN] ¿Qué documentación justificativa admite o exige el procedimiento?
 - **Opciones:** A) motivo obligatorio sin evidencia adicional; B) motivo y texto/referencias verificables, con obligatoriedad y límites explícitos por determinar; C) también archivos, definiendo acceso, límites y tratamiento de datos personales.
