@@ -3,7 +3,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Tareas — spec y plan aprobados por el usuario el 2026-11-12.
-- Pendiente: redactar y aprobar tasks.md; C1–C5 confirmadas tal como están. Fase Plan cerrada, sin implementación F9; la 033 permanece implementada.
+- Pendiente: aprobar tasks.md (borrador, 55 tareas de 20–30 min, PRs A–D, RF-001–RF-034 cubiertos). C1–C5 confirmadas; fase Plan cerrada, fase actual Tareas, sin implementación F9; la 033 permanece implementada.
 
 ## Decisiones tomadas
 - 2026-11-12 · Spec 034 · El usuario aprobó el plan y C1–C5 tal como están; fase Plan cerrada, fase actual Tareas. Sin aprobación implícita de tareas ni implementación.
@@ -29,6 +29,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - 2026-11-12 · Spec 034 · DA-5 cerrada por el usuario: sin efecto suspensivo ni suspensión provisional por el recurso; la sanción sigue bloqueando conforme a los controles actuales hasta una resolución aplicable.
 
 ## Estado (entrada más reciente primero; el resto es histórico)
+- 2026-11-12 · **034 Tareas borrador:** 55 tareas A T1–T10 / B T11–T39 / C T40–T49 / D T50–T55, tests primero y cobertura de 34 RF. Se propone no dividir la spec por integridad de lectores/efectos; pendiente aprobación de tareas.
 - 2026-11-12 · **034 Plan aprobado:** C1–C5 confirmadas por el usuario; fase actual Tareas, sin implementación F9.
 - 2026-11-12 · **034 Plan borrador:** diseño contrastado con 035–039 y lectores; propone 040, duración efectiva sin mutar 037 y entregas A–D. Confirmaciones C1–C5 pendientes; spec aprobada, fase actual Plan, sin implementación.
 - 2026-11-12 · **034 aprobada por el usuario:** fase Spec cerrada, fase actual Plan; 34 RF y DA-1–DA-18 cerradas. Sin implementación F9.
