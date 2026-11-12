@@ -54,3 +54,18 @@ async def send_invitation_email(
         settings.smtp_password,
         settings.smtp_timeout_seconds,
     )
+
+
+async def send_rectification_decision_email(recipient: str, request_id: str, decision: str, reason: str) -> None:
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise RuntimeError("SMTP no configurado")
+    decisions = {"approve": "aprobada", "reject": "rechazada"}
+    verdict = decisions[decision]
+    message = EmailMessage()
+    message["Subject"] = f"Decisión de rectificación {request_id} — Bracket Craft"
+    message["From"] = settings.smtp_from
+    message["To"] = recipient
+    message.set_content(f"Tu solicitud de rectificación {request_id} ha sido {verdict}.\n\nMotivo: {reason}\n")
+    await asyncio.to_thread(_send_message, message, settings.smtp_host, settings.smtp_port,
+        settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)

@@ -503,7 +503,7 @@ async def test_preview_and_publication_recalculate_and_record_invalidated_draw(f
     preview = await flow.client.get(f"/api/v1/rectifications/{request}/preview")
     assert preview.status_code == 200, preview.text
     effects = preview.json()["effects"]
-    assert [effect["effect_type"] for effect in effects] == ["standings", "tiebreak_draw_invalidated"]
+    assert [effect["effect_type"] for effect in effects] == ["standings", "tiebreak_draw_invalidated", "outbox", "outbox", "outbox"]
     assert effects[0]["entity_type"] == "stage" and effects[0]["entity_id"] == STAGE
     assert effects[1]["payload"] == {"group_id": None,
         "before_team_ids": [TEAM_HOME, TEAM_AWAY], "after_team_groups": []}
@@ -515,16 +515,18 @@ async def test_preview_and_publication_recalculate_and_record_invalidated_draw(f
     assert (table[TEAM_AWAY]["points"], table[TEAM_AWAY]["goals_against"], table[TEAM_AWAY]["rank"]) == (0, 1, 2)
     recorded = await flow.admin.fetch("""
         SELECT effect_type, entity_type, entity_id::text, payload
-        FROM match_report_rectification_effects WHERE version_id = $1 ORDER BY effect_type
+        FROM match_report_rectification_effects WHERE version_id = $1 AND effect_type <> 'outbox' ORDER BY effect_type
     """, response.json()["resulting_version_id"])
-    assert [{**dict(row), "payload": json.loads(row["payload"])} for row in recorded] == effects
+    assert [{**dict(row), "payload": json.loads(row["payload"])} for row in recorded] == effects[:2]
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects WHERE effect_type='outbox'") == 3
     assert await flow.admin.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH) == original
     assert await flow.admin.fetchval("SELECT count(*) FROM match_events") == 0
     assert await flow.admin.fetch("SELECT * FROM standings WHERE organization_id <> $1 ORDER BY team_id", ORG) == foreign
     after = await database_snapshot(flow.admin)
     for name in before.keys() - {"standings", "match_report_versions", "match_report_version_events",
             "match_report_rectification_effects", "match_report_rectification_requests",
-            "match_report_rectification_decisions", "administrative_audit_logs"}:
+            "match_report_rectification_decisions", "administrative_audit_logs", "outbox_events",
+            "match_report_rectification_notifications"}:
         assert after[name] == before[name], name
 
 
@@ -538,11 +540,11 @@ async def test_unchanged_draw_members_are_not_invalidated(flow):
     request = await pending(flow, body)
     preview = await flow.client.get(f"/api/v1/rectifications/{request}/preview")
     assert preview.status_code == 200, preview.text
-    assert [effect["effect_type"] for effect in preview.json()["effects"]] == ["standings"]
+    assert [effect["effect_type"] for effect in preview.json()["effects"]] == ["standings", "outbox", "outbox", "outbox"]
     assert (await decide(flow, request)).status_code == 200
     assert {row["points"] for row in (await standings(flow)).values()} == {1}
     assert {team: row["rank"] for team, row in (await standings(flow)).items()} == ranks
-    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 1
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 4
 
 
 async def test_fair_play_changes_from_current_events_invalidate_the_old_draw(flow):
@@ -568,7 +570,7 @@ async def test_nonranking_event_change_keeps_draw_and_standings_values(flow):
     response = await decide(flow, request)
     assert response.status_code == 200, response.text
     assert await standings(flow) == before
-    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 1
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 4
 
 
 async def test_version_three_recalculates_from_latest_report_not_original(flow):
@@ -589,7 +591,7 @@ async def test_version_three_recalculates_from_latest_report_not_original(flow):
     table = await standings(flow)
     assert (table[TEAM_HOME]["points"], table[TEAM_HOME]["goals_for"], table[TEAM_HOME]["goals_against"]) == (0, 0, 1)
     assert (table[TEAM_AWAY]["points"], table[TEAM_AWAY]["rank"]) == (3, 1)
-    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 3
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_effects") == 9
     original = await flow.admin.fetchrow("SELECT home_score, away_score FROM matches WHERE id = $1", MATCH)
     assert tuple(original.values()) == (0, 0)
 
@@ -601,7 +603,7 @@ async def test_no_resolved_draw_without_persisted_standings_or_draw_criterion(fl
     request = await pending(flow)
     response = await flow.client.get(f"/api/v1/rectifications/{request}/preview")
     assert response.status_code == 200, response.text
-    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings"]
+    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings", "outbox", "outbox", "outbox"]
 
 
 @pytest.mark.parametrize("operation", ["preview", "decision"])

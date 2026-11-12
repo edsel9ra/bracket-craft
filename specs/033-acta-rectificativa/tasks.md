@@ -59,7 +59,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - [x] **T14. Procedimiento de impacto: apertura, bloqueo y cierre.** RF-016, RF-017, RF-017b
 - Hecho cuando: los tests cubren la apertura por destino comenzado y por fase posterior asignada; abrir un segmento o cerrar el acta de un partido afectado responde 409 `COMPETITIVE_IMPACT_OPEN`, y el cierre `keep_as_played` exige motivo y el permiso de aprobación.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py tests/test_migration_039.py`.
-- [ ] **T15. Outbox, registro de notificaciones y correo al solicitante.** RF-019, RF-024
+- [x] **T15. Outbox, registro de notificaciones y correo al solicitante.** RF-019, RF-024
 - Hecho cuando:
   - se encolan `MATCH_UPDATED`, `STANDINGS_UPDATED` y `MATCH_REPORT_RECTIFIED`, solo para la organización;
   - el worker envía `RECTIFICATION_DECISION_EMAIL` sin incluir la evidencia, y un fallo de SMTP deja el evento en reintento;

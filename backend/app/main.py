@@ -334,7 +334,7 @@ async def emit_domain_event(event: ParsedEvent) -> None:
         room=f"organization:{event.organization_id}",
     )
     tournament_id = event.payload.get("tournament_id")
-    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS:
+    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS and event.payload.get("scope") != "organization":
         await sio.emit(
             event.event_type,
             payload,

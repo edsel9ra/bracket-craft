@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.tenancy import AuthContext
 from app.modules.rectifications.advancement import AdvancementImpactCandidate, advancement_changes, substitute_slots
 from app.modules.rectifications.impacts import open_impacts
+from app.modules.rectifications.notifications import enqueue_publication
 from app.modules.rectifications.sanctions import AccumulationImpactCandidate, recalculate_sanctions
 from app.modules.standings.service import StandingsService
 
@@ -62,4 +63,7 @@ async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping
     for effect in effects:
         await record_effect(db, context, version["id"], effect, now)
     await substitute_slots(db, context, advancements)
-    return effects
+    notifications = await enqueue_publication(db, context, version, now)
+    for effect in notifications:
+        await record_effect(db, context, version["id"], effect, now)
+    return effects + notifications

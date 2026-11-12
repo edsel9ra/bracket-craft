@@ -511,7 +511,7 @@ async def test_preview_and_detail_diff_leave_every_table_unchanged(flow):
     assert response.json()["version"]["version_number"] == 2
     assert response.json()["version"]["report"]["home_score"] == 1
     assert len(response.json()["version"]["report"]["events"]) == 1
-    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings"]
+    assert [effect["effect_type"] for effect in response.json()["effects"]] == ["standings", "outbox", "outbox", "outbox"]
     effect = response.json()["effects"][0]
     assert (effect["entity_type"], effect["entity_id"], effect["payload"]["before"]) == ("stage", STAGE, [])
     assert len(effect["payload"]["after"]) == 2
@@ -733,7 +733,8 @@ async def test_publication_and_preview_share_hook_and_versions_2_3_preserve_orig
     assert public_match["home_score"] == 2 and public_match["rectified_at"]
     assert await flow.admin.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH) == original
     assert await flow.admin.fetchval("SELECT count(*) FROM match_events") == 0
-    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events") == 0
+    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type='RECTIFICATION_DECISION_EMAIL'") == 2
+    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type<>'RECTIFICATION_DECISION_EMAIL'") == 0
 
 
 @pytest.mark.parametrize("failure", ["validation", "effects", "audit"])

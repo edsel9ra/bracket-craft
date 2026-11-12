@@ -102,7 +102,7 @@ Toda la decisión ocurre en una sola transacción: cualquier excepción la desha
 4. **Impacto (RF-016, RF-017, RF-017b):** se crea un procedimiento por versión con todos sus elementos afectados. Mientras siga abierto, abrir un segmento (`matches/router.py:705`) o cerrar el acta de un partido afectado responde **409** `COMPETITIVE_IMPACT_OPEN`. Se cierra solo con `keep_as_played` y motivo.
 
    **T14, aclaración confirmada:** un candidato de fase incluye todos sus partidos y sus asignaciones como snapshot. Se agrupan todos los candidatos de una solicitud/versión en un procedimiento y los partidos se deduplican, conservando todos los efectos propuestos. Se bloquean únicamente partidos sin segmentos y sin resultado confirmado (el primer segmento es la apertura según AP-1), no los ya comenzados. La 039 añade los triggers y un índice único por versión, preservando las funciones anteriores. Bloquear las filas de partido serializa la apertura del procedimiento con su primer segmento/confirmación. Los dos endpoints de impacto solo admiten aprobadores organizativos: D3 no autoriza cierre desde plataforma y su autorización se consume al publicar. El cierre conserva snapshots, deja auditoría y no modifica resultados ni sanciones posteriores. Vista previa y errores revierten procedimientos, efectos y auditorías.
-5. **Tiempo real y registro (RF-019):** se encolan en la outbox `MATCH_UPDATED`, `STANDINGS_UPDATED` y `MATCH_REPORT_RECTIFIED` (este último solo para la organización), y cada efecto y cada notificación quedan registrados. Para no duplicar el SQL del cierre, se extrae un helper `enqueue_outbox(session, …)` en `core/outbox.py`.
+5. **Tiempo real y registro (RF-019):** se encolan en la outbox `MATCH_UPDATED`, `STANDINGS_UPDATED` y `MATCH_REPORT_RECTIFIED` (los tres solo para la organización, sin emisión al canal público), y cada efecto y cada notificación quedan registrados. Para no duplicar el SQL del cierre, se extrae un helper `enqueue_outbox(session, …)` en `core/outbox.py`.
 
 ### 3.5 Correo (RF-024, DA-10)
 
@@ -113,6 +113,8 @@ El envío de correo actual es síncrono y no pasa por la outbox (`core/email.py:
 - La reutilización de los reintentos y fallos existentes de la outbox.
 
 Si SMTP no está configurado, el evento termina como fallido con el mismo tratamiento que hoy, sin bloquear la decisión. No hay variables de entorno nuevas.
+
+**T15 implementada:** el payload de tiempo real lleva `scope=organization` y el relay excluye esos eventos de las salas públicas, sin ampliar la allowlist. El correo se encola y registra antes de consumir la autorización de plataforma para conservar RLS hasta finalizar sus escrituras. Se guarda únicamente destinatario, solicitud, decisión y motivo; el worker no publica ese evento en Redis. SMTP ausente o fallido pasa por `fail_outbox_event`, con reintentos y límite existentes. Las notificaciones son registros de encolado append-only de 035, vinculados al evento; los intentos y la entrega se consultan en la outbox. Se conserva su semántica de al menos una entrega. La vista previa revierte también eventos, efectos outbox y notificaciones. No requiere migración nueva.
 
 ### 3.6 Lectores que cambian a la versión vigente (RF-021)
 

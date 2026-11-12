@@ -18,6 +18,7 @@ from app.modules.matches.service import (
 )
 from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.effects import apply_effects, capture_standings
+from app.modules.rectifications.notifications import enqueue_decision_email
 from app.modules.rectifications.sanctions import capture_discipline
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
@@ -296,6 +297,7 @@ class RectificationService:
                 raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
             result = await self._publish(context, request, match, now)
             version_id, status = result["version_id"], "published"
+        await enqueue_decision_email(self.db, context, request, payload.decision, payload.reason, version_id)
         params = {"status": status, "version_id": version_id, "request_id": request_id,
             "organization_id": context.organization_id}
         audit = {"request_id": request_id, "decision_id": decision_id,

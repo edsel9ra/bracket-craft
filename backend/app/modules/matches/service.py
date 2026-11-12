@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
 from app.core.locking import lock_stage_and_version
+from app.core.outbox import enqueue_outbox
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.advancement.service import AdvancementService
@@ -985,19 +986,9 @@ class CloseMatchReportService:
                     "member_id": str(context.organization_user_id),
                 },
             )
-            event_payload = json.dumps({"match_id": str(match_id), "tournament_id": str(match["tournament_id"])})
+            event_payload = {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
             for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
-                await self.db.execute(
-                    text("""
-                        INSERT INTO outbox_events (organization_id, event_type, payload)
-                        VALUES (:organization_id, :event_type, CAST(:payload AS jsonb))
-                    """),
-                    {
-                        "organization_id": str(context.organization_id),
-                        "event_type": event_type,
-                        "payload": event_payload,
-                    },
-                )
+                await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
 
         return {
             "status": "success",
@@ -1139,22 +1130,10 @@ class CloseMatchReportService:
                 "member_id": str(context.organization_user_id),
             },
         )
-        event_payload = json.dumps(
-            {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
-        )
+        event_payload = {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
         # RNF-011: exactamente los mismos tres eventos que un cierre normal.
         for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
-            await self.db.execute(
-                text("""
-                    INSERT INTO outbox_events (organization_id, event_type, payload)
-                    VALUES (:organization_id, :event_type, CAST(:payload AS jsonb))
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "event_type": event_type,
-                    "payload": event_payload,
-                },
-            )
+            await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
 
         return {
             "status": "success",
