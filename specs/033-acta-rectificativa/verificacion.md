@@ -46,6 +46,6 @@ Python 3.14.10, Node 24.22.3, pnpm 12.12.1 y Chromium de Playwright 1.64.1; API,
 
 El primer intento del full DB quedó invalidado por ejecutar en paralelo el runner `MIGRATION_TARGET`, que cambia la contraseña global de `bracket_app`. Se restauró el default local y se ejecutó el full DB después del runner, como hace CI; no se cambió código ni se relajaron aserciones. La imagen de Playwright no incluye Docker CLI: los logs de Compose se recogieron desde el host, sin repetir tests ni sustituir la API. Se mantiene el aviso existente de Nuxt sobre CSS de operación no inline.
 
-La implementación está disponible, pero **el cierre de T18 no se declara completo hasta la CI del PR**: no hay PR abierto para esta rama. El verde local no se presenta como una ejecución remota de CI.
+**T18 cerrada tras verificar la CI remota del PR #67** sobre `232eb6c1` con `git_pr_checks(wait_mode="all")`: seis checks aprobados, ninguno fallido, pendiente ni omitido. Incluye Backend tests, Frontend checks, Dependency and filesystem scan, Infrastructure checks, Realtime retry end-to-end y GitGuardian Security Checks. El verde local anterior no sustituye esta comprobación remota.
 
 La cobertura E2E no sustituye las pruebas DB de los nueve criterios. SMTP se comprueba con transporte simulado: no se certifica entrega de correo real. Tampoco es una certificación de producción ni una auditoría visual manual.
