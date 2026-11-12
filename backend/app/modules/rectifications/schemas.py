@@ -237,3 +237,8 @@ class RectificationPreviewResponse(BaseModel):
 
     version: ReportVersionResponse
     effects: list[dict[str, Any]]
+    expected_base_version: int
+
+
+class PlatformRectificationDetailResponse(RectificationDetailResponse):
+    current_version: ReportVersionResponse

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
+import PublicRectifiedMark from './PublicRectifiedMark.vue';
 import PublicBracketConnections from '~/components/public/PublicBracketConnections.vue';
 import { groupPublicRounds, inferPublicAdvances, publicRoundLabel } from '~/utils/publicBracket';
 import { resolveMatchOutcomeLabel } from '~/utils/publicTournament';
@@ -85,6 +86,7 @@ function resolutionLabel(match: PublicMatch): string {
               </span>
               <span>{{ statusLabel(match.status) }}</span>
             </div>
+            <PublicRectifiedMark :rectified-at="match.rectified_at" />
             <p v-for="origin in origins.get(match.id)" :key="origin" class="visually-hidden">{{ t('public.fromMatch', { value: origin }) }}</p>
             <button
               v-if="match.lineup"

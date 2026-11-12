@@ -6,9 +6,9 @@ import RectificationReport from './RectificationReport.vue';
 import RectificationDiff from './RectificationDiff.vue';
 import { canDecide, compareReports, rectificationErrorKey, type RectificationDetail, type Preview, type ReportVersion, type PlatformAuthorization } from '~/utils/rectifications';
 
-const props = defineProps<{ detail: RectificationDetail; memberId: string | null; canApprove: boolean; owner: boolean }>();
+const props = defineProps<{ detail: RectificationDetail & { current_version?: ReportVersion }; memberId: string | null; canApprove: boolean; owner: boolean; platform?: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
-const api = useMatchRectifications();
+const api = { ...useMatchRectifications(), ...(props.platform ? usePlatformRectifications() : {}) };
 const { t, formatDateTime } = useI18n();
 const { confirm } = useConfirm({ singleFlight: true });
 const prefix = useId();
@@ -17,7 +17,7 @@ const busy = ref(false); const error = ref('');
 const preview = ref<Preview | null>(null);
 const current = ref<ReportVersion | null>(null);
 const authorizations = ref<PlatformAuthorization[]>([]);
-const decisionAllowed = computed(() => canDecide(props.detail.requested_by_member_id, props.memberId, props.canApprove, props.detail.status));
+const decisionAllowed = computed(() => canDecide(props.platform ? props.detail.requested_by_user_id : props.detail.requested_by_member_id, props.memberId, props.canApprove, props.detail.status));
 const comparison = computed(() => {
   const orderChanges = current.value ? compareReports(current.value.report, props.detail.proposed_report as unknown as Record<string, unknown>).fields.filter((field) => field.field === 'event_order') : [];
   return { ...props.detail.diff, fields: [...props.detail.diff.fields, ...orderChanges] };
@@ -26,6 +26,7 @@ let generation = 0;
 async function load() {
   const token = ++generation;
   preview.value = null; current.value = null; authorizations.value = []; error.value = ''; reason.value = '';
+  if (props.platform) { current.value = props.detail.current_version || null; return; }
   try {
     const [versions, grants] = await Promise.all([api.versions(props.detail.match_id), props.owner ? api.authorizations(props.detail.id) : Promise.resolve([])]);
     if (token !== generation) return;
@@ -108,8 +109,8 @@ onBeforeUnmount(() => { generation++; });
       <FormField :for-id="`${prefix}-decision`" :label="t('rectification.decisionReason')"><textarea :id="`${prefix}-decision`" v-model="reason" required /></FormField>
       <div class="actions"><Button :disabled="!preview || !reason.trim()" :busy="busy" @click="decide('approve')">{{ t('rectification.approve') }}</Button><Button variant="danger" :disabled="!reason.trim()" :busy="busy" @click="decide('reject')">{{ t('rectification.reject') }}</Button></div>
     </template>
-    <Button v-if="detail.status === 'pending' && memberId === detail.requested_by_member_id" variant="danger" :busy="busy" @click="withdraw">{{ t('rectification.withdraw') }}</Button>
-    <section v-if="owner">
+    <Button v-if="!platform && detail.status === 'pending' && memberId === detail.requested_by_member_id" variant="danger" :busy="busy" @click="withdraw">{{ t('rectification.withdraw') }}</Button>
+    <section v-if="owner && !platform">
       <h3>{{ t('rectification.authorizations') }}</h3>
       <p v-if="!authorizations.length">{{ t('rectification.noAuthorizations') }}</p>
       <ul><li v-for="authorization in authorizations" :key="authorization.id">{{ authorization.platform_admin_user_id }} · {{ authorization.reason }} · {{ t(authorization.consumed_at ? 'rectification.consumed' : authorization.revoked_at ? 'rectification.revoked' : 'rectification.authorized') }} <Button v-if="!authorization.revoked_at && !authorization.consumed_at && detail.status === 'pending'" variant="danger" :busy="busy" @click="revoke(authorization.id)">{{ t('rectification.revoke') }}</Button></li></ul>

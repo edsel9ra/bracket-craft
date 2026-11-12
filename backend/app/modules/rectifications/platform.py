@@ -157,7 +157,21 @@ class RectificationPlatformService(RectificationService):
             actor, request, match, _ = await self._authorized_request(platform, request_id)
             current = await self._version(actor, request["match_id"], match["version_number"])
             proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
-            return {**request, "diff": diff_reports(current["report"], proposal)}
+            return {**request, "diff": diff_reports(current["report"], proposal), "current_version": current}
+
+    async def platform_preview(self, platform, request_id):
+        require_platform_write(platform)
+        async with self.db.begin():
+            await set_rls_context(self.db, None, platform.user_id)
+            savepoint = await self.db.begin_nested()
+            try:
+                actor, request, match, _ = await self._authorized_request(platform, request_id, lock=True)
+                self._require_pending(request)
+                result = await self._publish(actor, request, match, datetime.now(timezone.utc))
+                return {**{key: result[key] for key in ("version", "effects")},
+                    "expected_base_version": match["version_number"]}
+            finally:
+                await savepoint.rollback()
 
     async def platform_decide(self, platform, request_id, payload):
         require_platform_write(platform)

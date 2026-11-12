@@ -16,6 +16,7 @@ from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     PlatformAuthorizationRequest,
     PlatformAuthorizationResponse,
+    PlatformRectificationDetailResponse,
     RectificationDecisionRequest,
     RectificationDetailResponse,
     RectificationPreviewResponse,
@@ -90,11 +91,18 @@ async def list_platform_rectifications(
     return await _execute(RectificationPlatformService(db).list_authorized(context))
 
 
-@router.get("/platform/rectifications/{request_id}", response_model=RectificationDetailResponse)
+@router.get("/platform/rectifications/{request_id}", response_model=PlatformRectificationDetailResponse)
 async def get_platform_rectification(
     request_id: UUID, context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
 ):
     return await _execute(RectificationPlatformService(db).detail(context, request_id))
+
+
+@router.get("/platform/rectifications/{request_id}/preview", response_model=RectificationPreviewResponse)
+async def preview_platform_rectification(
+    request_id: UUID, context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).platform_preview(context, request_id))
 
 
 @router.post("/platform/rectifications/{request_id}/decision", response_model=RectificationResponse)

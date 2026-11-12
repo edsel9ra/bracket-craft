@@ -82,6 +82,40 @@ test('empty versions and impacts are accessible and retries are explicit', async
   }
 });
 
+test('platform review uses user identity, scoped preview and decision, never tenant reads', async () => {
+  const calls: unknown[] = [];
+  let mounted: () => Promise<void> = async () => {};
+  const Review = component('RectificationReview', {
+    useId: () => 'platform-review', onMounted: (fn: () => Promise<void>) => { mounted = fn; }, onBeforeUnmount: () => {},
+    usePlatformRectifications: () => ({ preview: async (id: string) => { calls.push(id); return { expected_base_version: 9, effects: [] }; },
+      decide: async (id: string, body: unknown) => { calls.push([id, body]); } }),
+    useMatchRectifications: () => ({ versions: () => { throw Error('tenant read'); } }),
+  }) as { setup: (props: unknown, context: unknown) => (context: unknown, cache: unknown[]) => vue.VNode };
+  const props = vue.reactive({ detail: { ...request, requested_by_user_id: 'author-user', current_version: { version_number: 9, report: { events: [] } } }, platform: true, memberId: 'platform-user', canApprove: true, owner: false });
+  const render = Review.setup(props, { expose() {}, emit() {} });
+  await mounted();
+  function nodes(value: unknown): vue.VNode[] {
+    if (Array.isArray(value)) return value.flatMap(nodes);
+    if (typeof value === 'function') return nodes(value());
+    if (!value || typeof value !== 'object') return [];
+    if (vue.isVNode(value)) return [value, ...nodes(value.children)];
+    return Object.values(value).flatMap(nodes);
+  }
+  const all = () => nodes(render({}, []));
+  const button = (key: string) => all().find((node) => node.props?.onClick && JSON.stringify(typeof node.children === 'object' && node.children && 'default' in node.children ? (node.children as { default: () => unknown }).default() : node.children)?.includes(key))!;
+  assert.equal(button('rectification.approve').props!.disabled, true);
+  const reason = all().find((node) => node.type === 'textarea')!;
+  reason.props!['onUpdate:modelValue']('Verified');
+  await button('rectification.preview').props!.onClick();
+  await button('rectification.approve').props!.onClick();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['r', ['r', { decision: 'approve', reason: 'Verified', expected_base_version: 9 }]]);
+  assert.equal(button('rectification.approve').props!.disabled, true);
+  props.memberId = 'author-user';
+  assert.equal(button('rectification.approve'), undefined);
+  assert.equal(button('rectification.reject'), undefined);
+  assert.equal(button('rectification.withdraw'), undefined);
+});
+
 test('editor and review use shared confirmation, and approval requires a fresh preview base', () => {
   const read = (name: string) => readFileSync(new URL(`../app/components/match/${name}.vue`, import.meta.url), 'utf8');
   for (const name of ['RectificationEditor', 'RectificationReview', 'CompetitiveImpacts']) assert.match(read(name), /useConfirm\(\{ singleFlight: true \}\)/);

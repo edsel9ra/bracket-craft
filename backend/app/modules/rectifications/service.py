@@ -273,7 +273,8 @@ class RectificationService:
                 self._require_pending(request)
                 await self._approval_permission(context, request)
                 result = await self._publish(context, request, match, datetime.now(timezone.utc))
-                return {key: result[key] for key in ("version", "effects")}
+                return {**{key: result[key] for key in ("version", "effects")},
+                    "expected_base_version": match["version_number"]}
             finally:
                 await savepoint.rollback()
 

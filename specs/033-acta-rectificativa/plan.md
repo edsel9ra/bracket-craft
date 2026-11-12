@@ -59,10 +59,13 @@ De `matches/service.py` se extrae, sin cambiar su comportamiento, un validador `
 | `GET /competitive-impacts` y `GET /tournaments/{id}/competitive-impacts` | miembro | RF-017, RF-020 |
 | `POST /competitive-impacts/{pid}/close` `{reason}` | `APPROVE_…` | RF-017 |
 | `GET /platform/rectifications`, `GET /platform/rectifications/{rid}`, `POST /platform/rectifications/{rid}/decision` | `platform_admin` con autorización vigente | RF-008, RF-009b |
+| `GET /platform/rectifications/{rid}/preview` | `platform_admin` con autorización vigente, simulación revertida | RF-005, RF-009b |
 
 Errores con la forma de la spec 017 (RNF-004): **403** `RECTIFICATION_SELF_APPROVAL`; **409** `RECTIFICATION_ALREADY_OPEN`, `RECTIFICATION_NO_CHANGES`, `RECTIFICATION_STALE`, `RECTIFICATION_NOT_PENDING`, `MATCH_NOT_CONFIRMED`, `TOURNAMENT_ARCHIVED` y `COMPETITIVE_IMPACT_OPEN`; **404** indistinguible entre organizaciones. Una aprobación sobre un torneo archivado responde `TOURNAMENT_ARCHIVED`, mientras que el rechazo y la retirada sí se permiten (caso límite de DA-9). La plataforma solo puede designar usuarios con `role_code = 'platform_admin'` activo; una dirección no válida responde el mismo **422** exista o no.
 
 **Contrato de bandeja aprobado para T16:** ambos listados organizativos admiten `status`, `tournament_id`, `limit` (1–100, por defecto 25) y `offset` (≥0, por defecto 0), sin parámetros adicionales. Responden `{items,total,limit,offset}` con orden descendente estable por fecha e ID; un filtro de torneo ajeno o inexistente devuelve la misma página vacía bajo RLS. Solicitudes: `pending|published|rejected|withdrawn`; impactos: `open|closed`. La lectura de autorizaciones devuelve también revocadas/consumidas, solo al owner; para cualquier otro miembro responde el mismo 404 que una solicitud inexistente. Leer impactos no concede permiso para cerrarlos.
+
+**Contrato de revisión de plataforma aprobado para T17:** el detalle añade únicamente `current_version: ReportVersionResponse`. El preview usa GET, igual que el organizativo, y devuelve `{version,effects,expected_base_version}`; ambos previews exponen la base explícita. La simulación siempre revierte sus escrituras, incluidos efectos, notificaciones y auditoría; no consume la autorización ni crea membresía. Autorizaciones ausentes, revocadas o consumidas producen el mismo 404 que una solicitud inexistente. La revisión de plataforma no llama a lecturas organizativas ni ofrece cierre de impactos.
 
 ### 3.3 Decisión y publicación
 
@@ -142,7 +145,7 @@ Todo pasa por `useApi.ts`. Textos en ES/EN (`useI18n.ts`), componentes de `compo
   - El botón de decisión no se muestra al solicitante, aunque el servidor lo rechaza igualmente.
 - `pages/admin/rectifications.vue`: lista y detalle de las solicitudes para las que el administrador de plataforma está autorizado, con la misma vista de revisión.
 - Público: marca «Resultado rectificado · fecha» en las tarjetas de partido de `pages/tournaments/[id].vue`, en `PublicLineupModal.vue` y en `PublicBracket.vue` (RF-022).
-- Composables nuevos: `useMatchRectifications.ts` y `useCompetitiveImpacts.ts`.
+- Composables nuevos: `useMatchRectifications.ts`, `useCompetitiveImpacts.ts` y `usePlatformRectifications.ts`.
 
 ## 5. Decisiones y alternativas descartadas
 
