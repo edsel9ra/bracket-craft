@@ -3,11 +3,16 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Clarificación — estado: borrador.
-- Pendiente: aclarar DA-7 y DA-10–DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
+- Pendiente: aclarar DA-13–DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
 
 ## Decisiones tomadas
+- 2026-11-12 · Spec 034 · DA-6 revisada por el usuario: miembro con permiso de resolver propone anular/reducir con motivo y auditoría, sin efecto pendiente; otra persona aprueba/rechaza con motivo. RF-021 impide decidir propuesta propia incluso con otros roles o autorización F9; plataforma decide, nunca propone. Sustituye la decisión previa sin segunda persona.
+- 2026-11-12 · Spec 034 · DA-7 cerrada: sin caducidad para apelar; política de notificación acreditada fuera de alcance.
+- 2026-11-12 · Spec 034 · DA-10 cerrada: tramitación paralela con 033, revalidación de sanción al decidir; cambio/anulación por rectificación impide aplicar F9 y exige revisión expresa, sin traslado ni neutralización silenciosa.
+- 2026-11-12 · Spec 034 · DA-11 cerrada: mantener lo jugado y constancia auditada mínima del perjuicio en expediente F9, sin repetición/cambios deportivos ni reutilización del trámite de impacto 033.
+- 2026-11-12 · Spec 034 · DA-12 cerrada: torneos archivados permiten resolver efectos vigentes y declaraciones sobre cumplidas, sin reabrir ni tocar lo disputado.
 - 2026-11-12 · Spec 034 · DA-3 cerrada por el usuario: el interponente no resuelve su apelación aunque acumule permisos/roles o autorización de plataforma; bloqueo técnico y responsable, fecha, motivo y decisión registrados.
-- 2026-11-12 · Spec 034 · DA-6 cerrada por el usuario: iniciativa administrativa sin apelación ficticia, con permiso de resolver, motivo y auditoría; solo anular/reducir, sin interponente que excluir ni segunda persona exigida por ese concepto.
+- 2026-11-12 · Spec 034 · DA-6 anterior (histórica, sustituida por la revisión con segunda persona): iniciativa administrativa sin apelación ficticia, con permiso de resolver, motivo y auditoría; solo anular/reducir, sin segunda persona entonces exigida.
 - 2026-11-12 · Spec 034 · DA-8 cerrada por el usuario: plataforma solo resuelve con autorización F9 puntual, vigente y revocable del dueño activo, vinculada a organización/expediente/administrador/dueño y verificada al ejecutar; consumida al decidir, ambas auditorías, sin BYPASSRLS, permisos persistentes, membresía, platform_support ni reutilización de la 033.
 - 2026-11-12 · Spec 034 · DA-9 cerrada por el usuario: cumplimientos conservados, efectos solo sobre pendientes; reducción inferior a lo cumplido deja cumplida, anulación de totalmente cumplida declarativa, sin crédito futuro.
 - 2026-11-12 · Spec 034 · DA-1 cerrada por el usuario: solo miembros con permiso presentan, registrando equipo/jugador representado; sin acceso propio de delegados externos o jugador/tutor.
