@@ -1176,7 +1176,7 @@ async def test_seed_demo_still_closes_and_confirms_matches(
         admin_connection = await _connect(database_admin_url, database)
         try:
             await _apply_init(admin_connection)
-            await _apply_migrations(admin_connection, first=1, last=35)
+            await _apply_migrations(admin_connection, first=1, last=39)
         finally:
             await admin_connection.close()
 

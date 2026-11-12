@@ -460,7 +460,7 @@ def _segment_session() -> RecordingSession:
     session = RecordingSession()
 
     def handle(sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "ORDER BY segment_number DESC" in sql:
             return Result(rows=[])
@@ -535,7 +535,7 @@ def _interrupt_session() -> RecordingSession:
     session = RecordingSession()
 
     def handle(sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "FROM match_segments" in sql:
             return Result(rows=[{"id": SEGMENT_1, "minute_start": 0, "status": "active"}])
@@ -619,7 +619,7 @@ def _operation_session() -> RecordingSession:
     session = RecordingSession()
 
     def handle(sql: str, params: dict) -> Result:
-        if "set_config" in sql:
+        if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "FROM match_segments" in sql:
             return Result(rows=[])
@@ -1097,6 +1097,11 @@ class _RouteSession:
 
     def begin(self):
         return Transaction()
+
+    async def execute(self, statement, params=None):
+        assert str(statement) == "SELECT assert_no_open_competitive_impact(:id,:org)"
+        assert params == {"id": MATCH_ID, "org": ORGANIZATION_ID}
+        return Result()
 
 
 @pytest.mark.asyncio

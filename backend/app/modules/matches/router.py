@@ -725,6 +725,8 @@ async def create_match_segment(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         match = await _load_operation_match(db, context, match_id)
+        await db.execute(text("SELECT assert_no_open_competitive_impact(:id,:org)"),
+            {"id": match_id, "org": context.organization_id})
         if match["status"] in {"finished", "cancelled", "administrative_resolution"}:
             raise HTTPException(status_code=409, detail="El partido terminado no admite nuevos segmentos")
         # Orden: resolución habilitada (409) → tamaño en la apertura (409) →

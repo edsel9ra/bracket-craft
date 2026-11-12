@@ -13,7 +13,36 @@ class StandingsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def recalculate(self, context, tournament_id: UUID, stage_id: UUID) -> None:
+    async def recalculate(self, context, tournament_id: UUID, stage_id: UUID) -> tuple[list[dict], list[dict]]:
+        rows, draw_groups = await self._calculate(context, tournament_id, stage_id)
+        await self.db.execute(
+            text("""
+                DELETE FROM standings
+                WHERE organization_id = :organization_id
+                  AND tournament_id = :tournament_id
+                  AND stage_id = :stage_id
+            """),
+            {"organization_id": str(context.organization_id), "tournament_id": str(tournament_id), "stage_id": str(stage_id)},
+        )
+        for row in rows:
+            await self.db.execute(
+                text("""
+                    INSERT INTO standings
+                        (organization_id, tournament_id, stage_id, group_id, team_id, played, won, drawn, lost,
+                         goals_for, goals_against, goal_difference, points, fair_play_points, rank)
+                    VALUES (:organization_id, :tournament_id, :stage_id, :group_id, :team_id, :played, :won,
+                            :drawn, :lost, :goals_for, :goals_against, :goal_difference, :points,
+                            :fair_play_points, :rank)
+                """),
+                {"organization_id": str(context.organization_id), "tournament_id": str(tournament_id),
+                    "stage_id": str(stage_id), **row},
+            )
+        return rows, draw_groups
+
+    async def snapshot(self, context, tournament_id: UUID, stage_id: UUID) -> tuple[list[dict], list[dict]]:
+        return await self._calculate(context, tournament_id, stage_id, persisted=True)
+
+    async def _calculate(self, context, tournament_id: UUID, stage_id: UUID, *, persisted=False):
         # The stage is locked before the advisory lock so the two orderings
         # (stage -> advisory and advisory -> stage) never cross.
         try:
@@ -202,6 +231,18 @@ class StandingsService:
         for item in table.values():
             item["goal_difference"] = item["goals_for"] - item["goals_against"]
 
+        persisted_rows = []
+        if persisted:
+            result = await self.db.execute(text("""
+                SELECT team_id, group_id, played, won, drawn, lost, goals_for, goals_against,
+                       goal_difference, points, fair_play_points, rank
+                FROM standings
+                WHERE organization_id = :organization_id AND tournament_id = :tournament_id AND stage_id = :stage_id
+                ORDER BY group_id NULLS FIRST, team_id
+            """), {"organization_id": context.organization_id, "tournament_id": tournament_id, "stage_id": stage_id})
+            persisted_rows = [dict(row) for row in result.mappings().all()]
+            table = {(row["team_id"], row["group_id"]): row for row in persisted_rows}
+
         def ranking_value(item, criterion):
             if criterion == "goals_against":
                 return -int(item["goals_against"])
@@ -237,19 +278,8 @@ class StandingsService:
                 buckets_by_key[key_for(item)].append(item)
             return [buckets_by_key[key] for key in sorted(buckets_by_key, reverse=True)]
 
-        await self.db.execute(
-            text("""
-                DELETE FROM standings
-                WHERE organization_id = :organization_id
-                  AND tournament_id = :tournament_id
-                  AND stage_id = :stage_id
-            """),
-            {
-                "organization_id": str(context.organization_id),
-                "tournament_id": str(tournament_id),
-                "stage_id": str(stage_id),
-            },
-        )
+        ranked = []
+        draw_groups = []
         teams_by_group: defaultdict[UUID | None, list[dict]] = defaultdict(list)
         for item in table.values():
             teams_by_group[item["group_id"]].append(item)
@@ -259,27 +289,15 @@ class StandingsService:
             for step in pipeline:
                 next_buckets = []
                 for bucket in buckets:
+                    if step["criterion"] == "random_draw" and len(bucket) > 1:
+                        draw_groups.append({"group_id": str(group_id) if group_id is not None else None,
+                            "team_ids": sorted(str(item["team_id"]) for item in bucket)})
                     next_buckets.extend(split_bucket(bucket, step))
                 buckets = next_buckets
 
             rank = 1
             for bucket in buckets:
                 for item in bucket:
-                    await self.db.execute(
-                        text("""
-                            INSERT INTO standings
-                                (organization_id, tournament_id, stage_id, group_id, team_id, played, won, drawn, lost,
-                                 goals_for, goals_against, goal_difference, points, fair_play_points, rank)
-                            VALUES (:organization_id, :tournament_id, :stage_id, :group_id, :team_id, :played, :won,
-                                    :drawn, :lost, :goals_for, :goals_against, :goal_difference, :points,
-                                    :fair_play_points, :rank)
-                        """),
-                        {
-                            "organization_id": str(context.organization_id),
-                            "tournament_id": str(tournament_id),
-                            "stage_id": str(stage_id),
-                            "rank": rank,
-                            **item,
-                        },
-                    )
+                    ranked.append({**item, "rank": rank})
                     rank += 1
+        return (persisted_rows if persisted else ranked), draw_groups
