@@ -20,7 +20,7 @@ from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from migration_helpers import throwaway_database
 from test_migration_031 import (
     MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEED_SQL, SEGMENT_FIRST,
-    TEAM_HOME, USER, VERSION,
+    TEAM_HOME, TOURNAMENT, USER, VERSION,
 )
 
 UNCONFIRMED = "31000000-0000-4000-8000-000000000053"
@@ -137,7 +137,9 @@ async def test_valid_request_audit_history_and_withdrawal(flow, monkeypatch):
     assert len(calls) == 1 and calls[0]["match_id"] == UUID(MATCH)
     assert await flow.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 1
     assert (await flow.client.get(f"/api/v1/matches/{MATCH}/rectifications")).json() == [request]
-    assert (await flow.client.get(f"/api/v1/rectifications/{request['id']}")).json() == request
+    detail = (await flow.client.get(f"/api/v1/rectifications/{request['id']}")).json()
+    assert {key: value for key, value in detail.items() if key != "diff"} == request
+    assert set(detail) == set(request) | {"diff"}
     versions = (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions")).json()
     assert [v["version_number"] for v in versions] == [1]
     assert versions[0]["report"]["home_score"] == 0 and versions[0]["report"]["events"] == []
@@ -372,3 +374,291 @@ async def test_anonymous_routes_require_authentication():
         for path in (f"/matches/{MATCH}/rectifications", f"/rectifications/{uuid4()}",
                      f"/matches/{MATCH}/report-versions", f"/matches/{MATCH}/report-versions/1"):
             assert (await client.get("/api/v1" + path)).status_code == 401
+
+
+async def database_snapshot(admin):
+    tables = await admin.fetch("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+    return {row["tablename"]: await admin.fetchval(
+        'SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM public."'
+        + row["tablename"].replace('"', '""') + '" t') for row in tables}
+
+
+async def test_preview_and_detail_diff_leave_every_table_unchanged(flow):
+    request = (await create(flow)).json()
+    before = await database_snapshot(flow.admin)
+    detail = await flow.client.get(f"/api/v1/rectifications/{request['id']}")
+    assert detail.status_code == 200
+    assert any(field["field"] == "home_score" for field in detail.json()["diff"]["fields"])
+    assert len(detail.json()["diff"]["events"]["added"]) == 1
+    response = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    assert response.status_code == 200, response.text
+    assert response.json()["version"]["version_number"] == 2
+    assert response.json()["version"]["report"]["home_score"] == 1
+    assert len(response.json()["version"]["report"]["events"]) == 1
+    assert response.json()["effects"] == []
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_preview_errors_roll_back_inserted_version_and_events(flow, monkeypatch):
+    from app.modules.rectifications import service
+
+    request = (await create(flow)).json()
+    before = await database_snapshot(flow.admin)
+
+    async def fail(db, context, version, now):
+        assert (await db.execute(text("SELECT count(*) FROM match_report_versions"))).scalar_one() == 1
+        assert (await db.execute(text("SELECT count(*) FROM match_report_version_events"))).scalar_one() == 1
+        raise ValueError("Efectos no disponibles")
+
+    monkeypatch.setattr(service, "apply_effects", fail)
+    response = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    assert response.status_code == 409
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_preview_permission_and_404_isolation(flow):
+    request = (await create(flow)).json()
+    await flow.admin.execute("UPDATE roles SET permissions = '[]' WHERE organization_id = $1", ORG)
+    response = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    assert response.status_code == 403
+    flow.context = AuthContext(UUID(USER.replace("31000000", "32000000")),
+        UUID(ORG.replace("31000000", "32000000")), UUID(MEMBER.replace("31000000", "32000000")))
+    hidden = await flow.client.get(f"/api/v1/rectifications/{request['id']}/preview")
+    missing = await flow.client.get(f"/api/v1/rectifications/{uuid4()}/preview")
+    assert hidden.status_code == missing.status_code == 404 and hidden.json() == missing.json()
+
+
+async def add_approver(flow, permissions=None):
+    user, member = uuid4(), uuid4()
+    await flow.admin.execute("INSERT INTO users (id, email, password_hash, full_name) VALUES ($1, $2, 'hash', 'Approver')", user, f"{user}@example.test")
+    await flow.admin.execute("INSERT INTO organization_users (id, organization_id, user_id, is_active) VALUES ($1, $2, $3, TRUE)", member, ORG, user)
+    role = await flow.admin.fetchval("""
+        INSERT INTO roles (organization_id, role_definition_id, name, permissions)
+        SELECT $1, id, name, system_permissions FROM role_definitions WHERE code = 'administrator' RETURNING id
+    """, ORG)
+    if permissions is not None:
+        await flow.admin.execute("UPDATE roles SET permissions = $2::jsonb WHERE id = $1", role, json.dumps(permissions))
+    await flow.admin.execute("INSERT INTO organization_user_roles (organization_id, organization_user_id, role_id) VALUES ($1, $2, $3)", ORG, member, role)
+    return AuthContext(user, UUID(ORG), member)
+
+
+async def decide(flow, request_id, **changes):
+    body = {"decision": "approve", "reason": " Revisado con el vídeo ", "expected_base_version": 1, **changes}
+    return await flow.client.post(f"/api/v1/rectifications/{request_id}/decision", json=body)
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+async def test_self_decision_is_rejected_by_service_before_permission(flow, monkeypatch, decision):
+    from app.modules.rectifications.service import RectificationService
+
+    request = (await create(flow)).json()
+    await flow.admin.execute("UPDATE roles SET permissions = '[]' WHERE organization_id = $1", ORG)
+    before = await database_snapshot(flow.admin)
+    calls = []
+
+    async def forbidden(*args):
+        calls.append(True)
+        raise PermissionError("Sin permiso")
+
+    monkeypatch.setattr(RectificationService, "_approval_permission", forbidden)
+    response = await decide(flow, request["id"], decision=decision)
+    assert response.status_code == 403 and response.json()["code"] == "RECTIFICATION_SELF_APPROVAL"
+    assert calls == []
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_self_decision_trigger_42501_is_mapped_to_same_403(flow, monkeypatch):
+    from app.modules.rectifications.service import RectificationService
+
+    request = (await create(flow)).json()
+    before = await database_snapshot(flow.admin)
+    monkeypatch.setattr(RectificationService, "_require_distinct_actor", staticmethod(lambda request, context: None))
+    response = await decide(flow, request["id"])
+    assert response.status_code == 403 and response.json()["code"] == "RECTIFICATION_SELF_APPROVAL"
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_decision_without_permission_does_not_write(flow):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow, permissions=[])
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, request["id"])
+    assert response.status_code == 403
+    assert await database_snapshot(flow.admin) == before
+
+
+@pytest.mark.parametrize("change", [{"reason": "  "}, {"reason": None}, {"expected_base_version": 0},
+    {"decision": "other"}, {"unexpected": True}])
+async def test_decision_schema_is_strict(flow, change):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, request["id"], **change)
+    assert response.status_code == 422
+    assert await database_snapshot(flow.admin) == before
+
+
+@pytest.mark.parametrize("resolution", ["walkover", "administrative"])
+async def test_decision_requires_resolution_permission_too(flow, resolution):
+    request = (await create(flow, proposal(resolution_type=resolution,
+        reason="no_show" if resolution == "walkover" else "Resolución", home_score_regular=3, home_score=3, events=[]))).json()
+    flow.context = await add_approver(flow, permissions=["APPROVE_MATCH_REPORT_RECTIFICATION"])
+    response = await decide(flow, request["id"])
+    assert response.status_code == 403
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_decisions") == 0
+    await flow.admin.execute("UPDATE roles SET permissions = permissions || '[\"RESOLVE_MATCH_ADMINISTRATIVELY\"]' WHERE organization_id = $1", ORG)
+    response = await decide(flow, request["id"])
+    assert response.status_code == 200 and response.json()["status"] == "published"
+
+
+async def test_expected_base_stale_rolls_back_decision(flow):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, request["id"], expected_base_version=2)
+    assert response.status_code == 409 and response.json()["code"] == "RECTIFICATION_STALE"
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_pending_base_stale_against_published_version(flow):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    assert (await decide(flow, request["id"])).status_code == 200
+    stale = await flow.admin.fetchval("""
+        INSERT INTO match_report_rectification_requests (organization_id, match_id, base_version_number,
+            proposed_report, reason, evidence, requested_by_user_id, requested_by_member_id)
+        VALUES ($1, $2, 1, $3::jsonb, 'Old reference', 'Evidence', $4, $5) RETURNING id
+    """, ORG, MATCH, json.dumps(request["proposed_report"]), USER, MEMBER)
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, str(stale))
+    assert response.status_code == 409 and response.json()["code"] == "RECTIFICATION_STALE"
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_archived_approval_fails_but_rejection_records_decision_and_audit(flow):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    await flow.admin.execute("UPDATE tournament_versions SET status = 'archived' WHERE id = $1", VERSION)
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, request["id"])
+    assert response.status_code == 409 and response.json()["code"] == "TOURNAMENT_ARCHIVED"
+    assert await database_snapshot(flow.admin) == before
+    rejected = await decide(flow, request["id"], decision="reject", expected_base_version=99)
+    assert rejected.status_code == 200 and rejected.json()["status"] == "rejected"
+    row = await flow.admin.fetchrow("SELECT * FROM match_report_rectification_decisions")
+    assert row["decision"] == "reject" and row["reason"] == "Revisado con el vídeo"
+    assert row["decided_by_user_id"] == flow.context.user_id and row["decided_as"] == "member" and row["decided_at"]
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_versions") == 0
+    assert await flow.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 2
+    repeated = await decide(flow, request["id"])
+    assert repeated.status_code == 409 and repeated.json()["code"] == "RECTIFICATION_NOT_PENDING"
+
+
+async def test_concurrent_approvals_publish_once(flow):
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    responses = await asyncio.gather(decide(flow, request["id"]), decide(flow, request["id"]))
+    assert sorted(r.status_code for r in responses) == [200, 409]
+    assert next(r for r in responses if r.status_code == 409).json()["code"] == "RECTIFICATION_NOT_PENDING"
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_versions") == 1
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_report_rectification_decisions") == 1
+    assert await flow.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 2
+
+
+async def test_publication_and_preview_share_hook_and_versions_2_3_preserve_original(flow, monkeypatch):
+    from app.modules.rectifications import service
+
+    original = await flow.admin.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH)
+    first = (await create(flow)).json()
+    requester = flow.context
+    approver = await add_approver(flow)
+    flow.context = approver
+    calls = []
+
+    async def effects(db, context, version, now):
+        assert (await db.execute(text("SELECT current_setting('app.rectification_version_id')"))).scalar_one() == str(version["id"])
+        calls.append(version["version_number"])
+        return []
+
+    monkeypatch.setattr(service, "apply_effects", effects)
+    preview = await flow.client.get(f"/api/v1/rectifications/{first['id']}/preview")
+    assert preview.status_code == 200 and calls == [2]
+    response = await decide(flow, first["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "published" and response.json()["resulting_version_id"]
+    published = (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions/2")).json()
+    assert published["report"]["home_score"] == preview.json()["version"]["report"]["home_score"] == 1
+    assert published["published_by_user_id"] == str(approver.user_id)
+    detail = (await flow.client.get(f"/api/v1/rectifications/{first['id']}")).json()
+    assert detail["diff"] == {"fields": [], "events": {"added": [], "removed": [], "changed": []}}
+    first_version = deepcopy(published)
+    flow.context = requester
+    body = proposal()
+    body["proposed_report"] = deepcopy(first["proposed_report"])
+    body["proposed_report"].update(home_score_regular=2, home_score=2)
+    body["proposed_report"]["events"].append({**body["proposed_report"]["events"][0], "client_event_id": str(uuid4()), "minute": 20})
+    second = (await create(flow, body)).json()
+    assert second["base_version_number"] == 2
+    flow.context = approver
+    assert (await decide(flow, second["id"], expected_base_version=2)).status_code == 200
+    assert calls == [2, 2, 3]
+    assert (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions/2")).json() == first_version
+    operation = await flow.client.get(f"/api/v1/matches/{MATCH}/operation")
+    assert operation.status_code == 200, operation.text
+    assert operation.json()["match"]["home_score"] == 2 and len(operation.json()["events"]) == 2
+    versions = (await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions")).json()
+    assert [version["version_number"] for version in versions] == [1, 2, 3]
+    public = await flow.client.get(f"/api/v1/tournaments/public/{TOURNAMENT}/matches")
+    assert public.status_code == 200, public.text
+    public_match = next(match for match in public.json() if match["id"] == MATCH)
+    assert public_match["home_score"] == 2 and public_match["rectified_at"]
+    assert await flow.admin.fetchrow("SELECT * FROM matches WHERE id = $1", MATCH) == original
+    assert await flow.admin.fetchval("SELECT count(*) FROM match_events") == 0
+    assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events") == 0
+
+
+@pytest.mark.parametrize("failure", ["validation", "effects", "audit"])
+async def test_failed_publication_rolls_back_every_table(flow, monkeypatch, failure):
+    from app.modules.rectifications import service
+    from app.modules.matches.errors import ResolutionNotEnabled
+
+    request = (await create(flow)).json()
+    flow.context = await add_approver(flow)
+    before = await database_snapshot(flow.admin)
+    if failure == "validation":
+        def invalid(*args):
+            raise ResolutionNotEnabled()
+        monkeypatch.setattr(service, "validate_report_payload", invalid)
+    elif failure == "effects":
+        async def unavailable(*args):
+            raise ValueError("Efectos no disponibles")
+        monkeypatch.setattr(service, "apply_effects", unavailable)
+    else:
+        async def unavailable(*args, **kwargs):
+            raise ValueError("Auditoría no disponible")
+        monkeypatch.setattr(service, "record_match_audit", unavailable)
+    response = await decide(flow, request["id"])
+    assert response.status_code == 409
+    if failure == "validation":
+        assert response.json()["code"] == "RESOLUTION_NOT_ENABLED"
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_decision_foreign_and_missing_requests_have_identical_404(flow):
+    request = (await create(flow)).json()
+    flow.context = AuthContext(UUID(USER.replace("31000000", "32000000")),
+        UUID(ORG.replace("31000000", "32000000")), UUID(MEMBER.replace("31000000", "32000000")))
+    before = await database_snapshot(flow.admin)
+    hidden = await decide(flow, request["id"])
+    missing = await decide(flow, str(uuid4()))
+    assert hidden.status_code == missing.status_code == 404 and hidden.json() == missing.json()
+    assert await database_snapshot(flow.admin) == before
+
+
+async def test_not_pending_precedes_self_approval(flow):
+    request = (await create(flow)).json()
+    assert (await flow.client.post(f"/api/v1/rectifications/{request['id']}/withdraw")).status_code == 200
+    before = await database_snapshot(flow.admin)
+    response = await decide(flow, request["id"])
+    assert response.status_code == 409 and response.json()["code"] == "RECTIFICATION_NOT_PENDING"
+    assert await database_snapshot(flow.admin) == before

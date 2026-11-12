@@ -23,6 +23,22 @@ class CreateRectificationRequest(BaseModel):
         return value
 
 
+class RectificationDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "reject"]
+    reason: str = Field(min_length=1)
+    expected_base_version: int = Field(ge=1)
+
+    @field_validator("reason")
+    @classmethod
+    def nonempty_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("El motivo no puede estar vacío")
+        return value
+
+
 class RectificationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -89,3 +105,44 @@ class ReportVersionResponse(BaseModel):
     reason: str | None
     evidence: str | None
     report: ReportContentResponse
+
+
+class FieldDifference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    before: Any
+    after: Any
+
+
+class EventDifference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_event_id: str
+    fields: list[FieldDifference]
+
+
+class EventDifferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    added: list[dict[str, Any]]
+    removed: list[dict[str, Any]]
+    changed: list[EventDifference]
+
+
+class ReportDifference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[FieldDifference]
+    events: EventDifferences
+
+
+class RectificationDetailResponse(RectificationResponse):
+    diff: ReportDifference
+
+
+class RectificationPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: ReportVersionResponse
+    effects: list[dict[str, Any]]

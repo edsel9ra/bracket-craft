@@ -33,10 +33,10 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - [x] **T7. Presentar, listar y retirar solicitudes.** RF-001–RF-004, RF-020, RF-023
 - Hecho cuando: `test_rectification_flow.py` cubre propuesta válida, inválida (409 con el `code` del cierre y nada registrado), `NO_CHANGES`, `ALREADY_OPEN`, `MATCH_NOT_CONFIRMED`, `TOURNAMENT_ARCHIVED`, retirada solo por el solicitante y 404 entre organizaciones.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py`.
-- [ ] **T8. Diferencias y vista previa con `ROLLBACK`.** RF-005
+- [x] **T8. Diferencias y vista previa con `ROLLBACK`.** RF-005
 - Hecho cuando: tests puros de `diff.py` y un test de base de datos demuestran que la vista previa devuelve efectos y deja sin cambios las filas de todas las tablas afectadas y la outbox.
 - Comando: `cd backend && pytest -q tests/test_rectification_diff.py` y `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py`.
-- [ ] **T9. Decisión de miembro: rechazo y aprobación con versión nueva (sin efectos aún).** RF-006–RF-008, RF-010–RF-013, RNF-003
+- [x] **T9. Decisión de miembro: rechazo y aprobación con versión nueva (sin efectos aún).** RF-006–RF-008, RF-010–RF-013, RNF-003
 - Hecho cuando: los tests cubren autoaprobación (403 desde el servicio y desde el trigger), sin permiso (403), motivo vacío (422), `STALE`, dos aprobaciones concurrentes que producen una sola versión, versión 3 sobre la 2 y original intacto.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_flow.py`.
 - [ ] **T10. Autorización de plataforma y decisión excepcional.** RF-008, RF-009, RF-009b; plan §5.1

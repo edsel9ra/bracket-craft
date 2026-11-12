@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
@@ -13,9 +13,11 @@ from app.core.permissions import require_administrative_resolution, require_perm
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
-from app.modules.matches.service import load_report_payload_snapshot, validate_report_payload
+from app.modules.matches.service import derive_walkover_score, load_report_payload_snapshot, validate_report_payload
+from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
+    RectificationDecisionRequest,
     RectificationResponse,
     ReportContentResponse,
     ReportEventResponse,
@@ -27,6 +29,22 @@ class RectificationConflict(HTTPException):
     def __init__(self, code: str, detail: str):
         super().__init__(status_code=409, detail=detail)
         self.code = code
+
+
+class RectificationSelfApproval(HTTPException):
+    def __init__(self):
+        super().__init__(status_code=403, detail="El solicitante no puede decidir su propia solicitud")
+        self.code = "RECTIFICATION_SELF_APPROVAL"
+
+
+def _self_approval_violation(exc: DBAPIError) -> bool:
+    error = exc.orig
+    while error is not None:
+        if (getattr(error, "sqlstate", None) == "42501"
+                and getattr(error, "message", None) == "RECTIFICATION_SELF_APPROVAL"):
+            return True
+        error = error.__cause__
+    return False
 
 
 def _already_open() -> RectificationConflict:
@@ -69,6 +87,31 @@ def _same_report(current: Mapping[str, Any], events, payload: CloseMatchReportDT
     }
     return (all(current[key] == value for key, value in proposed.items())
             and _canonical_events(events) == _canonical_events(payload.model_dump()["events"]))
+
+
+async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:
+    return []
+
+
+def _proposal_report(match, payload):
+    report = payload.model_dump()
+    report["resolution_reason"] = report.pop("reason")
+    if payload.resolution_type == "walkover":
+        pair = derive_walkover_score(match["rules_config"], match["stage_id"],
+            match["home_team_id"], match["away_team_id"], payload.winner_team_id)
+        if pair is not None:
+            for field, value in (("home_score_regular", pair.home_score), ("away_score_regular", pair.away_score),
+                                 ("home_score", pair.home_score), ("away_score", pair.away_score)):
+                if report[field] is None:
+                    report[field] = value
+    for side in ("home", "away"):
+        if report[f"{side}_score"] is None:
+            report[f"{side}_score"] = report[f"{side}_score_regular"]
+    if payload.resolution_type == "regular" and report["winner_team_id"] is None:
+        home, away = report["home_score"], report["away_score"]
+        if home is not None and away is not None and home != away:
+            report["winner_team_id"] = match["home_team_id"] if home > away else match["away_team_id"]
+    return report
 
 
 class RectificationService:
@@ -188,7 +231,129 @@ class RectificationService:
     async def get_request(self, context: AuthContext, request_id: UUID) -> dict:
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
-            return await self._request(context, request_id)
+            request = await self._request(context, request_id)
+            match = await self._match(context, request["match_id"])
+            current = await self._version(context, request["match_id"], match["version_number"])
+            proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
+            return {**request, "diff": diff_reports(current["report"], proposal)}
+
+    @staticmethod
+    def _require_pending(request):
+        if request["status"] != "pending":
+            raise RectificationConflict("RECTIFICATION_NOT_PENDING", "La solicitud no está pendiente")
+
+    async def _approval_permission(self, context, request):
+        await require_permission(self.db, context, "APPROVE_MATCH_REPORT_RECTIFICATION")
+        if request["proposed_report"]["resolution_type"] in {"walkover", "administrative"}:
+            await require_administrative_resolution(self.db, context, request["match_id"])
+
+    async def preview(self, context: AuthContext, request_id: UUID) -> dict:
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            savepoint = await self.db.begin_nested()
+            try:
+                request = await self._request(context, request_id, lock=True)
+                match = await self._match(context, request["match_id"], lock=True)
+                self._require_pending(request)
+                await self._approval_permission(context, request)
+                result = await self._publish(context, request, match, datetime.now(timezone.utc))
+                return {key: result[key] for key in ("version", "effects")}
+            finally:
+                await savepoint.rollback()
+
+    @staticmethod
+    def _require_distinct_actor(request, context):
+        if request["requested_by_user_id"] == context.user_id:
+            raise RectificationSelfApproval()
+
+    async def decide(self, context: AuthContext, request_id: UUID, payload: RectificationDecisionRequest) -> dict:
+        try:
+            async with self.db.begin():
+                await set_rls_context(self.db, context.organization_id, context.user_id)
+                request = await self._request(context, request_id, lock=True)
+                match = await self._match(context, request["match_id"], lock=True)
+                self._require_pending(request)
+                self._require_distinct_actor(request, context)
+                await self._approval_permission(context, request)
+                now = datetime.now(timezone.utc)
+                decision_id = (await self.db.execute(text("""
+                    INSERT INTO match_report_rectification_decisions (organization_id, request_id,
+                        decision, reason, decided_by_user_id, decided_by_member_id, decided_as, decided_at)
+                    VALUES (:organization_id, :request_id, :decision, :reason,
+                        :user_id, :member_id, 'member', :now) RETURNING id
+                """), {"organization_id": context.organization_id, "request_id": request_id,
+                    "decision": payload.decision, "reason": payload.reason, "user_id": context.user_id,
+                    "member_id": context.organization_user_id, "now": now})).scalar_one()
+                version_id = None
+                status = "rejected"
+                if payload.decision == "approve":
+                    if match["version_number"] != payload.expected_base_version:
+                        raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
+                    result = await self._publish(context, request, match, now)
+                    version_id, status = result["version_id"], "published"
+                row = (await self.db.execute(text("""
+                    UPDATE match_report_rectification_requests
+                    SET status = :status, resulting_version_id = :version_id
+                    WHERE id = :request_id AND organization_id = :organization_id RETURNING *
+                """), {"status": status, "version_id": version_id, "request_id": request_id,
+                    "organization_id": context.organization_id})).mappings().one()
+                await record_match_audit(self.db, organization_id=context.organization_id,
+                    member_id=context.organization_user_id, match_id=request["match_id"],
+                    action="DECIDE_MATCH_REPORT_RECTIFICATION", payload={
+                        "request_id": request_id, "decision_id": decision_id,
+                        "decision": payload.decision, "version_id": version_id,
+                    })
+                return self._request_response(row)
+        except DBAPIError as exc:
+            if _self_approval_violation(exc):
+                raise RectificationSelfApproval() from exc
+            raise
+
+    async def _publish(self, context, request, match, now) -> dict:
+        if match["version_number"] != request["base_version_number"]:
+            raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
+        if match["version_status"] == "archived":
+            raise RectificationConflict("TOURNAMENT_ARCHIVED", "El torneo está archivado")
+        payload = CloseMatchReportDTO.model_validate(request["proposed_report"])
+        snapshot = await load_report_payload_snapshot(self.db, context, match, payload)
+        outcome = validate_report_payload(snapshot, payload, now)
+        report = _proposal_report(match, payload)
+        report.update(home_score=outcome.home_score, away_score=outcome.away_score,
+            home_penalties=outcome.home_penalties, away_penalties=outcome.away_penalties,
+            winner_team_id=outcome.winner_team_id)
+        version = (await self.db.execute(text("""
+            INSERT INTO match_report_versions (organization_id, match_id, version_number,
+                supersedes_version_number, resolution_type, resolution_reason,
+                home_score_regular, away_score_regular, home_score, away_score,
+                home_penalties, away_penalties, winner_team_id, request_id,
+                published_at, published_by_user_id)
+            VALUES (:organization_id, :match_id, :number, :base, :resolution_type, :resolution_reason,
+                :home_score_regular, :away_score_regular, :home_score, :away_score,
+                :home_penalties, :away_penalties, :winner_team_id, :request_id, :now, :user_id)
+            RETURNING *
+        """), {**{key: value for key, value in report.items() if key != "events"},
+            "organization_id": context.organization_id, "match_id": request["match_id"],
+            "number": match["version_number"] + 1, "base": match["version_number"],
+            "request_id": request["id"], "now": now, "user_id": context.user_id})).mappings().one()
+        for event in payload.events:
+            values = event.model_dump()
+            values["client_event_id"] = values["client_event_id"].lower()
+            values["metadata"] = json.dumps(event.metadata or {}, default=str)
+            await self.db.execute(text("""
+                INSERT INTO match_report_version_events (organization_id, version_id, match_id,
+                    segment_id, team_id, beneficiary_team_id, player_id, event_type, minute,
+                    added_minute, client_event_id, assist_player_id, player_out_id, player_in_id, metadata)
+                VALUES (:organization_id, :version_id, :match_id, :segment_id, :team_id,
+                    :beneficiary_team_id, :player_id, :event_type, :minute, :added_minute,
+                    :client_event_id, :assist_player_id, :player_out_id, :player_in_id, CAST(:metadata AS jsonb))
+            """), {**values, "organization_id": context.organization_id,
+                "version_id": version["id"], "match_id": request["match_id"]})
+        await self.db.execute(text("SELECT set_config('app.rectification_version_id', :version_id, true)"),
+            {"version_id": str(version["id"])})
+        effects = await apply_effects(self.db, context, version, now)
+        return {"version_id": version["id"],
+            "version": await self._version(context, request["match_id"], version["version_number"]),
+            "effects": effects}
 
     async def withdraw(self, context: AuthContext, request_id: UUID) -> dict:
         async with self.db.begin():

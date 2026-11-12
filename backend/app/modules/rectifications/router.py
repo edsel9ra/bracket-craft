@@ -7,6 +7,9 @@ from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
+    RectificationDecisionRequest,
+    RectificationDetailResponse,
+    RectificationPreviewResponse,
     RectificationResponse,
     ReportVersionResponse,
 )
@@ -41,11 +44,26 @@ async def list_rectifications(
     return await _execute(RectificationService(db).list_requests(context, match_id))
 
 
-@router.get("/rectifications/{request_id}", response_model=RectificationResponse)
+@router.get("/rectifications/{request_id}", response_model=RectificationDetailResponse)
 async def get_rectification(
     request_id: UUID, context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
 ):
     return await _execute(RectificationService(db).get_request(context, request_id))
+
+
+@router.get("/rectifications/{request_id}/preview", response_model=RectificationPreviewResponse)
+async def preview_rectification(
+    request_id: UUID, context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationService(db).preview(context, request_id))
+
+
+@router.post("/rectifications/{request_id}/decision", response_model=RectificationResponse)
+async def decide_rectification(
+    request_id: UUID, payload: RectificationDecisionRequest,
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationService(db).decide(context, request_id, payload))
 
 
 @router.post("/rectifications/{request_id}/withdraw", response_model=RectificationResponse)
