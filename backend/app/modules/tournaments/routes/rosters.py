@@ -563,7 +563,7 @@ async def create_roster_players_bulk(
                 try:
                     await storage.delete_key(key)
                 except BaseException:
-                    pass
+                    logger.warning("No se pudo eliminar una foto tras revertir la importación")
 
     # N-2: the rows are committed; signing happens outside the transaction so a
     # storage failure answers 503 without deleting uploaded keys or rolling back.
@@ -654,7 +654,7 @@ async def upload_roster_player_photo(
             try:
                 await storage.delete_key(key)
             except BaseException:
-                pass
+                logger.warning("No se pudo eliminar una foto tras revertir la carga")
         elif committed and old_key_to_delete:
             # The previous object is unreferenced only after a confirmed
             # commit. A cancellation during this cleanup is not swallowed.

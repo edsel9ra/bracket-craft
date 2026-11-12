@@ -562,6 +562,7 @@ async def revalidate_socket_sessions_cycle():
             try:
                 await sio.disconnect(sid)
             except Exception:
+                logger.warning("No se pudo desconectar un socket invalidado")
                 continue
 
 

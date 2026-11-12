@@ -297,7 +297,7 @@ async def load_crest(
             try:
                 await storage.delete_key(key)
             except BaseException:
-                pass
+                log.warning("No se pudo eliminar un escudo tras revertir la carga")
         elif committed and old_key_to_delete:
             # Only a confirmed commit makes the previous object unreferenced.
             try:

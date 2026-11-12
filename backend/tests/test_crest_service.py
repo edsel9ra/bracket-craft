@@ -778,15 +778,16 @@ async def test_load_crest_upload_failure_keeps_the_previous_image_and_row(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cleanup_fails", [False, True])
 async def test_load_crest_compensates_the_new_file_when_the_write_body_fails(
-    db_session, tenant_factory, monkeypatch
+    db_session, tenant_factory, monkeypatch, caplog, cleanup_fails
 ):
     tenant = await tenant_factory("Crest Compensation Owner")
     tournament_id, team_id = await seed_enrolled_team(
         db_session, tenant, crest=OLD_KEY
     )
     state = track_transactions(db_session)
-    storage = FakeStorage()
+    storage = FakeStorage(delete_error=RuntimeError("private-storage-error") if cleanup_fails else None)
     crest = validate_crest_content(PNG_BYTES, max_bytes=1024)
 
     async def fail(*_args, **_kwargs):
@@ -815,6 +816,8 @@ async def test_load_crest_compensates_the_new_file_when_the_write_body_fails(
     assert storage.delete_calls == [new_key]
     assert OLD_KEY not in storage.delete_calls
     assert await group_audits(db_session, team_id) == []
+    assert ("No se pudo eliminar un escudo tras revertir la carga" in caplog.text) is cleanup_fails
+    assert "private-storage-error" not in caplog.text
 
 
 # ---------------------------------------------------------------------------

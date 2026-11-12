@@ -793,6 +793,7 @@ class WorkspaceStorage:
         self.delete_transaction_states: list[bool] = []
         self.fail_put_at: int | None = None
         self.on_put = None
+        self.delete_error = None
 
     async def put_bytes(self, key, content, content_type):
         self.puts.append(key)
@@ -806,6 +807,8 @@ class WorkspaceStorage:
     async def delete_key(self, key):
         self.deleted.append(key)
         self.delete_transaction_states.append(self.session.in_transaction())
+        if self.delete_error is not None:
+            raise self.delete_error
 
     async def signed_urls(self, keys, expires_seconds=None):
         keys = list(keys)
@@ -1496,9 +1499,11 @@ async def test_bulk_import_authorizes_before_uploading(monkeypatch):
     assert _no_db_writes(session)
 
 
-async def test_bulk_import_compensates_uploaded_objects_on_cancellation(monkeypatch, allow_management):
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+async def test_bulk_import_compensates_uploaded_objects_on_cancellation(monkeypatch, allow_management, caplog, cleanup_fails):
     session = _bulk_session()
     storage = WorkspaceStorage(session=session)
+    storage.delete_error = RuntimeError("private-storage-error") if cleanup_fails else None
     storage.on_put = _assign_put_keys(session)
     install_workspace_storage(monkeypatch, storage)
     install_import(monkeypatch, with_photos=True)
@@ -1522,6 +1527,9 @@ async def test_bulk_import_compensates_uploaded_objects_on_cancellation(monkeypa
     assert storage.deleted == storage.puts
     assert storage.put_transaction_states == [False, False]
     assert storage.delete_transaction_states == [False, False]
+    warnings = [record for record in caplog.records if record.message == "No se pudo eliminar una foto tras revertir la importación"]
+    assert len(warnings) == (2 if cleanup_fails else 0)
+    assert "private-storage-error" not in caplog.text
 
 
 async def test_bulk_import_compensates_when_the_write_fails(monkeypatch, allow_management):
@@ -1590,7 +1598,8 @@ async def test_upload_photo_revalidates_permission_before_writing(monkeypatch):
     assert session.rolled_back is True
 
 
-async def test_upload_photo_compensates_the_new_object_on_cancellation(monkeypatch, allow_management):
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+async def test_upload_photo_compensates_the_new_object_on_cancellation(monkeypatch, allow_management, caplog, cleanup_fails):
     session = WorkspaceSession(
         roster_lookup={
             "id": ROSTER_ID,
@@ -1601,6 +1610,7 @@ async def test_upload_photo_compensates_the_new_object_on_cancellation(monkeypat
         roster_rows=[roster_row(ROSTER_ID, photo_object_key=OLD_KEY)],
     )
     storage = WorkspaceStorage(session=session)
+    storage.delete_error = RuntimeError("private-storage-error") if cleanup_fails else None
     storage.on_put = lambda key: session.roster_rows[0].update(photo_object_key=key)
     install_workspace_storage(monkeypatch, storage)
     monkeypatch.setattr(
@@ -1626,6 +1636,8 @@ async def test_upload_photo_compensates_the_new_object_on_cancellation(monkeypat
     assert storage.puts
     assert storage.deleted == [storage.puts[0]]
     assert storage.delete_transaction_states == [False]
+    assert ("No se pudo eliminar una foto tras revertir la carga" in caplog.text) is cleanup_fails
+    assert "private-storage-error" not in caplog.text
 
 
 def _object_storage_without_clients(monkeypatch):
