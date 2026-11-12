@@ -101,11 +101,11 @@ async def _insert_invitation(
     await db.execute(
         text("""
             INSERT INTO organization_invitations
-                (organization_id, email, role_code, token_hash, token_encrypted,
+                (organization_id, email, role_code, token_hash,
                  expires_at, invited_by_member_id)
             VALUES
                 (:organization_id, :email, :role_code, :token_hash,
-                 pgp_sym_encrypt(:token, 'integration-test-key'), :expires_at,
+                 :expires_at,
                  :member_id)
         """),
         {
@@ -113,7 +113,6 @@ async def _insert_invitation(
             "email": email,
             "role_code": role_code,
             "token_hash": _token_hash(token),
-            "token": token,
             "expires_at": expires_at,
             "member_id": str(context.owner_member_id),
         },
@@ -505,11 +504,11 @@ async def _insert_tenant_invitation(
     result = await session.execute(
         text("""
             INSERT INTO organization_invitations
-                (organization_id, email, role_code, token_hash, token_encrypted,
+                (organization_id, email, role_code, token_hash,
                  expires_at, invited_by_member_id)
             VALUES
                 (:organization_id, :email, :role_code, :token_hash,
-                 pgp_sym_encrypt(:token, 'integration-test-key'), :expires_at,
+                 :expires_at,
                  :member_id)
             RETURNING id, status, expires_at, updated_at, revoked_at
         """),
@@ -518,7 +517,6 @@ async def _insert_tenant_invitation(
             "email": email,
             "role_code": role_code,
             "token_hash": _token_hash(token),
-            "token": token,
             "expires_at": expires_at,
             "member_id": str(tenant.member_id),
         },

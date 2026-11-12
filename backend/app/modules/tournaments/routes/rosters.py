@@ -169,14 +169,15 @@ async def _find_player_by_document(
     """Look up a player by document inside one organization only (RF-001/RF-003)."""
 
     result = await db.execute(
-        text(f"""
+        text("""
             SELECT id
             FROM players
             WHERE organization_id = :organization_id
               AND document_type = :document_type
               AND issuing_country = :issuing_country
               AND national_id_hmac = {_PLAYER_DOCUMENT_HMAC_SQL}
-        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        """  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        .format(_PLAYER_DOCUMENT_HMAC_SQL=_PLAYER_DOCUMENT_HMAC_SQL)),
         {
             "organization_id": str(organization_id),
             "document_type": payload.document_type,
@@ -212,7 +213,7 @@ async def _find_or_create_player_record(
         return player_id
 
     player_result = await db.execute(
-        text(f"""
+        text("""
             INSERT INTO players
                 (organization_id, first_name, last_name, document_type, national_id_encrypted,
                  national_id_hmac, issuing_country, birth_date_encrypted,
@@ -232,7 +233,8 @@ async def _find_or_create_player_record(
             ON CONFLICT (organization_id, document_type, issuing_country, national_id_hmac)
             DO NOTHING
             RETURNING id
-        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        """  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        .format(_PLAYER_DOCUMENT_HMAC_SQL=_PLAYER_DOCUMENT_HMAC_SQL)),
         {
             "organization_id": str(organization_id),
             "first_name": payload.first_name,
@@ -524,7 +526,7 @@ async def create_roster_players_bulk(
             # active after the uploads, the request fails without rows and the
             # `finally` below compensates the objects (RF-025).
             await _enforce_roster_lock(db, context.organization_id, tournament_id)
-            for row, (roster_id, photo_key) in zip(rows, prepared):
+            for row, (roster_id, photo_key) in zip(rows, prepared, strict=True):
                 try:
                     await _create_roster_player_record(
                         db,
@@ -563,7 +565,7 @@ async def create_roster_players_bulk(
                 try:
                     await storage.delete_key(key)
                 except BaseException:
-                    pass
+                    logger.warning("No se pudo eliminar una foto tras revertir la importación")
 
     # N-2: the rows are committed; signing happens outside the transaction so a
     # storage failure answers 503 without deleting uploaded keys or rolling back.
@@ -654,7 +656,7 @@ async def upload_roster_player_photo(
             try:
                 await storage.delete_key(key)
             except BaseException:
-                pass
+                logger.warning("No se pudo eliminar una foto tras revertir la carga")
         elif committed and old_key_to_delete:
             # The previous object is unreferenced only after a confirmed
             # commit. A cancellation during this cleanup is not swallowed.

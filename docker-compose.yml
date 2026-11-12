@@ -49,7 +49,6 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-bracket-craft-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bracket-craft-web}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:-replace-this-development-player-key-with-at-least-32-characters}
-      INVITATION_TOKEN_KEY: ${INVITATION_TOKEN_KEY:-replace-this-development-invitation-key-with-at-least-32-characters}
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-bc_csrf_token}

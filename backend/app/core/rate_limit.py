@@ -61,7 +61,7 @@ def _validate_request_size(request: Request, max_body_bytes: int | None) -> None
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content-Length inválido") from None
     if content_length < 0 or content_length > max_body_bytes:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="La solicitud supera el tamaño máximo permitido")
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="La solicitud supera el tamaño máximo permitido")
 
 
 async def enforce_rate_limit(

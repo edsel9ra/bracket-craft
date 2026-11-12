@@ -92,7 +92,7 @@ La portada y las rutas `/tournaments/{id}` son públicas. El Workspace de gesti�
 
 Las proyecciones públicas de torneos, tablas y partidos se sirven desde `/api/v1/tournaments/public`, `/api/v1/tournaments/public/{id}`, `/api/v1/tournaments/public/{id}/standings`, `/api/v1/tournaments/public/{id}/matches`, `/api/v1/tournaments/public/{id}/player-stats` y `/api/v1/tournaments/public/{id}/team-stats`. Los partidos incluyen la planilla pública cuando existe; la formación táctica solo aparece después de publicarse explícitamente desde el Workspace. Las dos últimas rutas son las tablas de estadísticas de jugadores y de equipos (spec 022), que incluyen la portería imbatida según la definición única documentada más abajo.
 
-La configuración local incluye un almacenamiento S3-compatible (SeaweedFS) con interfaz de archivos en `http://localhost:9001`. La importación de plantillas acepta CSV/TXT con `first_name`, `last_name`, `national_id`, `birth_date` y `dorsal_number`; `photo_filename` vincula imágenes JPG, PNG o WEBP incluidas en un ZIP opcional. La proyección pública solo devuelve `photo_url` cuando el roster tiene consentimiento de imagen.
+La configuración local incluye un almacenamiento S3-compatible (SeaweedFS) con interfaz de archivos en `http://localhost:9001`. La importación de plantillas acepta CSV/TXT con `first_name`, `last_name`, `national_id`, `birth_date` y `dorsal_number`; `photo_filename` vincula imágenes JPG, PNG o WEBP incluidas en un ZIP opcional. Las fotos (ZIP o carga individual) rechazan ahora la animación declarada como los escudos: `acTL` antes de `IDAT` en PNG, bit de animación `VP8X` o bloque `ANIM` en WEBP; conservan la coincidencia extensión/contenido y sus límites existentes. No se decodifican: un contenedor truncado con firma válida sin animación detectable sigue admitiéndose. La proyección pública solo devuelve `photo_url` cuando el roster tiene consentimiento de imagen.
 
 ## Navegación del Workspace del torneo
 
@@ -866,6 +866,10 @@ Guardar la planilla de un partido, publicar o despublicar la formación de un eq
 - Las entradas quedan sujetas al aislamiento por organización y no se exponen en ninguna ruta ni proyección pública. No hay endpoint ni pantalla de consulta de esta auditoría.
 
 ## Rendimiento, fotos y conexión
+
+Desde **034**, el worker ejecuta al arrancar y cada hora una purga de hasta 20 lotes de 500 sesiones y 500 eventos (máximo 10 000 filas por tabla y ejecución), cada lote en una transacción corta independiente. Continúa mientras alguna tabla devuelva un lote completo y registra los totales. Elimina sesiones vencidas o revocadas hace más de 30 días y outbox con `status='processed'`, `processed_at` de hace más de 7 días y sin bloqueo; conserva pendientes, reintentos y todas las invitaciones. Usa el rol de aplicación mediante una función `SECURITY DEFINER` acotada, sin conceder DELETE global. Si falla, registra el error y reintenta en el siguiente intervalo sin detener el procesamiento del outbox. Aplicar 034 antes de arrancar el worker actualizado.
+
+Desde la migración **033**, las invitaciones conservan solo el hash del token: se elimina `token_encrypted`. `INVITATION_TOKEN_KEY` queda obsoleta, es opcional y Compose ya no la inyecta; el valor de desarrollo explícito sigue rechazándose fuera de desarrollo. Crear, reenviar y reabrir generan un enlace nuevo sin recuperar el token anterior. Aplicar 033 antes de arrancar este código y retirar los procesos antiguos durante la actualización; el código anterior no es compatible con la columna eliminada. La eliminación es irreversible: restaurar un backup es necesario para recuperar el esquema y los valores anteriores.
 
 Los límites de esta sección son constantes del backend: no hay variables de entorno, migraciones ni dependencias nuevas.
 
