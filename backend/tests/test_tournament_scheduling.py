@@ -426,7 +426,7 @@ def pairing_context() -> AuthContext:
 
 @pytest.fixture
 async def pairing_harness(database_admin_url):
-    async with throwaway_database(database_admin_url, last=23) as admin:
+    async with throwaway_database(database_admin_url, last=35) as admin:
         await admin.execute(PAIRING_SEED_SQL)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(
@@ -555,6 +555,10 @@ async def test_duplicate_manual_meeting_is_rejected_without_writing_rows(
     assert "máximo de 1 enfrentamiento" in detail  # names the limit
     # The rejection wrote nothing, not even a partial row.
     assert await count_stage_matches(harness, STAGE_ONE_LEG) == rows_before_rejection == 1
+    assignments = await harness.admin.fetch("SELECT side, team_id, origin FROM match_slot_assignments")
+    assert {(row["side"], str(row["team_id"]), row["origin"]) for row in assignments} == {
+        ("home", TEAM_ONE, "manual"), ("away", TEAM_TWO, "manual"),
+    }
 
 
 @pytest.mark.asyncio
@@ -574,6 +578,7 @@ async def test_generated_matches_count_as_existing_meetings(pairing_harness):
     assert error.status_code == 409
     assert "Liga una vuelta" in error.detail
     assert await count_stage_matches(harness, STAGE_ONE_LEG) == 6
+    assert await harness.admin.fetchval("SELECT count(*) FROM match_slot_assignments WHERE origin = 'manual'") == 12
 
 
 @pytest.mark.asyncio
@@ -646,6 +651,37 @@ async def test_a_match_with_one_empty_side_does_not_count(pairing_harness):
     assert isinstance(error, HTTPException)
     assert error.status_code == 409
     assert await count_stage_matches(harness, STAGE_ONE_LEG) == 3
+    assert await harness.admin.fetchval("SELECT count(*) FROM match_slot_assignments") == 4
+
+
+@pytest.mark.asyncio
+async def test_empty_manual_match_has_no_slot_assignments(pairing_harness):
+    harness = pairing_harness
+    assert await attempt_manual_match(
+        harness, stage_id=STAGE_ONE_LEG, home_team_id=None, away_team_id=None,
+    ) is None
+    assert await count_stage_matches(harness, STAGE_ONE_LEG) == 1
+    assert await harness.admin.fetchval("SELECT count(*) FROM match_slot_assignments") == 0
+
+
+@pytest.mark.asyncio
+async def test_regeneration_preserves_the_previous_assignment_history(pairing_harness):
+    harness = pairing_harness
+    await draw_league(harness, stage_id=STAGE_ONE_LEG, legs=1)
+    previous = await harness.admin.fetch("SELECT * FROM match_slot_assignments ORDER BY id")
+    payload = GenerateSingleEliminationRequest(
+        version_id=UUID(VERSION), stage_id=UUID(STAGE_ONE_LEG), start_date=START_DATE,
+        seed=17, legs=1, replace_existing=True,
+    )
+    async with AsyncSession(harness.engine, expire_on_commit=False) as session:
+        await draw_stage_schedule(UUID(TOURNAMENT), payload, pairing_context(), session)
+    assert await count_stage_matches(harness, STAGE_ONE_LEG) == 6
+    assert await harness.admin.fetchval("SELECT count(*) FROM match_slot_assignments") == 24
+    preserved = await harness.admin.fetch(
+        "SELECT * FROM match_slot_assignments WHERE id = ANY($1::uuid[]) ORDER BY id",
+        [row["id"] for row in previous],
+    )
+    assert preserved == previous
 
 
 @pytest.mark.asyncio

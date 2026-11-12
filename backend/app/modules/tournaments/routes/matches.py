@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.advancement.assignments import record_match_slot_assignments
 from app.modules.tournaments.pairings import (
     count_pair_meetings,
     max_meetings_per_pair,
@@ -526,6 +527,7 @@ async def generate_single_elimination_matches(
                         "match_date": match.match_date,
                     },
                 )
+                await record_match_slot_assignments(db, context.organization_id, match_ids[match.code])
 
             for link in bracket.advancement_links:
                 await db.execute(
@@ -599,6 +601,7 @@ async def _persist_direct_schedule(
     count = 0
     for group_id, schedule in schedules:
         for match in schedule.matches:
+            match_id = uuid4()
             await db.execute(
                 text("""
                     INSERT INTO matches
@@ -608,7 +611,7 @@ async def _persist_direct_schedule(
                             :group_id, :bracket_code, :home_team_id, :away_team_id, :matchday, :match_date)
                 """),
                 {
-                    "id": str(uuid4()),
+                    "id": str(match_id),
                     "organization_id": str(context.organization_id),
                     "tournament_id": str(tournament_id),
                     "version_id": str(version_id),
@@ -621,6 +624,7 @@ async def _persist_direct_schedule(
                     "match_date": match.match_date,
                 },
             )
+            await record_match_slot_assignments(db, context.organization_id, match_id)
             count += 1
     return count
 
@@ -698,6 +702,7 @@ async def _persist_bracket_schedule(
                     "match_date": match.match_date,
                 },
             )
+            await record_match_slot_assignments(db, context.organization_id, match_ids[match.code])
 
         if bracket.reset_code:
             await db.execute(
@@ -1109,6 +1114,7 @@ async def _write_swiss_schedule(
                 "organization_id": str(context.organization_id),
             },
         )
+        await record_match_slot_assignments(db, context.organization_id, match_id)
 
 
 async def _draw_non_swiss_schedule(
@@ -1714,4 +1720,6 @@ async def create_match(
                 "match_date": payload.match_date,
             },
         )
-    return dict(result.mappings().one())
+        match = dict(result.mappings().one())
+        await record_match_slot_assignments(db, context.organization_id, match["id"])
+    return match

@@ -4,6 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.locking import lock_matches
+from app.modules.advancement.assignments import record_match_slot_assignments
 from app.modules.rule_contract import GRAND_FINAL_CODE, RESET_CODE
 
 
@@ -76,7 +77,7 @@ class AdvancementService:
     async def advance_from_match(self, context, match_id: UUID, match, outcome) -> None:
         links_result = await self.db.execute(
             text("""
-                SELECT target_match_id, target_side, outcome
+                SELECT id, target_match_id, target_side, outcome
                 FROM advancement_links
                 WHERE organization_id = :organization_id
                   AND source_match_id = :source_match_id
@@ -113,6 +114,10 @@ class AdvancementService:
             )
             if update_result.rowcount != 1:
                 raise ValueError("El partido destino del advancement no está disponible")
+            await record_match_slot_assignments(
+                self.db, context.organization_id, link["target_match_id"],
+                origin="advancement_link", side=link["target_side"], advancement_link_id=link["id"],
+            )
 
     async def activate_double_elimination_reset(self, context, match, outcome) -> None:
         """Activate GF2 only when the losers-bracket finalist wins GF1."""
@@ -164,6 +169,7 @@ class AdvancementService:
         )
         if update_result.rowcount != 1:
             raise ValueError("El bracket reset ya fue activado o no está disponible")
+        await record_match_slot_assignments(self.db, context.organization_id, reset["id"])
         await self.db.execute(
             text("""
                 INSERT INTO outbox_events (organization_id, event_type, payload)

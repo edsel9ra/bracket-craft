@@ -2437,6 +2437,22 @@ async def test_a_walkover_of_the_grand_final_activates_the_reset(database_admin_
             "away_team_id": match.away_team_id,
             "status": "scheduled",
         }
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            await set_tenant_context(session, match.tenant)
+            assignments = (
+                await session.execute(
+                    text("""
+                        SELECT side, team_id, origin, advancement_link_id, match_report_version_id
+                        FROM match_slot_assignments WHERE match_id = :match_id
+                    """),
+                    {"match_id": str(match.reset_match_id)},
+                )
+            ).mappings().all()
+        assert {(row["side"], row["team_id"]) for row in assignments} == {
+            ("home", match.home_team_id), ("away", match.away_team_id),
+        }
+        assert all(row["origin"] == "manual" for row in assignments)
+        assert all(row["advancement_link_id"] is None and row["match_report_version_id"] is None for row in assignments)
         # El cuarto evento es el `MATCH_UPDATED` que el reset ya emitía antes de
         # esta spec (no se añade ningún tipo nuevo: RNF-011).
         types = _outbox_types(state)
@@ -3277,4 +3293,3 @@ async def test_the_walkover_after_a_new_segment_closes_it_at_its_start(
                 "status": "completed",
             },
         ]
-

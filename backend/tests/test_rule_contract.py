@@ -86,6 +86,8 @@ class RecordingSession:
             return Result(rowcount=1)
         if sql.startswith("INSERT INTO outbox_events"):
             return Result()
+        if sql.startswith("INSERT INTO match_slot_assignments"):
+            return Result()
         raise AssertionError(f"consulta no esperada: {sql}")
 
 
@@ -208,6 +210,12 @@ async def test_the_reset_is_activated_with_both_grand_final_teams():
     assert update_params["home_team_id"] == str(match.home_team_id)
     assert update_params["away_team_id"] == str(match.away_team_id)
     assert update_params["organization_id"] == str(context.organization_id)
+    assignments = [params for sql, params in session.calls if sql.startswith("INSERT INTO match_slot_assignments")]
+    assert len(assignments) == 1
+    assert assignments[0]["match_id"] == str(reset_id)
+    assert assignments[0]["origin"] == "manual"
+    assert assignments[0]["side"] is None
+    assert assignments[0]["advancement_link_id"] is None
 
     outbox = [
         json.loads(params["payload"])

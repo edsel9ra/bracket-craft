@@ -1107,6 +1107,21 @@ async def snapshot(engine, match: WalkoverMatch) -> dict[str, object]:
                 {"match_id": str(match.target_match_id)},
             )
         ).mappings().one()
+        assignments = [
+            dict(item)
+            for item in (
+                await session.execute(
+                    text("""
+                        SELECT a.side, a.team_id, a.origin, a.advancement_link_id,
+                               a.match_report_version_id, al.source_match_id
+                        FROM match_slot_assignments a
+                        LEFT JOIN advancement_links al ON al.id = a.advancement_link_id
+                        WHERE a.match_id = :match_id ORDER BY a.assigned_at, a.id
+                    """),
+                    {"match_id": str(match.target_match_id)},
+                )
+            ).mappings().all()
+        ]
     return {
         **dict(row),
         "segments": segments,
@@ -1118,6 +1133,7 @@ async def snapshot(engine, match: WalkoverMatch) -> dict[str, object]:
         "suspension_serves": serves,
         "suspensions": suspensions,
         "target": dict(target),
+        "assignments": assignments,
     }
 
 
@@ -1175,6 +1191,14 @@ async def test_a_walkover_without_segments_or_roster_closes_the_match(database_a
         assert (away["goals_for"], away["goals_against"], away["goal_difference"]) == (0, 3, -3)
         # RF-008: el ganador avanza de llave.
         assert state["target"]["home_team_id"] == match.home_team_id
+        assert len(state["assignments"]) == 1
+        assignment = state["assignments"][0]
+        assert assignment["side"] == "home"
+        assert assignment["team_id"] == match.home_team_id
+        assert assignment["origin"] == "advancement_link"
+        assert assignment["advancement_link_id"] is not None
+        assert assignment["source_match_id"] == match.match_id
+        assert assignment["match_report_version_id"] is None
         # RNF-011: los mismos tres eventos de outbox que un cierre normal.
         assert state["outbox"] == ["MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"]
         # RNF-010: la acción de cierre, con el motivo en su contenido.

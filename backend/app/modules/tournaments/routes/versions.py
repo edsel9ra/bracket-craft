@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.advancement.assignments import record_match_slot_assignments
 from app.modules.rules_engine.engine import (
     normalize_rules_config,
     remap_stage_overrides,
@@ -369,6 +370,7 @@ async def _create_draft_version_record(
                 "match_date": match["match_date"],
             },
         )
+        await record_match_slot_assignments(db, context.organization_id, match_map[str(match["id"])])
 
     for match in source_matches:
         if match["replacement_match_id"] is not None:

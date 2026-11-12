@@ -8,7 +8,7 @@ import asyncpg
 import pytest
 
 from migration_helpers import apply_migration, migration_path, throwaway_database
-from test_migration_031 import MATCH, MEMBER, ORG, SEED_SQL, SEGMENT_FIRST, TEAM_HOME, USER, PLAYER_HOME_FIRST
+from test_migration_031 import MATCH, MEMBER, ORG, SEED_SQL, SEGMENT_FIRST, TEAM_HOME, TEAM_AWAY, USER, PLAYER_HOME_FIRST
 
 APPEND_ONLY = (
     "match_report_rectification_decisions",
@@ -17,6 +17,7 @@ APPEND_ONLY = (
     "match_report_rectification_effects",
     "match_report_rectification_notifications",
     "player_suspension_annulments",
+    "match_slot_assignments",
 )
 MUTABLE = {
     "match_report_rectification_requests": {"status", "withdrawn_at", "resulting_version_id"},
@@ -28,6 +29,12 @@ TABLES = (*APPEND_ONLY, *MUTABLE)
 
 async def seed(connection, *, include_decision=True):
     await connection.execute(SEED_SQL)
+    await connection.execute("""
+        INSERT INTO match_slot_assignments
+            (organization_id, tournament_id, match_id, side, team_id, origin)
+        SELECT organization_id, tournament_id, id, 'home', home_team_id, 'manual'
+        FROM matches WHERE id = $1
+    """, MATCH)
     approver = await connection.fetchval("""
         INSERT INTO users (email, full_name) VALUES ('approver-035@example.test', 'Approver') RETURNING id
     """)
@@ -350,3 +357,83 @@ async def test_035_permissions(database_admin_url, incremental):
             FROM role_definitions rd JOIN roles r ON r.role_definition_id = rd.id
         """)
         assert sorted(map(tuple, after)) == sorted(map(tuple, rows))
+
+
+@pytest.mark.parametrize("incremental", [False, True], ids=["clean", "034-to-035"])
+async def test_035_slot_assignment_backfill(database_admin_url, incremental):
+    async with throwaway_database(database_admin_url, last=34 if incremental else 0) as db:
+        if not incremental:
+            for number in range(1, 35):
+                await apply_migration(db, number)
+        await db.execute(SEED_SQL.split("UPDATE public.tournament_versions")[0])
+        await db.execute("""
+            UPDATE matches SET status = 'finished', result_confirmed = TRUE,
+                resolution_type = 'penalties', home_score_regular = 1, away_score_regular = 1,
+                home_score = 1, away_score = 1,
+                home_penalties = 2, away_penalties = 4, winner_team_id = $1
+            WHERE id = $2
+        """, TEAM_AWAY, MATCH)
+
+        async def make_match(home=None, away=None, **fields):
+            identifier = uuid4()
+            await db.execute("""
+                INSERT INTO matches
+                    (id, organization_id, tournament_id, tournament_version_id, stage_id,
+                     home_team_id, away_team_id, result_confirmed, winner_team_id, bracket_code)
+                SELECT $1, organization_id, tournament_id, tournament_version_id, stage_id,
+                       $2, $3, $4, $5, $6 FROM matches WHERE id = $7
+            """, identifier, home, away, fields.get("confirmed", False), fields.get("winner"),
+                fields.get("code"), MATCH)
+            return identifier
+
+        async def link(target, *, source=MATCH, outcome="winner", side="home"):
+            return await db.fetchval("""
+                INSERT INTO advancement_links
+                    (organization_id, source_match_id, target_match_id, outcome, target_side)
+                VALUES ($1, $2, $3, $4, $5) RETURNING id
+            """, ORG, source, target, outcome, side)
+
+        winner_target = await make_match(home=TEAM_AWAY)
+        winner_link = await link(winner_target)
+        loser_target = await make_match(away=TEAM_HOME)
+        loser_link = await link(loser_target, outcome="loser", side="away")
+        ambiguous = await make_match(home=TEAM_AWAY)
+        await link(ambiguous)
+        await link(ambiguous, outcome="loser")
+        mismatch = await make_match(home=TEAM_HOME)
+        await link(mismatch)
+        unconfirmed = await make_match(TEAM_HOME, TEAM_AWAY, winner=TEAM_AWAY)
+        unconfirmed_target = await make_match(home=TEAM_AWAY)
+        await link(unconfirmed_target, source=unconfirmed)
+        no_winner = await make_match(TEAM_HOME, TEAM_AWAY, confirmed=True)
+        no_winner_target = await make_match(home=TEAM_HOME)
+        await link(no_winner_target, source=no_winner, outcome="loser")
+        reset = await make_match(TEAM_HOME, TEAM_AWAY, code="GF2")
+        empty = await make_match()
+
+        await apply_migration(db, 35)
+        rows = await db.fetch("SELECT * FROM match_slot_assignments")
+        slots = {(row["match_id"], row["side"]): row for row in rows}
+        assert len(slots) == len(rows) == await db.fetchval("""
+            SELECT sum((home_team_id IS NOT NULL)::int + (away_team_id IS NOT NULL)::int)
+            FROM matches
+        """)
+        for key, team, advancement_link in (
+            ((winner_target, "home"), TEAM_AWAY, winner_link),
+            ((loser_target, "away"), TEAM_HOME, loser_link),
+        ):
+            row = slots[key]
+            assert row["origin"] == "advancement_link"
+            assert row["advancement_link_id"] == advancement_link
+            assert str(row["team_id"]) == team
+        for target in (ambiguous, mismatch, unconfirmed_target, no_winner_target, reset):
+            for row in rows:
+                if row["match_id"] == target:
+                    assert row["origin"] == "manual"
+                    assert row["advancement_link_id"] is None
+        assert not any(row["match_id"] == empty for row in rows)
+        assert all(row["match_report_version_id"] is None and row["assigned_at"] for row in rows)
+
+        await db.execute("DELETE FROM advancement_links WHERE target_match_id = $1", ambiguous)
+        await db.execute("DELETE FROM matches WHERE id = $1", ambiguous)
+        assert await db.fetchval("SELECT count(*) FROM match_slot_assignments WHERE match_id = $1", ambiguous) == 1

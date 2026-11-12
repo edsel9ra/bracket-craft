@@ -588,6 +588,8 @@ async def test_advancement_reset_does_not_lock_gf2_again():
             return Result(rowcount=1)
         if sql.startswith("INSERT INTO outbox_events"):
             return Result()
+        if sql.startswith("INSERT INTO match_slot_assignments"):
+            return Result()
         raise StopExecution(sql)
 
     session.handle = handle

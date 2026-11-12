@@ -217,6 +217,88 @@ CREATE TABLE public.player_suspension_annulments (
         REFERENCES public.match_report_versions(id, organization_id) ON DELETE RESTRICT
 );
 
+CREATE TABLE public.match_slot_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    tournament_id UUID NOT NULL,
+    match_id UUID NOT NULL,
+    side VARCHAR(4) NOT NULL CHECK (side IN ('home', 'away')),
+    team_id UUID NOT NULL,
+    origin VARCHAR(20) NOT NULL CHECK (origin IN ('advancement_link', 'manual', 'rectification')),
+    advancement_link_id UUID,
+    match_report_version_id UUID,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    CHECK (origin <> 'advancement_link' OR advancement_link_id IS NOT NULL),
+    CHECK (origin <> 'rectification' OR match_report_version_id IS NOT NULL),
+    FOREIGN KEY (tournament_id, organization_id)
+        REFERENCES public.tournaments(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (team_id, organization_id)
+        REFERENCES public.teams(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (match_report_version_id, organization_id)
+        REFERENCES public.match_report_versions(id, organization_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_match_slot_assignments_slot
+    ON public.match_slot_assignments (organization_id, match_id, side, assigned_at, id);
+
+-- Draft schedule regeneration deletes matches and links, not their assignment history.
+CREATE FUNCTION public.validate_match_slot_assignment_context()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM public.matches m
+        WHERE m.id = NEW.match_id AND m.organization_id = NEW.organization_id
+          AND m.tournament_id = NEW.tournament_id
+    ) OR (
+        NEW.advancement_link_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM public.advancement_links al
+            WHERE al.id = NEW.advancement_link_id AND al.organization_id = NEW.organization_id
+              AND al.target_match_id = NEW.match_id AND al.target_side = NEW.side
+        )
+    ) THEN
+        RAISE EXCEPTION 'Invalid match slot assignment context' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validate_match_slot_assignment_context
+BEFORE INSERT ON public.match_slot_assignments
+FOR EACH ROW EXECUTE FUNCTION public.validate_match_slot_assignment_context();
+
+INSERT INTO public.match_slot_assignments
+    (organization_id, tournament_id, match_id, side, team_id, origin, advancement_link_id)
+SELECT m.organization_id, m.tournament_id, m.id, slot.side, slot.team_id,
+       CASE WHEN provenance.link_count = 1 AND provenance.link_id IS NOT NULL
+            THEN 'advancement_link' ELSE 'manual' END,
+       CASE WHEN provenance.link_count = 1 THEN provenance.link_id END
+FROM public.matches m
+CROSS JOIN LATERAL (
+    VALUES ('home', m.home_team_id), ('away', m.away_team_id)
+) slot(side, team_id)
+LEFT JOIN LATERAL (
+    SELECT count(*) AS link_count,
+           (array_agg(al.id) FILTER (
+               WHERE source.result_confirmed
+                 AND source.winner_team_id IN (source.home_team_id, source.away_team_id)
+                 AND slot.team_id = CASE
+                     WHEN al.outcome = 'winner' THEN source.winner_team_id
+                     WHEN source.winner_team_id = source.home_team_id THEN source.away_team_id
+                     WHEN source.winner_team_id = source.away_team_id THEN source.home_team_id
+                 END
+           ))[1] AS link_id
+    FROM public.advancement_links al
+    JOIN public.matches source
+      ON source.id = al.source_match_id AND source.organization_id = al.organization_id
+    WHERE al.organization_id = m.organization_id
+      AND al.target_match_id = m.id AND al.target_side = slot.side
+) provenance ON TRUE
+WHERE slot.team_id IS NOT NULL;
+
+
 CREATE FUNCTION public.prevent_match_report_history_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -235,7 +317,7 @@ BEGIN
         'match_report_platform_authorizations', 'match_report_versions',
         'match_report_version_events', 'match_report_rectification_effects',
         'match_report_rectification_notifications', 'competitive_impact_procedures',
-        'player_suspension_annulments'
+        'player_suspension_annulments', 'match_slot_assignments'
     ] LOOP
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', table_name);
@@ -256,7 +338,8 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'match_report_rectification_decisions', 'match_report_versions',
         'match_report_version_events', 'match_report_rectification_effects',
-        'match_report_rectification_notifications', 'player_suspension_annulments'
+        'match_report_rectification_notifications', 'player_suspension_annulments',
+        'match_slot_assignments'
     ] LOOP
         EXECUTE format(
             'CREATE TRIGGER trg_append_only BEFORE UPDATE OR DELETE ON public.%I
