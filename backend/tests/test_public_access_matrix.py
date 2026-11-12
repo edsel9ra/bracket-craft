@@ -153,11 +153,14 @@ async def _public_api(session):
     connection = await session.connection()
 
     async def database():
-        request_session = AsyncSession(bind=connection, expire_on_commit=False)
+        request_session = AsyncSession(
+            bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        )
         try:
             yield request_session
         finally:
             await request_session.close()
+            assert connection.in_transaction()
 
     api.dependency_overrides[get_db] = database
     try:

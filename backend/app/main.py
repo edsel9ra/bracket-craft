@@ -830,13 +830,13 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
             )
         if content_length < 0 or content_length > current_settings.max_request_body_bytes:
             return JSONResponse(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 content={"detail": "La solicitud supera el tamaño máximo permitido"},
             )
     body_result = await _buffer_request_body(request, current_settings.max_request_body_bytes)
     if body_result is BodyBufferResult.TOO_LARGE:
         return JSONResponse(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={"detail": "La solicitud supera el tamaño máximo permitido"},
         )
     if body_result is BodyBufferResult.DISCONNECTED:
