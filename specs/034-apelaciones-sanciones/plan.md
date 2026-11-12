@@ -1,6 +1,6 @@
 # Plan 034 — Apelaciones y resoluciones de sanciones
 
-Fecha: 2026-11-12. Estado: **borrador**. Desarrolla la spec 034 aprobada por el usuario el 2026-11-12 y la constitución 2.0.0, especialmente §3.6. La fase actual es Plan. No autoriza tareas ni implementación; las decisiones C1–C5 requieren confirmación explícita y la aprobación del plan es independiente de la aprobación de la spec.
+Fecha: 2026-11-12. Estado: **aprobado** por el usuario el 2026-11-12, incluidas C1–C5 tal como están. Desarrolla la spec 034 aprobada el 2026-11-12 y la constitución 2.0.0, especialmente §3.6. Fase Plan cerrada; fase actual Tareas. La aprobación permite redactar tareas, no las da por aprobadas ni declara implementado F9.
 
 ## 1. Idea central y comprobación contra el código
 
@@ -183,9 +183,9 @@ No usar `MATCH_UPDATED`, ni el room de toda la organización, ni el canal públi
 - Reutilizar tokens, componentes UI e imports explícitos, navegación y permisos del Workspace/admin. Accesibilidad de foco/teclado, aviso no basado solo en color, pantallas móviles. Tests de componentes y comprobación visual durante implementación, no en esta entrega documental.
 - **Campos públicos nuevos: ninguno.** No tocar vistas/modelos/rutas públicos ni la matriz 020; no publicar sanción, expediente, duración, estado, responsable, motivo, evidencia o cumplimiento. Documentos/nacimiento siguen excluidos; fotos siguen dependiendo del consentimiento. `PublicLineupModal.vue` no recibe el aviso privado.
 
-## 7. Decisiones justificadas y confirmaciones necesarias
+## 7. Decisiones justificadas y confirmaciones del usuario
 
-Las elecciones de implementación siguientes son propuestas, no cambios de requisitos. Las confirmaciones no pueden autorizar una excepción a principios innegociables.
+Las elecciones de implementación siguientes fueron aprobadas por el usuario el 2026-11-12, incluidas C1–C5 tal como estaban propuestas. Se conservan su justificación y alternativas; las confirmaciones no autorizan excepciones a principios innegociables.
 
 | ID | Decisión propuesta y razón | Alternativa descartada o pendiente |
 |---|---|---|
@@ -200,7 +200,7 @@ Las elecciones de implementación siguientes son propuestas, no cambios de requi
 | **C4 — Decisión que requiere confirmación del usuario** | Identificar siguiente partido por primera apertura real, aplicar ahí con snapshot y registrar partido/instante, no elegir por calendario. Para legado sin prueba temporal, tratamiento conservador y revisión explícita; no reconstrucción inventada. | Aplicar inmediatamente con un único status global cambia partidos en curso; usar `match_date` falla con reprogramaciones. La spec fija no retroactividad, pero no resuelve apertura concurrente ni legado sin fechas. Si se prefiere otra frontera, concretarla sin alterar RF-030. |
 | **C5 — Decisión que requiere confirmación del usuario** | Revalidar autorización de destinatario antes de entrega/lectura; si perdió membresía/facultad, retener aviso sin exponer contenido y registrar omisión autorizativa (sin revertir acto). Confirmar política de reintento cuando recupere acceso. | Entregar siempre al snapshot original satisface un conjunto fijo de destinatarios pero puede revelar motivos a alguien ya desautorizado. La spec no fija qué hacer ante pérdida de permiso entre registro y entrega; no decidirlo silenciosamente. |
 
-No se presenta el plan como listo para implementar mientras C1–C5 no estén resueltas. No se crean `tasks.md`, migraciones, permisos reales ni endpoints en esta fase.
+C1–C5 confirmadas expresamente por el usuario el 2026-11-12. Sus rótulos originales identifican los puntos sometidos a confirmación, no dudas pendientes. Se cierra Plan y se redacta `tasks.md` en fase Tareas; no se crean migraciones, permisos reales ni endpoints hasta aprobar las tareas.
 
 ## 8. Estrategia de tests — primero las pruebas
 
@@ -262,7 +262,7 @@ RNF-001–RNF-006: historial e integridad transaccional (§2–3), rendimiento c
 
 ## 10. Partición propuesta en PRs fusionables
 
-Después de aprobar el plan, derivar tareas pequeñas por PR, sin crear tareas ahora. Dependencias A → B → C → D. Este PR #68 sigue siendo documental; no convierte automáticamente su rama en una entrega funcional.
+Con el plan aprobado, derivar tareas pequeñas por PR en fase Tareas. Dependencias A → B → C → D. Este PR #68 sigue siendo documental; no convierte automáticamente su rama en una entrega funcional.
 
 | PR | Alcance | Condición para fusionar seguro con main |
 |---|---|---|
@@ -279,11 +279,11 @@ Sin variables ni dependencias nuevas previstas; SMTP, Redis y outbox existentes.
 
 ## 12. Verificación de constitución
 
-Tabla de cumplimiento **diseñado**, no evidencia de F9 implementado. C1–C5 pendientes impiden considerar aprobado o listo el plan; ninguna excepción constitucional solicitada.
+Tabla de cumplimiento **diseñado**, no evidencia de F9 implementado. Plan aprobado con C1–C5 confirmadas el 2026-11-12; ninguna excepción constitucional solicitada. Las tareas requieren su propia aprobación.
 
 | Principio o criterio | Aplica | Cómo se cumple |
 |---|---|---|
-| §2.1 Aislamiento tenant en BD | Sí | RLS/FORCE, FK compuestas, scopes mínimos y pruebas con dos organizaciones y rol real; C1/C2 pendientes. |
+| §2.1 Aislamiento tenant en BD | Sí | RLS/FORCE, FK compuestas, scopes mínimos y pruebas con dos organizaciones y rol real; C1/C2 confirmadas. |
 | §2.2 Sin BYPASSRLS de aplicación | Sí | No cambiar privilegios del rol; funciones mínimas revisadas, contexto local y tests de acceso directo; C2. |
 | §2.3 Publicado inmutable | Sí | Actas/eventos/versiones originales sin UPDATE; no relajar 016/009/037/03_hardening. F9 conserva duración original y usa resolución nueva. |
 | §2.4 Historial de esquema append-only | Sí | Nueva 040 si sigue libre; limpio/migrado/checksums; correcciones posteriores solo por nuevas migraciones. |
