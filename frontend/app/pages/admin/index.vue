@@ -161,6 +161,7 @@ await load();
       </div>
        <h1>{{ t('admin.headline') }}</h1>
        <p class="admin-copy">{{ t('admin.copy') }}</p>
+       <Button as="NuxtLink" to="/admin/rectifications" variant="secondary">{{ t('rectification.platformTitle') }}</Button>
     </section>
 
     <section class="container admin-content">

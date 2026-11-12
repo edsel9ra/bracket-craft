@@ -38,12 +38,15 @@ def _events(report, *, proposed=False):
 
 def diff_reports(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> dict:
     before, after = _events(current), _events(proposed, proposed=True)
+    report_fields = _fields(current, proposed, REPORT_FIELDS)
+    if list(before) != list(after):
+        report_fields.append({"field": "event_order", "before": list(before), "after": list(after)})
     changed = []
     for identity in sorted(before.keys() & after.keys()):
         fields = _fields(before[identity], after[identity], MatchEventPayload.model_fields)
         if fields:
             changed.append({"client_event_id": identity, "fields": fields})
-    return {"fields": _fields(current, proposed, REPORT_FIELDS), "events": {
+    return {"fields": report_fields, "events": {
         "added": [after[key] for key in sorted(after.keys() - before.keys())],
         "removed": [before[key] for key in sorted(before.keys() - after.keys())],
         "changed": changed,

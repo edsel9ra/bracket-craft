@@ -290,7 +290,6 @@ async def test_reordering_cards_rederives_the_threshold_in_version_three(flow):
     assert (await decide(flow, request)).status_code == 200
     approver = flow.context
     flow.context = requester
-    body["proposed_report"]["events"][0]["minute"] = 11
     body["proposed_report"]["events"][1:] = reversed(cards)
     response = await create(flow, body)
     assert response.status_code == 201, response.text

@@ -9,7 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.database import set_rls_context
 from app.core.platform import require_platform_write
 from app.modules.matches.audit import record_match_audit
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.rectifications.schemas import RectificationReportDTO
 from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.service import (
     RectificationConflict, RectificationSelfApproval, RectificationService, _proposal_report, _self_approval_violation,
@@ -24,6 +24,18 @@ class AuthorizedPlatformActor:
 
 
 class RectificationPlatformService(RectificationService):
+    async def list_authorizations(self, context, request_id):
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            try:
+                await self._owner(context)
+            except PermissionError as exc:
+                raise LookupError("Solicitud no encontrada") from exc
+            await self._request(context, request_id)
+            return (await self.db.execute(text("""SELECT * FROM match_report_platform_authorizations
+                WHERE organization_id=:org AND request_id=:request ORDER BY granted_at,id"""),
+                {"org": context.organization_id, "request": request_id})).mappings().all()
+
     async def _owner(self, context):
         owner = (await self.db.execute(text("SELECT rectification_owner(:id)"),
             {"id": context.organization_id})).scalar_one()
@@ -144,8 +156,22 @@ class RectificationPlatformService(RectificationService):
             await set_rls_context(self.db, None, platform.user_id)
             actor, request, match, _ = await self._authorized_request(platform, request_id)
             current = await self._version(actor, request["match_id"], match["version_number"])
-            proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
-            return {**request, "diff": diff_reports(current["report"], proposal)}
+            proposal = _proposal_report(match, RectificationReportDTO.model_validate(request["proposed_report"]))
+            return {**request, "diff": diff_reports(current["report"], proposal), "current_version": current}
+
+    async def platform_preview(self, platform, request_id):
+        require_platform_write(platform)
+        async with self.db.begin():
+            await set_rls_context(self.db, None, platform.user_id)
+            savepoint = await self.db.begin_nested()
+            try:
+                actor, request, match, _ = await self._authorized_request(platform, request_id, lock=True)
+                self._require_pending(request)
+                result = await self._publish(actor, request, match, datetime.now(timezone.utc))
+                return {**{key: result[key] for key in ("version", "effects")},
+                    "expected_base_version": match["version_number"]}
+            finally:
+                await savepoint.rollback()
 
     async def platform_decide(self, platform, request_id, payload):
         require_platform_write(platform)

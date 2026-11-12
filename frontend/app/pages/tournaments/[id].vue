@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
+import PublicRectifiedMark from '~/components/public/PublicRectifiedMark.vue';
 import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
 import { nextTick } from 'vue';
 import { useRealtime } from '~/composables/useRealtime';
@@ -552,6 +553,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              <div v-if="!matches.length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
              <TransitionGroup v-else name="card-list" tag="div" class="match-list">
                <article v-for="match in matches" :key="match.id" class="match-card">
+                 <PublicRectifiedMark :rectified-at="match.rectified_at" />
                  <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                  <div class="match-teams">
                         <div class="match-team">
@@ -627,6 +629,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                      <div v-if="!matchesForGroup(matches, selectedStage.id, group.groupId).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                      <TransitionGroup v-else name="card-list" tag="div" class="match-list">
                        <article v-for="match in matchesForGroup(matches, selectedStage.id, group.groupId)" :key="match.id" class="match-card">
+                         <PublicRectifiedMark :rectified-at="match.rectified_at" />
                          <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                          <div class="match-teams">
                             <div class="match-team">
@@ -674,6 +677,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                    <div v-if="!matchesForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                    <TransitionGroup v-else name="card-list" tag="div" class="match-list">
                      <article v-for="match in matchesForGroup(matches, selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
+                       <PublicRectifiedMark :rectified-at="match.rectified_at" />
                        <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                        <div class="match-teams">
                           <div class="match-team">
@@ -721,6 +725,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                <div v-if="!matchesForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                <TransitionGroup v-else name="card-list" tag="div" class="match-list">
                  <article v-for="match in matchesForGroup(matches, selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
+                   <PublicRectifiedMark :rectified-at="match.rectified_at" />
                    <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
                    <div class="match-teams">
                         <div class="match-team">

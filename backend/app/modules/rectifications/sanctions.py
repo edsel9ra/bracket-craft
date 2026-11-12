@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
+from app.modules.matches.schemas import CLIENT_EVENT_ID_PATTERN
 from app.modules.rules_engine.engine import discipline_history_order_key, evaluate_suspensions
 
 
@@ -75,7 +76,8 @@ async def _load_discipline_rows(db, context, tournament_id, match_id=None):
         LEFT JOIN LATERAL (
             SELECT position FROM jsonb_array_elements(version.proposed_report->'events')
                 WITH ORDINALITY AS proposed(event, position)
-            WHERE lower(event->>'client_event_id') = e.client_event_id
+            WHERE CASE WHEN event->>'client_event_id' ~ :client_event_id_pattern
+                THEN lower(event->>'client_event_id') ELSE event->>'client_event_id' END = e.client_event_id
             UNION ALL
             SELECT position FROM jsonb_array_elements_text(audit.payload->'event_ids')
                 WITH ORDINALITY AS original(event_id, position)
@@ -87,7 +89,7 @@ async def _load_discipline_rows(db, context, tournament_id, match_id=None):
         ORDER BY m.match_date NULLS FIRST, m.id, report_order.position NULLS LAST,
             e.minute, e.added_minute, e.created_at, e.id
     """), {"organization_id": context.organization_id, "tournament_id": tournament_id,
-        "match_id": match_id})).mappings().all()
+        "match_id": match_id, "client_event_id_pattern": CLIENT_EVENT_ID_PATTERN})).mappings().all()
 
 
 async def capture_discipline(db: AsyncSession, context: AuthContext, match: Mapping[str, Any]) -> dict:

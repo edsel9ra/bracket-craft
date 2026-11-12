@@ -4,13 +4,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
+
+
+class RectificationEventPayload(MatchEventPayload):
+    client_event_id: str
+
+
+class RectificationReportDTO(CloseMatchReportDTO):
+    events: list[RectificationEventPayload] = Field(default_factory=list, max_length=500)
 
 
 class CreateRectificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    proposed_report: CloseMatchReportDTO
+    proposed_report: RectificationReportDTO
     reason: str = Field(min_length=1)
     evidence: str = Field(min_length=1)
 
@@ -198,8 +206,47 @@ class RectificationDetailResponse(RectificationResponse):
     diff: ReportDifference
 
 
+class OrganizationListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tournament_id: UUID | None = None
+    limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class RectificationListQuery(OrganizationListQuery):
+    status: Literal["pending", "rejected", "withdrawn", "published"] | None = None
+
+
+class CompetitiveImpactListQuery(OrganizationListQuery):
+    status: Literal["open", "closed"] | None = None
+
+
+class RectificationPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[RectificationResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class CompetitiveImpactPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CompetitiveImpactResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class RectificationPreviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: ReportVersionResponse
     effects: list[dict[str, Any]]
+    expected_base_version: int
+
+
+class PlatformRectificationDetailResponse(RectificationDetailResponse):
+    current_version: ReportVersionResponse

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import UUID
@@ -13,7 +14,7 @@ from app.core.locking import lock_matches, lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
-from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.schemas import CLIENT_EVENT_ID_PATTERN, CloseMatchReportDTO
 from app.modules.matches.service import (
     canonical_client_event_id, derive_walkover_score, load_report_payload_snapshot, validate_report_payload,
 )
@@ -25,6 +26,7 @@ from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     RectificationDecisionRequest,
     RectificationResponse,
+    RectificationReportDTO,
     ReportContentResponse,
     ReportEventResponse,
     ReportVersionResponse,
@@ -162,13 +164,15 @@ class RectificationService:
                 """), {"match_id": match_id, "organization_id": context.organization_id})).scalar_one_or_none()
                 if pending is not None:
                     raise _already_open()
+                current = await self._version(context, match_id, match["version_number"])
+                events = current["report"]["events"]
+                existing_ids = {event["client_event_id"] for event in events}
+                for event in payload.proposed_report.events:
+                    if event.client_event_id not in existing_ids and not re.fullmatch(CLIENT_EVENT_ID_PATTERN, event.client_event_id):
+                        raise HTTPException(status_code=422, detail="Los eventos nuevos requieren client_event_id UUID")
                 snapshot = await load_report_payload_snapshot(self.db, context, match, payload.proposed_report,
                     exclude_suspensions_from_match_id=match["id"])
                 outcome = validate_report_payload(snapshot, payload.proposed_report, datetime.now(timezone.utc))
-                events = (await self.db.execute(text("""
-                    SELECT * FROM v_match_current_events
-                    WHERE match_id = :match_id AND organization_id = :organization_id
-                """), {"match_id": match_id, "organization_id": context.organization_id})).mappings().all()
                 if _same_report(match, events, payload.proposed_report, outcome):
                     raise RectificationConflict("RECTIFICATION_NO_CHANGES", "La propuesta no cambia el acta vigente")
                 request = await self._insert_request(context, match_id, match["version_number"], payload)
@@ -201,6 +205,24 @@ class RectificationService:
     def _request_response(row) -> dict:
         return {key: row[key] for key in RectificationResponse.model_fields}
 
+    async def list_organization(self, context, filters):
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            params = {**filters.model_dump(), "org": context.organization_id}
+            total = (await self.db.execute(text("""SELECT count(*) FROM match_report_rectification_requests q
+                JOIN matches m ON m.id=q.match_id AND m.organization_id=q.organization_id
+                WHERE q.organization_id=:org
+                  AND (CAST(:status AS text) IS NULL OR q.status=:status)
+                  AND (CAST(:tournament_id AS uuid) IS NULL OR m.tournament_id=:tournament_id)"""), params)).scalar_one()
+            rows = (await self.db.execute(text("""SELECT q.* FROM match_report_rectification_requests q
+                JOIN matches m ON m.id=q.match_id AND m.organization_id=q.organization_id
+                WHERE q.organization_id=:org
+                  AND (CAST(:status AS text) IS NULL OR q.status=:status)
+                  AND (CAST(:tournament_id AS uuid) IS NULL OR m.tournament_id=:tournament_id)
+                ORDER BY q.requested_at DESC,q.id DESC LIMIT :limit OFFSET :offset"""), params)).mappings().all()
+            return {"items": [self._request_response(row) for row in rows], "total": total,
+                "limit": filters.limit, "offset": filters.offset}
+
     async def list_requests(self, context: AuthContext, match_id: UUID) -> list[dict]:
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
@@ -232,7 +254,7 @@ class RectificationService:
             request = await self._request(context, request_id)
             match = await self._match(context, request["match_id"])
             current = await self._version(context, request["match_id"], match["version_number"])
-            proposal = _proposal_report(match, CloseMatchReportDTO.model_validate(request["proposed_report"]))
+            proposal = _proposal_report(match, RectificationReportDTO.model_validate(request["proposed_report"]))
             return {**request, "diff": diff_reports(current["report"], proposal)}
 
     @staticmethod
@@ -255,7 +277,8 @@ class RectificationService:
                 self._require_pending(request)
                 await self._approval_permission(context, request)
                 result = await self._publish(context, request, match, datetime.now(timezone.utc))
-                return {key: result[key] for key in ("version", "effects")}
+                return {**{key: result[key] for key in ("version", "effects")},
+                    "expected_base_version": match["version_number"]}
             finally:
                 await savepoint.rollback()
 
@@ -343,7 +366,7 @@ class RectificationService:
             raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
         if match["version_status"] == "archived":
             raise RectificationConflict("TOURNAMENT_ARCHIVED", "El torneo está archivado")
-        payload = CloseMatchReportDTO.model_validate(request["proposed_report"])
+        payload = RectificationReportDTO.model_validate(request["proposed_report"])
         snapshot = await load_report_payload_snapshot(self.db, context, match, payload,
             exclude_suspensions_from_match_id=match["id"])
         outcome = validate_report_payload(snapshot, payload, now)
@@ -428,10 +451,10 @@ class RectificationService:
         row = (await self.db.execute(text("""
             SELECT m.resolution_type, m.resolution_reason, m.home_score_regular, m.away_score_regular,
                 m.home_score, m.away_score, m.home_penalties, m.away_penalties, m.winner_team_id,
-                a.performed_at AS published_at, ou.user_id AS published_by_user_id
+                a.performed_at AS published_at, ou.user_id AS published_by_user_id, a.payload AS closing_audit
             FROM matches m
             LEFT JOIN LATERAL (
-                SELECT performed_at, performed_by_member_id FROM administrative_audit_logs
+                SELECT performed_at, performed_by_member_id, payload FROM administrative_audit_logs
                 WHERE organization_id = m.organization_id AND entity_type = 'matches'
                     AND entity_id = m.id AND action IN ('CLOSE_MATCH_REPORT', 'ADMINISTRATIVE_MATCH_RESOLUTION')
                 ORDER BY performed_at, id LIMIT 1
@@ -444,13 +467,15 @@ class RectificationService:
             SELECT * FROM match_events WHERE match_id = :match_id AND organization_id = :organization_id
             ORDER BY minute, added_minute, created_at, id
         """), {"match_id": match_id, "organization_id": context.organization_id})).mappings().all()
+        order = {str(identity): index for index, identity in enumerate((row["closing_audit"] or {}).get("event_ids", []))}
+        events = sorted(events, key=lambda event: order.get(str(event["id"]), len(order)))
         return self._version_response(match_id, 1, row, events)
 
     async def _version(self, context: AuthContext, match_id: UUID, number: int) -> dict:
         if number == 1:
             return await self._original_report(context, match_id)
         row = (await self.db.execute(text("""
-            SELECT v.*, r.reason, r.evidence
+            SELECT v.*, r.reason, r.evidence, r.proposed_report
             FROM match_report_versions v JOIN match_report_rectification_requests r
                 ON r.id = v.request_id AND r.organization_id = v.organization_id AND r.match_id = v.match_id
             WHERE v.match_id = :match_id AND v.organization_id = :organization_id AND v.version_number = :number
@@ -463,6 +488,9 @@ class RectificationService:
             ORDER BY minute, added_minute, created_at, id
         """), {"version_id": row["id"], "match_id": match_id,
             "organization_id": context.organization_id})).mappings().all()
+        order = {canonical_client_event_id(event["client_event_id"]): index
+                 for index, event in enumerate(row["proposed_report"]["events"])}
+        events = sorted(events, key=lambda event: order.get(event["client_event_id"], len(order)))
         return self._version_response(match_id, number, row, events)
 
     @staticmethod

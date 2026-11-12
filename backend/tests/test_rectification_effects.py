@@ -129,8 +129,8 @@ async def test_impact_list_empty_permissions_and_indistinguishable_tournaments(f
     missing = await flow.client.get("/api/v1/tournaments/ffffffff-ffff-4fff-8fff-ffffffffffff/competitive-impacts")
     assert foreign.status_code == missing.status_code == 404 and foreign.json() == missing.json()
     await flow.admin.execute("UPDATE roles SET permissions='[]'::jsonb WHERE organization_id=$1", ORG)
-    denied = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT}/competitive-impacts")
-    assert denied.status_code == 403
+    member = await flow.client.get(f"/api/v1/tournaments/{TOURNAMENT}/competitive-impacts")
+    assert member.status_code == 200 and member.json() == []
 
 
 @pytest.mark.parametrize("flow", [{"advancement": {"origin": "manual"}, "events": [str(uuid4()), str(uuid4())]}], indirect=True)

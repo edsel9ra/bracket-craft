@@ -1,6 +1,8 @@
 # Spec 033 — Acta rectificativa
 
-Estado: aprobada
+Estado: implementada
+
+Evidencia por criterio y límites en `verificacion.md`. El cierre de T18 sigue sujeto al check de CI del PR indicado en `tasks.md`.
 
 Fecha: 2026-11-12. Desarrolla la §3.6 de la constitución 2.0.0 (PR #61). Corresponde a la funcionalidad F4 del informe de funciones adicionales. Las apelaciones y resoluciones de sanciones (F9) tienen su propia spec.
 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RectificationVersions from '~/components/match/RectificationVersions.vue';
+import CompetitiveImpacts from '~/components/match/CompetitiveImpacts.vue';
 import { useMatchOperation } from '~/composables/useMatchOperation';
 import MatchOperationHeader from '~/components/match/MatchOperationHeader.vue';
 import MatchBar from '~/components/match/MatchBar.vue';
@@ -61,6 +63,8 @@ onBeforeUnmount(context.unmountOperation);
       <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('match.loadingOperation') }}</div>
        <div v-else-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="retryOperation">{{ t('common.retry') }}</button></div>
       <template v-else-if="operation && match">
+        <RectificationVersions v-if="match.result_confirmed" :key="match.id" :match-id="match.id" :can-request="auth.hasPermission('REQUEST_MATCH_REPORT_RECTIFICATION')" />
+        <CompetitiveImpacts :key="`${match.tournament_id}-${auth.access?.organization_id}`" :tournament-id="match.tournament_id" :can-approve="auth.hasPermission('APPROVE_MATCH_REPORT_RECTIFICATION')" />
         <div class="checklist" :aria-label="t('match.matchReport')">
           <div v-for="item in operationChecklist" :key="item.label" class="check-item" :class="{ valid: item.valid, neutral: item.neutral }">
             <span aria-hidden="true">{{ item.icon }}</span><strong>{{ item.label }}</strong><small>{{ t(item.statusKey) }}</small>

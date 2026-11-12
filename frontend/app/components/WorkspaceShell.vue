@@ -57,6 +57,7 @@ const tournamentLabel = computed(() => {
 });
 
 const primaryLinks = computed(() => [
+  { key: 'rectifications', label: t('rectification.inbox'), to: '/workspace/rectifications', current: route.path === '/workspace/rectifications' },
   {
     key: 'tournaments',
     label: t('shell.tournaments'),

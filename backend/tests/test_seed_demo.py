@@ -135,6 +135,24 @@ async def _administrator_transaction(database_admin_url: str):
         await engine.dispose()
 
 
+async def test_demo_approver_is_distinct_idempotent_and_can_approve(database_admin_url):
+    async with _administrator_transaction(database_admin_url) as session:
+        await session.execute(text("SET LOCAL ROLE bracket_app"))
+        tenant = await create_tenant_owner(session)
+        first = await seed_demo._ensure_demo_approver(session, tenant.organization_id, tenant.user_id)
+        second = await seed_demo._ensure_demo_approver(session, tenant.organization_id, tenant.user_id)
+        assert first == second and first != tenant.user_id
+        assert await session.scalar(text("""
+            SELECT count(*) FROM organization_user_roles our
+            JOIN organization_users ou ON ou.id = our.organization_user_id
+            JOIN roles r ON r.id = our.role_id
+            JOIN role_definitions rd ON rd.id = r.role_definition_id
+            WHERE ou.user_id = :user_id AND our.organization_id = :organization_id
+              AND rd.code = 'administrator'
+              AND rd.system_permissions ? 'APPROVE_MATCH_REPORT_RECTIFICATION'
+        """), {"user_id": str(first), "organization_id": str(tenant.organization_id)}) == 1
+
+
 async def _create_tournament_with_team(
     session: AsyncSession, organization_id: UUID
 ) -> tuple[UUID, UUID]:

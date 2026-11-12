@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,18 +11,46 @@ from app.modules.rectifications.platform import RectificationPlatformService
 from app.modules.rectifications.schemas import (
     CloseCompetitiveImpactRequest,
     CompetitiveImpactResponse,
+    CompetitiveImpactListQuery,
+    CompetitiveImpactPageResponse,
     CreateRectificationRequest,
     PlatformAuthorizationRequest,
     PlatformAuthorizationResponse,
+    PlatformRectificationDetailResponse,
     RectificationDecisionRequest,
     RectificationDetailResponse,
     RectificationPreviewResponse,
     RectificationResponse,
+    RectificationListQuery,
+    RectificationPageResponse,
     ReportVersionResponse,
 )
 from app.modules.rectifications.service import RectificationService
 
 router = APIRouter(tags=["rectifications"])
+
+
+@router.get("/rectifications", response_model=RectificationPageResponse)
+async def list_organization_rectifications(
+    filters: RectificationListQuery = Query(),
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationService(db).list_organization(context, filters))
+
+
+@router.get("/competitive-impacts", response_model=CompetitiveImpactPageResponse)
+async def list_organization_impacts(
+    filters: CompetitiveImpactListQuery = Query(),
+    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(CompetitiveImpactService(db).list_organization(context, filters))
+
+
+@router.get("/rectifications/{request_id}/platform-authorizations", response_model=list[PlatformAuthorizationResponse])
+async def list_platform_authorizations(
+    request_id: UUID, context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).list_authorizations(context, request_id))
 
 
 @router.get("/tournaments/{tournament_id}/competitive-impacts", response_model=list[CompetitiveImpactResponse])
@@ -63,11 +91,18 @@ async def list_platform_rectifications(
     return await _execute(RectificationPlatformService(db).list_authorized(context))
 
 
-@router.get("/platform/rectifications/{request_id}", response_model=RectificationDetailResponse)
+@router.get("/platform/rectifications/{request_id}", response_model=PlatformRectificationDetailResponse)
 async def get_platform_rectification(
     request_id: UUID, context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
 ):
     return await _execute(RectificationPlatformService(db).detail(context, request_id))
+
+
+@router.get("/platform/rectifications/{request_id}/preview", response_model=RectificationPreviewResponse)
+async def preview_platform_rectification(
+    request_id: UUID, context: PlatformContext = Depends(get_platform_context), db: AsyncSession = Depends(get_db),
+):
+    return await _execute(RectificationPlatformService(db).platform_preview(context, request_id))
 
 
 @router.post("/platform/rectifications/{request_id}/decision", response_model=RectificationResponse)

@@ -18,6 +18,14 @@ def test_empty_and_identical_reports():
     assert diff_reports(report, deepcopy(report))["events"] == {"added": [], "removed": [], "changed": []}
 
 
+def test_event_order_alone_is_a_report_difference():
+    before = {"events": [event("a"), event("b")]}
+    after = {"events": list(reversed(before["events"]))}
+    assert diff_reports(before, after) == {"fields": [
+        {"field": "event_order", "before": ["a", "b"], "after": ["b", "a"]}],
+        "events": {"added": [], "removed": [], "changed": []}}
+
+
 def test_field_and_event_changes_are_complete_and_do_not_mutate_inputs():
     before = {"home_score": 1, "winner_team_id": "home", "events": [event(), event("b")]}
     after = {"home_score": 2, "winner_team_id": "away", "events": [event(minute=20), event("c")]}
@@ -26,6 +34,7 @@ def test_field_and_event_changes_are_complete_and_do_not_mutate_inputs():
     assert diff["fields"] == [
         {"field": "home_score", "before": 1, "after": 2},
         {"field": "winner_team_id", "before": "home", "after": "away"},
+        {"field": "event_order", "before": ["a", "b"], "after": ["a", "c"]},
     ]
     assert [e["client_event_id"] for e in diff["events"]["added"]] == ["c"]
     assert [e["client_event_id"] for e in diff["events"]["removed"]] == ["b"]
@@ -33,13 +42,15 @@ def test_field_and_event_changes_are_complete_and_do_not_mutate_inputs():
     assert (before, after) == original
 
 
-def test_normalization_ignores_storage_fields_voided_events_order_and_uuid_types():
+def test_normalization_ignores_storage_fields_voided_events_and_uuid_types_but_keeps_order():
     identity = "aaaaaaaa-0000-4000-8000-000000000001"
     team = UUID("00000000-0000-4000-8000-000000000002")
     before = {"winner_team_id": team, "events": [event(identity, team_id=team,
         id="storage", metadata={}, added_minute=0), event("voided", is_voided=True), event("b")]}
     after = {"winner_team_id": str(team), "events": [event("b"), event(identity.upper(), team_id=str(team))]}
-    assert diff_reports(before, after) == {"fields": [], "events": {"added": [], "removed": [], "changed": []}}
+    assert diff_reports(before, after) == {"fields": [{"field": "event_order",
+        "before": [identity, "b"], "after": ["b", identity]}],
+        "events": {"added": [], "removed": [], "changed": []}}
 
 
 @pytest.mark.parametrize("field", ["resolution_type", "resolution_reason", "home_score_regular",

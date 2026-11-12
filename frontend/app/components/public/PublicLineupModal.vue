@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TeamPitch from './TeamPitch.vue';
+import PublicRectifiedMark from './PublicRectifiedMark.vue';
 import { positionLabel } from '~/utils/positions';
 import { isTacticalFormationValid, textualFormationLines, playerInitials } from '~/utils/publicLineup';
 import type { PublicLineupPlayer, PublicTeamLineup } from '~/utils/publicTournament';
@@ -14,6 +15,7 @@ interface MatchLineup {
 }
 
 interface LineupMatch {
+  rectified_at?: string | null;
   id: string;
   stage_name: string;
   match_date: string | null;
@@ -141,6 +143,7 @@ function formatDate(value: string | null): string {
       <header class="lineup-dialog-header">
         <div class="lineup-dialog-title">
           <p class="eyebrow">{{ match.stage_name }}</p>
+          <PublicRectifiedMark :rectified-at="match.rectified_at" />
           <h2 :id="titleId">
             <span class="lineup-team">
               <TeamCrest
