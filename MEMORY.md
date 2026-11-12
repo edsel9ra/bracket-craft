@@ -3,9 +3,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Clarificación — estado: borrador.
-- Pendiente: aclarar DA-13–DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
+- Pendiente: aclarar DA-17 y DA-18 y obtener aprobación; sin plan, tareas ni implementación F9. La spec 033 permanece implementada.
 
 ## Decisiones tomadas
+- 2026-11-12 · Spec 034 · DA-13 cerrada: actas y origen administrativo/regla de competición, ámbitos de torneo/organización; sin reapertura automática de anuladas y respetando DA-9/DA-12.
+- 2026-11-12 · Spec 034 · DA-14 cerrada: único expediente pendiente por sanción entre apelación/propuesta, retirable por su autor; decisión definitiva sin segunda instancia. Estados: pendiente/resuelto/retirado/cerrado por rectificación; este último exige nueva presentación manual vinculada sobre sanción vigente, sin traslado ni reutilización de autorización F9. `appealed` histórico no acredita recurso.
+- 2026-11-12 · Spec 034 · DA-15 cerrada: elegibilidad desde siguiente partido del jugador no comenzado; decisión y efecto registrados por separado, sin retroactividad a partidos comenzados.
+- 2026-11-12 · Spec 034 · DA-16 cerrada: aviso privado preparando alineación y revalidación al cerrar; guardar/publicar no se bloquea por suspensión ni se modifican alineaciones automáticamente.
 - 2026-11-12 · Spec 034 · DA-6 revisada por el usuario: miembro con permiso de resolver propone anular/reducir con motivo y auditoría, sin efecto pendiente; otra persona aprueba/rechaza con motivo. RF-021 impide decidir propuesta propia incluso con otros roles o autorización F9; plataforma decide, nunca propone. Sustituye la decisión previa sin segunda persona.
 - 2026-11-12 · Spec 034 · DA-7 cerrada: sin caducidad para apelar; política de notificación acreditada fuera de alcance.
 - 2026-11-12 · Spec 034 · DA-10 cerrada: tramitación paralela con 033, revalidación de sanción al decidir; cambio/anulación por rectificación impide aplicar F9 y exige revisión expresa, sin traslado ni neutralización silenciosa.
