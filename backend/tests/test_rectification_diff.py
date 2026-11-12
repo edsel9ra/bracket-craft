@@ -34,11 +34,11 @@ def test_field_and_event_changes_are_complete_and_do_not_mutate_inputs():
 
 
 def test_normalization_ignores_storage_fields_voided_events_order_and_uuid_types():
-    identity = "AAAAAAAA-0000-4000-8000-000000000001"
+    identity = "aaaaaaaa-0000-4000-8000-000000000001"
     team = UUID("00000000-0000-4000-8000-000000000002")
     before = {"winner_team_id": team, "events": [event(identity, team_id=team,
         id="storage", metadata={}, added_minute=0), event("voided", is_voided=True), event("b")]}
-    after = {"winner_team_id": str(team), "events": [event("b"), event(identity, team_id=str(team))]}
+    after = {"winner_team_id": str(team), "events": [event("b"), event(identity.upper(), team_id=str(team))]}
     assert diff_reports(before, after) == {"fields": [], "events": {"added": [], "removed": [], "changed": []}}
 
 
@@ -63,11 +63,14 @@ def test_duplicate_event_id_is_rejected_not_silently_overwritten():
 
 def test_historical_event_ids_are_case_sensitive_like_database_uniqueness():
     before = {"events": [event("A"), event("a", minute=11)]}
-    after = {"events": [event("A", minute=20), event("a", minute=11)]}
-    assert diff_reports(before, after)["events"] == {
-        "added": [], "removed": [],
-        "changed": [{"client_event_id": "A", "fields": [{"field": "minute", "before": 10, "after": 20}]}],
-    }
+    after = {"events": [event("a", minute=20)]}
+    difference = diff_reports(before, after)["events"]
+    assert difference["added"] == []
+    assert [row["client_event_id"] for row in difference["removed"]] == ["A"]
+    assert difference["removed"][0]["minute"] == 10
+    assert difference["changed"] == [{"client_event_id": "a",
+        "fields": [{"field": "minute", "before": 11, "after": 20}]}]
+    assert [row["client_event_id"] for row in diff_reports(before, {})["events"]["removed"]] == ["A", "a"]
 
 
 def test_case_only_event_identity_change_is_removal_and_addition():
@@ -75,3 +78,25 @@ def test_case_only_event_identity_change_is_removal_and_addition():
     assert [row["client_event_id"] for row in difference["added"]] == ["a"]
     assert [row["client_event_id"] for row in difference["removed"]] == ["A"]
     assert difference["changed"] == []
+
+
+def test_proposed_uuid_case_is_canonicalized_before_matching_existing_events():
+    identity = "aaaaaaaa-0000-4000-8000-000000000001"
+    difference = diff_reports({"events": [event(identity)]},
+        {"events": [event(identity.upper(), minute=20)]})["events"]
+    assert difference == {"added": [], "removed": [], "changed": [
+        {"client_event_id": identity, "fields": [{"field": "minute", "before": 10, "after": 20}]}]}
+
+
+def test_historical_uuid_case_is_not_canonicalized():
+    identity = "AAAAAAAA-0000-4000-8000-000000000001"
+    difference = diff_reports({"events": [event(identity)]}, {"events": [event(identity)]})["events"]
+    assert [row["client_event_id"] for row in difference["removed"]] == [identity]
+    assert [row["client_event_id"] for row in difference["added"]] == [identity.lower()]
+    assert difference["changed"] == []
+
+
+def test_duplicate_canonical_proposed_event_ids_are_rejected():
+    identity = "aaaaaaaa-0000-4000-8000-000000000001"
+    with pytest.raises(ValueError, match="client_event_id"):
+        diff_reports({}, {"events": [event(identity), event(identity.upper())]})

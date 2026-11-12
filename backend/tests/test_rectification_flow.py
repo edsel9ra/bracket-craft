@@ -715,3 +715,47 @@ async def test_detail_preserves_case_distinct_historical_event_identities(flow):
     assert [row["client_event_id"] for row in difference["removed"]] == ["A", "a"]
     assert len(difference["added"]) == 1 and difference["changed"] == []
     assert await database_snapshot(flow.admin) == before
+
+
+@pytest.mark.parametrize("flow", [("aaaaaaaa-0000-4000-8000-000000000001",)], indirect=True)
+async def test_proposed_uppercase_uuid_diff_matches_preview_and_publication(flow):
+    identity = "aaaaaaaa-0000-4000-8000-000000000001"
+    payload = proposal()
+    payload["proposed_report"]["events"].append({
+        "client_event_id": identity.upper(), "event_type": "yellow_card", "minute": 20,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST, "segment_id": SEGMENT_FIRST,
+    })
+    request = await create(flow, payload)
+    assert request.status_code == 201, request.text
+    detail = await flow.client.get(f"/api/v1/rectifications/{request.json()['id']}")
+    assert detail.status_code == 200, detail.text
+    difference = detail.json()["diff"]["events"]
+    assert difference["removed"] == []
+    assert len(difference["added"]) == 1
+    assert difference["changed"] == [{"client_event_id": identity,
+        "fields": [{"field": "minute", "before": 15, "after": 20}]}]
+    flow.context = await add_approver(flow)
+    before = await database_snapshot(flow.admin)
+    preview = await flow.client.get(f"/api/v1/rectifications/{request.json()['id']}/preview")
+    assert preview.status_code == 200, preview.text
+    assert await database_snapshot(flow.admin) == before
+    decision = await decide(flow, request.json()["id"])
+    assert decision.status_code == 200, decision.text
+    published = await flow.client.get(f"/api/v1/matches/{MATCH}/report-versions/2")
+    assert published.status_code == 200, published.text
+    expected = sorted((event["client_event_id"], event["minute"])
+        for event in preview.json()["version"]["report"]["events"])
+    assert (identity, 20) in expected
+    assert sorted((event["client_event_id"], event["minute"])
+        for event in published.json()["report"]["events"]) == expected
+
+
+@pytest.mark.parametrize("flow", [("AAAAAAAA-0000-4000-8000-000000000001",)], indirect=True)
+async def test_no_changes_check_preserves_historical_case_but_canonicalizes_proposal(flow):
+    payload = proposal(home_score=0, home_score_regular=0, winner_team_id=None)
+    payload["proposed_report"]["events"] = [{
+        "client_event_id": "AAAAAAAA-0000-4000-8000-000000000001", "event_type": "yellow_card", "minute": 15,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST, "segment_id": SEGMENT_FIRST,
+    }]
+    response = await create(flow, payload)
+    assert response.status_code == 201, response.text

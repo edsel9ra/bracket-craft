@@ -12,8 +12,10 @@ from app.core.database import set_rls_context
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
-from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload
-from app.modules.matches.service import derive_walkover_score, load_report_payload_snapshot, validate_report_payload
+from app.modules.matches.schemas import CloseMatchReportDTO
+from app.modules.matches.service import (
+    canonical_client_event_id, derive_walkover_score, load_report_payload_snapshot, validate_report_payload,
+)
 from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
@@ -61,18 +63,6 @@ def _pending_collision(exc: IntegrityError) -> bool:
     return False
 
 
-def _canonical_events(events) -> list[str]:
-    fields = MatchEventPayload.model_fields
-    normalized = []
-    for event in events:
-        value = {key: event.get(key) for key in fields}
-        value["client_event_id"] = value["client_event_id"].lower()
-        value["metadata"] = value["metadata"] or {}
-        value["added_minute"] = value["added_minute"] or 0
-        normalized.append(json.dumps(value, sort_keys=True, default=str))
-    return sorted(normalized)
-
-
 def _same_report(current: Mapping[str, Any], events, payload: CloseMatchReportDTO, outcome) -> bool:
     proposed = {
         "resolution_type": payload.resolution_type,
@@ -85,8 +75,9 @@ def _same_report(current: Mapping[str, Any], events, payload: CloseMatchReportDT
         "away_penalties": outcome.away_penalties,
         "winner_team_id": outcome.winner_team_id,
     }
-    return (all(current[key] == value for key, value in proposed.items())
-            and _canonical_events(events) == _canonical_events(payload.model_dump()["events"]))
+    difference = diff_reports({**current, "events": events},
+        {**proposed, "events": payload.model_dump()["events"]})
+    return not difference["fields"] and not any(difference["events"].values())
 
 
 async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:
@@ -369,7 +360,7 @@ class RectificationService:
             "request_id": request["id"], "now": now, "user_id": context.user_id})).mappings().one()
         for event in payload.events:
             values = event.model_dump()
-            values["client_event_id"] = values["client_event_id"].lower()
+            values["client_event_id"] = canonical_client_event_id(values["client_event_id"])
             values["metadata"] = json.dumps(event.metadata or {}, default=str)
             await self.db.execute(text("""
                 INSERT INTO match_report_version_events (organization_id, version_id, match_id,

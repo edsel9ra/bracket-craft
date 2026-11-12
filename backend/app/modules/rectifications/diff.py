@@ -2,6 +2,7 @@ import json
 from typing import Any, Mapping
 
 from app.modules.matches.schemas import MatchEventPayload
+from app.modules.matches.service import canonical_client_event_id
 
 REPORT_FIELDS = (
     "resolution_type", "resolution_reason", "home_score_regular", "away_score_regular",
@@ -18,13 +19,15 @@ def _fields(before, after, names):
             for name in names if _json_value(before.get(name)) != _json_value(after.get(name))]
 
 
-def _events(report):
+def _events(report, *, proposed=False):
     events = {}
     for row in report.get("events", ()):
         if row.get("is_voided", False):
             continue
         event = {name: _json_value(row.get(name)) for name in MatchEventPayload.model_fields}
         identity = str(event["client_event_id"])
+        if proposed:
+            identity = canonical_client_event_id(identity)
         if identity in events:
             raise ValueError("client_event_id duplicado")
         event.update(client_event_id=identity, metadata=event["metadata"] or {},
@@ -34,7 +37,7 @@ def _events(report):
 
 
 def diff_reports(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> dict:
-    before, after = _events(current), _events(proposed)
+    before, after = _events(current), _events(proposed, proposed=True)
     changed = []
     for identity in sorted(before.keys() & after.keys()):
         fields = _fields(before[identity], after[identity], MatchEventPayload.model_fields)
