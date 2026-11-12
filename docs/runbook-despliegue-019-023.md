@@ -4,6 +4,8 @@ Paquete operativo para llevar un servidor que está **en el esquema 018 con el c
 
 > Este documento no incluye secretos. Todos los valores sensibles (`POSTGRES_PASSWORD`, `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de almacenamiento y URLs) se inyectan desde el gestor de secretos del operador. `.env.example` **no** es configuración de producción y `scripts.seed_demo` **no** se ejecuta nunca contra producción.
 
+Actualización 033: `INVITATION_TOKEN_KEY` queda obsoleta y opcional; ya no se inyecta con Compose ni debe provisionarse para el código actual. Las listas históricas siguientes corresponden al despliegue 019–023. Antes de 033, detener los procesos antiguos y verificar backup; aplicar la migración antes de arrancar el código nuevo. Se elimina irreversiblemente `organization_invitations.token_encrypted`, sin cambiar hashes, estados ni vencimientos; los enlaces vigentes siguen funcionando. El rollback al código anterior requiere restaurar el backup, no solo revertir la imagen.
+
 ---
 
 ## 1. Alcance y riesgos

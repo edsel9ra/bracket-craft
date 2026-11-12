@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "bracket-craft-api"
     jwt_audience: str = "bracket-craft-web"
     player_data_key: str = Field(default=DEVELOPMENT_PLAYER_DATA_KEY, min_length=32)
-    invitation_token_key: str = Field(default=DEVELOPMENT_INVITATION_TOKEN_KEY, min_length=32)
+    invitation_token_key: str | None = Field(default=None, min_length=32)
     auth_cookie_name: str = "bc_access_token"
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     auth_cookie_secure: bool | None = None

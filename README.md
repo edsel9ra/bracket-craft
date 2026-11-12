@@ -867,6 +867,8 @@ Guardar la planilla de un partido, publicar o despublicar la formación de un eq
 
 ## Rendimiento, fotos y conexión
 
+Desde la migración **033**, las invitaciones conservan solo el hash del token: se elimina `token_encrypted`. `INVITATION_TOKEN_KEY` queda obsoleta, es opcional y Compose ya no la inyecta; el valor de desarrollo explícito sigue rechazándose fuera de desarrollo. Crear, reenviar y reabrir generan un enlace nuevo sin recuperar el token anterior. Aplicar 033 antes de arrancar este código y retirar los procesos antiguos durante la actualización; el código anterior no es compatible con la columna eliminada. La eliminación es irreversible: restaurar un backup es necesario para recuperar el esquema y los valores anteriores.
+
 Los límites de esta sección son constantes del backend: no hay variables de entorno, migraciones ni dependencias nuevas.
 
 - **Sorteo Swiss:** una fase admite como máximo **64 equipos**; el conjunto contado es el de equipos registrados y asignados a la fase. Superarlo responde **422** («La fase Swiss admite como máximo 64 equipos») antes de escribir y antes de calcular. En rondas posteriores a la primera no se borran marcadores ni partidos de rondas anteriores.

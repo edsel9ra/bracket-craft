@@ -182,11 +182,11 @@ async def create_invitation(
             result = await db.execute(
                 text("""
                     INSERT INTO organization_invitations
-                        (organization_id, email, role_code, token_hash, token_encrypted,
+                        (organization_id, email, role_code, token_hash,
                          expires_at, invited_by_member_id)
                     VALUES
                         (:organization_id, LOWER(:email), :role_code, :token_hash,
-                         pgp_sym_encrypt(:token, :encryption_key), :expires_at, :member_id)
+                         :expires_at, :member_id)
                     RETURNING id, organization_id, email, role_code, expires_at, status,
                               invited_by_member_id, accepted_by_user_id, accepted_at,
                               revoked_at, created_at, updated_at
@@ -196,8 +196,6 @@ async def create_invitation(
                     "email": email,
                     "role_code": payload.role_code,
                     "token_hash": token_hash,
-                    "token": raw_token,
-                    "encryption_key": settings.invitation_token_key,
                     "expires_at": expires_at,
                     "member_id": str(context.organization_user_id),
                 },
@@ -308,7 +306,6 @@ async def resend_invitation(
                 text("""
                     UPDATE organization_invitations
                     SET token_hash = :token_hash,
-                        token_encrypted = pgp_sym_encrypt(:token, :encryption_key),
                         expires_at = :expires_at,
                         status = 'pending',
                         revoked_at = NULL,
@@ -321,8 +318,6 @@ async def resend_invitation(
                 {
                     "invitation_id": str(invitation_id),
                     "token_hash": token_hash,
-                    "token": raw_token,
-                    "encryption_key": settings.invitation_token_key,
                     "expires_at": expires_at,
                 },
             )
@@ -409,7 +404,6 @@ async def reopen_invitation(
                 text("""
                     UPDATE organization_invitations
                     SET token_hash = :token_hash,
-                        token_encrypted = pgp_sym_encrypt(:token, :encryption_key),
                         expires_at = :expires_at,
                         status = 'pending',
                         revoked_at = NULL,
@@ -424,8 +418,6 @@ async def reopen_invitation(
                     "invitation_id": str(invitation_id),
                     "organization_id": str(context.organization_id),
                     "token_hash": token_hash,
-                    "token": raw_token,
-                    "encryption_key": settings.invitation_token_key,
                     "expires_at": expires_at,
                 },
             )

@@ -190,13 +190,27 @@ def production_settings(**overrides):
         "database_url": "postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
         "jwt_secret": "production-secret-" + "x" * 48,
         "player_data_key": "production-player-key-" + "x" * 48,
-        "invitation_token_key": "production-invitation-key-" + "x" * 48,
         "storage_access_key": "production-access-key",
         "storage_secret_key": "production-storage-secret",
         "auth_cookie_secure": True,
     }
     values.update(overrides)
     return Settings(**values)
+
+
+def test_obsolete_invitation_key_is_optional_in_production(monkeypatch):
+    monkeypatch.delenv("INVITATION_TOKEN_KEY", raising=False)
+    assert production_settings().invitation_token_key is None
+
+
+def test_explicit_development_invitation_key_is_still_rejected():
+    with pytest.raises(ValidationError, match="INVITATION_TOKEN_KEY debe cambiarse"):
+        production_settings(invitation_token_key=DEVELOPMENT_INVITATION_TOKEN_KEY)
+
+
+def test_explicit_obsolete_invitation_key_still_accepts_a_non_default_value():
+    key = "compatibility-only-" + "x" * 32
+    assert production_settings(invitation_token_key=key).invitation_token_key == key
 
 
 def test_development_storage_credentials_are_preserved_for_local_storage():

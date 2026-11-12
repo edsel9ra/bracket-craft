@@ -18,7 +18,6 @@ def test_proxy_list_with_spaces_is_one_argument_in_rendered_compose():
         "PLATFORM_ADMIN_EMAIL": "dummy@example.test",
         "JWT_SECRET": "dummy-jwt-secret-with-at-least-32-characters",
         "PLAYER_DATA_KEY": "dummy-player-key-with-at-least-32-characters",
-        "INVITATION_TOKEN_KEY": "dummy-invitation-key-with-at-least-32-characters",
         "DATABASE_URL": "postgresql+asyncpg://dummy:dummy@db:5432/dummy",
         "CORS_ALLOWED_ORIGINS": "http://localhost:3000",
         "STORAGE_PROVIDER": "s3", "STORAGE_BUCKET": "dummy",

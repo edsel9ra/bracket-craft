@@ -374,7 +374,6 @@ python3 infra/scripts/assert_production_compose.py --compose-version "$(docker c
 export POSTGRES_PASSWORD=dummy BRACKET_DB_PASSWORD=dummy PLATFORM_ADMIN_EMAIL=dummy@example.test \
   JWT_SECRET=dummy-jwt-secret-with-at-least-32-characters \
   PLAYER_DATA_KEY=dummy-player-key-with-at-least-32-characters \
-  INVITATION_TOKEN_KEY=dummy-invitation-key-with-at-least-32-characters \
   DATABASE_URL=postgresql+asyncpg://dummy:dummy@db:5432/dummy \
   CORS_ALLOWED_ORIGINS=http://localhost:3000 \
   STORAGE_PROVIDER=s3 STORAGE_BUCKET=dummy STORAGE_PUBLIC_BASE_URL=http://localhost:9000/dummy \
@@ -469,7 +468,7 @@ MIGRATION_TARGET=031 $COMPOSE run --rm db-migrate
 - **Dependencias de prueba:** `backend/requirements-dev.txt` se instala solo en local y CI (`python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt`); la imagen de producción instala únicamente `backend/requirements.txt` y `pip-audit` audita ambos archivos.
 - **Web no-root solo en producción:** la etapa de ejecución de `frontend/Dockerfile` declara `USER node` y el overlay de producción fija `web.user: "node"`. `docker-compose.yml` fija `web.user: "0:0"` como excepción de desarrollo, porque el servidor escribe caché en el árbol montado `./frontend` y el propietario del montaje difiere entre Linux y Windows/WSL; producción no hereda esa excepción. Condición de retiro: cuando el flujo de desarrollo deje de necesitar escritura en el montaje. El arranque no-root se validó localmente con Docker (uid 1000, `.output` no escribible, HTTP 200) y la salvaguarda automatizada en CI es `infra/scripts/assert_production_compose.py` (perfil de producción), porque la CI no construye la imagen.
 - **Redes de producción:** todos los servicios viven en la red interna `internal`; solo `web`, `api` y `storage` se unen además a la red externa del proxy (`edge` por defecto, configurable con `PROXY_NETWORK`), porque el navegador llama directamente a la API, a Socket.IO y al bucket público de fotos (enrutamiento en README → «Despliegue de producción»). El operador debe crear esa red antes de desplegar (`docker network create "$PROXY_NETWORK"`); el compose no la crea. Requiere Docker Compose **2.24.4 o superior** (`!reset`/`!override`).
-- **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, `INVITATION_TOKEN_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos.
+- **Secretos a cambiar fuera de desarrollo:** `JWT_SECRET`, `PLAYER_DATA_KEY`, credenciales de base de datos y almacenamiento; además activar `AUTH_COOKIE_SECURE`. Inyéctalos con secretos externos. `INVITATION_TOKEN_KEY` es obsoleta y opcional desde 033: solo se almacena el hash del token; si se proporciona explícitamente el valor de desarrollo fuera de desarrollo, se rechaza.
 - **Pool por proceso:** cada worker de la API y el worker del outbox tienen su propio engine y pool (hasta 20 conexiones). Con `API_WORKERS=2` y un worker son 2 × 20 + 20 = 60 conexiones teóricas frente a las 100 por defecto de PostgreSQL; subir workers o bajar `max_connections` exige revisar el agregado. Las constantes efectivas (15 s / 30 s, 10 + 10, espera 10 s) las registra la API al arrancar.
 - **Primer admin de plataforma:** tras registrar la cuenta, indica `PLATFORM_ADMIN_EMAIL` en `.env`.
 
