@@ -49,9 +49,8 @@ def accumulation_impacts(match_id: UUID, before: list[dict], after: list[dict], 
         if previous.get(player, ()) != proposed.get(player, ())]
 
 
-async def capture_discipline(db: AsyncSession, context: AuthContext, match: Mapping[str, Any]) -> dict:
-    params = {"organization_id": context.organization_id, "tournament_id": match["tournament_id"]}
-    rows = (await db.execute(text("""
+async def _load_discipline_rows(db, context, tournament_id, match_id=None):
+    return (await db.execute(text("""
         SELECT m.id AS match_id, m.match_date, m.stage_id, m.tournament_version_id, tv.rules_config,
                e.id, e.client_event_id, e.player_id, e.event_type, e.minute, e.added_minute, e.metadata
         FROM matches m JOIN tournament_versions tv
@@ -59,10 +58,40 @@ async def capture_discipline(db: AsyncSession, context: AuthContext, match: Mapp
         LEFT JOIN v_match_current_events e
           ON e.match_id = m.id AND e.organization_id = m.organization_id
           AND NOT e.is_voided AND e.event_type IN ('yellow_card', 'red_card')
+        LEFT JOIN LATERAL (
+            SELECT v.id, r.proposed_report FROM match_report_versions v
+            JOIN match_report_rectification_requests r
+              ON r.id = v.request_id AND r.organization_id = v.organization_id
+            WHERE v.match_id = m.id AND v.organization_id = m.organization_id
+            ORDER BY v.version_number DESC LIMIT 1
+        ) version ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT payload FROM administrative_audit_logs
+            WHERE organization_id = m.organization_id AND entity_id = m.id
+              AND entity_type = 'matches'
+              AND action IN ('CLOSE_MATCH_REPORT', 'ADMINISTRATIVE_MATCH_RESOLUTION')
+            ORDER BY performed_at, id LIMIT 1
+        ) audit ON version.id IS NULL
+        LEFT JOIN LATERAL (
+            SELECT position FROM jsonb_array_elements(version.proposed_report->'events')
+                WITH ORDINALITY AS proposed(event, position)
+            WHERE lower(event->>'client_event_id') = e.client_event_id
+            UNION ALL
+            SELECT position FROM jsonb_array_elements_text(audit.payload->'event_ids')
+                WITH ORDINALITY AS original(event_id, position)
+            WHERE version.id IS NULL AND event_id = e.id::text
+        ) report_order ON TRUE
         WHERE m.organization_id = :organization_id AND m.tournament_id = :tournament_id
           AND m.result_confirmed
-        ORDER BY m.match_date NULLS FIRST, m.id, e.minute, e.added_minute, e.client_event_id
-    """), params)).mappings().all()
+          AND (CAST(:match_id AS uuid) IS NULL OR m.id = :match_id)
+        ORDER BY m.match_date NULLS FIRST, m.id, report_order.position NULLS LAST,
+            e.minute, e.added_minute, e.created_at, e.id
+    """), {"organization_id": context.organization_id, "tournament_id": tournament_id,
+        "match_id": match_id})).mappings().all()
+
+
+async def capture_discipline(db: AsyncSession, context: AuthContext, match: Mapping[str, Any]) -> dict:
+    rows = await _load_discipline_rows(db, context, match["tournament_id"])
     matches, events = {}, []
     for row in rows:
         matches[row["match_id"]] = {"id": row["match_id"], **{key: row[key]
@@ -96,9 +125,9 @@ def _derive(snapshot, match, events):
 
 
 def _card_signature(events, match_id, player_id):
-    return sorted((event["client_event_id"], str(event["player_id"]), event["event_type"],
+    return [(event["client_event_id"], str(event["player_id"]), event["event_type"],
         event["minute"], event["added_minute"], (event["metadata"] or {}).get("red_card_type", "direct_red"))
-        for event in events if event["match_id"] == match_id and event["player_id"] == player_id)
+        for event in events if event["match_id"] == match_id and event["player_id"] == player_id]
 
 
 async def recalculate_sanctions(
@@ -106,11 +135,8 @@ async def recalculate_sanctions(
 ) -> SanctionChanges:
     before = version["discipline_before"]
     match_id = version["match_id"]
-    current = (await db.execute(text("""SELECT id, client_event_id, match_id, player_id,
-        event_type, minute, added_minute, metadata FROM v_match_current_events
-        WHERE organization_id = :organization_id AND match_id = :match_id AND NOT is_voided
-          AND event_type IN ('yellow_card', 'red_card') ORDER BY minute, added_minute, client_event_id"""),
-        {"organization_id": context.organization_id, "match_id": match_id})).mappings().all()
+    current = [row for row in await _load_discipline_rows(db, context, version["tournament_id"], match_id)
+        if row["id"] is not None]
     after = {"matches": before["matches"], "events":
         [event for event in before["events"] if event["match_id"] != match_id] + [dict(row) for row in current]}
     players = {event["player_id"] for event in before["events"] + after["events"] if event["match_id"] == match_id}

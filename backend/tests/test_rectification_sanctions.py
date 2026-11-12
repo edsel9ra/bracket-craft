@@ -1,6 +1,7 @@
 """RF-018/DA-8/D5: immutable provenance, consumed serves and deferred impacts."""
 
 from copy import deepcopy
+import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
 from app.modules.matches.service import CloseMatchReportService
+from app.modules.rectifications.sanctions import capture_discipline
+from app.modules.rules_engine.engine import evaluate_suspensions
 import test_rectification_flow as flow_module
 from test_migration_031 import MATCH, ORG, PLAYER_AWAY, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_AWAY, TEAM_HOME
 from test_rectification_flow import UNCONFIRMED, add_approver, create, database_snapshot, decide, proposal
@@ -246,6 +249,79 @@ def two_yellow_config(monkeypatch):
     config = deepcopy(flow_module.DEFAULT_RULES_CONFIG)
     config["discipline"]["yellow_card_limit"] = 2
     monkeypatch.setattr(flow_module, "DEFAULT_RULES_CONFIG", config)
+
+
+@pytest.mark.usefixtures("two_yellow_config")
+@pytest.mark.parametrize("minutes", [(15, 15), (30, 10)])
+async def test_rectification_accumulation_follows_original_close_report_order(flow, minutes):
+    body = proposal()
+    cards = [{"client_event_id": identity, "segment_id": SEGMENT_FIRST,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST,
+        "event_type": "yellow_card", "minute": minute}
+        for identity, minute in zip(["ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "00000000-0000-4000-8000-000000000001"], minutes, strict=True)]
+    body["proposed_report"]["events"].extend(cards)
+    derived = evaluate_suspensions(flow_module.DEFAULT_RULES_CONFIG,
+        [{**event, "id": event["client_event_id"]} for event in cards], [])
+    expected = str(derived[0]["source_event_id"])
+    assert expected == cards[1]["client_event_id"]
+    request = await submit(flow, body)
+    before = await database_snapshot(flow.admin)
+    preview = await flow.client.get(f"/api/v1/rectifications/{request}/preview")
+    assert preview.status_code == 200, preview.text
+    created = [effect for effect in preview.json()["effects"] if effect["effect_type"] == "sanction_created"]
+    assert [effect["payload"]["logical_event_id"] for effect in created] == [expected]
+    assert await database_snapshot(flow.admin) == before
+    assert (await decide(flow, request)).status_code == 200
+    assert await flow.admin.fetchval("""SELECT e.client_event_id FROM player_suspensions s
+        JOIN match_report_version_events e ON e.id=s.source_version_event_id""") == expected
+
+
+@pytest.mark.usefixtures("two_yellow_config")
+async def test_reordering_cards_rederives_the_threshold_in_version_three(flow):
+    requester = flow.context
+    body = proposal()
+    cards = [{"client_event_id": identity, "segment_id": SEGMENT_FIRST,
+        "team_id": TEAM_HOME, "player_id": PLAYER_HOME_FIRST,
+        "event_type": "yellow_card", "minute": 15} for identity in [
+            "00000000-0000-4000-8000-000000000001", "ffffffff-ffff-4fff-8fff-ffffffffffff"]]
+    body["proposed_report"]["events"].extend(cards)
+    request = await submit(flow, body)
+    assert (await decide(flow, request)).status_code == 200
+    approver = flow.context
+    flow.context = requester
+    body["proposed_report"]["events"][0]["minute"] = 11
+    body["proposed_report"]["events"][1:] = reversed(cards)
+    response = await create(flow, body)
+    assert response.status_code == 201, response.text
+    flow.context = approver
+    response = await decide(flow, response.json()["id"], expected_base_version=2)
+    assert response.status_code == 200, response.text
+    rows = await flow.admin.fetch("""SELECT e.client_event_id, s.status FROM player_suspensions s
+        JOIN match_report_version_events e ON e.id=s.source_version_event_id ORDER BY s.created_at""")
+    assert [(row["client_event_id"], row["status"]) for row in rows] == [
+        (cards[1]["client_event_id"], "cancelled"), (cards[0]["client_event_id"], "active")]
+    assert await flow.admin.fetchval("SELECT count(*) FROM player_suspension_annulments") == 1
+
+
+@pytest.mark.parametrize("flow", [{"events": [
+    {"client_event_id": "ffffffff-ffff-4fff-8fff-ffffffffffff", "minute": 15},
+    {"client_event_id": "00000000-0000-4000-8000-000000000001", "minute": 15},
+]}], indirect=True)
+async def test_original_discipline_snapshot_uses_closing_audit_order(flow):
+    cards = await flow.admin.fetch("SELECT id, client_event_id FROM match_events WHERE match_id=$1 ORDER BY created_at", MATCH)
+    await flow.admin.execute("""INSERT INTO administrative_audit_logs
+        (organization_id,entity_type,entity_id,action,payload,performed_by_member_id)
+        VALUES ($1,'matches',$2,'CLOSE_MATCH_REPORT',$3::jsonb,$4)""", ORG, MATCH,
+        json.dumps({"event_ids": [str(row["id"]) for row in cards]}), flow.context.organization_user_id)
+    async with flow.engine.connect() as conn:
+        await conn.execute(text("SET ROLE bracket_app"))
+        await conn.commit()
+        async with AsyncSession(bind=conn) as session, session.begin():
+            await set_rls_context(session, flow.context.organization_id, flow.context.user_id)
+            snapshot = await capture_discipline(session, flow.context,
+                dict(await flow.admin.fetchrow("SELECT * FROM matches WHERE id=$1", MATCH)))
+    assert [row["client_event_id"] for row in snapshot["events"]] == [row["client_event_id"] for row in cards]
 
 
 @pytest.mark.usefixtures("two_yellow_config")
