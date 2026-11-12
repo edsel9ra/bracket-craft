@@ -49,9 +49,9 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - Hecho cuando: `test_rectification_effects.py` demuestra la clasificación recalculada desde la versión vigente y el efecto `tiebreak_draw_invalidated`.
 - Aclaración confirmada: resuelto si el grupo llegó empatado a `random_draw` en la clasificación persistida. Se registra cada grupo anterior sin los mismos integrantes después, con integrantes anteriores y grupos posteriores; se conserva el algoritmo y la semilla existentes, sin nueva persistencia de sorteos.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.
-- [ ] **T12. Sanciones: crear, anular con registro y cumplimiento desde el siguiente partido.** RF-018, DA-8, D5
-- Hecho cuando: los tests cubren la sanción nueva, la anulada que conserva sus cumplimientos, que una sanción nueva no se cumpla en un partido ya comenzado y que la acumulación de amarillas de un partido posterior abra impacto. El trigger impide editar otras columnas de una sanción.
-- Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py tests/test_migration_035.py`.
+- [x] **T12. Sanciones: crear, anular con registro y cumplimiento desde el siguiente partido.** RF-018, DA-8, D5
+- Hecho cuando: los tests cubren la sanción nueva, la anulada que conserva sus cumplimientos, que una sanción nueva no se cumpla en un partido ya comenzado y que la acumulación de amarillas de un partido posterior produzca candidatos tipados de impacto para T14, sin tocar sus sanciones ni persistir un estado transitorio (aclaración aprobada). El trigger impide editar otras columnas de una sanción. La 037 cubre procedencia, fecha original, backfill y conservación del criterio sin fecha.
+- Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_sanctions.py tests/test_migration_037.py tests/test_rectification_effects.py tests/test_migration_035.py`.
 - [ ] **T13. Avance con las condiciones de D4.** RF-015, RF-016; plan §5.2
 - Hecho cuando: hay una prueba de sustitución válida (enlaces de ganador y de perdedor) y una prueba por cada condición que falla, que demuestra el rechazo del trigger y la apertura de impacto. La asignación anterior sigue presente.
 - Comando: `cd backend && RUN_DATABASE_TESTS=1 DATABASE_URL=… DATABASE_ADMIN_URL=… pytest -q tests/test_rectification_effects.py`.

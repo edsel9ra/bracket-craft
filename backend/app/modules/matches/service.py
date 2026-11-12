@@ -666,6 +666,7 @@ async def load_report_payload_snapshot(
     suspended = await service._has_suspended_players(
         context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
         exclude_origin_match_id=exclude_suspensions_from_match_id,
+        created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
     )
     return ReportPayloadSnapshot(
         match, rosters, segments, known, suspended, require_active_segment, active_segment_id
@@ -1551,7 +1552,7 @@ class CloseMatchReportService:
 
     async def _has_suspended_players(
         self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
-        *, exclude_origin_match_id: UUID | None = None,
+        *, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
     ) -> bool:
         if not player_ids:
             return False
@@ -1565,6 +1566,7 @@ class CloseMatchReportService:
                 WHERE ps.organization_id = :organization_id
                   AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
                   AND ps.status = 'active'
+                  AND (CAST(:created_before AS timestamptz) IS NULL OR ps.created_at <= :created_before)
                   AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
                        OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
@@ -1576,6 +1578,7 @@ class CloseMatchReportService:
                 "player_ids": player_ids,
                 "tournament_id": str(tournament_id),
                 "exclude_origin_match_id": exclude_origin_match_id,
+                "created_before": created_before,
             },
         )
         return result.first() is not None
@@ -1784,6 +1787,11 @@ class CloseMatchReportService:
                  AND r.is_active = TRUE
                 WHERE ps.organization_id = :organization_id
                   AND ps.status = 'active'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM match_segments ms
+                      WHERE ms.organization_id = ps.organization_id AND ms.match_id = :match_id
+                        AND ms.created_at < ps.created_at
+                  )
                   AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
                   AND r.team_id IN (CAST(:home_team_id AS UUID), CAST(:away_team_id AS UUID))
                   AND NOT EXISTS (

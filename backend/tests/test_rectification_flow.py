@@ -20,7 +20,7 @@ from app.modules.matches.schemas import CloseMatchReportDTO
 from app.modules.matches.service import load_report_payload_snapshot
 from app.modules.rectifications.service import RectificationService
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
-from migration_helpers import throwaway_database
+from migration_helpers import apply_migration, throwaway_database
 from test_migration_031 import (
     MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEED_SQL, SEGMENT_FIRST,
     STAGE, TEAM_HOME, TOURNAMENT, USER, VERSION,
@@ -45,7 +45,8 @@ def proposal(**changes):
 
 @pytest.fixture
 async def flow(database_admin_url, request):
-    async with throwaway_database(database_admin_url, last=35) as admin:
+    legacy = isinstance(getattr(request, "param", None), dict) and request.param.get("legacy_confirmation")
+    async with throwaway_database(database_admin_url, last=36 if legacy else 37) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches (id, organization_id, tournament_id, tournament_version_id,
@@ -77,7 +78,12 @@ async def flow(database_admin_url, request):
             FROM rosters r JOIN matches m ON m.tournament_id = r.tournament_id
             WHERE r.organization_id = $1;
         """.replace("$1", f"'{ORG}'"))
-        for minute, identity in enumerate(getattr(request, "param", ()), start=15):
+        events = getattr(request, "param", ())
+        if isinstance(events, dict):
+            events = events.get("events", ())
+        for minute, identity in enumerate(events, start=15):
+            if isinstance(identity, dict):
+                minute, identity = identity["minute"], identity["client_event_id"]
             await admin.execute("""
                 INSERT INTO match_events (organization_id, match_id, segment_id, team_id,
                     player_id, client_event_id, event_type, minute)
@@ -88,6 +94,8 @@ async def flow(database_admin_url, request):
                 resolution_type = 'regular', home_score_regular = 0, away_score_regular = 0,
                 home_score = 0, away_score = 0 WHERE id IN ($1, $2)
         """, MATCH, MATCH.replace("31000000", "32000000"))
+        if legacy:
+            await apply_migration(admin, 37)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
         state = SimpleNamespace(admin=admin, engine=engine,
@@ -119,6 +127,28 @@ async def flow(database_admin_url, request):
 
 async def create(flow, payload=None):
     return await flow.client.post(f"/api/v1/matches/{MATCH}/rectifications", json=payload or proposal())
+
+
+@pytest.mark.parametrize("flow", [(str(uuid4()), str(uuid4()))], indirect=True)
+@pytest.mark.parametrize("future_status", ["active", "served"])
+async def test_request_can_recalculate_accumulation_with_active_sanction_from_later_confirmed_match(flow, future_status):
+    segment = await flow.admin.fetchval("""INSERT INTO match_segments
+        (organization_id, match_id, segment_number, minute_start)
+        VALUES ($1,$2,1,0) RETURNING id""", ORG, UNCONFIRMED)
+    event = await flow.admin.fetchval("""INSERT INTO match_events
+        (organization_id, match_id, segment_id, team_id, player_id, event_type, minute, client_event_id)
+        VALUES ($1,$2,$3,$4,$5,'yellow_card',20,$6) RETURNING id""",
+        ORG, UNCONFIRMED, segment, TEAM_HOME, PLAYER_HOME_FIRST, str(uuid4()))
+    await flow.admin.execute("""UPDATE matches SET status='finished', result_confirmed=TRUE,
+        resolution_type='regular', home_score_regular=0, away_score_regular=0,
+        home_score=0, away_score=0 WHERE id=$1""", UNCONFIRMED)
+    await flow.admin.execute("""INSERT INTO player_suspensions
+        (organization_id, source_tournament_id, player_id, origin_match_id, source_event_id,
+         source_type, dedupe_key, scope_type, matches_suspended, reason, status)
+        VALUES ($1,$2,$3,$4,$5,'match_event','later-accumulation','organization',1,'yellow_card_accumulation',$6)""",
+        ORG, TOURNAMENT, PLAYER_HOME_FIRST, UNCONFIRMED, event, future_status)
+    response = await create(flow)
+    assert response.status_code == 201, response.text
 
 
 async def assert_empty(flow):
@@ -680,9 +710,10 @@ async def test_not_pending_precedes_self_approval(flow):
 async def test_rectification_ignores_only_suspensions_originating_in_its_match(flow, origin):
     await flow.admin.execute("""
         INSERT INTO player_suspensions (organization_id, source_tournament_id, player_id,
-            origin_match_id, reason, matches_suspended, scope_type, source_type, dedupe_key)
-        VALUES ($1, $2, $3, $4, 'red_card', 1, 'tournament', 'administrative_resolution', 'self-match-regression')
-    """, ORG, TOURNAMENT, PLAYER_HOME_FIRST, origin)
+            origin_match_id, reason, matches_suspended, scope_type, source_type, dedupe_key, created_at)
+        SELECT $1, $2, $3, $4, 'red_card', 1, 'tournament', 'administrative_resolution', 'self-match-regression',
+            original_report_confirmed_at - interval '1 second' FROM matches WHERE id = $5
+    """, ORG, TOURNAMENT, PLAYER_HOME_FIRST, origin, MATCH)
     async with flow.engine.connect() as connection:
         await connection.execute(text("SET ROLE bracket_app"))
         await connection.commit()

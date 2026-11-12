@@ -11,7 +11,6 @@ from app.core.security import get_current_user_id
 from app.core.tenancy import AuthContext
 from app.main import api
 from app.modules.rectifications.platform import RectificationPlatformService
-from migration_helpers import apply_migration
 from test_migration_031 import MEMBER, ORG, USER
 from test_rectification_flow import add_approver, create, database_snapshot, proposal
 from test_rectification_flow import flow as flow
@@ -19,7 +18,6 @@ from test_rectification_flow import flow as flow
 
 @pytest.fixture
 async def platform_flow(flow):
-    await apply_migration(flow.admin, 36)
     flow.platform_user = uuid4()
     await flow.admin.execute("INSERT INTO users (id, email, full_name) VALUES ($1, 'platform@example.test', 'Platform')", flow.platform_user)
     await flow.admin.execute("INSERT INTO platform_admins (user_id, role_code) VALUES ($1, 'platform_admin')", flow.platform_user)

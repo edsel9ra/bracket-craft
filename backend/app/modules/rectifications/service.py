@@ -18,6 +18,7 @@ from app.modules.matches.service import (
 )
 from app.modules.rectifications.diff import diff_reports
 from app.modules.rectifications.effects import apply_effects, capture_standings
+from app.modules.rectifications.sanctions import capture_discipline
 from app.modules.rectifications.schemas import (
     CreateRectificationRequest,
     RectificationDecisionRequest,
@@ -110,7 +111,7 @@ class RectificationService:
         query = """
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id,
                 m.home_team_id, m.away_team_id, m.match_date, m.matchday, m.bracket_code,
-                m.status, m.result_confirmed, tv.status AS version_status, tv.rules_config
+                m.status, m.result_confirmed, m.original_report_confirmed_at, tv.status AS version_status, tv.rules_config
             FROM matches m
             JOIN tournament_versions tv ON tv.id = m.tournament_version_id
                 AND tv.organization_id = m.organization_id
@@ -342,6 +343,7 @@ class RectificationService:
             home_penalties=outcome.home_penalties, away_penalties=outcome.away_penalties,
             winner_team_id=outcome.winner_team_id)
         standings_before = await capture_standings(self.db, context, match)
+        discipline_before = await capture_discipline(self.db, context, match)
         version = (await self.db.execute(text("""
             INSERT INTO match_report_versions (organization_id, match_id, version_number,
                 supersedes_version_number, resolution_type, resolution_reason,
@@ -372,7 +374,8 @@ class RectificationService:
         await self.db.execute(text("SELECT set_config('app.rectification_version_id', :version_id, true)"),
             {"version_id": str(version["id"])})
         effects = await apply_effects(self.db, context, {**version, "tournament_id": match["tournament_id"],
-            "stage_id": match["stage_id"], "standings_before": standings_before}, now)
+            "stage_id": match["stage_id"], "standings_before": standings_before,
+            "discipline_before": discipline_before}, now)
         return {"version_id": version["id"],
             "version": await self._version(context, request["match_id"], version["version_number"]),
             "effects": effects}

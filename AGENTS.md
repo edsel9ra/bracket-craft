@@ -446,6 +446,7 @@ MIGRATION_TARGET=031 $COMPOSE run --rm db-migrate
 
 ## Runtime
 
+- **Rectificación de sanciones (033 T12, migración 037):** procedencia original o versionada con FK compuesta; solo se actualiza `status`, con anulación append-only y cumplimientos intactos. La confirmación original usa `now()` como `player_suspensions.created_at`; backfill desde el primer audit de cierre y NULL conservador sin audit. Solo la rectificación excluye sanciones posteriores a esa fecha. El cierre conserva su validación y no sirve una sanción en un partido con segmentos anteriores a su creación. D5 devuelve candidatos tipados a `apply_competitive_impacts` en la misma transacción, sin persistencia hasta T14. Aplicar 037 antes del código; no editar 035/036 ni triggers 016/009/03_hardening. F9 fuera.
 - **Servicios de Docker Compose:** PostgreSQL, `db-migrate` (job de una sola ejecución), API, worker, Redis, `storage` (SeaweedFS) y web.
 - **Inicialización de PostgreSQL:** `infra/postgres/init/` solo corre en el primer arranque del volumen.
 - **Migraciones:** `infra/postgres/migrate.sh` aplica las migraciones numeradas de `infra/postgres/migrations/` una sola vez y las registra en `schema_migrations` con checksum SHA-256. `MIGRATION_TARGET` (vacía o `NNN`; no existe una bandera `--target`) limita la aplicación a esa versión, valida los checksums de todos los archivos y no desaplica nada.

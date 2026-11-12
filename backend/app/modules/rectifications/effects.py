@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
+from app.modules.rectifications.sanctions import AccumulationImpactCandidate, recalculate_sanctions
 from app.modules.standings.service import StandingsService
 
 
@@ -36,6 +37,13 @@ async def record_effect(db, context, version_id, effect, now):
         "payload": json.dumps(effect["payload"], default=str), "now": now})
 
 
+async def apply_competitive_impacts(
+    db: AsyncSession, context: AuthContext, version: Mapping[str, Any],
+    candidates: list[AccumulationImpactCandidate], now: datetime,
+) -> list[dict]:
+    return []
+
+
 async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping[str, Any], now: datetime) -> list[dict]:
     before = version["standings_before"]
     rows, draw_groups = await StandingsService(db).recalculate(context, version["tournament_id"], version["stage_id"])
@@ -43,6 +51,9 @@ async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping
     effects = [{**entity, "effect_type": "standings", "payload": {"before": before["rows"], "after": rows}}]
     effects.extend({**entity, "effect_type": "tiebreak_draw_invalidated", "payload": payload}
         for payload in invalidated_draws(before["draw_groups"], draw_groups))
+    sanctions = await recalculate_sanctions(db, context, version, now)
+    effects.extend(sanctions.effects)
+    effects.extend(await apply_competitive_impacts(db, context, version, sanctions.impact_candidates, now))
     for effect in effects:
         await record_effect(db, context, version["id"], effect, now)
     return effects
