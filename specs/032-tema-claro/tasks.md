@@ -1,6 +1,6 @@
 # Tareas 032 — Tema claro opcional
 
-Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** PR A fusionado; PR B autorizado con LY-1; PR C pendiente. Node 24/pnpm 12.12.1. Comandos de tareas pendientes son previstos, no resultados ejecutados.
+Fecha: 2026-11-11; cierre 2026-11-12. **T1–T10 completas; spec implementada y cierre aprobado por el usuario.** PR A/B/C fusionados (#53/#54/#55). CI de #55 verde: run 43109805246, E2E pull_request 41 passed. Node 24/pnpm 12.12.1. Los comandos son recetas de reproducción; resultados ejecutados en [verificación](verificacion.md).
 
 ## PR A — Paletas y resolución SSR (T1–T3)
 
@@ -48,11 +48,11 @@ Fecha: 2026-11-11. **Plan y tareas aprobados por el usuario; fases cerradas.** P
   - Hecho cuando: matriz de rutas/roles/estados alcanzables y tres tamaños documentada; claro 0 violaciones de app y oscuro ninguna nueva, sin excluir reglas/nodos. Campo/gráficos, todas las estadísticas, sticky, vacíos/errores, disabled, overlays y teclado revisados; contraste efectivo de textos ≥4.5 y señales ≥3, además de los 158 pares. Cada vista debe renderizar, no redirigir por permisos. JSON de axe con versión y capturas claras/oscuras revisadas; límites reales declarados, sin certificar dispositivos/lectores no usados.
   - Comando: `cd frontend && pnpm exec playwright test e2e/theme-public.spec.ts e2e/theme-workspace.spec.ts --grep axe`. Matriz local: 30 auditorías persistentes +48 privadas reales +6 admin/alta en claro, sin violaciones; límites en [verificación](verificacion.md).
 
-- [ ] **T10. Gates, documentación, limpieza y cierre aprobado.** RF-001–015; RNF-001–006. Depende de T9. 30 min activos; espera CI aparte.
-  - Estado: documentación y gates locales realizados; CI del PR C, recuentos del job, las 21 `public-polish` en esa corrida y aprobación del usuario pendientes. No cerrar ni declarar la spec implementada globalmente.
-  - Hecho cuando: cinco gates frontend y nuevos E2E, 21 public-polish, operation-flow y CI aplicables verdes, cantidades de nuevos E2E verificadas en logs del job. RF por RF, criterios de finalización/constitución §4 y evidencia documentados; manual/accesibilidad/AGENTS/MEMORY actualizados. Datos temporales retirados por IDs si se crearon, sin cookies/headers/auth en artefactos. Revisión humana y aprobación antes de marcar implementada; si falta un gate o revisión, T10 sigue sin marcar. No abrir ni fusionar PR sin encargo.
+- [x] **T10. Gates, documentación, limpieza y cierre aprobado.** RF-001–015; RNF-001–006. Depende de T9. 30 min activos; espera CI aparte.
+  - Estado: cerrada el 2026-11-12 con aprobación textual del usuario: «Sí, ciérrala en un PR pequeño de documentación». PR #55 fusionado; CI 7/7 verde, [run 43109805246](https://github.com/edsel9ra/bracket-craft/actions/runs/43109805246), E2E de pull_request **41 passed (4.6m)**: 12 theme-public, 3 theme-workspace, 21 public-polish y los 5 existentes restantes, incluido operation-flow. Recuento confirmado en logs del job 130822521061 sobre b4d956e06f8ab8f4842b074d85a17d5b8e4a7f07.
+  - Hecho: cinco gates frontend y nuevos E2E, 21 public-polish, operation-flow y CI aplicables verdes. RF por RF, criterios de finalización/constitución §4 y evidencia documentados; manual/accesibilidad/AGENTS/MEMORY actualizados. Datos temporales retirados por IDs, sin cookies/headers/auth en artefactos. Revisión y aprobación del usuario registradas; spec implementada. No abrir ni fusionar PR sin encargo.
   - Comando: `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run typecheck:e2e && pnpm exec playwright test e2e/public-polish.spec.ts --project public --no-deps && pnpm exec playwright test --project operation-flow`.
-  - Además: ejecutar los comandos T7–T9, `git diff --check` y esperar CI con git_pr_checks wait_mode=all cuando exista PR.
+  - Evidencia: comandos T7–T9 locales registrados; CI de #55 comprobado con git_pr_checks wait_mode=all y logs E2E. Este cierre solo documental no repite suites con inputs idénticos; comprobar `git diff --check`.
 
 ## Reglas de entrega
 

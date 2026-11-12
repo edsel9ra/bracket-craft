@@ -1,6 +1,6 @@
 # Verificación local de PR A — 032
 
-2026-11-11. T1–T3 completas; spec aprobada, no implementada. T4–T10 pendientes. Sin selector, cambios de API, permisos, campos públicos, dependencias ni CSP. No se abrió PR.
+2026-11-11. Registro histórico de PR A, limitado a T1–T3. T4–T10 se completaron posteriormente en B/C; spec implementada y cierre aprobado el 2026-11-12, con CI de #55 verde: [verificación final](verificacion.md). PR A no añadió selector ni cambios de API, permisos, campos públicos, dependencias o CSP. No se abrió PR en esta entrega.
 
 ## Base y TDD
 
@@ -44,7 +44,7 @@ Seis contextos reales hidratados: sin preferencia/sistema claro → oscuro; ligh
 
 Con JavaScript desactivado también se comprobaron light, system/claro, system/oscuro e inválida: color-scheme light/dark y rol de isla #ffd18a/#ffcb7a correctos, antes de depender de mounted. `no-javascript.json`.
 
-Referencias revisadas: `032-code/light-reference-1440.png` y `032-a-candidate-clean/operacion-390.png`. El claro no certifica todavía iniciales, disabled, velos ni campo: T5/T6 y axe/contraste renderizado T9 pendientes. No se certifica primer pintado ralentizado, selector, dispositivos físicos ni lectores de pantalla.
+Referencias revisadas: `032-code/light-reference-1440.png` y `032-a-candidate-clean/operacion-390.png`. Esta evidencia de PR A no certifica iniciales, disabled, velos, campo, primer pintado ralentizado ni selector: T5/T6/T9 se verificaron posteriormente en B/C, véase [verificación final](verificacion.md). No se certifican dispositivos físicos ni lectores de pantalla.
 
 ## Gates y limpieza
 

@@ -1,8 +1,8 @@
-# Verificación 032 — PR C, aceptación local
+# Verificación 032 — aceptación y cierre T10
 
 Fecha: 2026-11-11. Base `origin/main=aedbb92740def2a334c5499d454b1162aa6811c3`, después de #53/#54; rama `devin/1794431684-spec-032-aceptacion`.
 
-**T1–T9 implementadas. T10 sigue pendiente de CI del PR C y aprobación del usuario.** No se declara cerrada la spec ni se abre PR. El resultado local no sustituye el gate del evento pull_request. Las 21 public-polish se conservan, no se repitieron localmente en C; su ejecución conjunta y el recuento del job quedan pendientes.
+**T1–T10 completas; spec implementada y cerrada el 2026-11-12.** PR #55 fusionado y CI 7/7 verde. El usuario aprobó expresamente: «Sí, ciérrala en un PR pequeño de documentación». El gate del evento pull_request se ejecutó en el [run 43109805246](https://github.com/edsel9ra/bracket-craft/actions/runs/43109805246), [job E2E 130822521061](https://github.com/edsel9ra/bracket-craft/actions/runs/43109805246/job/130822521061), sobre b4d956e06f8ab8f4842b074d85a17d5b8e4a7f07: **41 passed (4.6m)**. Logs verificados: 12 theme-public +3 theme-workspace +21 public-polish +5 escenarios existentes (setup/realtime/operation-flow). Las 21 public-polish no se repitieron localmente en C, sí pasaron conjuntamente en CI. Este cierre solo cambia documentación, conserva resultados y límites y no abre PR.
 
 ## 1. Alcance y TDD
 
@@ -13,7 +13,7 @@ Fecha: 2026-11-11. Base `origin/main=aedbb92740def2a334c5499d454b1162aa6811c3`, 
 
 ## 2. Aceptación persistente y CI
 
-`theme-public.spec.ts`: doce escenarios; `theme-workspace.spec.ts`: tres. Se añaden a public/workspace sin retirar realtime, las 21 public-polish ni operation-flow. `playwright test --list` imprime `Total: 41 tests in 8 files` (selección, no resultado CI).
+`theme-public.spec.ts`: doce escenarios; `theme-workspace.spec.ts`: tres. Se añaden a public/workspace sin retirar realtime, las 21 public-polish ni operation-flow. `playwright test --list` imprime `Total: 41 tests in 8 files`; el job E2E de #55 confirma los 41 en verde, no solo su selección.
 
 Cobertura a 1440×900, 390×844 y 800×900:
 
@@ -158,16 +158,16 @@ Se corrigió el entorno local del navegador: HOME=/home/pwuser no escribible por
 | RF-014 | Preferencia anónima, peticiones aisladas y sesión Workspace conservada |
 | RF-015 | Sin escritura por visita/inválida; cookie solo enum UI, sin backend |
 
-Criterios de finalización 1–5: materializados con la cobertura acotada anterior; criterio 6 **pendiente de CI y aprobación humana**. RNF-001/002 respaldados por RGBA/axe/contraste; RNF-003 por fuentes/movimiento/foco; RNF-004/005 sin app/backend/CSP ni anti-FOUC nuevo; RNF-006 pendiente del gate global. No se certifican combinaciones no ejecutadas.
+Criterios de finalización 1–5: materializados con la cobertura acotada anterior; criterio 6 **cumplido con CI de #55 verde y aprobación humana del 2026-11-12**. RNF-001/002 respaldados por RGBA/axe/contraste; RNF-003 por fuentes/movimiento/foco; RNF-004/005 sin app/backend/CSP ni anti-FOUC nuevo; RNF-006 cumplido con el gate global de #55, incluidos los 15 nuevos escenarios del tema y los 21 public-polish. No se certifican combinaciones no ejecutadas.
 
 ### Constitución §4
 
 | Criterio | Resultado |
 |---|---|
-| Cambio comprobado, sin debilitar suites | TDD y cinco gates locales; selección 41 conservada; CI pendiente |
+| Cambio comprobado, sin debilitar suites | TDD y cinco gates locales; CI #55 7/7, E2E 41 passed |
 | Frontend tests/typecheck/build y useApi | Cinco gates; sin app ni nuevas llamadas de negocio |
 | Seguridad/privacidad | Sin secretos/headers/cookies/HTML privado en Git/JSON; preferencias UI opcionales |
-| Dependencias/lockfiles | axe 4.10.3 solo desarrollo, lock actualizado; security CI pendiente |
+| Dependencias/lockfiles | axe 4.10.3 solo desarrollo, lock actualizado; security CI de #55 verde |
 | Documentación observable | Spec/tasks/verificación, MEMORY, AGENTS, manual e informe sincronizados |
 | BD/RLS/backend/infra | Sin cambios de código/esquema/migración/despliegue; fixtures solo desarrollo, retirados |
-| Revisión y cierre | T10 sin marcar; falta CI y aprobación del usuario. Sin excepción constitucional |
+| Revisión y cierre | T10 completa; #55 fusionado, CI verde y cierre aprobado por el usuario el 2026-11-12. Sin excepción constitucional |
