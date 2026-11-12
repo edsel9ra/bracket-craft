@@ -28,7 +28,7 @@ Si este archivo contradice a la constitución, gana la constitución. Si contrad
 
 - **033 T17:** `/admin/rectifications` usa middleware de plataforma y `usePlatformRectifications` vía `useApi`; reutiliza revisión con identidad de usuario, sin lecturas organizativas ni cierre de impactos. Detalle de plataforma añade `current_version`; GET preview con autorización vigente revierte siempre y no consume autorización ni conserva auditoría. Ambos previews devuelven `expected_base_version`. `PublicRectifiedMark` solo recibe `rectified_at`: texto/fecha ES/EN, tokens de texto en ambos temas, tarjetas/modal/llave sin campos públicos nuevos. Tests `test_rectification_platform_preview.py`, `platform-rectification.test.ts` y revisión compartida.
 
-- **Workspace rectificativo (033 T16):** `useMatchRectifications` y `useCompetitiveImpacts` solo usan `useApi`; componentes en `components/match/`, sin administración ni marca pública (T17 pendiente). Bandejas organizativas paginadas (`GET /rectifications`, `/competitive-impacts`): miembro, RLS, filtros estrictos de estado/torneo, orden fecha/ID descendente; torneo ajeno/inexistente produce la misma página vacía. Leer impactos no exige aprobación; cerrarlos sí. Lectura de autorizaciones: owner, 404 indistinguible al resto. Ocultar decisiones al solicitante; aprobar requiere preview y su base, invalidada ante conflicto. Editor e historial mantienen el orden del payload o del primer audit de cierre (fallback determinista si falta); campos y eventos editables, originales intactos. Confirmaciones single-flight y ES/EN; tests `test_rectification_workspace_reads.py`, `rectification-components.test.ts` y `rectification-composables.test.ts`.
+- **Workspace rectificativo (033 T16):** `useMatchRectifications` y `useCompetitiveImpacts` solo usan `useApi`; componentes en `components/match/`; administración y marca pública implementadas por separado en T17. Bandejas organizativas paginadas (`GET /rectifications`, `/competitive-impacts`): miembro, RLS, filtros estrictos de estado/torneo, orden fecha/ID descendente; torneo ajeno/inexistente produce la misma página vacía. Leer impactos no exige aprobación; cerrarlos sí. Lectura de autorizaciones: owner, 404 indistinguible al resto. Ocultar decisiones al solicitante; aprobar requiere preview y su base, invalidada ante conflicto. Editor e historial mantienen el orden del payload o del primer audit de cierre (fallback determinista si falta); campos y eventos editables, originales intactos. Confirmaciones single-flight y ES/EN; tests `test_rectification_workspace_reads.py`, `rectification-components.test.ts` y `rectification-composables.test.ts`.
 
 - Mantenimiento de auditoría: ejecutar `pnpm run lint` además de tests/typecheck/build.
   CI añade `bandit -r app -ll` y Gitleaks sobre `git archive HEAD`;
@@ -150,6 +150,8 @@ docker compose up --build
 
 ### Datos demo (solo desarrollo)
 
+El seed también crea `demo.approver@bracketcraft.dev` (administrador de la misma organización, contraseña ficticia `Demo1234!`) para la separación entre solicitante y aprobador de 033. No crear cuentas ni saltar RLS desde E2E.
+
 ```sh
 docker compose exec api python -m scripts.seed_demo
 ```
@@ -159,6 +161,20 @@ Es idempotente e imprime el `tournament_id`. Credenciales demo:
 - Email: `demo.owner@bracketcraft.dev`
 - Contraseña: `Demo1234!`
 - Organización: `Demo Federation` (`demo-federation`)
+
+### Verificación rectificativa completa (033, criterios 1–9)
+
+1. Editor Workspace → solicitud con propuesta, motivo/evidencia, actor, fecha y versión base; las inválidas no persisten.
+2. Autoaprobación prohibida en UI, API y BD incluso para owner/plataforma.
+3. Otro aprobador decide con motivo; plataforma solo bajo autorización puntual, consumida al decidir, con auditoría tenant y global.
+4. Pendiente/rechazada/retirada no alteran vigente; preview con rollback completo y `expected_base_version` obligatorio antes de aprobar.
+5. Versión y efectos nuevos atómicos; originales e históricos inmutables y legibles.
+6. Lectores vigentes recalculan clasificación, estadísticas, sanciones y avance seguro con trazabilidad; marca pública solo fecha/texto.
+7. Posteriores comenzados/confirmados y sus sanciones intactos; impacto con snapshot, bloqueo DB/API de no comenzados y cierre organizativo `keep_as_played` con permiso/motivo, sin repetición.
+8. Notificaciones/outbox organizativas y correo de decisión sin evidencia, con reintento SMTP; preview sin escrituras duraderas.
+9. RLS de solicitudes/versiones/impactos y 404/página vacía indistinguibles entre organizaciones.
+
+`e2e/rectification.spec.ts` corre en el proyecto Workspace y en CI, después del setup por UI con storageState. Usa API/BD reales, crea la solicitud con el editor, aprueba con otro miembro del seed descubierto por API y comprueba resultado/marca pública anónimos; caso separado de owner sin botones de decisión. `workspaceSession.ts` comparte login/hidratación con setup sin importar un archivo de tests. Ejecutar primero `cd frontend && pnpm exec playwright test e2e/rectification.spec.ts --project workspace`, luego todos los gates de CI. Cobertura por criterio y límites en `specs/033-acta-rectificativa/verificacion.md`.
 
 ### Frontend fuera de Docker
 

@@ -48,7 +48,7 @@ export default defineConfig({
     },
     {
       name: 'workspace',
-      testMatch: /(?:realtime-workspace|theme-workspace)\.spec\.ts/,
+      testMatch: /(?:realtime-workspace|theme-workspace|rectification)\.spec\.ts/,
       dependencies: ['setup'],
       use: { storageState },
     },

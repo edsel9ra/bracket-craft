@@ -74,7 +74,7 @@ Variables de las pruebas de base de datos (como en CI): `RUN_DATABASE_TESTS=1 DA
 - Hecho cuando: los tests de la pantalla de administración y de la marca en tarjetas, modal y llave pasan con los mismos comandos de T16, y la marca no muestra motivo ni responsables.
 - [ ] **T18. E2E y documentación.** Criterios de finalización 1–9
 - Hecho cuando:
-  - `e2e/rectification.spec.ts` (solicitar → otro miembro aprueba → marca pública) pasa en el proyecto Workspace;
-  - `README.md`, `AGENTS.md` y `docs/manual-usuario.md` describen la nueva vía de corrección;
-  - CI del PR en verde, con los cinco jobs.
+  - [x] `e2e/rectification.spec.ts` (solicitar → otro miembro aprueba → marca pública) pasa en el proyecto Workspace;
+  - [x] `README.md`, `AGENTS.md` y `docs/manual-usuario.md` describen la nueva vía de corrección;
+  - [ ] CI del PR en verde, con los cinco jobs. No hay PR abierto para esta rama; la verificación local no sustituye este requisito de cierre.
 - Comando: `cd frontend && pnpm exec playwright test e2e/rectification.spec.ts --project workspace` y `git_pr_checks` del PR.

@@ -33,6 +33,7 @@ from app.modules.rules_engine.engine import validate_rules_config
 DEMO_USER_EMAIL = "demo.owner@bracketcraft.dev"
 DEMO_USER_PASSWORD = "Demo1234!"
 DEMO_USER_NAME = "Demo Owner"
+DEMO_APPROVER_EMAIL = "demo.approver@bracketcraft.dev"
 DEMO_ORGANIZATION_NAME = "Demo Federation"
 DEMO_ORGANIZATION_SLUG = "demo-federation"
 DEMO_TOURNAMENT_NAME = "Copa Demo Bracket Craft"
@@ -250,19 +251,21 @@ def _slot_source(match: MatchSpec, side: str) -> tuple[str, dict[str, str]]:
     return "match_result", {"source_match_code": source_code, "outcome": outcome}
 
 
-async def _ensure_demo_user(db: AsyncSession) -> UUID:
+async def _ensure_demo_user(
+    db: AsyncSession, *, email: str = DEMO_USER_EMAIL, full_name: str = DEMO_USER_NAME
+) -> UUID:
     result = await db.execute(
         text("""
             SELECT id, is_active
             FROM users
             WHERE LOWER(email) = LOWER(:email)
         """),
-        {"email": DEMO_USER_EMAIL},
+        {"email": email},
     )
     user = result.mappings().one_or_none()
     if user is not None:
         if not user["is_active"]:
-            raise RuntimeError(f"La cuenta demo está desactivada: {DEMO_USER_EMAIL}")
+            raise RuntimeError(f"La cuenta demo está desactivada: {email}")
         return user["id"]
 
     result = await db.execute(
@@ -272,12 +275,39 @@ async def _ensure_demo_user(db: AsyncSession) -> UUID:
             RETURNING id
         """),
         {
-            "email": DEMO_USER_EMAIL,
+            "email": email,
             "password_hash": hash_password(DEMO_USER_PASSWORD),
-            "full_name": DEMO_USER_NAME,
+            "full_name": full_name,
         },
     )
     return result.scalar_one()
+
+
+async def _ensure_demo_approver(db: AsyncSession, organization_id: UUID, owner_id: UUID) -> UUID:
+    user_id = await _ensure_demo_user(db, email=DEMO_APPROVER_EMAIL, full_name="Demo Approver")
+    await set_rls_context(db, organization_id, owner_id)
+    await db.execute(text("""
+        INSERT INTO roles (organization_id, role_definition_id, name, permissions)
+        SELECT :organization_id, id, 'Demo Approver', system_permissions
+        FROM role_definitions WHERE code = 'administrator'
+        ON CONFLICT (organization_id, name) DO NOTHING
+    """), {"organization_id": str(organization_id)})
+    await db.execute(text("""
+        INSERT INTO organization_users (organization_id, user_id)
+        VALUES (:organization_id, :user_id)
+        ON CONFLICT (organization_id, user_id) DO NOTHING
+    """), {"organization_id": str(organization_id), "user_id": str(user_id)})
+    await db.execute(text("""
+        INSERT INTO organization_user_roles (organization_id, organization_user_id, role_id)
+        SELECT ou.organization_id, ou.id, r.id
+        FROM organization_users ou
+        JOIN roles r ON r.organization_id = ou.organization_id
+        JOIN role_definitions rd ON rd.id = r.role_definition_id
+        WHERE ou.organization_id = :organization_id AND ou.user_id = :user_id
+          AND rd.code = 'administrator' AND r.name = 'Demo Approver'
+        ON CONFLICT (organization_user_id, role_id) DO NOTHING
+    """), {"organization_id": str(organization_id), "user_id": str(user_id)})
+    return user_id
 
 
 async def _ensure_demo_organization(db: AsyncSession, user_id: UUID) -> UUID:
@@ -1439,6 +1469,7 @@ async def seed_demo() -> dict[str, Any]:
         async with db.begin():
             user_id = await _ensure_demo_user(db)
             organization_id = await _ensure_demo_organization(db, user_id)
+            await _ensure_demo_approver(db, organization_id, user_id)
 
         async with db.begin():
             state = await _ensure_structure(

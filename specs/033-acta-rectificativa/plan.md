@@ -1,6 +1,6 @@
 # Plan 033 — Acta rectificativa
 
-Fecha: 2026-11-12. Estado: **aprobado** por el usuario el 2026-11-12 («Apruebo el plan.»). Desarrolla la spec 033 (aprobada el 2026-11-12) y la §3.6 de la constitución 2.0.0. Los nombres de archivos, tablas y endpoints son propuestas; nada de esto está implementado.
+Fecha: 2026-11-12. Estado: **aprobado** por el usuario el 2026-11-12 («Apruebo el plan.»). Desarrolla la spec 033 (aprobada el 2026-11-12) y la §3.6 de la constitución 2.0.0. Implementación y evidencia de los criterios 1–9 en `verificacion.md`; estado de cierre en `tasks.md`.
 
 ## 1. Idea central
 
