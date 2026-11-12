@@ -273,4 +273,131 @@ GRANT UPDATE (revoked_at, consumed_at)
 GRANT UPDATE (status, resolution, reason, closed_by_user_id, closed_at)
     ON public.competitive_impact_procedures TO bracket_app;
 
+
+CREATE FUNCTION public.reject_match_report_self_decision()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM public.match_report_rectification_requests r
+        WHERE r.id = NEW.request_id
+          AND r.organization_id = NEW.organization_id
+          AND r.requested_by_user_id = NEW.decided_by_user_id
+    ) THEN
+        RAISE EXCEPTION 'RECTIFICATION_SELF_APPROVAL' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_reject_match_report_self_decision
+BEFORE INSERT ON public.match_report_rectification_decisions
+FOR EACH ROW EXECUTE FUNCTION public.reject_match_report_self_decision();
+
+CREATE FUNCTION public.validate_match_report_request_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.status <> 'pending'
+       OR NEW.status NOT IN ('rejected', 'withdrawn', 'published')
+       OR (to_jsonb(NEW) - ARRAY['status', 'withdrawn_at', 'resulting_version_id'])
+          IS DISTINCT FROM
+          (to_jsonb(OLD) - ARRAY['status', 'withdrawn_at', 'resulting_version_id'])
+    THEN
+        RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.status = 'withdrawn' THEN
+        IF OLD.withdrawn_at IS NOT NULL OR NEW.withdrawn_at IS NULL
+           OR NEW.resulting_version_id IS DISTINCT FROM OLD.resulting_version_id
+        THEN
+            RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+        END IF;
+    ELSIF NEW.status = 'published' THEN
+        IF OLD.resulting_version_id IS NOT NULL OR NEW.resulting_version_id IS NULL
+           OR NEW.withdrawn_at IS DISTINCT FROM OLD.withdrawn_at
+        THEN
+            RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+        END IF;
+    ELSIF NEW.withdrawn_at IS DISTINCT FROM OLD.withdrawn_at
+          OR NEW.resulting_version_id IS DISTINCT FROM OLD.resulting_version_id
+    THEN
+        RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validate_match_report_request_transition
+BEFORE UPDATE ON public.match_report_rectification_requests
+FOR EACH ROW EXECUTE FUNCTION public.validate_match_report_request_transition();
+
+CREATE FUNCTION public.validate_match_report_authorization_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.revoked_at IS NOT NULL OR OLD.consumed_at IS NOT NULL
+       OR (NEW.revoked_at IS NULL) = (NEW.consumed_at IS NULL)
+       OR (to_jsonb(NEW) - ARRAY['revoked_at', 'consumed_at'])
+          IS DISTINCT FROM
+          (to_jsonb(OLD) - ARRAY['revoked_at', 'consumed_at'])
+    THEN
+        RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validate_match_report_authorization_transition
+BEFORE UPDATE ON public.match_report_platform_authorizations
+FOR EACH ROW EXECUTE FUNCTION public.validate_match_report_authorization_transition();
+
+CREATE FUNCTION public.validate_competitive_impact_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.status <> 'open' OR NEW.status <> 'closed'
+       OR NEW.resolution IS DISTINCT FROM 'keep_as_played'
+       OR NEW.reason IS NULL OR btrim(NEW.reason) = ''
+       OR NEW.closed_by_user_id IS NULL OR NEW.closed_at IS NULL
+       OR (to_jsonb(NEW) - ARRAY['status', 'resolution', 'reason', 'closed_by_user_id', 'closed_at'])
+          IS DISTINCT FROM
+          (to_jsonb(OLD) - ARRAY['status', 'resolution', 'reason', 'closed_by_user_id', 'closed_at'])
+    THEN
+        RAISE EXCEPTION 'RECTIFICATION_INVALID_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validate_competitive_impact_transition
+BEFORE UPDATE ON public.competitive_impact_procedures
+FOR EACH ROW EXECUTE FUNCTION public.validate_competitive_impact_transition();
+
+DO $rectification_permissions$
+DECLARE
+    permission TEXT;
+BEGIN
+    FOREACH permission IN ARRAY ARRAY[
+        'REQUEST_MATCH_REPORT_RECTIFICATION', 'APPROVE_MATCH_REPORT_RECTIFICATION'
+    ] LOOP
+        UPDATE public.role_definitions
+        SET system_permissions = system_permissions || jsonb_build_array(permission)
+        WHERE code IN ('owner', 'administrator')
+          AND NOT system_permissions @> jsonb_build_array(permission);
+
+        UPDATE public.roles r
+        SET permissions = r.permissions || jsonb_build_array(permission)
+        FROM public.role_definitions rd
+        WHERE rd.id = r.role_definition_id
+          AND rd.code IN ('owner', 'administrator')
+          AND NOT r.permissions @> jsonb_build_array(permission);
+    END LOOP;
+END;
+$rectification_permissions$;
+
 COMMIT;
