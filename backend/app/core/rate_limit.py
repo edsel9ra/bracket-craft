@@ -33,6 +33,15 @@ def build_rate_limit_keys(
     connection_identifier: str | None = None,
 ) -> list[str]:
     client_host = request.client.host if request.client else "unknown"
+    return _identity_rate_limit_keys(client_host, bucket, account_identifier, connection_identifier)
+
+
+def _identity_rate_limit_keys(
+    client_host: str,
+    bucket: str,
+    account_identifier: str | None = None,
+    connection_identifier: str | None = None,
+) -> list[str]:
     keys = [_rate_limit_key(f"{bucket}:ip:{client_host}")]
     if account_identifier:
         keys.append(_rate_limit_key(f"{bucket}:account:{account_identifier.strip().casefold()}"))
@@ -66,7 +75,26 @@ async def enforce_rate_limit(
     max_body_bytes: int | None = None,
 ) -> None:
     _validate_request_size(request, max_body_bytes)
-    keys = build_rate_limit_keys(request, bucket, account_identifier, connection_identifier)
+    await enforce_identity_rate_limit(
+        request.client.host if request.client else "unknown",
+        bucket,
+        limit,
+        window_seconds,
+        account_identifier=account_identifier,
+        connection_identifier=connection_identifier,
+    )
+
+
+async def enforce_identity_rate_limit(
+    client_host: str,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+    *,
+    account_identifier: str | None = None,
+    connection_identifier: str | None = None,
+) -> None:
+    keys = _identity_rate_limit_keys(client_host, bucket, account_identifier, connection_identifier)
     redis = get_redis_client()
     try:
         exceeded = await redis.eval(

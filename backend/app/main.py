@@ -33,6 +33,7 @@ from app.core.database import (
     validate_application_role,
 )
 from app.core.outbox import OUTBOX_STREAM
+from app.core.rate_limit import enforce_identity_rate_limit
 from app.core.security import decode_access_token_claims
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.modules.crests.errors import CrestError
@@ -62,6 +63,8 @@ from app.modules.tournaments.router import router as tournaments_router
 PUBLIC_REALTIME_EVENTS = frozenset({"MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"})
 RESYNC = "RESYNC"
 SOCKET_REVALIDATION_SECONDS = 30
+SOCKET_PUBLIC_RATE_LIMIT = 60
+SOCKET_PUBLIC_RATE_WINDOW_SECONDS = 60
 RELAY_RETRY_SECONDS = 1
 # nginx-style "client closed request": no body, no domain result. A disconnected
 # client never receives it, but the connection is closed without running the
@@ -200,6 +203,15 @@ async def connect(sid, environ, auth):
     try:
         tournament_id = UUID(str(tournament_value))
     except (TypeError, ValueError):
+        return False
+
+    client = environ.get("asgi.scope", {}).get("client")
+    client_host = str(client[0]) if client else environ.get("REMOTE_ADDR", "unknown")
+    try:
+        await enforce_identity_rate_limit(
+            client_host, "socket_public", SOCKET_PUBLIC_RATE_LIMIT, SOCKET_PUBLIC_RATE_WINDOW_SECONDS,
+        )
+    except HTTPException:
         return False
 
     async with SessionFactory() as db:
