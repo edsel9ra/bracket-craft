@@ -3,7 +3,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Plan — estado de spec: aprobada por el usuario el 2026-11-12.
-- Pendiente: redactar y aprobar el plan técnico; DA-1–DA-18 cerradas, sin dudas abiertas de spec. Sin tareas ni implementación F9. La spec 033 permanece implementada.
+- Pendiente: revisar/aprobar plan.md (borrador) y sus confirmaciones C1–C5: controles BD, alcance RLS F9, coordinador de bloqueos, frontera temporal/legado y destinatarios desautorizados. DA-1–DA-18 cerradas. Sin tareas ni implementación F9; la 033 permanece implementada.
 
 ## Decisiones tomadas
 - 2026-11-12 · Spec 034 · El usuario aprobó expresamente la spec completa; fase Spec cerrada y fase actual Plan. La aprobación no se extiende al plan técnico ni autoriza implementación.
@@ -28,6 +28,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - 2026-11-12 · Spec 034 · DA-5 cerrada por el usuario: sin efecto suspensivo ni suspensión provisional por el recurso; la sanción sigue bloqueando conforme a los controles actuales hasta una resolución aplicable.
 
 ## Estado (entrada más reciente primero; el resto es histórico)
+- 2026-11-12 · **034 Plan borrador:** diseño contrastado con 035–039 y lectores; propone 040, duración efectiva sin mutar 037 y entregas A–D. Confirmaciones C1–C5 pendientes; spec aprobada, fase actual Plan, sin implementación.
 - 2026-11-12 · **034 aprobada por el usuario:** fase Spec cerrada, fase actual Plan; 34 RF y DA-1–DA-18 cerradas. Sin implementación F9.
 - 2026-11-12 · **034, clarificación sin dudas abiertas:** DA-1–DA-18 cerradas, 34 RF EARS; revisión integral de coherencia y constitución. Sigue borrador pendiente de aprobación expresa del usuario, sin plan, tareas ni implementación F9.
 - 2026-11-12 · **034 F9, borrador:** separa apelación y resolución auditada, conserva la inmutabilidad y la vía 033, cumplimientos/procedencia y privacidad de la 020. Investigación de código: sin escritura operativa de `appealed` ni API propia de recursos; `cancelled` sí lo escribe la publicación rectificativa; cierre valida solo sanciones activas pendientes, no el guardado/publicación de alineación. DA-1–DA-18 sin decidir. Solo documentación, sin afirmar datos ni pruebas de producción.
