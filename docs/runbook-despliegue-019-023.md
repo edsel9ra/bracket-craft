@@ -6,6 +6,9 @@ Paquete operativo para llevar un servidor que está **en el esquema 018 con el c
 
 Actualización 033: `INVITATION_TOKEN_KEY` queda obsoleta y opcional; ya no se inyecta con Compose ni debe provisionarse para el código actual. Las listas históricas siguientes corresponden al despliegue 019–023. Antes de 033, detener los procesos antiguos y verificar backup; aplicar la migración antes de arrancar el código nuevo. Se elimina irreversiblemente `organization_invitations.token_encrypted`, sin cambiar hashes, estados ni vencimientos; los enlaces vigentes siguen funcionando. El rollback al código anterior requiere restaurar el backup, no solo revertir la imagen.
 
+En producción, `api` hereda `depends_on: db-migrate: service_completed_successfully`: ordena el arranque de la API nueva, pero no garantiza detener la API anterior antes de migrar.
+Para 033, preparar las imágenes primero (`$COMPOSE build api worker web`) y, con backup verificado y `MIGRATION_TARGET` sin exportar, abrir mantenimiento: `$COMPOSE stop api worker web` → `$COMPOSE run --rm db-migrate` → `$COMPOSE up -d api worker web`; mantener la ventana hasta que la API nueva esté sana, sin servir escrituras de invitaciones con la API antigua tras eliminar la columna.
+
 ---
 
 ## 1. Alcance y riesgos
