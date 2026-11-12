@@ -9,6 +9,12 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from app.core.config import get_settings
+from app.modules.crests.validation import (
+    IMAGE_CONTENT_TYPES,
+    detect_image_type,
+    png_declares_animation,
+    webp_declares_animation,
+)
 from app.modules.tournaments.schemas import CreateRosterPlayerRequest
 
 
@@ -31,12 +37,7 @@ class PhotoFile:
 
 
 REQUIRED_COLUMNS = {"first_name", "last_name", "national_id", "birth_date", "dorsal_number"}
-IMAGE_TYPES = {
-    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
-    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
-    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
-    ".webp": ("image/webp", b"RIFF"),
-}
+IMAGE_TYPES = {**IMAGE_CONTENT_TYPES, ".jpeg": "image/jpeg"}
 
 
 def _normalize_photo_filename(value: str) -> str:
@@ -168,9 +169,13 @@ def validate_photo_content(content: bytes, filename: str) -> PhotoFile:
         raise RosterImportError(f"La imagen {filename} debe ser JPG, PNG o WEBP")
     if len(content) > settings.storage_max_image_bytes:
         raise RosterImportError(f"La imagen {filename} supera el tamaño máximo permitido")
-    content_type, signature = image_type
-    if not content.startswith(signature):
+    content_type = image_type
+    detected = detect_image_type(content)
+    if detected != (".jpg" if extension == ".jpeg" else extension):
         raise RosterImportError(f"La imagen {filename} no tiene un contenido válido")
-    if extension == ".webp" and content[8:12] != b"WEBP":
-        raise RosterImportError(f"La imagen {filename} no tiene un contenido WEBP válido")
+    if (
+        detected == ".png" and png_declares_animation(content)
+        or detected == ".webp" and webp_declares_animation(content)
+    ):
+        raise RosterImportError(f"La imagen {filename} no puede ser animada")
     return PhotoFile(content, content_type, extension)

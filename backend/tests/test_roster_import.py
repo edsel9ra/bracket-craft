@@ -4,10 +4,12 @@ from uuid import uuid4
 
 import pytest
 
+from app.modules.tournaments import roster_import
 from app.modules.tournaments.roster_import import (
     RosterImportError,
     extract_zip_photos,
     parse_roster_csv,
+    validate_photo_content,
 )
 
 
@@ -80,3 +82,66 @@ def test_extract_zip_photos_rejects_invalid_image_content():
 
     with pytest.raises(RosterImportError, match="contenido válido"):
         extract_zip_photos(archive_bytes.getvalue())
+
+
+PNG = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_chunk(kind, data=b""):
+    return len(data).to_bytes(4, "big") + kind + data + b"\x00" * 4
+
+
+def _webp(chunk, data=b""):
+    body = b"WEBP" + chunk + len(data).to_bytes(4, "little") + data
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
+
+
+@pytest.mark.parametrize("name,content", [
+    ("player.png", PNG + _png_chunk(b"acTL", b"\x00" * 8)),
+    ("player.png", PNG + b"\x00\x00\x00\x99acTL"),
+    ("player.webp", _webp(b"VP8X", b"\x02" + b"\x00" * 9)),
+    ("player.webp", _webp(b"ANIM", b"\x00" * 6)),
+])
+@pytest.mark.parametrize("in_archive", [False, True])
+def test_photo_rejects_declared_animation(name, content, in_archive):
+    with pytest.raises(RosterImportError, match="no puede ser animada"):
+        if in_archive:
+            archive_bytes = io.BytesIO()
+            with zipfile.ZipFile(archive_bytes, "w") as archive:
+                archive.writestr(name, content)
+            extract_zip_photos(archive_bytes.getvalue())
+        else:
+            validate_photo_content(content, name)
+
+
+@pytest.mark.parametrize("name,content,content_type", [
+    ("player.jpg", b"\xff\xd8\xffstatic", "image/jpeg"),
+    ("player.JPEG", b"\xff\xd8\xffstatic", "image/jpeg"),
+    ("player.png", PNG + _png_chunk(b"IDAT"), "image/png"),
+    ("player.png", PNG + b"\x00\x00", "image/png"),
+    ("player.webp", _webp(b"VP8X", b"\x00" * 10), "image/webp"),
+    ("player.webp", b"RIFF\x00\x00\x00\x00WEBP", "image/webp"),
+])
+def test_photo_preserves_static_formats_and_truncated_container_policy(name, content, content_type):
+    photo = validate_photo_content(content, name)
+    assert photo.content == content
+    assert photo.content_type == content_type
+    assert photo.extension == "." + name.rsplit(".", 1)[1].casefold()
+
+
+@pytest.mark.parametrize("name,content", [
+    ("player.png", b""), ("player.jpg", PNG),
+    ("player.webp", b"RIFF\x00\x00\x00\x00WAVE"),
+    ("player.gif", b"GIF89a"), ("player.svg", b"<svg/>"),
+])
+def test_photo_rejects_empty_unsupported_or_mismatched_content(name, content):
+    with pytest.raises(RosterImportError):
+        validate_photo_content(content, name)
+
+
+def test_photo_preserves_its_size_limit(monkeypatch):
+    settings = roster_import.get_settings().model_copy(update={"storage_max_image_bytes": 4})
+    monkeypatch.setattr(roster_import, "get_settings", lambda: settings)
+    assert validate_photo_content(b"\xff\xd8\xffx", "player.jpg").content_type == "image/jpeg"
+    with pytest.raises(RosterImportError, match="tamaño máximo"):
+        validate_photo_content(b"\xff\xd8\xffxx", "player.jpg")
