@@ -96,14 +96,15 @@ class AdvancementService:
             team_id = winner if link["outcome"] == "winner" else loser
             column = "home_team_id" if link["target_side"] == "home" else "away_team_id"
             update_result = await self.db.execute(
-                text(f"""
+                text("""
                     UPDATE matches
                     SET {column} = :team_id, updated_at = CURRENT_TIMESTAMP
                     WHERE id = :target_match_id
                       AND organization_id = :organization_id
                       AND status = 'scheduled'
                       AND {column} IS NULL
-                """),  # nosec B608 # columna elegida entre home_team_id y away_team_id; valores ligados.
+                """  # nosec B608 # columna elegida entre home_team_id y away_team_id; valores ligados.
+                .format(column=column)),
                 {
                     "team_id": str(team_id),
                     "target_match_id": str(link["target_match_id"]),

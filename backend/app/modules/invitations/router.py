@@ -609,7 +609,7 @@ async def current_access(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         result = await db.execute(
-            text(f"""
+            text("""
                 SELECT COALESCE(rd.code, 'viewer') AS role_code, r.permissions
                 FROM organization_users ou
                 LEFT JOIN organization_user_roles our
@@ -621,9 +621,10 @@ async def current_access(
                 LEFT JOIN role_definitions rd ON rd.id = r.role_definition_id
                 WHERE ou.organization_id = :organization_id
                   AND ou.id = :organization_user_id
-                ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
+                ORDER BY {role_precedence}
                 LIMIT 1
-            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            """  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            .format(role_precedence=ROLE_PRECEDENCE_SQL.format(column="rd.code"))),
             {
                 "organization_id": str(context.organization_id),
                 "organization_user_id": str(context.organization_user_id),
@@ -650,14 +651,14 @@ async def list_members(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         result = await db.execute(
-            text(f"""
+            text("""
                 SELECT ou.id AS organization_user_id,
                        u.id AS user_id,
                        u.email,
                        u.full_name,
                        ou.is_active,
                        COALESCE(
-                           (ARRAY_AGG(rd.code ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")})
+                           (ARRAY_AGG(rd.code ORDER BY {role_precedence})
                                FILTER (WHERE rd.code IS NOT NULL))[1],
                            'viewer'
                        ) AS role_code,
@@ -674,7 +675,8 @@ async def list_members(
                 WHERE ou.organization_id = :organization_id
                 GROUP BY ou.id, u.id
                 ORDER BY u.full_name, u.email
-            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            """  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            .format(role_precedence=ROLE_PRECEDENCE_SQL.format(column="rd.code"))),
             {"organization_id": str(context.organization_id)},
         )
         return [dict(row) for row in result.mappings().all()]
@@ -691,7 +693,7 @@ async def update_member_role(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         target_result = await db.execute(
-            text(f"""
+            text("""
                 SELECT ou.id, ou.user_id,
                        COALESCE((
                            SELECT rd.code
@@ -700,13 +702,14 @@ async def update_member_role(
                            JOIN role_definitions rd ON rd.id = r.role_definition_id
                            WHERE our.organization_user_id = ou.id
                              AND our.organization_id = ou.organization_id
-                           ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
+                           ORDER BY {role_precedence}
                            LIMIT 1
                        ), 'viewer') AS role_code
                 FROM organization_users ou
                 WHERE ou.id = :member_id AND ou.organization_id = :organization_id
                 FOR UPDATE OF ou
-            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            """  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            .format(role_precedence=ROLE_PRECEDENCE_SQL.format(column="rd.code"))),
             {"member_id": str(organization_user_id), "organization_id": str(context.organization_id)},
         )
         target = target_result.mappings().one_or_none()
@@ -774,7 +777,7 @@ async def update_member_status(
         await set_rls_context(db, context.organization_id, context.user_id)
         await _require_member_management(db, context)
         target_result = await db.execute(
-            text(f"""
+            text("""
                 SELECT ou.is_active,
                        COALESCE((
                            SELECT rd.code
@@ -783,13 +786,14 @@ async def update_member_status(
                            JOIN role_definitions rd ON rd.id = r.role_definition_id
                            WHERE our.organization_user_id = ou.id
                              AND our.organization_id = ou.organization_id
-                           ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")}
+                           ORDER BY {role_precedence}
                            LIMIT 1
                        ), 'viewer') AS role_code
                 FROM organization_users ou
                 WHERE ou.id = :member_id AND ou.organization_id = :organization_id
                 FOR UPDATE OF ou
-            """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            """  # nosec B608 # precedencia constante y columna literal; valores ligados.
+            .format(role_precedence=ROLE_PRECEDENCE_SQL.format(column="rd.code"))),
             {"member_id": str(organization_user_id), "organization_id": str(context.organization_id)},
         )
         target = target_result.mappings().one_or_none()
@@ -842,14 +846,14 @@ async def update_member_status(
 
 async def _load_member(db: AsyncSession, organization_id: UUID, member_id: UUID) -> dict:
     result = await db.execute(
-        text(f"""
+        text("""
             SELECT ou.id AS organization_user_id,
                    u.id AS user_id,
                    u.email,
                    u.full_name,
                    ou.is_active,
                    COALESCE(
-                       (ARRAY_AGG(rd.code ORDER BY {ROLE_PRECEDENCE_SQL.format(column="rd.code")})
+                       (ARRAY_AGG(rd.code ORDER BY {role_precedence})
                            FILTER (WHERE rd.code IS NOT NULL))[1],
                        'viewer'
                    ) AS role_code,
@@ -862,7 +866,8 @@ async def _load_member(db: AsyncSession, organization_id: UUID, member_id: UUID)
             LEFT JOIN role_definitions rd ON rd.id = r.role_definition_id
             WHERE ou.id = :member_id AND ou.organization_id = :organization_id
             GROUP BY ou.id, u.id
-        """),  # nosec B608 # precedencia constante y columna literal; valores ligados.
+        """  # nosec B608 # precedencia constante y columna literal; valores ligados.
+        .format(role_precedence=ROLE_PRECEDENCE_SQL.format(column="rd.code"))),
         {"member_id": str(member_id), "organization_id": str(organization_id)},
     )
     member = result.mappings().one_or_none()

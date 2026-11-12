@@ -169,14 +169,15 @@ async def _find_player_by_document(
     """Look up a player by document inside one organization only (RF-001/RF-003)."""
 
     result = await db.execute(
-        text(f"""
+        text("""
             SELECT id
             FROM players
             WHERE organization_id = :organization_id
               AND document_type = :document_type
               AND issuing_country = :issuing_country
               AND national_id_hmac = {_PLAYER_DOCUMENT_HMAC_SQL}
-        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        """  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        .format(_PLAYER_DOCUMENT_HMAC_SQL=_PLAYER_DOCUMENT_HMAC_SQL)),
         {
             "organization_id": str(organization_id),
             "document_type": payload.document_type,
@@ -212,7 +213,7 @@ async def _find_or_create_player_record(
         return player_id
 
     player_result = await db.execute(
-        text(f"""
+        text("""
             INSERT INTO players
                 (organization_id, first_name, last_name, document_type, national_id_encrypted,
                  national_id_hmac, issuing_country, birth_date_encrypted,
@@ -232,7 +233,8 @@ async def _find_or_create_player_record(
             ON CONFLICT (organization_id, document_type, issuing_country, national_id_hmac)
             DO NOTHING
             RETURNING id
-        """),  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        """  # nosec B608 # expresión HMAC constante con parámetros ligados.
+        .format(_PLAYER_DOCUMENT_HMAC_SQL=_PLAYER_DOCUMENT_HMAC_SQL)),
         {
             "organization_id": str(organization_id),
             "first_name": payload.first_name,
