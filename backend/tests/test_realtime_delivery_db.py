@@ -96,6 +96,92 @@ async def test_multiprocess_preapproved_transit_reconnect_other_api_no_replay(fl
         assert right.payload(new) is not None
 
 
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+async def test_load_two_processes_real_sockets_batches_failures_memory(flow):
+    from realtime_process import ProcessCluster, instrument_sql, percentile
+
+    await instrument_sql(flow.admin)
+    async with ProcessCluster(flow) as cluster:
+        identities = await cluster.identities(100)
+        semaphore = asyncio.Semaphore(40)
+
+        async def tab(index, identity):
+            async with semaphore:
+                return await cluster.connect(index, identity)
+
+        wires = await asyncio.gather(*(tab(tab_id % 2, identity)
+                                       for identity in identities for tab_id in range(10)))
+        assert len(wires) == 1000
+        for i in range(2):
+            assert (await cluster.rpc(i, 'probe'))['connections'] == 500
+            await cluster.rpc(i, 'reset_metrics')
+        started = perf_counter()
+        event = await cluster.publish()
+        await cluster.settle(event)
+        latency = [wire.received_at(event) - started for wire in wires]
+        initial = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for probe in initial:
+            assert probe['batches'] == [100]
+            assert probe['counts'] == {'calls': 1, 'member': 100, 'resource': 100, 'sessions': 100}
+        burst = [await cluster.enqueue() for _ in range(4)]
+        await cluster.flush()
+        await cluster.settle(burst[-1])
+        assert all(wire.payload(identity) is not None for wire in wires for identity in burst)
+        for i in range(2):
+            assert (await cluster.rpc(i, 'probe'))['counts']['calls'] == 5
+            await cluster.rpc(i, 'mode', values={'delay': 0.05})
+        slow = await cluster.publish()
+        await cluster.settle(slow)
+        for i in range(2):
+            assert (await cluster.rpc(i, 'probe'))['durations'][-1] >= 0.05
+            await cluster.rpc(i, 'mode', values={'delay': 0})
+
+        memory = []
+        for _ in range(4):
+            for i in range(2):
+                await cluster.rpc(i, 'mode', values={'fail': True, 'control_fail': True})
+            lost = [await cluster.enqueue() for _ in range(3)]
+            await cluster.flush()
+            await cluster.settle(lost[-1])
+            assert all(wire.payload(identity) is None for wire in wires for identity in lost)
+            for i in range(2):
+                await cluster.rpc(i, 'recover')
+                assert (await cluster.rpc(i, 'probe'))['suspended'] == 500
+                await cluster.rpc(i, 'mode', values={'fail': False, 'control_fail': False})
+                await cluster.rpc(i, 'recover')
+            await cluster.fence()
+            probes = [await cluster.rpc(i, 'probe') for i in range(2)]
+            assert all(probe['suspended'] == probe['controls'] == 0 for probe in probes)
+            assert all(probe['connections'] == 500 and max(probe['batches']) == 100 for probe in probes)
+            assert all(wire.payload(identity) is None for wire in wires for identity in lost)
+            memory.append([probe['current_rss_kib'] for probe in probes])
+        for i in range(2):
+            await cluster.rpc(i, 'reset_metrics')
+        empty = await cluster.publish(organization=ORG.replace('31000000', '32000000'),
+                                      payload={'match_id': MATCH.replace('31000000', '32000000'),
+                                               'tournament_id': TOURNAMENT.replace('31000000', '32000000')})
+        await cluster.settle(empty)
+        for i in range(2):
+            assert (await cluster.rpc(i, 'probe'))['counts'] == {}
+        await asyncio.gather(*(wire.close() for wire in wires))
+        await cluster.wait_connections(0)
+        edge = [await cluster.identity() for _ in range(257)]
+        await asyncio.gather(*(tab(index, identity) for identity in edge for index in range(2)))
+        for i in range(2):
+            await cluster.rpc(i, 'reset_metrics')
+        boundary = await cluster.publish()
+        await cluster.settle(boundary)
+        edges = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for probe in edges:
+            assert probe['batches'] == [256, 1]
+            assert probe['counts'] == {'calls': 2, 'member': 2, 'resource': 2, 'sessions': 2}
+        print('L1 ' + json.dumps({'sockets': 1000, 'principals': 100, 'processes': 2,
+                                 'sql': [probe['counts'] for probe in initial],
+                                 'delivery_p50_s': percentile(latency, 0.5), 'delivery_p95_s': percentile(latency, 0.95),
+                                 'delivery_lag_max_s': max(latency), 'rss_kib_episodes': memory,
+                                 'edge_257_sql': [probe['counts'] for probe in edges]}, sort_keys=True))
+
+
 async def candidate(f, user=USER):
     session = uuid4()
     await f.admin.execute('INSERT INTO user_sessions (id,user_id,expires_at) VALUES ($1,$2,$3)',

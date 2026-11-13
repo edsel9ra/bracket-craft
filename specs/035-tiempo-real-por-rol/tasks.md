@@ -239,13 +239,13 @@ Depende de B fusionado y verde. No introduce una arquitectura distinta ni pospon
 - [x] T38b: barreras por proceso, evento pendiente y retirada con commit antes de evaluación; RLS y dos tenants reales.
 - [x] T38c: sesiones/pestañas en ambos procesos, captura del transporte y reconexión al otro API sin replay.
 
-- [ ] **T39. Ampliar L1 con ráfagas, DB lenta y memoria acotada.** RF-001, RF-011, RF-014, RF-016, RF-018
+- [x] **T39. Ampliar L1 con ráfagas, DB lenta y memoria acotada.** RF-001, RF-011, RF-014, RF-016, RF-018
 - Dependencias: T16, T37, T38; PR C.
 - Tests primero: L1 reproduce dos procesos, muchos sockets/principales, cero destinatarios, error/latencia DB y episodios repetidos de suspensión/recuperación.
 - Hecho cuando: se registran dataset, llamadas de red/trabajo SQL, p50/p95, retraso y memoria, sin crecimiento por pérdidas ni decisiones autorizadas acumuladas; lotes máximos 256, sin caché. No inventar SLA ni usar la llamada exterior para ocultar trabajo interno. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k load` y se adjunta evidencia de L1 en `verificacion.md`.
-- [ ] T39a: 1.000 sockets/100 principales y borde 256/257; llamadas y trabajo SQL interno.
-- [ ] T39b: ráfagas, cero destinatarios, DB lenta/caída y suspensión/recuperación repetidas en ambos procesos.
-- [ ] T39c: artefacto reproducible de p50/p95, retraso, memoria y dataset; aceptación estructural sin SLA inventado.
+- [x] T39a: 1.000 sockets/100 principales y borde 256/257; llamadas y trabajo SQL interno.
+- [x] T39b: ráfagas, cero destinatarios, DB lenta/caída y suspensión/recuperación repetidas en ambos procesos.
+- [x] T39c: artefacto reproducible de p50/p95, retraso, memoria y dataset; aceptación estructural sin SLA inventado.
 
 - [ ] **T40. Ampliar fallos y recuperación parcial por conexión/proceso.** RF-006, RF-009, RF-010, RF-014, RF-016, RF-017, RF-018
 - Dependencias: T38; PR C.

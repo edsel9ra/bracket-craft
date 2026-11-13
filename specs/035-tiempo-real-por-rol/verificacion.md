@@ -716,3 +716,44 @@ irrelevantes conservan lectura HTTP y socket (DA-1); dos tenants, tránsito
 preaprobado permitido, reconexión sin replay y RESYNC JOIN. CI backend necesita
 Redis real: se añade únicamente un service Redis de pruebas al job existente,
 sin modificar Compose productivo ni entorno/configuración de la aplicación.
+
+### T39 — L1 real, 2026-11-13
+
+Mismo PostgreSQL/Redis y dos Uvicorn independientes que T38. 100 usuarios con
+sesión real, 10 pestañas cada uno (500 WebSocket/API, todos los 100 principales
+en ambos procesos). Ráfaga de cuatro eventos, SQL lento real `pg_sleep(0.05)`,
+fallo SQL real `SELECT 1/0` en la comprobación privada y en recuperación, cuatro
+episodios con tres invalidaciones perdidas cada uno, cero destinatarios, después
+257 sesiones/1 usuario/API (514 sockets) para el borde 256/257.
+
+La inyección vive exclusivamente en el adaptador de sesiones del arnés de test:
+no se apaga todo PostgreSQL, por lo que HTTP y el otro proceso pueden seguir
+operativos. SQL interno instrumentado con NOTICE en la función **de la base
+desechable**, nunca en migraciones ni bases productivas. Se cuentan bloques
+reales de membresía/recurso/sesiones, no solo la llamada exterior.
+
+Rojo previo: `ImportError: cannot import name 'instrument_sql'`; `1 failed, 58
+deselected in 1.94s` (infraestructura nueva ausente, no bug funcional inventado).
+Verde, `RUN_DATABASE_TESTS=1 pytest -qs tests/test_realtime_delivery_db.py -k load`:
+```text
+1 passed, 58 deselected in 26.99s
+```
+Resultado local, Python 3.14.10 en contenedor, Linux/red host; PostgreSQL 17 y
+Redis 8 locales; datos nuevos en cada ejecución. Log saneado de medición:
+`/home/ubuntu/f8-c-load.log` (no versionado).
+
+| Medida | Resultado |
+|---|---|
+| 1.000 sockets / 100 principales | 1 llamada/API/evento, bloques SQL 100 membresía + 100 recurso + 100 sesiones/API |
+| 257 principales / 1 usuario | 2 llamadas/API, lotes [256,1], 2 bloques de cada tipo/API |
+| Entrega desde publicación, p50 / p95 / máximo | 0,4344 / 0,7425 / 0,7480 s |
+| RSS actual API 1, cuatro recuperaciones (KiB) | 181132, 181504, 181768, 182016 |
+| RSS actual API 2 (KiB) | 180100, 180456, 180744, 180884 |
+| Suspensión repetida | 500 marcas/API durante cada fallo, nunca 1.500 por los tres eventos; 0 tras 032 y controles=0 |
+| Vacío / backlog | cero llamadas sin candidatos; perdidos ausentes antes y después de recuperar |
+
+No es una certificación de RSS constante ni un soak ilimitado: se registra el
+incremento observado (~0,9/0,8 MiB) y no se inventa umbral/SLA. La aceptación
+estructural verifica estados acotados por conexiones, ausencia de decisiones o
+eventos perdidos en cola, lotes <=256 y nueva evaluación por evento. Los samples
+del propio arnés usan deques de 256 y contadores de etiquetas fijas.

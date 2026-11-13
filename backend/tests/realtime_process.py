@@ -9,6 +9,7 @@ import socket
 from collections import Counter, deque
 from contextlib import AsyncExitStack
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from time import perf_counter
 from uuid import UUID, uuid4
 
@@ -21,6 +22,27 @@ from websockets.asyncio.client import connect
 
 from app.core.config import DEVELOPMENT_ENVS, get_settings
 from test_migration_031 import MATCH, MEMBER, ORG, TOURNAMENT, USER
+
+
+async def instrument_sql(admin):
+    signature = 'authorize_realtime_recipients(uuid,jsonb,jsonb,timestamp with time zone)'
+    definition = await admin.fetchval('SELECT pg_get_functiondef($1::regprocedure)', signature)
+    anchors = Counter()
+    for query, label in [
+        ('SELECT public.fn_verify_user_org_membership', 'member'),
+        ('SELECT EXISTS (\n                    SELECT 1 FROM public.matches', 'resource'),
+        ('SELECT CASE WHEN member_valid', 'sessions'),
+        ('SELECT COALESCE(array_agg', 'sessions'),
+    ]:
+        if query in definition:
+            anchors[label] += 1
+            definition = definition.replace(query, f"RAISE NOTICE 'F8_PROFILE {label}';\n                " + query)
+    assert set(anchors) == {'member', 'resource', 'sessions'}
+    await admin.execute(definition)
+
+
+def percentile(values, fraction):
+    return sorted(values)[min(int((len(values) - 1) * fraction), len(values) - 1)]
 
 
 def run_api(connection, listener, environment, stream):
@@ -163,7 +185,7 @@ async def serve(connection, listener, stream):
                               'suspended': len(main.private_delivery.states), 'controls': len(main.private_delivery.controls),
                               'counts': dict(counts), 'batches': list(batches), 'durations': list(durations),
                               'rss_kib': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-                              'current_rss_kib': int(open('/proc/self/statm').read().split()[1]) * resource.getpagesize() // 1024}
+                              'current_rss_kib': int(Path('/proc/self/statm').read_text().split()[1]) * resource.getpagesize() // 1024}
                 elif action == 'stop':
                     server.should_exit = True
                     connection.send({'result': {}})
@@ -184,6 +206,7 @@ class Wire:
     def __init__(self, websocket):
         self.websocket = websocket
         self.frames = deque(maxlen=256)
+        self.times = deque(maxlen=256)
         self.condition = asyncio.Condition()
         self.task = None
 
@@ -192,6 +215,7 @@ class Wire:
             await self.websocket.send('3')
         elif packet.startswith('42'):
             self.frames.append(json.loads(packet[2:]))
+            self.times.append(perf_counter())
             async with self.condition:
                 self.condition.notify_all()
 
@@ -201,6 +225,9 @@ class Wire:
 
     def payload(self, event_id):
         return next((payload for _, payload in self.frames if payload.get('event_id') == event_id), None)
+
+    def received_at(self, event_id):
+        return next(at for (_, payload), at in zip(self.frames, self.times) if payload.get('event_id') == event_id)
 
     async def wait(self, event_id):
         async with self.condition:
@@ -217,6 +244,7 @@ class ProcessCluster:
         self.flow = flow
         self.stack = AsyncExitStack()
         self.children, self.wires = [], []
+        self.file_limits = resource.getrlimit(resource.RLIMIT_NOFILE)
         self.stream = f'f8-test:{uuid4()}'
         self.redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
         url = make_url(get_settings().database_url).set(database=flow.engine.url.database)
@@ -227,6 +255,9 @@ class ProcessCluster:
         await self.stack.__aenter__()
         self.stack.push_async_callback(self.cleanup)
         try:
+            soft, hard = self.file_limits
+            if soft < 4096 and (hard == resource.RLIM_INFINITY or hard >= 4096):
+                resource.setrlimit(resource.RLIMIT_NOFILE, (4096, hard))
             await self.redis.ping()
             await self.flow.admin.execute('DELETE FROM outbox_events')
             other_org, other_member = ORG.replace('31000000', '32000000'), MEMBER.replace('31000000', '32000000')
@@ -271,6 +302,7 @@ class ProcessCluster:
         await self.redis.delete(self.stream)
         await self.redis.aclose()
         await self.engine.dispose()
+        resource.setrlimit(resource.RLIMIT_NOFILE, self.file_limits)
 
     async def rpc(self, index, action, **values):
         pipe = self.children[index][1]
@@ -289,6 +321,24 @@ class ProcessCluster:
             def __repr__(self):
                 return '<test session>'
         return Identity(user=user, session=session, token=create_access_token(UUID(user), session))
+
+    async def identities(self, count):
+        users = [UUID(USER)] + [uuid4() for _ in range(count - 1)]
+        await self.flow.admin.execute('''WITH added AS (
+            INSERT INTO users (id,email,password_hash,full_name)
+            SELECT id,id::text||'@example.test','hash','Load reader' FROM unnest($1::uuid[]) id RETURNING id
+        ), members AS (
+            INSERT INTO organization_users (organization_id,user_id)
+            SELECT $2,id FROM added RETURNING id
+        ) INSERT INTO organization_user_roles (organization_id,organization_user_id,role_id)
+            SELECT $2,id,(SELECT id FROM roles WHERE organization_id=$2 LIMIT 1) FROM members''', users[1:], UUID(ORG))
+        return [await self.identity(str(user)) for user in users]
+
+    async def wait_connections(self, count):
+        async with asyncio.timeout(30):
+            for index in range(2):
+                while (await self.rpc(index, 'probe'))['connections'] != count:
+                    await asyncio.sleep(0.01)
 
     async def connect(self, index, identity, organization=ORG):
         port = self.children[index][2]
