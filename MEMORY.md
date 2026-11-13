@@ -9,7 +9,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T17 cerradas. Núcleo puro, migración 055 invocadora y adaptador batch fresco aún sin conectar al relay. T18–T37 pendientes; R32f sigue abierto y F8 no está activado.
 
 ## Pendiente
-- Spec 035: implementar y verificar T18–T37 en PR B antes de PR C; mantener gate privado y recuperación end-to-end juntos según C4. No se habilitan F1 ni Socket.IO para F9.
+- Spec 035: T18–T37 sin iniciar; pausa por presupuesto del arnés E2E de T32/T34 (barreras de commit e interrupción exclusiva de autorización aún inexistentes). Propuesta de desglose interno pendiente de confirmación; C4 intacta, gate privado y recuperación end-to-end juntos. No se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
 - 2026-11-13 · Spec 035 · Usuario comunica fusión de PR A #76 y autoriza PR B T18–T37; T17 cerrada. No equivale a aceptación de F8 ni cierre de R32f.
