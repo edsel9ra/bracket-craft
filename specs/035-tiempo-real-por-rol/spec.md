@@ -12,7 +12,7 @@ La autorización combina los permisos efectivos de los roles con las condiciones
 
 Esta funcionalidad es un requisito previo de F1, conforme a la hoja de ruta F8 → F1 → F13 y al apartado 6.3 del informe. La emisión de borradores de goles, tarjetas, sustituciones e incidencias no se habilita aquí. Su contenido y sus responsables lectores deberán definirse y aprobarse en F1 antes de emitirlos. Tampoco se incorpora al canal la gestión de sanciones F9, que mantiene sus avisos privados independientes.
 
-Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas en DA-1 a DA-4 no están aprobadas; no se autoriza avanzar a clarificación, plan, tareas ni implementación sin indicación expresa.
+Esta entrega documental está en fase de clarificación. El usuario cerró DA-1 a DA-4 el 2026-11-13; sus decisiones están incorporadas a los requisitos. La spec permanece en borrador, pendiente de aprobación expresa; no se autoriza avanzar a plan, tareas ni implementación.
 
 ## Usuarios
 
@@ -47,12 +47,12 @@ Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas 
 - **Autorización efectiva de lectura:** sesión y usuario válidos, membresía activa con rol en la organización del recurso, permisos acumulados y condiciones de acceso al recurso que correspondan a la lectura de referencia. Incluye asignaciones de oficiales cuando sean condición de esa lectura.
 - **Recurso:** entidad o conjunto de entidades afectadas por un cambio, pertenecientes a una única organización; por ejemplo, un partido o su acta. Un torneo puede identificar un recurso sin constituir un nuevo ámbito de roles.
 - **Invalidación mínima:** aviso para volver a consultar un recurso por HTTP, sin su contenido de negocio. Sus identificadores y el hecho de que haya cambiado siguen sujetos a autorización.
-- **Evaluación de entrega:** decisión de autorizar un evento para un destinatario concreto. Su relación temporal con una revocación está pendiente en DA-2; no se confunde con la creación del evento ni con la apertura de la conexión.
+- **Evaluación de entrega:** decisión de autorizar un evento para un destinatario concreto. Si se inicia a partir de la confirmación de una retirada de autorización, aplica la autorización restante tras esa retirada. No se confunde con la creación del evento ni con la apertura de la conexión; no exige retirar lo ya enviado ni descartar eventos ya aprobados en tránsito.
 - **Recepción no autorizada:** llegada de información privada al cliente que carece de autorización para esa información, aunque la interfaz la ignore o una consulta posterior sea rechazada.
 
 ## Requisitos funcionales
 
-- **RF-001.** EL SISTEMA limitará cada entrega privada a destinatarios con autorización efectiva para su lectura de referencia, dentro de la organización propietaria del recurso.
+- **RF-001.** EL SISTEMA limitará cada entrega privada a destinatarios con autorización efectiva para su lectura HTTP de referencia y el recurso concreto, dentro de la organización propietaria del recurso.
   - La comprobación incluye la existencia del cambio, sus identificadores y todos los campos entregados.
   - Un destinatario sin autorización no recibirá el evento para después descartarlo en su interfaz.
 
@@ -62,33 +62,36 @@ Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas 
 
 - **RF-004.** CUANDO la lectura de referencia condicione el acceso a un permiso y a una asignación de oficial de partido, EL SISTEMA exigirá ambas condiciones para entregar su evento privado y limitará esa autorización al partido correspondiente.
   - La exención de asignación que ya reconozca esa lectura para determinados actores se conserva; esta spec no crea otras.
+  - El permiso y la asignación de `match_officials` se exigen solo cuando la lectura HTTP los exige; F8 no crea roles por torneo (F7) ni endurece la lectura HTTP.
 
-- **RF-005.** CUANDO la lectura de referencia permita consultar un recurso sin un permiso adicional al acceso organizativo válido, EL SISTEMA conservará esa regla para el evento correspondiente, sin exigir un permiso de escritura ni crear un permiso de lectura nuevo de manera implícita. La delimitación de recursos se concreta en DA-1.
+- **RF-005.** CUANDO la lectura de referencia permita consultar un recurso sin un permiso adicional al acceso organizativo válido, EL SISTEMA conservará esa regla para el evento correspondiente y el recurso concreto, sin exigir un permiso de escritura ni crear un permiso de lectura nuevo de manera implícita.
 
 - **RF-006.** CUANDO se solicite acceso privado al tiempo real, EL SISTEMA verificará la identidad, la vigencia de la sesión y la pertenencia activa a la organización solicitada, sin aceptar como autorización los roles, permisos o asignaciones declarados por el cliente.
 
-- **RF-007.** CUANDO se cierre, revoque o venza una sesión, o se desactive su usuario o membresía, EL SISTEMA dejará de autorizar entregas privadas para las conexiones afectadas conforme al punto de corte aprobado en DA-2.
+- **RF-007.** CUANDO se confirme el cierre o la revocación de una sesión, o la desactivación de su usuario o membresía, EL SISTEMA denegará los eventos privados afectados cuya evaluación de entrega se inicie a partir de ese momento; si la sesión vence, denegará las evaluaciones iniciadas desde su vencimiento.
 
-- **RF-008.** CUANDO se retire un permiso, cambie un rol o se retire o cambie una asignación de oficial, EL SISTEMA reevaluará las entregas privadas afectadas, sin conservar como derecho de lectura la autorización obtenida al abrir la conexión. El punto de corte se decide en DA-2.
+- **RF-008.** CUANDO se confirme la retirada de un permiso, el cambio o la retirada de un rol, o el cambio o la retirada de una asignación de oficial, EL SISTEMA aplicará la autorización efectiva restante a toda evaluación de entrega iniciada a partir de ese momento y denegará los eventos que ya no estén autorizados, sin conservar como derecho de lectura la autorización obtenida al abrir la conexión.
 
 - **RF-009.** CUANDO se conceda o recupere una autorización de lectura, EL SISTEMA permitirá las siguientes actualizaciones comprendidas en ella tras verificarla de nuevo, sin entregar un historial privado basado en permisos antiguos.
 
 - **RF-010.** CUANDO cambie la organización activa o la identidad de una conexión privada, EL SISTEMA impedirá que sus entregas y actualizaciones pendientes se apliquen al nuevo contexto, sin combinar permisos ni datos entre organizaciones.
 
-- **RF-011.** CUANDO un evento pendiente llegue a su evaluación de entrega, EL SISTEMA aplicará la autorización del destinatario según el punto de corte aprobado en DA-2, y no la que tenía cuando se produjo el cambio o se creó el evento.
+- **RF-011.** CUANDO un evento pendiente llegue a su evaluación de entrega, EL SISTEMA aplicará la autorización del destinatario vigente al inicio de esa evaluación, incluidas las retiradas confirmadas hasta ese momento, y no la que tenía cuando se produjo el cambio o se creó el evento.
+  - No se promete retirar lo ya enviado ni descartar eventos ya aprobados en tránsito antes de confirmarse la retirada. La comprobación periódica no permite una ventana de entregas con autorización antigua para evaluaciones posteriores al corte.
 
 - **RF-012.** SI un evento privado no tiene una clasificación de lectura conocida, carece de un recurso u organización verificables, o sus referencias son incompatibles entre sí, ENTONCES EL SISTEMA impedirá su entrega privada por defecto.
   - Incorporar un evento futuro exigirá definir su lectura, campos y destinatarios autorizados; no se hereda acceso por compartir un nombre con otro evento.
 
-- **RF-013.** CUANDO un evento privado contenga información de distinta visibilidad, EL SISTEMA entregará únicamente una representación explícitamente definida y totalmente autorizada para el destinatario; si no existe esa representación, no entregará el evento. La representación de los eventos privados actuales se decide en DA-3.
+- **RF-013.** CUANDO se entregue un evento privado actual, EL SISTEMA lo limitará a una invalidación mínima con identificador de entrega e identificadores autorizados estrictamente necesarios del recurso, sin contenido de negocio; si no puede definir una invalidación enteramente autorizada, no entregará el evento.
+  - Esta representación no cambia los eventos públicos ni decide el contrato de los futuros borradores privados de F1.
 
-- **RF-014.** SI no puede determinarse la autorización vigente de una entrega privada, ENTONCES EL SISTEMA aplicará la política de indisponibilidad aprobada en DA-4, sin interpretar un fallo de comprobación como permiso concedido.
+- **RF-014.** SI no puede comprobarse la autorización vigente de una entrega privada, ENTONCES EL SISTEMA suspenderá la entrega de los eventos privados afectados, sin tiempo de gracia, sin usar la última autorización conocida como permiso y sin desconexión masiva ni alteración de los eventos públicos.
 
-- **RF-015.** CUANDO un destinatario reciba una actualización privada autorizada, EL SISTEMA conservará la consulta HTTP como fuente de verdad y volverá a aplicar su autorización al recuperar los datos, sin tratar el evento como credencial ni como permiso para escribir.
+- **RF-015.** CUANDO un destinatario reciba una invalidación privada autorizada, EL SISTEMA recuperará el detalle por HTTP, conservará esa consulta como fuente de verdad y volverá a aplicar su autorización al recuperar los datos, sin tratar el evento como credencial ni como permiso para escribir.
 
 - **RF-016.** MIENTRAS se filtren las entregas privadas, EL SISTEMA conservará los nombres, campos, destinatarios y semántica de los eventos públicos existentes, sin añadir eventos ni campos públicos, ni convertir una actualización privada en pública porque comparta nombre con una pública.
 
-- **RF-017.** CUANDO se recupere una conexión o se requiera resincronización, EL SISTEMA permitirá reconstruir por HTTP únicamente el estado autorizado del contexto vigente, sin reproducir un historial privado ni revelar identificadores de recursos restringidos en los avisos de control.
+- **RF-017.** CUANDO se recupere una conexión o la posibilidad de comprobar la autorización tras una suspensión, o se requiera resincronización, EL SISTEMA reautorizará al destinatario y reconstruirá mediante resincronización por HTTP únicamente el estado autorizado del contexto vigente, sin reproducir los eventos privados perdidos ni un historial privado, y sin revelar identificadores de recursos restringidos en los avisos de control.
 
 - **RF-018.** CUANDO lleguen entregas duplicadas o se reintente una conexión, EL SISTEMA mantendrá la deduplicación y la recuperación existentes, sin conexiones o suscripciones duplicadas ni recargas adicionales atribuibles al filtrado para un mismo cambio lógico.
 
@@ -110,7 +113,7 @@ Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas 
 
 - Se evalúan identidad, sesión, membresía, permisos y asignaciones para decidir destinatarios; no se difunden a otros clientes como parte del evento.
 - Los identificadores de un partido, acta o versión y la fecha o existencia de un cambio privado también quedan protegidos. Una invalidación no autoriza por sí misma a conocerlos.
-- La propuesta de DA-3 evita incorporar contenido de negocio a los eventos privados actuales. Las lecturas HTTP conservan sus restricciones, incluidas las de datos personales y evidencia.
+- La decisión DA-3 limita los eventos privados actuales a invalidaciones mínimas sin contenido de negocio. Las lecturas HTTP conservan sus restricciones, incluidas las de datos personales y evidencia.
 - No se añade documento de identidad, fecha de nacimiento, edad ni datos de sanciones al contenido público. Las imágenes mantienen las condiciones vigentes de consentimiento.
 - Las señales públicas existentes siguen siendo públicas, incluso si las recibe una persona que no tiene acceso privado. Eso no convierte una variante privada del mismo nombre en pública.
 - Lo recibido lícitamente antes de una revocación no puede retirarse del dispositivo; el requisito se refiere a nuevas entregas y a no mantener ni restaurar datos privados en otro contexto de identidad u organización.
@@ -136,7 +139,7 @@ Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas 
 
 ## Fuera de alcance
 
-- Implementar esta spec durante la Fase 1 o decidir su arquitectura de distribución.
+- Implementar esta spec durante su redacción o clarificación, o decidir su arquitectura de distribución en estas fases.
 - Crear roles por torneo, nuevos permisos o cambios en las lecturas HTTP y sus reglas de negocio; si resultan necesarios, requieren decisión y aprobación previas.
 - Implementar F1, sincronizar borradores, publicar marcador o reloj nuevos, ni añadir la cronología pública F13.
 - Ampliar la matriz pública, los destinatarios de F9 o las autorizaciones de plataforma.
@@ -147,7 +150,7 @@ Esta entrega documental corresponde solo a la Fase 1. Las propuestas señaladas 
 
 Los siguientes criterios corresponden a la futura implementación y validación, no se dan por cumplidos al redactar este borrador:
 
-1. DA-1 a DA-4 están resueltas, incorporadas a los RF y aprobadas expresamente; la spec ha dejado de estar en borrador antes de planificar su implementación.
+1. Las decisiones DA-1 a DA-4 del 2026-11-13 están incorporadas a los RF; el usuario aprueba expresamente la spec completa y esta deja de estar en borrador antes de planificar su implementación. Cerrar las dudas no equivale a aprobar la spec.
 2. Existe una matriz cerrada de eventos privados actuales, representaciones, lecturas de referencia y destinatarios; los eventos desconocidos no se entregan. Se distinguen las variantes privadas de nombres públicos y los avisos que no pertenecen al canal.
 3. Se comprueba la recepción y la no recepción en el límite del cliente, no solo lo visible en pantalla, con dos organizaciones, miembros de varios roles y oficiales con y sin asignación y permiso.
 4. Se verifican retirada y recuperación de permisos, asignaciones y sesiones, eventos pendientes, varias conexiones y procesos, con el corte temporal y la política de error aprobados.
@@ -159,30 +162,11 @@ Los siguientes criterios corresponden a la futura implementación y validación,
 
 ## Dudas abiertas
 
-- **DA-1 — [NECESITA ACLARACIÓN] Granularidad y lectura de referencia.**
-  - **A.** Autorizar por permiso global para todos los recursos de la organización: sencillo de expresar, pero insuficiente cuando la lectura exige asignación a un partido.
-  - **B.** Autorizar por pertenencia a un torneo: exigiría un modelo de delegación que hoy no forma parte de F8 y no reproduce por sí solo los permisos HTTP.
-  - **C.** Autorizar por lectura de referencia y recurso concreto, combinando permisos y asignación cuando corresponda; permitir alcance organizativo solo cuando esa lectura ya lo permita.
-  - **Recomendación: C**, sin crear roles por torneo ni endurecer lecturas HTTP en esta spec. Algunas lecturas actuales son organizativas y no exigen permisos de operación; no se debe inventarlos. Los responsables de borradores de F1 necesitan su propia regla de lectura aprobada: no se deducen de la lectura general actual de operación. A y B por sí solas no satisfacen RF-001; pueden servir para agrupar intereses, nunca para conceder lectura adicional.
-  - Afecta a RF-001 a RF-005, RF-012 y al criterio 2.
+No quedan dudas abiertas identificadas. Pendiente de aprobación expresa de la spec completa.
 
-- **DA-2 — [NECESITA ACLARACIÓN] Corte temporal al retirar autorización con conexiones abiertas.**
-  - **A.** Conservar la comprobación periódica actual de 30 segundos como ventana nominal: permite entregas con permisos antiguos entre comprobaciones; una comprobación fallida puede prolongarla, por lo que no constituye un máximo garantizado.
-  - **B.** Denegar toda entrega cuya evaluación de autorización se inicie después de confirmarse la retirada; lo ya autorizado o enviado antes de ese punto puede estar en tránsito. No exige cerrar todas las conexiones para aplicar la denegación.
-  - **C.** Impedir incluso completar una entrega autorizada antes de la retirada que aún no se haya enviado; exige definir una frontera más estricta y coordinación de entregas en curso.
-  - **Recomendación: B**, también para cambios de asignación y eventos pendientes, sin presentar la revalidación periódica como control suficiente. No permite recuperar datos ya enviados. A debilita la paridad con la autorización vigente y solo podría aceptarse revisando expresamente el objetivo temporal, no como detalle técnico oculto. El mecanismo se decidirá en el plan, no aquí.
-  - Afecta a RF-007 a RF-011, RNF-003 y al criterio 4.
+### Decisiones de clarificación cerradas
 
-- **DA-3 — [NECESITA ACLARACIÓN] Contenido de los eventos privados actuales.**
-  - **A.** Conservar sus payloads actuales completos, verificando que todos los campos son legibles por cada destinatario.
-  - **B.** Reducirlos a invalidaciones mínimas con identificador de entrega e identificadores estrictamente necesarios del recurso autorizado; recuperar contenido por HTTP. Se elimina de la variante privada cualquier dato de negocio no necesario para invalidar.
-  - **C.** Definir representaciones de contenido diferentes para cada audiencia; aumenta la superficie de contratos y comprobaciones.
-  - **Recomendación: B** para los eventos privados actuales, protegiendo también los identificadores y sin modificar las representaciones públicas ni su comportamiento. La lista exacta de identificadores mínimos debe quedar cerrada al resolver esta duda. Esto no decide que los futuros borradores de F1 se emitan completos ni que se reduzcan a invalidaciones: esa decisión corresponde a F1.
-  - Afecta a RF-012, RF-013, RF-015, RF-016 y al criterio 2.
-
-- **DA-4 — [NECESITA ACLARACIÓN] Indisponibilidad de la comprobación de autorización.**
-  - **A.** Continuar entregando con la última autorización conocida durante una gracia definida; puede mantener privilegios revocados y exige una excepción explícita al objetivo de autorización vigente.
-  - **B.** Suspender las entregas privadas cuya autorización no se pueda verificar, sin cerrar de forma masiva las conexiones ni alterar eventos públicos; al recuperarse, reautorizar y reconstruir por HTTP solo lo permitido, sin reproducir el historial privado perdido.
-  - **C.** Desconectar las conexiones privadas afectadas y exigir nueva conexión y autorización; conserva la denegación por defecto pero produce más interrupciones.
-  - **Recomendación: B**, con denegación por defecto para la entrega afectada y recuperación comprobable. El comportamiento actual de conservar conexiones ante fallos de revalidación no autoriza a seguir emitiendo datos privados sin comprobar permisos.
-  - Afecta a RF-014, RF-017, RNF-003, RNF-005 y al criterio 4.
+- **DA-1 — Cerrada el 2026-11-13 por el usuario: opción C.** Filtrar por la lectura HTTP de referencia y el recurso concreto, con permiso y asignación de `match_officials` solo cuando esa lectura los exija. No crear roles por torneo (F7) ni endurecer HTTP. Los responsables de los borradores de F1 se definirán en su propia spec, sin deducirlos de la lectura general actual de operación. RF-001, RF-004 y RF-005.
+- **DA-2 — Cerrada el 2026-11-13 por el usuario: opción B.** Tras confirmarse la retirada de sesión, membresía, rol o asignación, no se entrega ningún evento afectado cuya evaluación se inicie a partir de ese momento con la autorización retirada. Se aplica la autorización efectiva restante. No se promete retirar lo ya enviado ni descartar eventos ya aprobados en tránsito; la revalidación periódica no permite conservar privilegios retirados para evaluaciones posteriores. RF-007, RF-008 y RF-011.
+- **DA-3 — Cerrada el 2026-11-13 por el usuario: opción B.** Los eventos privados actuales son invalidaciones mínimas, con identificador de entrega e identificadores autorizados estrictamente necesarios del recurso, sin contenido de negocio. El detalle se recupera por HTTP. No cambia la representación pública ni decide el contrato futuro de F1. RF-013 y RF-015.
+- **DA-4 — Cerrada el 2026-11-13 por el usuario: opción B.** Si no pueden comprobarse los permisos, suspender las entregas privadas afectadas; al recuperarse, reautorizar y reconstruir el estado por HTTP con resincronización. Sin tiempo de gracia, desconexión masiva ni reproducción del historial o los eventos privados perdidos. RF-014 y RF-017.
