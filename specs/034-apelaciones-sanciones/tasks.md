@@ -119,7 +119,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
 - Hecho cuando: plataforma solo lista/lee/decide su scope con contexto local propio, autor no decide aunque tenga autorización; doble auditoría y consumo junto con decisión, sin privilegio persistente ni membresía. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k decision`.
 
-- [ ] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
+- [x] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
 - Hecho cuando: decisión/retirada/cierre generan ambos canales y destinatarios deduplicados autorizados; payload solo acto/motivo e identificadores técnicos mínimos, nunca evidencia ni jugadores por esa condición. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k enqueue`.
 
 - [ ] **T33. Handler interno y lectura privada con revalidación C5.** RF-015, RF-016, RF-032, RF-033
