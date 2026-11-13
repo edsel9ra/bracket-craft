@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, set_rls_context
-from app.core.locking import lock_matches
+from app.core.locking import lock_discipline, lock_matches
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.crests.resolver import MediaGroup, sign_media_rows
@@ -724,6 +725,7 @@ async def create_match_segment(
 
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
+        await lock_discipline(db, context.organization_id)
         match = await _load_operation_match(db, context, match_id)
         await db.execute(text("SELECT assert_no_open_competitive_impact(:id,:org)"),
             {"id": match_id, "org": context.organization_id})
@@ -794,8 +796,8 @@ async def create_match_segment(
                 )
             result = await db.execute(
                 text("""
-                    INSERT INTO match_segments (organization_id, match_id, segment_number, minute_start)
-                    VALUES (:organization_id, :match_id, :segment_number, :minute_start)
+                    INSERT INTO match_segments (organization_id, match_id, segment_number, minute_start, created_at)
+                    VALUES (:organization_id, :match_id, :segment_number, :minute_start, :opened_at)
                     RETURNING id, segment_number, minute_start, minute_end, status
                 """),
                 {
@@ -803,6 +805,7 @@ async def create_match_segment(
                     "match_id": str(match_id),
                     "segment_number": payload.segment_number,
                     "minute_start": payload.minute_start,
+                    "opened_at": datetime.now(timezone.utc),
                 },
             )
         except IntegrityError as exc:

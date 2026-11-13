@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
-from app.core.locking import lock_stage_and_version
+from app.core.locking import lock_discipline, lock_stage_and_version
 from app.core.outbox import enqueue_outbox
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
@@ -759,6 +759,7 @@ class CloseMatchReportService:
         async with self.db.begin():
             # --- 1. Sesión, organización y aislamiento ----------------------
             await set_rls_context(self.db, context.organization_id, context.user_id)
+            await lock_discipline(self.db, context.organization_id)
             identity = await self._load_match_identity(context, match_id)
             # Orden de bloqueo declarado (RF-018): fase → versión → destinos de
             # avance → partido → segmento activo → jugadores. Los bloqueos no

@@ -55,7 +55,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 - [x] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
 - Hecho cuando: helper transaccional por organización precede fase/versiones/partidos/segmentos/jugadores/sanciones/expediente/autorización, con IDs estables; no comparte locks entre tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k coordinator`.
 
-- [ ] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
+- [x] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
 - Hecho cuando: primer segmento y cierre adquieren coordinador antes de sus locks actuales; fecha se captura después de esperar locks, sin alterar otras reglas operativas. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k match_lock`.
 
 - [ ] **T15. Repositorio efectivo en lote con contexto RLS.** RF-006, RF-010, RF-014, RF-016
