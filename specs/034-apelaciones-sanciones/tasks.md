@@ -1,10 +1,10 @@
 # Tareas 034 — Apelaciones y resoluciones de sanciones
 
-Estado: **borrador**. Spec y plan aprobados por el usuario el 2026-11-12, incluidas C1–C5 tal como están. Fase actual: Tareas. Este documento requiere aprobación expresa antes de implementar; ninguna casilla está realizada.
+Estado: **aprobado** por el usuario el 2026-11-12, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. Fase Tareas cerrada; fase actual Implementación, PR A. T1–T10 realizadas; T11–T55 pendientes.
 
-Son **55 tareas**, estimadas en **20–30 min de trabajo por tarea**, en orden de dependencia. **Propuesta: no dividir la spec**, aunque supera diez tareas: la duración efectiva, el bloqueo/cumplimiento y la coordinación 033 forman una garantía indivisible; separarlos en specs permitiría activar resoluciones con lectores antiguos. Se divide la entrega en los cuatro PRs secuenciales A–D del plan. Cada PR se verifica y fusiona antes de empezar el siguiente; no se fusionan fragmentos inseguros del PR B. Si una tarea excede el límite al ejecutarla, descomponerla antes de seguir, sin ampliar alcance ni marcarla parcialmente hecha.
+Son **55 tareas**, estimadas en **20–30 min de trabajo por tarea**, en orden de dependencia. **Propuesta: no dividir la spec**, aunque supera diez tareas: la duración efectiva, el bloqueo/cumplimiento y la coordinación 033 forman una garantía indivisible; separarlos en specs permitiría activar resoluciones con lectores antiguos. Por decisión del usuario, la entrega pasa a cinco PRs secuenciales A → B1 → B2 → C → D. Cada PR se verifica y fusiona antes de empezar el siguiente; B1 solo activa lectores equivalentes sin resoluciones y B2 no se fusiona parcialmente. Si una tarea excede el límite al ejecutarla, descomponerla antes de seguir, sin ampliar alcance ni marcarla parcialmente hecha.
 
-En cada tarea: escribir primero los tests indicados, comprobar rojo por la funcionalidad ausente, código mínimo y verde; registrar evidencia antes de marcar. Una tarea cada vez. Las pruebas deben cubrir normal, vacío y error cuando apliquen. Los archivos de test F9 citados son entregables futuros, no pruebas existentes ya ejecutadas.
+En cada tarea: escribir primero los tests indicados, comprobar rojo por la funcionalidad ausente, código mínimo y verde; registrar evidencia antes de marcar. Una tarea cada vez. Las pruebas deben cubrir normal, vacío y error cuando apliquen. Para las tareas pendientes, los archivos de test F9 citados son entregables futuros, no pruebas existentes ya ejecutadas.
 
 Entorno PostgreSQL como CI: exportar previamente `DATABASE_URL` (rol app) y `DATABASE_ADMIN_URL` (administración de una BD local de prueba); los comandos `RUN_DATABASE_TESTS=1` heredan esas variables. No usar producción ni guardar credenciales en archivos versionados. Los tests RLS usan `bracket_app`, dos organizaciones y contextos reales; los mocks no prueban aislamiento, triggers ni carreras.
 
@@ -14,40 +14,40 @@ Entorno PostgreSQL como CI: exportar previamente `DATABASE_URL` (rol app) y `DAT
 
 Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican juntas antes de fusionar A; ningún grant provisional queda abierto. Dependencias internas: T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10.
 
-- [ ] **T1. Nueva 040: expedientes, eventos y unicidad de pendiente.** RF-001, RF-009, RF-016, RF-029
+- [x] **T1. Nueva 040: expedientes, eventos y unicidad de pendiente.** RF-001, RF-009, RF-016, RF-029
 - Hecho cuando: tablas de expediente/eventos nacen con RLS/FORCE, FK tenant, motivo y autor, índice parcial compartido por apelación/propuesta y grants mínimos; no se importan filas `appealed`. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k cases` y `sh -n infra/postgres/migrate.sh`.
 
-- [ ] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
+- [x] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
 - Hecho cuando: decisiones/resoluciones registran base original/efectiva, responsable y motivo, evidencia opcional sin archivos y FK tenant; UPDATE/DELETE rechazados, sin tocar `matches_suspended`. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k decisions`.
 
-- [ ] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030
+- [x] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030
 - Hecho cuando: aplicaciones y snapshots son append-only, tienen FK tenant/unicidad y permiten distinguir decisión, aplicación pendiente y partido efectivo sin exigir un partido ficticio a declaraciones. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k applications`.
 
-- [ ] **T4. Nueva 040: perjuicio, autorizaciones F9 y avisos.** RF-013, RF-023, RF-032, RF-033
+- [x] **T4. Nueva 040: perjuicio, autorizaciones F9 y avisos.** RF-013, RF-023, RF-032, RF-033
 - Hecho cuando: las tres tablas nacen con RLS/FORCE y referencias tenant; autorización no reutiliza la 033 y aviso es único por acto/destinatario/canal, sin evidencia en su cuerpo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k auxiliary`.
 
-- [ ] **T5. Nueva 040: transiciones, catálogo y anti-auto-decisión en BD.** RF-005, RF-009, RF-020, RF-021, RF-022, RF-029
+- [x] **T5. Nueva 040: transiciones, catálogo y anti-auto-decisión en BD.** RF-005, RF-009, RF-020, RF-021, RF-022, RF-029
 - Hecho cuando: INSERT directo del autor como decisor falla aunque cambie de rol; transición terminal no se reabre, decisión/evento obligatorio se comprueba al commit y una propuesta solo admite aprobar/rechazar su medida. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k transitions`.
 
-- [ ] **T6. Nueva 040: RBAC y lecturas operativas mínimas.** RF-014, RF-015, RF-016, RF-018, RF-019
+- [x] **T6. Nueva 040: RBAC y lecturas operativas mínimas.** RF-014, RF-015, RF-016, RF-018, RF-019
 - Hecho cuando: claves nuevas en `core/roles.py`, defaults owner/admin en roles nuevos/existentes y funciones de elegibilidad por partido verifican permiso sin revelar expediente/evidencia; cerrar o rectificar no concede consulta F9. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k permissions`.
 
-- [ ] **T7. Nueva 040: scopes y capacidades de plataforma acotadas (C2).** RF-015, RF-016, RF-023, RF-024
+- [x] **T7. Nueva 040: scopes y capacidades de plataforma acotadas (C2).** RF-015, RF-016, RF-023, RF-024
 - Hecho cuando: funciones F9 verifican admin/dueño/organización/expediente y contexto local propio, grants y search_path seguros; autorización 033 no abre F9 y no se amplía membresía global ni BYPASSRLS. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k platform`.
 
-- [ ] **T8. Nueva 040: puente 033 y entrega privada; gate de migración.** RF-007, RF-016, RF-025, RF-032, RF-033
+- [x] **T8. Nueva 040: puente 033 y entrega privada; gate de migración.** RF-007, RF-016, RF-025, RF-032, RF-033
 - Hecho cuando: funciones de cierre consecuente comprueban publicación/cambio acreditado y funciones de entrega atan el aviso al evento reclamado, sin UPDATE genérico ni suplantación de miembro. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py`, verificando la migración real sobre BD limpia y 039→040, con checksums previos intactos. Pasan además `sh -n infra/postgres/migrate.sh` y el runner de abajo, que prueba el mecanismo MIGRATION_TARGET con migraciones sintéticas, no sustituye los tests reales de la 040.
 - Comando del runner desde raíz, con PGHOST/PGPORT/PGUSER/PGPASSWORD exportadas para PostgreSQL local de prueba: `docker run --rm --network host -v "$PWD/infra:/infra:ro" -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17-alpine sh /infra/scripts/test_migrate_target.sh`.
 
-- [ ] **T9. Proyección pura de duración efectiva y cumplimientos.** RF-003, RF-010, RF-014
+- [x] **T9. Proyección pura de duración efectiva y cumplimientos.** RF-003, RF-010, RF-014
 - Hecho cuando: sin resolución equivale al comportamiento base; reducción mayor/igual/menor que cumplido, anulación y declaración conservan historial, saldo nunca negativo ni crédito y `appealed` no crea recurso. Pasa `cd backend && pytest -q tests/test_sanction_effective.py -k duration`.
 
-- [ ] **T10. Funciones temporales puras y compatibilidad de legado (C4).** RF-011, RF-012, RF-027, RF-030
+- [x] **T10. Funciones temporales puras y compatibilidad de legado (C4).** RF-011, RF-012, RF-027, RF-030
 - Hecho cuando: tiempo recibido por parámetro, primera apertura frente a calendario/reprogramación, partido en curso y legado sin fecha tienen resultados deterministas; no reconstrucción inventada ni reloj interno. Pasa `cd backend && pytest -q tests/test_sanction_effective.py -k temporal`.
 
-## PR B — Núcleo operativo completo (T11–T39)
+## PR B1 — Lectores y cumplimientos efectivos
 
-Depende de A. Mantener las rutas nuevas sin registrar hasta T36. Las funciones de servicio se prueban antes de exponerlas; no fusionar B hasta T39 con **todos** los lectores, apertura/cierre, puente 033 y avisos integrados. Orden T11 → … → T39; cada tarea usa lo construido anteriormente.
+Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35. No expone ninguna ruta de escritura de expedientes: los contratos de T11 son inertes; T35 solo registra su lectura privada. Fusionable porque, sin resoluciones, la duración efectiva equivale a la original. Antes de fusionar pasan las pruebas de lectores, apertura, cumplimientos y avisos de estas tareas y `cd backend && RUN_DATABASE_TESTS=1 pytest -q`; no se activa ninguna creación/decisión de expediente.
 
 - [ ] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
 - Hecho cuando: DTOs con extra forbid, UUID, enums, representación, duración y paginación acotadas; motivo vacío, campos extra/archivos y alcance nuevo rechazados; evidencia ausente válida. Pasa `cd backend && pytest -q tests/test_sanction_schemas.py`.
@@ -55,14 +55,30 @@ Depende de A. Mantener las rutas nuevas sin registrar hasta T36. Las funciones d
 - [ ] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
 - Hecho cuando: helper transaccional por organización precede fase/versiones/partidos/segmentos/jugadores/sanciones/expediente/autorización, con IDs estables; no comparte locks entre tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k coordinator`.
 
-- [ ] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
-- Hecho cuando: no se bloquea solicitud antes de fase; publicación usa coordinador y mantiene el orden global de la 033, sin cambios a resultados ni permisos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_concurrency.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k rectification_lock`.
-
 - [ ] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
 - Hecho cuando: primer segmento y cierre adquieren coordinador antes de sus locks actuales; fecha se captura después de esperar locks, sin alterar otras reglas operativas. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k match_lock`.
 
 - [ ] **T15. Repositorio efectivo en lote con contexto RLS.** RF-006, RF-010, RF-014, RF-016
 - Hecho cuando: carga original/resoluciones/aplicaciones/cumplimientos sin N+1 y conserva origen; lectura operativa usa funciones mínimas sin conceder evidencia ni consulta de otros expedientes. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k repository`.
+
+- [ ] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
+- Hecho cuando: apertura aplicable lineariza efecto, partido/instante y snapshot; no depende de convocatoria ni calendario, y no aplica resolución excluida por rectificación. Partido iniciado conserva lectura previa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_effective_integration.py -k opening`.
+
+- [ ] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
+- Hecho cuando: `_has_suspended_players` y llamadas validan pendientes aplicables, exclusión del acta origen y corte de creación; status actual no levanta indebidamente restricción de un partido ya comenzado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k blocking`.
+
+- [ ] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
+- Hecho cuando: INSERT y actualización de `_serve_suspensions` usan los mismos datos efectivos, IDs bloqueados y deduplicación, conservan filas y no reviven una anulada tras cerrar un partido anterior. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k serves`.
+
+- [ ] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
+- Hecho cuando: permiso operativo del partido da aviso mínimo por jugador sin expediente/motivo/evidencia; guardar/publicar no bloquean ni modifican alineación y cierre sigue revalidando. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_warnings.py`.
+
+## PR B2 — Expedientes y efectos coordinados
+
+Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T22 → T23 → T27 → T28 → T29 → T30 → T31 → T32 → T33 → T34 → T36 → T37 → T38 → T39. Mantener las rutas de escritura sin registrar hasta T36; T39 verifica el núcleo completo con los lectores ya fusionados en B1. Incluye API, decisiones, coordinación 033, plataforma, avisos y concurrencia. No fusionar fragmentos inseguros de B2.
+
+- [ ] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
+- Hecho cuando: no se bloquea solicitud antes de fase; publicación usa coordinador y mantiene el orden global de la 033, sin cambios a resultados ni permisos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_concurrency.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k rectification_lock`.
 
 - [ ] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034
 - Hecho cuando: solo miembro con facultad presenta en nombre de equipo/jugador; tres orígenes y dos ámbitos, archivo y sanción cumplida no añaden caducidad; motivo obligatorio/evidencia opcional, sin cambiar sanción/cumplimientos ni crear acceso del representado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k appeal`.
@@ -88,15 +104,6 @@ Depende de A. Mantener las rutas nuevas sin registrar hasta T36. Las funciones d
 - [ ] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
 - Hecho cuando: misma base resuelta no admite otro recurso; retirada permite nueva presentación y cierre rectificativo exige presentación manual vinculada. Base cambiada cierra sin decisión ni consumo; respuesta no revierte el cierre. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k stale`.
 
-- [ ] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
-- Hecho cuando: apertura aplicable lineariza efecto, partido/instante y snapshot; no depende de convocatoria ni calendario, y no aplica resolución excluida por rectificación. Partido iniciado conserva lectura previa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_effective_integration.py -k opening`.
-
-- [ ] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
-- Hecho cuando: `_has_suspended_players` y llamadas validan pendientes aplicables, exclusión del acta origen y corte de creación; status actual no levanta indebidamente restricción de un partido ya comenzado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k blocking`.
-
-- [ ] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
-- Hecho cuando: INSERT y actualización de `_serve_suspensions` usan los mismos datos efectivos, IDs bloqueados y deduplicación, conservan filas y no reviven una anulada tras cerrar un partido anterior. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k serves`.
-
 - [ ] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
 - Hecho cuando: cancelación/recreación/cambio disciplinario cierra expedientes con referencia/motivo; marcador sin cambio no cierra; fallo del puente revierte publicación y outbox completos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k closure`.
 
@@ -121,9 +128,6 @@ Depende de A. Mantener las rutas nuevas sin registrar hasta T36. Las funciones d
 - [ ] **T34. Handler de correo F9 con reintentos.** RF-032, RF-033
 - Hecho cuando: usa SMTP existente, revalida destinatario, fallo conserva aviso sin revertir acto; posible repetición del correo nunca duplica decisión, sin evidencia ni publicación Redis por fallback. Pasan `cd backend && pytest -q tests/test_sanction_email.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k email`.
 
-- [ ] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
-- Hecho cuando: permiso operativo del partido da aviso mínimo por jugador sin expediente/motivo/evidencia; guardar/publicar no bloquean ni modifican alineación y cierre sigue revalidando. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_warnings.py`.
-
 - [ ] **T36. Registrar router completo y probar contratos HTTP.** RF-002, RF-006, RF-015, RF-018, RF-020, RF-023, RF-029, RF-034
 - Hecho cuando: rutas organización y `/api/v1/platform` registradas en `main.py`, sin presentar/proponer desde plataforma; 401/403/404 indistinguible/409/422 y recibos mínimos siguen plan, preview no escribe. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_api.py` y `cd backend && python -m compileall -q app`.
 
@@ -138,7 +142,7 @@ Depende de A. Mantener las rutas nuevas sin registrar hasta T36. Las funciones d
 
 ## PR C — Workspace y aviso preparatorio (T40–T49)
 
-Depende de B ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan por `useApi.ts`, los tests usan contratos estrictos y ES/EN; no se comparte payload privado con componentes públicos.
+Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan por `useApi.ts`, los tests usan contratos estrictos y ES/EN; no se comparte payload privado con componentes públicos.
 
 - [ ] **T40. Composable tipado de expedientes y permisos.** RF-006, RF-015, RF-019, RF-029
 - Hecho cuando: `useSanctionCases.ts` transporta sesión/organización mediante useApi, pagina/refresca sin mezclar tenants y tipa errores/recibos; sin acceso implícito por presentar. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.

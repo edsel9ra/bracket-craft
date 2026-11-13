@@ -2,10 +2,11 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
-- specs/034-apelaciones-sanciones — fase actual: Tareas — spec y plan aprobados por el usuario el 2026-11-12.
-- Pendiente: aprobar tasks.md (borrador, 55 tareas de 20–30 min, PRs A–D, RF-001–RF-034 cubiertos). C1–C5 confirmadas; fase Plan cerrada, fase actual Tareas, sin implementación F9; la 033 permanece implementada.
+- specs/034-apelaciones-sanciones — fase actual: Implementación, PR A — spec, plan y tareas aprobados por el usuario el 2026-11-12.
+- PR A T1–T10 implementadas con tests primero y commits por tarea; checks locales completos, entrega en rama sin abrir PR. B dividido por el usuario en B1 (lectores/cumplimientos sin escrituras de expedientes) y B2 (API y efectos coordinados); luego C y D. C1–C5 confirmadas, 34 RF cubiertos.
 
 ## Decisiones tomadas
+- 2026-11-12 · Spec 034 · Tareas aprobadas por el usuario; B1 T11/T12/T14/T15/T24/T25/T26/T35, resto de T11–T39 en B2. Sin resoluciones, lector efectivo equivale al original; B1 no activa escrituras de expedientes. Fase actual Implementación, PR A.
 - 2026-11-12 · Spec 034 · El usuario aprobó el plan y C1–C5 tal como están; fase Plan cerrada, fase actual Tareas. Sin aprobación implícita de tareas ni implementación.
 - 2026-11-12 · Spec 034 · El usuario aprobó expresamente la spec completa; fase Spec cerrada y fase actual Plan. La aprobación no se extiende al plan técnico ni autoriza implementación.
 - 2026-11-12 · Spec 034 · DA-17 cerrada: avisos privados por notificación interna y correo, registrados/reintentables vía outbox, al interponente/proponente y miembros con permiso de resolver de su organización. Solo decisión/retirada/cierre rectificativo y motivo, nunca evidencia; sin destinatarios por ser jugador/representante. Fallo de entrega no revierte la decisión.
@@ -29,6 +30,10 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - 2026-11-12 · Spec 034 · DA-5 cerrada por el usuario: sin efecto suspensivo ni suspensión provisional por el recurso; la sanción sigue bloqueando conforme a los controles actuales hasta una resolución aplicable.
 
 ## Estado (entrada más reciente primero; el resto es histórico)
+- 2026-11-13 · **034 PR A verificado:** PostgreSQL 17/Python 3.14, backend completo `3224 passed, 4 skipped`; ruff, compileall, bandit -ll, runner MIGRATION_TARGET y contratos/Compose desarrollo-producción correctos. La primera corrida detectó la allowlist antigua de FK a players; se añadió la pareja compuesta F9 manteniendo todas las aserciones de aislamiento. Frontend intacto, sin comprobación visual ni E2E nuevos; no es cierre de la spec.
+- 2026-11-13 · **034 PR A implementado:** 040 nueva, sin editar 001–039/hardening, RLS/FORCE y capacidades propias sin membresía global ni BYPASSRLS; dominio puro de duración/primera apertura, sin rutas ni handlers activos. Integración de lectores/apertura en B1 y publicación 033/API/avisos en B2; no avanzados.
+- 2026-11-13 · **034 detalles mínimos:** avisos conservan UUID de outbox sin FK permanente a la cola purgable (como 033); trigger valida acto, destinatario, organización, tipo y payload al insertarlos. Entrega exige evento reclamado y revalida acceso sin suplantar miembros; legado temporal incierto conserva restricción acreditada y exige revisión.
+- 2026-11-12 · **034 Tareas aprobadas:** fase Tareas cerrada, Implementación PR A. #68 fusionado por squash; la rama funcional nace de origin/main y lleva la aprobación que aún no estaba en main.
 - 2026-11-12 · **034 Tareas borrador:** 55 tareas A T1–T10 / B T11–T39 / C T40–T49 / D T50–T55, tests primero y cobertura de 34 RF. Se propone no dividir la spec por integridad de lectores/efectos; pendiente aprobación de tareas.
 - 2026-11-12 · **034 Plan aprobado:** C1–C5 confirmadas por el usuario; fase actual Tareas, sin implementación F9.
 - 2026-11-12 · **034 Plan borrador:** diseño contrastado con 035–039 y lectores; propone 040, duración efectiva sin mutar 037 y entregas A–D. Confirmaciones C1–C5 pendientes; spec aprobada, fase actual Plan, sin implementación.

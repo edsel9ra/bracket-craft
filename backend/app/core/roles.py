@@ -21,6 +21,12 @@ ROLE_PRECEDENCE: tuple[str, ...] = (
 )
 DEFAULT_ROLE_CODE = ROLE_PRECEDENCE[-1]
 
+SANCTION_CASE_PERMISSIONS: tuple[str, ...] = (
+    "VIEW_SANCTION_CASES",
+    "SUBMIT_SANCTION_APPEALS",
+    "RESOLVE_SANCTION_CASES",
+)
+
 
 def role_precedence_index(code: str | None) -> int:
     """Return the precedence index of ``code``; unknown codes are viewers."""
