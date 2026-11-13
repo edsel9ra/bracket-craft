@@ -116,7 +116,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
 - Hecho cuando: dueño/admin/organización activos y scope exacto, autorización no reutilizable, rol retirado invalida; grants/revocaciones siguen coordinador y auditoría, sin platform_support. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k authorization`.
 
-- [ ] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
+- [x] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
 - Hecho cuando: plataforma solo lista/lee/decide su scope con contexto local propio, autor no decide aunque tenga autorización; doble auditoría y consumo junto con decisión, sin privilegio persistente ni membresía. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k decision`.
 
 - [ ] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
