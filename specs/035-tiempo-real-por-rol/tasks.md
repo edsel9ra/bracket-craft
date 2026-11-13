@@ -219,7 +219,7 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 
 - [ ] **T37. Gate indivisible de PR B.** RF-001, RF-002, RF-006, RF-011, RF-012, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
 - [x] Gate local completo (2026-11-13): backend PostgreSQL 3617 pass; frontend 968 pass/1 skip; E2E Compose 59 pass; infraestructura, migraciones 055/runner y escaneos. Evidencia y límites en `verificacion.md`.
-- [ ] CI de PR/push y revisión de B: pendientes de apertura del PR por el usuario.
+- [x] CI de PR/push y revisión automatizada de B: PR #77, fix `57cf9f51`, ambos runs verdes y E2E 59 pass (2026-11-13). Hallazgo comunicado de Devin Review reproducido en rojo y corregido; check de revisión verde, cero comentarios inline en GitHub. Detalles y límites en `verificacion.md`.
 - [ ] Fusión de B: pendiente; no iniciar C ni declarar F8/R32f aceptados.
 - Dependencias: T18–T36; PR B.
 - Tests primero: regresión completa y E1/E2 mínimos, incluida no recepción antes de UI, sin posponer estos controles a C.

@@ -491,3 +491,72 @@ tema y axe dentro del gate, pero **no se realizó inspección visual manual**.
 T1–T36 verificadas; T37 mantiene CI PR/push, revisión y fusión pendientes del PR
 que abrirá el usuario. No hubo despliegue productivo, PR nuevo, cierre R32f ni
 aceptación F8; F1 y F9 mantienen sus restricciones.
+
+## PR #77 — CI y rollback de organización (2026-11-13)
+
+Antes del fix se comprobó HEAD exacto `3abdfbe502ac965fc8f6bbbeba3f3868523a0b4f`.
+El hallazgo comunicado de Devin Review era real y alcanzable: WorkspaceShell
+escribe la organización tentativa antes de `verifyWorkspace`; ante un error distinto
+de 401/404 restaura la organización original sin desmontar la página de partido.
+`verifyWorkspace` no cambia sessionVersion en ese camino. El watch limpia la
+operación, pero el closure de generación inicial queda invalidado para siempre,
+incluso cuando la clave vuelve a ser la original.
+
+Dos nuevos tests con watch real de Vue reproducen A → B → A, sin recarga en B,
+con GET anterior que termina correctamente o con 403 después del rollback:
+
+```text
+failed organization switch restores the mounted match with fresh HTTP, not stale responses (error=false)
+AssertionError: 1 !== 2
+failed organization switch restores the mounted match with fresh HTTP, not stale responses (error=true)
+AssertionError: 1 !== 2
+```
+
+Fix separado `57cf9f517cbce90f05d43f23eb948892fede2f95`, un push funcional:
+`useMatchOperation` conserva la clave del contexto montado, recaptura generación y
+solicita recarga solo cuando vuelve esa misma clave. Cambiar identidad, sesión u
+organización no permite reutilizar la operación original; incrementar la generación
+de GET al cambiar contexto sigue descartando respuestas y denegaciones antiguas.
+Los tests verifican recarga automática, estado recuperado, invalidaciones posteriores
+y ausencia de redirección por el 403 obsoleto. Se comprobó además el orden real de
+watchers Vue: socket incrementa generación antes de recapturar el contexto restaurado.
+
+Validación local del fix:
+
+```text
+pnpm test: tests 971; pass 970; fail 0; skipped 1
+pnpm run typecheck: exit 0
+pnpm run lint: exit 0
+pnpm run build: Build complete in 10.4s!
+git diff --check: exit 0
+```
+
+CI del SHA funcional, esperado con `git_pr_checks(wait_mode="all")` y comprobado
+también por evento mediante la API de Actions:
+
+| Evento | Run | Resultado |
+|---|---|---|
+| pull_request | 43486317643 | success, cinco jobs correctos |
+| push | 43486306264 | success, cuatro jobs correctos; E2E omitido por condición existente |
+
+```text
+Summary: 7 passed, 0 failed, 0 pending, 0 skipped
+Backend PR: 3613 passed, 4 skipped in 858.68s (0:14:18)
+Backend push: 3613 passed, 4 skipped in 628.01s (0:10:28)
+Frontend PR: tests 971; pass 970; fail 0; skipped 1
+Build PR: Build complete in 14.6s!
+E2E PR: 59 passed (6.5m)
+RESULTADO: VERDE (0)
+```
+
+Los cinco escenarios de `private-realtime` aparecen verdes en el log CI, incluidos
+los tres cortes de retirada y recuperación 032/terminal/contexto/público. No hubo
+fallos de CI que corregir: el cambio funcional responde al hallazgo de revisión.
+GitHub devuelve cero comentarios inline/reviews y Devin Review indica success,
+`Completed analysis in 1m 31s`. El hallazgo recibido fue corregido; no se descartó
+ningún falso positivo. La página externa de revisión no devuelve texto por webfetch,
+por lo que no se afirma una auditoría de contenido adicional a los comentarios
+GitHub y al hallazgo transmitido. Sin inspección visual manual nueva.
+
+Este cierre documental marca únicamente gate local, CI y revisión automatizada de
+T37. La casilla global y su fusión siguen abiertas; no se fusionó #77 ni se inició C.
