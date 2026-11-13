@@ -80,7 +80,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
 - Hecho cuando: no se bloquea solicitud antes de fase; publicación usa coordinador y mantiene el orden global de la 033, sin cambios a resultados ni permisos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_concurrency.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k rectification_lock`.
 
-- [ ] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034
+- [x] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034
 - Hecho cuando: solo miembro con facultad presenta en nombre de equipo/jugador; tres orígenes y dos ámbitos, archivo y sanción cumplida no añaden caducidad; motivo obligatorio/evidencia opcional, sin cambiar sanción/cumplimientos ni crear acceso del representado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k appeal`.
 
 - [ ] **T17. Presentar propuesta administrativa inmutable.** RF-003, RF-019, RF-020, RF-022, RF-028, RF-034
