@@ -1,6 +1,10 @@
 # MEMORY.md — Bracket Craft
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
+## Corrección independiente: planilla clásica
+- `useMatchLineup.syncTacticalEditor` conserva roles de `operation.lineup` para equipos sin formación seleccionada; snapshots tácticos y precarga 028 mantienen prioridad. Sin backend, migraciones, contrato ni permisos nuevos.
+- Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
+
 ## Spec activa
 - specs/034-apelaciones-sanciones — implementación técnica A–D completada; validación final/aceptación humana pendientes. Spec, plan y tareas aprobados por el usuario el 2026-11-12.
 - PR A/B1/B2/C fusionados. D T50–T54 verificadas localmente, T55 documentada pendiente de CI remota/aceptación según SDD; entrega solicitada por push sin PR. No se declara cierre formal ni despliegue productivo. Evidencia por RF, lectores, resultados y rutas de capturas en specs/034-apelaciones-sanciones/verificacion.md.
