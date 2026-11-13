@@ -458,7 +458,7 @@ BEGIN
     SELECT * INTO target FROM public.sanction_cases WHERE id = NEW.case_id AND organization_id = NEW.organization_id;
     SELECT * INTO decided FROM public.sanction_case_decisions WHERE id = NEW.decision_id AND case_id = target.id;
     SELECT * INTO source FROM public.player_suspensions WHERE id = NEW.suspension_id AND organization_id = NEW.organization_id;
-    SELECT count(*) INTO served FROM public.player_suspension_serves WHERE suspension_id = source.id;
+    SELECT count(*) INTO served FROM public.player_suspension_serves WHERE suspension_id = source.id AND NOT is_voided;
     expected_action := CASE WHEN decided.decision = 'approve' THEN target.proposed_action ELSE decided.decision END;
     IF NEW.created_at <> CURRENT_TIMESTAMP OR decided.id IS NULL OR source.id IS NULL OR source.id <> target.suspension_id
         OR expected_action NOT IN ('annul', 'reduce') OR NEW.action <> expected_action
@@ -494,21 +494,31 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION public.sanction_apply_case_act()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+CREATE FUNCTION public.sanction_finalize_case(target_case UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE target public.sanction_cases; decided public.sanction_case_decisions; event public.sanction_case_events;
 BEGIN
-    IF TG_TABLE_NAME = 'sanction_case_decisions' THEN
-        UPDATE public.sanction_cases SET status = 'resolved' WHERE id = NEW.case_id;
-    ELSIF NEW.event_type IN ('withdrawn', 'closed_by_rectification') THEN
-        UPDATE public.sanction_cases SET status = NEW.event_type WHERE id = NEW.case_id;
+    SELECT * INTO target FROM public.sanction_cases WHERE id = target_case
+        AND organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID FOR UPDATE;
+    SELECT * INTO decided FROM public.sanction_case_decisions WHERE case_id = target.id;
+    SELECT * INTO event FROM public.sanction_case_events WHERE case_id = target.id
+        AND event_type IN ('withdrawn', 'closed_by_rectification');
+    IF target.id IS NULL OR target.status <> 'pending' THEN
+        RAISE EXCEPTION 'SANCTION_CASE_NOT_PENDING' USING ERRCODE = '23514';
     END IF;
-    RETURN NEW;
+    IF decided.id IS NOT NULL AND decided.decided_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        AND (public.sanction_member_has_permission(target.organization_id, 'RESOLVE_SANCTION_CASES')
+            OR public.sanction_platform_scope(target.id)) THEN
+        UPDATE public.sanction_cases SET status = 'resolved' WHERE id = target.id;
+    ELSIF event.id IS NOT NULL AND event.actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID THEN
+        UPDATE public.sanction_cases SET status = event.event_type WHERE id = target.id;
+    ELSE
+        RAISE EXCEPTION 'SANCTION_MISSING_ACT' USING ERRCODE = '23514';
+    END IF;
 END;
 $$;
-CREATE TRIGGER trg_sanction_decision_act AFTER INSERT ON public.sanction_case_decisions
-    FOR EACH ROW EXECUTE FUNCTION public.sanction_apply_case_act();
-CREATE TRIGGER trg_sanction_event_act AFTER INSERT ON public.sanction_case_events
-    FOR EACH ROW EXECUTE FUNCTION public.sanction_apply_case_act();
+REVOKE ALL ON FUNCTION public.sanction_finalize_case(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_finalize_case(UUID) TO bracket_app;
 
 CREATE FUNCTION public.sanction_assert_complete()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
@@ -518,6 +528,8 @@ BEGIN
     SELECT * INTO target FROM public.sanction_cases WHERE id = target_id;
     SELECT * INTO decided FROM public.sanction_case_decisions WHERE case_id = target_id;
     IF NOT EXISTS (SELECT 1 FROM public.sanction_case_events WHERE case_id = target_id AND event_type = 'submitted')
+        OR (target.status = 'pending' AND EXISTS (SELECT 1 FROM public.sanction_case_events WHERE case_id = target_id
+            AND event_type IN ('withdrawn', 'closed_by_rectification')))
         OR (target.status = 'resolved') IS DISTINCT FROM (decided.id IS NOT NULL)
         OR (target.status IN ('withdrawn', 'closed_by_rectification') AND NOT EXISTS (
             SELECT 1 FROM public.sanction_case_events WHERE case_id = target_id AND event_type = target.status)) THEN
@@ -534,6 +546,8 @@ CREATE CONSTRAINT TRIGGER trg_sanction_case_complete AFTER INSERT OR UPDATE ON p
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.sanction_assert_complete();
 CREATE CONSTRAINT TRIGGER trg_sanction_decision_complete AFTER INSERT ON public.sanction_case_decisions
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.sanction_assert_complete();
+CREATE CONSTRAINT TRIGGER trg_sanction_event_complete AFTER INSERT ON public.sanction_case_events
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.sanction_assert_complete();
 
 CREATE POLICY f9_event_insert ON public.sanction_case_events FOR INSERT TO bracket_app WITH CHECK (
     actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
@@ -543,5 +557,80 @@ CREATE POLICY f9_decision_insert ON public.sanction_case_decisions FOR INSERT TO
 CREATE POLICY f9_resolution_insert ON public.sanction_resolutions FOR INSERT TO bracket_app WITH CHECK (
     public.sanction_member_has_permission(organization_id, 'RESOLVE_SANCTION_CASES') OR public.sanction_platform_scope(case_id));
 GRANT INSERT ON public.sanction_case_events, public.sanction_case_decisions, public.sanction_resolutions TO bracket_app;
+
+DO $defaults$
+DECLARE permission TEXT;
+BEGIN
+    FOREACH permission IN ARRAY ARRAY['VIEW_SANCTION_CASES', 'SUBMIT_SANCTION_APPEALS', 'RESOLVE_SANCTION_CASES'] LOOP
+        UPDATE public.role_definitions SET system_permissions = system_permissions || jsonb_build_array(permission)
+            WHERE code IN ('owner', 'administrator') AND NOT system_permissions @> jsonb_build_array(permission);
+        UPDATE public.roles r SET permissions = r.permissions || jsonb_build_array(permission)
+            FROM public.role_definitions rd WHERE r.role_definition_id = rd.id AND rd.code IN ('owner', 'administrator')
+                AND NOT r.permissions @> jsonb_build_array(permission);
+    END LOOP;
+END;
+$defaults$;
+
+ALTER TABLE public.sanction_match_eligibility ADD COLUMN served_count INTEGER NOT NULL DEFAULT 0 CHECK (served_count >= 0);
+
+CREATE FUNCTION public.sanction_can_operate_match(target_org UUID, target_match UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT COALESCE(target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND EXISTS (
+            SELECT 1 FROM public.matches m
+            JOIN public.organizations o ON o.id = m.organization_id AND o.is_active
+            JOIN public.organization_users ou ON ou.organization_id = m.organization_id AND ou.is_active
+            JOIN public.users u ON u.id = ou.user_id AND u.is_active
+            JOIN public.organization_user_roles our ON our.organization_user_id = ou.id AND our.organization_id = ou.organization_id
+            JOIN public.roles r ON r.id = our.role_id AND r.organization_id = ou.organization_id
+            JOIN public.role_definitions rd ON rd.id = r.role_definition_id
+            WHERE m.id = target_match AND m.organization_id = target_org
+                AND ou.user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+                AND r.permissions @> '["CLOSE_MATCH_REPORT"]'::JSONB
+                AND (rd.code IN ('owner', 'administrator', 'operator') OR EXISTS (
+                    SELECT 1 FROM public.match_officials mo WHERE mo.match_id = m.id
+                        AND mo.organization_id = target_org AND mo.organization_user_id = ou.id))
+        ), FALSE);
+$$;
+REVOKE ALL ON FUNCTION public.sanction_can_operate_match(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_can_operate_match(UUID, UUID) TO bracket_app;
+
+CREATE FUNCTION public.sanction_operational_facts(target_match UUID)
+RETURNS TABLE (suspension_id UUID, player_id UUID, source_tournament_id UUID, scope_type TEXT,
+    original_duration INTEGER, status TEXT, created_at TIMESTAMPTZ, origin_match_id UUID,
+    serves JSONB, resolutions JSONB, applications JSONB, snapshot JSONB)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE org UUID := NULLIF(current_setting('app.current_organization_id', true), '')::UUID;
+BEGIN
+    IF NOT public.sanction_can_operate_match(org, target_match) THEN
+        RAISE EXCEPTION 'SANCTION_OPERATION_DENIED' USING ERRCODE = '42501';
+    END IF;
+    RETURN QUERY SELECT ps.id, ps.player_id, ps.source_tournament_id, ps.scope_type::TEXT,
+        ps.matches_suspended, ps.status::TEXT, ps.created_at, ps.origin_match_id,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('match_id', s.match_id, 'served_at', s.served_at) ORDER BY s.served_at, s.match_id)
+            FROM public.player_suspension_serves s WHERE s.suspension_id = ps.id AND NOT s.is_voided), '[]'::JSONB),
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('id', r.id, 'action', r.action,
+            'new_duration', r.new_duration, 'is_declarative', r.is_declarative, 'created_at', r.created_at,
+            'excluded', EXISTS (SELECT 1 FROM public.sanction_case_events e WHERE e.case_id = r.case_id
+                AND e.event_type = 'affected_by_rectification')) ORDER BY r.created_at, r.id)
+            FROM public.sanction_resolutions r WHERE r.suspension_id = ps.id), '[]'::JSONB),
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('resolution_id', a.resolution_id,
+            'match_id', a.match_id, 'effective_at', a.effective_at, 'after_status', a.after_status) ORDER BY a.effective_at, a.id)
+            FROM public.sanction_effect_applications a WHERE a.suspension_id = ps.id), '[]'::JSONB),
+        (SELECT jsonb_build_object('effective_duration', s.effective_duration, 'applicable_status', s.applicable_status,
+            'resolution_id', s.resolution_id, 'started_at', s.started_at, 'served_count', s.served_count)
+            FROM public.sanction_match_eligibility s WHERE s.suspension_id = ps.id AND s.match_id = target_match)
+    FROM public.player_suspensions ps
+    JOIN public.matches m ON m.id = target_match AND m.organization_id = ps.organization_id
+    WHERE ps.organization_id = org AND (ps.scope_type = 'organization' OR ps.source_tournament_id = m.tournament_id)
+        AND (EXISTS (SELECT 1 FROM public.rosters r WHERE r.organization_id = org
+                AND r.tournament_id = m.tournament_id AND r.team_id IN (m.home_team_id, m.away_team_id) AND r.player_id = ps.player_id)
+            OR EXISTS (SELECT 1 FROM public.match_rosters mr WHERE mr.organization_id = org
+                AND mr.match_id = target_match AND mr.player_id = ps.player_id))
+    ORDER BY ps.id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sanction_operational_facts(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_operational_facts(UUID) TO bracket_app;
 
 COMMIT;

@@ -29,7 +29,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T5. Nueva 040: transiciones, catálogo y anti-auto-decisión en BD.** RF-005, RF-009, RF-020, RF-021, RF-022, RF-029
 - Hecho cuando: INSERT directo del autor como decisor falla aunque cambie de rol; transición terminal no se reabre, decisión/evento obligatorio se comprueba al commit y una propuesta solo admite aprobar/rechazar su medida. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k transitions`.
 
-- [ ] **T6. Nueva 040: RBAC y lecturas operativas mínimas.** RF-014, RF-015, RF-016, RF-018, RF-019
+- [x] **T6. Nueva 040: RBAC y lecturas operativas mínimas.** RF-014, RF-015, RF-016, RF-018, RF-019
 - Hecho cuando: claves nuevas en `core/roles.py`, defaults owner/admin en roles nuevos/existentes y funciones de elegibilidad por partido verifican permiso sin revelar expediente/evidencia; cerrar o rectificar no concede consulta F9. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k permissions`.
 
 - [ ] **T7. Nueva 040: scopes y capacidades de plataforma acotadas (C2).** RF-015, RF-016, RF-023, RF-024

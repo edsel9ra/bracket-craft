@@ -1,9 +1,12 @@
 """F9 schema tested with the application role on disposable PostgreSQL databases."""
 
+import json
 from uuid import uuid4
 
 import asyncpg
 import pytest
+
+from app.core.roles import SANCTION_CASE_PERMISSIONS
 
 from migration_helpers import apply_migration, throwaway_database
 from test_migration_031 import MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, TOURNAMENT, USER, SEED_SQL
@@ -117,8 +120,10 @@ async def test_transitions_direct_self_decision_and_deferred_completeness(f9_db)
     assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "pending"
     with pytest.raises(asyncpg.CheckViolationError, match="SANCTION_MISSING_ACT"):
         await db.execute("UPDATE sanction_cases SET status='resolved' WHERE id=$1", case_id)
-    await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
-        VALUES ($1,$2,'withdrawn',$3,'Withdraw')""", ORG, case_id, USER)
+    async with db.transaction():
+        await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
+            VALUES ($1,$2,'withdrawn',$3,'Withdraw')""", ORG, case_id, USER)
+        await db.execute("SELECT sanction_finalize_case($1)", case_id)
     assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "withdrawn"
     with pytest.raises(asyncpg.CheckViolationError):
         await db.execute("UPDATE sanction_cases SET status='pending' WHERE id=$1", case_id)
@@ -166,6 +171,7 @@ async def test_transitions_app_role_and_missing_resolution_at_commit(f9_db):
             await db.execute("""INSERT INTO sanction_case_decisions
                 (organization_id,case_id,decided_by_user_id,decided_by_member_id,decided_as,decision,reason,before_duration,after_duration)
                 VALUES ($1,$2,$3,$4,'member','reduce','No resolution',3,1)""", ORG, case_id, actor, member)
+            await db.execute("SELECT sanction_finalize_case($1)", case_id)
     assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "pending"
     assert await db.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0
 
@@ -192,6 +198,32 @@ async def test_applications_and_match_snapshots(f9_db):
     assert not await db.fetchval("SELECT rolbypassrls FROM pg_roles WHERE rolname='bracket_app'")
 
 
+async def test_permissions_defaults_and_minimal_operational_facts(f9_db):
+    db, suspension = f9_db
+    for code in ("owner", "administrator", "operator", "referee", "viewer"):
+        permissions = json.loads(await db.fetchval("SELECT system_permissions FROM role_definitions WHERE code=$1", code))
+        assert set(SANCTION_CASE_PERMISSIONS).issubset(permissions) == (code in ("owner", "administrator"))
+    await insert_case(db, suspension)
+    role = await db.fetchval("""INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+        SELECT $1,id,'Operation only','["CLOSE_MATCH_REPORT"]' FROM role_definitions WHERE code='operator' RETURNING id""", ORG)
+    await db.execute("INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES ($1,$2,$3)", ORG, MEMBER, role)
+    await db.execute("""INSERT INTO rosters(organization_id,tournament_id,team_id,player_id,dorsal_number,valid_from,eligible_from)
+        SELECT $1,$2,home_team_id,$3,5,now(),now() FROM matches WHERE id=$4""", ORG, TOURNAMENT, PLAYER_HOME_FIRST, MATCH)
+    async with db.transaction():
+        await app_context(db)
+        rows = await db.fetch("SELECT * FROM sanction_operational_facts($1)", MATCH)
+        assert len(rows) == 1
+        assert rows[0]["suspension_id"] == suspension
+        assert rows[0]["original_duration"] == 3
+        assert not {"reason", "evidence_text", "evidence_links", "case_id"} & set(rows[0].keys())
+        assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 0
+        assert not await db.fetchval("SELECT sanction_member_has_permission($1,'VIEW_SANCTION_CASES')", ORG)
+    with pytest.raises(asyncpg.InsufficientPrivilegeError):
+        async with db.transaction():
+            await app_context(db, org=str(uuid4()))
+            await db.fetch("SELECT * FROM sanction_operational_facts($1)", MATCH)
+
+
 async def insert_decision(db, case_id, actor=None, action="reduce"):
     actor = actor or await db.fetchval("SELECT id FROM users WHERE email='f9-decider@test.invalid'") or await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-decider@test.invalid','Decider') RETURNING id")
     member = await db.fetchval("SELECT id FROM organization_users WHERE organization_id=$1 AND user_id=$2", ORG, actor)
@@ -211,6 +243,7 @@ async def insert_decision(db, case_id, actor=None, action="reduce"):
                  before_duration,new_duration,served_count,is_declarative)
                 SELECT $1,$2,$3,suspension_id,$4,3,3,$5,0,FALSE FROM sanction_cases WHERE id=$2""",
                 ORG, case_id, decision, "annul" if action == "approve" else action, 1 if action == "reduce" else None)
+        await db.execute("SELECT sanction_finalize_case($1)", case_id)
     return decision
 
 
