@@ -9,6 +9,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B #77 — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T36 verificadas, gate local/CI PR+push/revisión automatizada T37 cumplidos. Fix `57cf9f51` recupera el partido tras rollback de organización sin aceptar GET antiguos. Fusión de B pendiente; R32f sigue abierto y F8 no está aceptado.
 
 ## Pendiente
+- Fix del historial de actas en #77: señal de operación aceptada → `api.versions`/`useApi`, sin listener ni payload nuevos ni remontaje. Recarga automática aplazada y consolidada mientras se edita; generaciones y limpieza ante 401/403/404. Rojo: 6 unitarios y E2E publicación/RESYNC (espera 2, recibe 1); verde local: frontend 978 pass/1 skip y E2E completo 60 pass. CI del nuevo commit se comprueba tras publicar, separado de los SHAs anteriores.
 - Spec 035: fusionar PR B #77 tras decisión humana; después C. CI funcional `57cf9f51`: PR 43486317643 y push 43486306264 verdes; backend 3613 pass/4 skip; frontend 970 pass/1 skip; E2E PR 59 pass, incluido el nuevo proyecto privado; Devin Review check verde y hallazgo comunicado corregido con rojo/verde. Evidencia en verificacion.md. Sin despliegue ni aceptación humana; F1/F9 mantienen sus restricciones.
 
 ## Decisiones tomadas

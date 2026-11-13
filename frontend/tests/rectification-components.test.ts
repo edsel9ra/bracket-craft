@@ -8,6 +8,7 @@ import { compileScript, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import * as helpers from '../app/utils/rectifications.ts';
 import * as eventHelpers from '../app/utils/matchEvents.ts';
+import * as apiErrors from '../app/utils/api.ts';
 
 function component(name: string, globals: Record<string, unknown> = {}) {
   const source = readFileSync(new URL(`../app/components/match/${name}.vue`, import.meta.url), 'utf8');
@@ -16,7 +17,7 @@ function component(name: string, globals: Record<string, unknown> = {}) {
   const exports: { default?: vue.Component } = {};
   const passthrough = vue.defineComponent({ setup(_, { slots }) { return () => vue.h('div', slots.default?.()); } });
   runInNewContext(javascript, { exports, ...vue,
-    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchEvents') ? eventHelpers : helpers,
+    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchEvents') ? eventHelpers : path.endsWith('/api') ? apiErrors : helpers,
     useI18n: () => ({ t: (key: string) => key, formatDateTime: (value: string) => value }),
     useConfirm: () => ({ confirm: async () => true }), useAuthStore: () => ({ access: null }),
     useMatchRectifications: () => ({}), useCompetitiveImpacts: () => ({}),
@@ -26,6 +27,150 @@ function component(name: string, globals: Record<string, unknown> = {}) {
 }
 
 const request = { id: 'r', match_id: 'm', status: 'pending', base_version_number: 1, requested_by_member_id: 'author', reason: 'Correction', evidence: null, requested_at: 'now', proposed_report: { events: [] }, diff: { fields: [], events: { added: [], removed: [], changed: [] } } };
+
+function versionsPanel() {
+  const requests: Array<{ resolve: (value: unknown) => void; reject: (cause: unknown) => void }> = [];
+  let mounted = async () => {};
+  let unmount = () => {};
+  const Versions = component('RectificationVersions', {
+    onMounted: (fn: () => Promise<void>) => { mounted = fn; },
+    onBeforeUnmount: (fn: () => void) => { unmount = fn; },
+    useMatchRectifications: () => ({ versions: () => new Promise((resolve, reject) => { requests.push({ resolve, reject }); }) }),
+  }) as { setup: (props: unknown, context: unknown) => (context: unknown, cache: unknown[]) => vue.VNode };
+  const props = vue.reactive({ matchId: 'm', canRequest: true, refreshKey: {} });
+  const render = Versions.setup(props, { expose() {}, emit() {} });
+  function nodes(value: unknown): vue.VNode[] {
+    if (Array.isArray(value)) return value.flatMap(nodes);
+    if (typeof value === 'function') return nodes(value());
+    if (!value || typeof value !== 'object') return [];
+    if (vue.isVNode(value)) return [value, ...nodes(value.children)];
+    return Object.values(value).flatMap(nodes);
+  }
+  const all = () => nodes(render({}, []));
+  const button = (label: string) => all().find(node => node.props?.onClick && JSON.stringify(
+    typeof node.children === 'object' && node.children && 'default' in node.children
+      ? (node.children as { default: () => unknown }).default() : node.children,
+  )?.includes(label))!;
+  const options = () => all().filter(node => node.type === 'option').map(node => node.props!.value);
+  return { props, requests, mounted: () => mounted(), unmount: () => unmount(), all, button, options };
+}
+
+const versionRow = (number: number) => ({ version_number: number, reason: `version ${number}`, report: { events: [] } });
+const settleVersions = async () => { await new Promise(resolve => setImmediate(resolve)); await vue.nextTick(); };
+
+test('accepted operation refresh reloads versions by HTTP, including an empty history', async () => {
+  const h = versionsPanel();
+  const mount = h.mounted();
+  h.requests[0]!.resolve([versionRow(1)]);
+  await mount;
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  assert.equal(h.requests.length, 2);
+  h.requests[1]!.resolve([versionRow(1), versionRow(2)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [1, 2]);
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  h.requests[2]!.resolve([]);
+  await settleVersions();
+  assert.deepEqual(h.options(), []);
+});
+
+test('automatic version refresh is deferred and coalesced until the existing editor closes', async () => {
+  const h = versionsPanel();
+  const mount = h.mounted();
+  h.requests[0]!.resolve([versionRow(1)]);
+  await mount;
+  h.button('rectification.request').props!.onClick();
+  const editor = () => h.all().find(node => node.props?.version)!;
+  const original = editor().props!.version;
+  for (let i = 0; i < 3; i++) { h.props.refreshKey = {}; await vue.nextTick(); }
+  assert.equal(h.requests.length, 1);
+  assert.equal(editor().props!.version, original);
+  editor().props!.onCancel();
+  await vue.nextTick();
+  assert.equal(h.requests.length, 2);
+  h.requests[1]!.resolve([versionRow(1), versionRow(2)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [1, 2]);
+});
+
+test('opening the editor invalidates an already pending history read until it closes', async () => {
+  const h = versionsPanel();
+  const mount = h.mounted();
+  h.requests[0]!.resolve([versionRow(1)]);
+  await mount;
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  h.button('rectification.request').props!.onClick();
+  h.requests[1]!.resolve([versionRow(1), versionRow(2)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [1]);
+  const editor = h.all().find(node => node.props?.version)!;
+  assert.equal(editor.props!.version.version_number, 1);
+  editor.props!.onCancel();
+  await vue.nextTick();
+  assert.equal(h.requests.length, 3);
+  h.requests[2]!.resolve([versionRow(1), versionRow(2)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [1, 2]);
+});
+
+test('a different match clears history and drops the previous match response', async () => {
+  const h = versionsPanel();
+  const mount = h.mounted();
+  h.requests[0]!.resolve([versionRow(1)]);
+  await mount;
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  h.props.matchId = 'other';
+  await vue.nextTick();
+  assert.deepEqual(h.options(), []);
+  h.requests[2]!.resolve([versionRow(3)]);
+  await settleVersions();
+  h.requests[1]!.resolve([versionRow(99)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [3]);
+});
+
+for (const statusCode of [401, 403, 404]) {
+  test(`a current history denial clears previously readable versions (${statusCode})`, async () => {
+    const h = versionsPanel();
+    const mount = h.mounted();
+    h.requests[0]!.resolve([versionRow(1)]);
+    await mount;
+    h.props.refreshKey = {};
+    await vue.nextTick();
+    assert.equal(h.requests.length, 2);
+    h.requests[1]!.reject({ statusCode });
+    await settleVersions();
+    assert.deepEqual(h.options(), []);
+    assert.equal(h.all().some(node => node.props?.version), false);
+  });
+}
+
+test('stale history results and denials, and responses after unmount, are ignored', async () => {
+  const h = versionsPanel();
+  const mount = h.mounted();
+  h.requests[0]!.resolve([versionRow(1)]);
+  await mount;
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  assert.equal(h.requests.length, 3);
+  h.requests[2]!.resolve([versionRow(2)]);
+  await settleVersions();
+  h.requests[1]!.reject({ statusCode: 403 });
+  await settleVersions();
+  assert.deepEqual(h.options(), [2]);
+  h.props.refreshKey = {};
+  await vue.nextTick();
+  h.unmount();
+  h.requests[3]!.resolve([versionRow(99)]);
+  await settleVersions();
+  assert.deepEqual(h.options(), [2]);
+});
 
 async function editorFor(events: Record<string, unknown>[]) {
   const requests: { proposed_report: helpers.ReportProposal }[] = [];

@@ -560,3 +560,49 @@ GitHub y al hallazgo transmitido. Sin inspección visual manual nueva.
 
 Este cierre documental marca únicamente gate local, CI y revisión automatizada de
 T37. La casilla global y su fusión siguen abiertas; no se fusionó #77 ni se inició C.
+
+## Corrección del historial de versiones — 2026-11-13
+
+Carencia preexistente comprobada en `main` ae0ac998 y HEAD fca81f38: el historial
+solo cargaba al montar, cambiar de partido o pulsar Actualizar. La operación sí se
+actualizaba en B, pero el componente independiente no recibía una invalidación.
+
+La página pasa la identidad reactiva de la operación aceptada como `refreshKey`;
+el historial vuelve a consultar `api.versions` mediante `useApi`. No se cambia su
+key, no hay nuevo socket/listener de MATCH_REPORT_RECTIFIED ni cambios del wire.
+Mientras se edita, conserva el editor y su versión base; consolida las señales en
+una lectura al terminar/cancelar. Abrir el editor también invalida una lectura ya
+pendiente, sin aplicar su resultado al borrador. Las generaciones descartan
+resultados/errores antiguos y posteriores al desmontaje; cambiar partido limpia
+el historial y una denegación HTTP vigente 401/403/404 elimina el detalle previo.
+
+Rojo antes de implementar: rectification-components, 15 tests, 9 pass, 6 fail,
+AssertionError `1 !== 2` (y `1 !== 3` para las lecturas concurrentes). Los E2E
+contra la imagen anterior reproducen ambos casos: tras publicar y tras RESYNC,
+`Expected: "2"`, `Received: "1"`. Se excluyen del rojo las preparaciones inválidas
+(API normal sin arnés, frontend baseline sin URL interna) y un selector ambiguo
+del motivo, corregidos antes de acreditar el fallo funcional.
+
+Verde local del fix:
+```text
+Frontend: tests 979; pass 978; fail 0; skipped 1
+Typecheck: nuxt prepare && vue-tsc --noEmit (exit 0)
+Lint: nuxt prepare && eslint . (exit 0)
+Build complete in 10.9s!
+E2E types: tsc -p e2e/tsconfig.json (exit 0)
+60 passed (5.3m)
+RESULTADO: VERDE (0)
+```
+
+Ocho regresiones de componente cubren actualización/vacío, editor abierto y
+lectura en vuelo al abrirlo, cambio de partido, denegaciones actuales, respuestas
+obsoletas y desmontaje. El E2E nuevo comprueba versión 2 tras publicar sin
+Actualizar, conservación del motivo escrito y recarga aplazada tras cancelar con
+confirmación; recuperación 032 exige también versión 2 tras RESYNC sin replay.
+
+Pila local con arnés test-only y base nueva `bc_f8_history_e2e`, init real,
+migraciones 001–055 y seed. No se modificó .env ni el runner/configuración. El
+contenedor Playwright no tiene Docker CLI (limitación ya conocida); logs de API y
+worker recogidos desde el host en `/home/ubuntu/f8-history-e2e-server.log`.
+Sin inspección visual manual. CI del nuevo SHA pendiente de publicar/comprobar;
+los resultados remotos anteriores corresponden a sus SHAs, no a este fix.

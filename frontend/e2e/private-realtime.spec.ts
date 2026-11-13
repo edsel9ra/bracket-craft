@@ -134,6 +134,35 @@ async function flush(pages: Page[]) {
   await Promise.all(pages.map(page => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))));
 }
 
+function versionsPanel(page: Page) {
+  return page.getByRole('heading', { name: 'Versiones del acta', exact: true }).locator('..');
+}
+
+test('published rectification refreshes history without manual refresh and preserves an open editor', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  const owner = await login(browser, tenant);
+  const reader = await login(browser, tenant, true);
+  try {
+    const [editing, watching] = await Promise.all([receiver(owner, tenant), receiver(reader, tenant)]);
+    const editorPanel = versionsPanel(editing.page);
+    const receiverPanel = versionsPanel(watching.page);
+    await expect(editorPanel.locator('select').first()).toHaveValue('1');
+    await expect(receiverPanel.locator('select').first()).toHaveValue('1');
+    const previousScore = await editing.page.locator('.match-score strong').innerText();
+    await editorPanel.getByRole('button', { name: 'Solicitar rectificación', exact: true }).click();
+    const draft = editorPanel.getByRole('textbox', { name: 'Motivo de la solicitud', exact: true });
+    await draft.fill('Draft preserved during realtime publication');
+    await rectify(owner, reader, tenant);
+    await expect(receiverPanel.locator('select').first()).toHaveValue('2');
+    await expect(editing.page.locator('.match-score strong')).not.toHaveText(previousScore);
+    await expect(draft).toHaveValue('Draft preserved during realtime publication');
+    await expect(editorPanel.locator('select').first()).toHaveValue('1');
+    await editorPanel.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await editing.page.getByRole('dialog').getByRole('button', { name: 'Descartar cambios', exact: true }).click();
+    await expect(editorPanel.locator('select').first()).toHaveValue('2');
+  } finally { await owner.close(); await reader.close(); }
+});
+
 test.afterEach(async () => {
   await control({ action: 'release' });
   await control({ action: 'mode', authorization_failure: false, revalidation_failure: false, pause_maintenance: false });
@@ -228,6 +257,7 @@ test('authorization-only failure: public continues; 032 retry recovers terminal 
     const baseline = active.wire.length;
     const revokedBaseline = revoked.wire.length;
     const previousScore = await active.page.locator('.match-score strong').innerText();
+    await expect(versionsPanel(active.page).locator('select').first()).toHaveValue('1');
     let reads = 0;
     active.page.on('response', response => { if (response.url().endsWith(`/matches/${tenant.match_id}/operation`) && response.status() === 200) reads++; });
     await control({ action: 'mode', authorization_failure: true, revalidation_failure: true });
@@ -260,6 +290,7 @@ test('authorization-only failure: public continues; 032 retry recovers terminal 
     expect(Object.keys(resync.payload).sort()).toEqual(['event_id', 'reason']);
     await expect(active.page.locator('.operation-shell')).toBeVisible();
     await expect(active.page.locator('.match-score strong')).not.toHaveText(previousScore);
+    await expect(versionsPanel(active.page).locator('select').first()).toHaveValue('2');
     await expect(active.page.locator('#close-home-regular')).toBeDisabled();
   } finally { await owner.close(); await reader.close(); await anonymous.close(); await changedContext.close(); }
 });
