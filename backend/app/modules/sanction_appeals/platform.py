@@ -39,7 +39,7 @@ class SanctionPlatformService(SanctionCaseService):
         require_platform_write(platform)
         filters = filters or CaseFilters()
         async with self.transaction(PlatformCaseActor(platform.user_id)):
-            items = []
+            items = {}
             for scope in await self._scopes():
                 actor = await self._scope(platform, scope)
                 row = (await self.db.execute(text("""SELECT id,suspension_id,case_type,status,submitted_at
@@ -47,8 +47,8 @@ class SanctionPlatformService(SanctionCaseService):
                     {"id": scope["case_id"], "org": actor.organization_id})).mappings().one_or_none()
                 if row and (filters.status is None or row["status"] == filters.status) and (
                     filters.case_type is None or row["case_type"] == filters.case_type):
-                    items.append({**dict(row), "authorization_id": scope["id"], "organization_id": actor.organization_id})
-            items.sort(key=lambda item: (item["submitted_at"], str(item["id"])), reverse=True)
+                    items.setdefault(row["id"], {**dict(row), "authorization_id": scope["id"], "organization_id": actor.organization_id})
+            items = sorted(items.values(), key=lambda item: (item["submitted_at"], str(item["id"])), reverse=True)
             return {"items": items[filters.offset:filters.offset + filters.limit], "total": len(items)}
 
     async def detail(self, platform, case_id):
