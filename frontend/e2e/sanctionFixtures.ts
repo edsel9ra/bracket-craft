@@ -11,7 +11,7 @@ export class SanctionFixture {
   readonly sources: SanctionSource[] = [1, 2, 3].map((index) => ({ id: uuid(100 + index), player_id: this.player, source_tournament_id: uuid(40), scope_type: 'organization', source_type: 'match_event', origin_match_id: uuid(31), matches_suspended: 3, status: 'active', reason: 'Private original sanction', created_at: now }));
   readonly cases: SanctionDetail[] = []; readonly notices: SanctionNotice[] = [];
   readonly requests: { path: string; org: string; actor: Actor; method: string }[] = [];
-  authorCanView = true; warningFails = false; saves = 0; publications = 0; lastLineup: Record<string, unknown> = {};
+  authorCanView = true; authorCanSubmit = true; authorCanResolve = true; warningFails = false; saves = 0; publications = 0; lastLineup: Record<string, unknown> = {};
   private sequence = 1000;
 
   notice(reason: string) { this.notices.push({ id: uuid(++this.sequence), case_id: this.cases[0]!.case.id, notification_type: 'decision', reason, created_at: now, decision: 'annul' }); }
@@ -41,7 +41,7 @@ export class SanctionFixture {
     if (method === 'OPTIONS') return reply({});
     this.requests.push({ path, org, actor, method });
     const summary = (id: string) => ({ id, name: id === this.org ? 'Organización A' : 'Organización B', slug: id === this.org ? 'org-a' : 'org-b', organization_user_id: uuid(80) });
-    const permissions = ['SUBMIT_SANCTION_APPEALS', 'RESOLVE_SANCTION_CASES', 'CLOSE_MATCH_REPORT', ...((actor !== 'author' || this.authorCanView) ? ['VIEW_SANCTION_CASES'] : [])];
+    const permissions = ['CLOSE_MATCH_REPORT', ...((actor !== 'author' || this.authorCanSubmit) ? ['SUBMIT_SANCTION_APPEALS'] : []), ...((actor !== 'author' || this.authorCanResolve) ? ['RESOLVE_SANCTION_CASES'] : []), ...((actor !== 'author' || this.authorCanView) ? ['VIEW_SANCTION_CASES'] : [])];
     if (path === '/auth/csrf') return reply({ csrf_token: 'sanction-fixture-csrf' });
     if (path === '/organizations') return reply([summary(this.org), summary(this.otherOrg)]);
     if (path === '/organizations/current') return reply(summary(org));
@@ -75,6 +75,7 @@ export class SanctionFixture {
       if (target[2] === 'preview') return reply({ id: detail.case.id, status: detail.case.status, expected_base_duration: 3, projection: detail.projection, can_decide: actors[actor] !== detail.case.submitted_by_user_id, allowed_decisions: detail.case.case_type === 'appeal' ? ['maintain', 'annul', 'reduce'] : ['approve', 'reject'] });
       const body = request.postDataJSON() as Record<string, unknown>;
       if (target[2] === 'withdraw') {
+        if (detail.case.status !== 'pending') return reply({ code: 'SANCTION_CASE_NOT_PENDING' }, 409);
         if (actors[actor] !== detail.case.submitted_by_user_id) return reply({ code: 'SANCTION_INVALID_STATE' }, 409);
         detail.case.status = 'withdrawn'; return reply({ id: detail.case.id, status: 'withdrawn' });
       }
@@ -110,5 +111,5 @@ export async function openFixture(page: Page, fixture: SanctionFixture, actor: A
     return root?.__vue_app__?.config.globalProperties.$nuxt.isHydrating === false;
   });
   await navigateFixture(page, '/workspace/sanctions');
-  await expect(page.getByRole('heading', { name: 'Presentar apelación', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Expedientes de sanciones', exact: true, level: 1 })).toBeVisible();
 }

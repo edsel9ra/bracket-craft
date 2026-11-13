@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
-import { canWithdrawSanction, evidencePayload, isSanctionConflictKey, type SanctionCase } from '~/utils/sanctions';
+import { canWithdrawSanction, evidencePayload, isSanctionConflictKey, type SanctionCase, type SanctionReceipt } from '~/utils/sanctions';
 const props = defineProps<{ case: Pick<SanctionCase, 'id' | 'status' | 'case_type' | 'submitted_by_user_id'>; userId: string | null; submitPermission: boolean; resolvePermission: boolean }>();
-const emit = defineEmits<{ changed: [notice?: string] }>();
+const emit = defineEmits<{ changed: [notice?: string]; withdrawn: [receipt: SanctionReceipt] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
 const errorTarget = useSanctionErrorFocus(error);
@@ -15,7 +15,7 @@ async function submit() {
   if (!body) { error.value = 'sanction.error.validation'; return; }
   const id = props.case.id;
   const result = await run({ title: t('sanction.withdraw'), message: t('sanction.withdrawHint'), confirmLabel: t('sanction.withdraw'), tone: 'danger' }, () => allowed.value ? api.withdraw(id, body) : Promise.resolve(undefined));
-  if (result) emit('changed', 'sanction.stateUpdated');
+  if (result) { emit('withdrawn', result); emit('changed', 'sanction.stateUpdated'); }
   else if (isSanctionConflictKey(error.value)) emit('changed', error.value);
 }
 </script>

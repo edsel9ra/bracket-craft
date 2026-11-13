@@ -100,3 +100,50 @@ test('private lineup warning, including failure, never blocks saving or publishi
   await expect(save).toBeEnabled(); await save.click(); await expect.poll(() => fixture.saves).toBe(2);
   expect(fixture.lastLineup).not.toHaveProperty('sanctions'); expect(fixture.lastLineup).not.toHaveProperty('warnings');
 });
+
+for (const kind of ['appeal', 'administrative_proposal'] as const) test(`author without VIEW withdraws ${kind} from its receipt without private reads`, async ({ page }) => {
+  const fixture = new SanctionFixture(); fixture.authorCanView = false;
+  fixture.authorCanSubmit = kind === 'appeal'; fixture.authorCanResolve = kind === 'administrative_proposal';
+  await openFixture(page, fixture, 'author');
+  if (kind === 'appeal') await appeal(page, fixture.sources[0]!.id, fixture.player, 'Appeal without VIEW');
+  else {
+    const form = section(page, 'Proponer resolución administrativa');
+    await form.getByLabel('Identificador de sanción', { exact: true }).fill(fixture.sources[0]!.id);
+    await form.getByLabel('Motivo obligatorio', { exact: true }).fill('Proposal without VIEW');
+    await form.getByRole('button', { name: 'Proponer resolución administrativa', exact: true }).click(); await confirm(page, 'Proponer resolución administrativa');
+  }
+  await expect.poll(() => fixture.cases.length).toBe(1);
+  const withdrawal = section(page, 'Retirar expediente');
+  await expect(withdrawal).toBeVisible();
+  await withdrawal.getByRole('button', { name: 'Retirar expediente', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await withdrawal.getByLabel('Motivo obligatorio', { exact: true }).fill('Retirada desde recibo');
+  await withdrawal.getByRole('button', { name: 'Retirar expediente', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar', exact: true }).click();
+  expect(fixture.cases[0]!.case.status).toBe('pending');
+  await withdrawal.getByRole('button', { name: 'Retirar expediente', exact: true }).click(); await confirm(page, 'Retirar expediente');
+  await expect.poll(() => fixture.cases[0]!.case.status).toBe('withdrawn');
+  await expect(withdrawal).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: fixture.cases[0]!.case.id })).toContainText('Retirado');
+  await expect(page.locator('article')).toHaveCount(0);
+  expect(fixture.requests.filter(row => row.method === 'GET' && row.path.startsWith('/sanction'))).toEqual([]);
+  expect(fixture.requests.filter(row => row.path.endsWith('/withdraw')).length).toBe(1);
+});
+
+test('receipt withdrawal conflict shows a localized error without fetching detail; tenant change clears receipt', async ({ page }) => {
+  const fixture = new SanctionFixture(); fixture.authorCanView = false;
+  await openFixture(page, fixture, 'author');
+  await appeal(page, fixture.sources[0]!.id, fixture.player, 'Receipt conflict');
+  await expect.poll(() => fixture.cases.length).toBe(1);
+  const id = fixture.cases[0]!.case.id; fixture.rectify(id);
+  const withdrawal = section(page, 'Retirar expediente');
+  await withdrawal.getByLabel('Motivo obligatorio', { exact: true }).fill('No longer pending');
+  await withdrawal.getByRole('button', { name: 'Retirar expediente', exact: true }).click(); await confirm(page, 'Retirar expediente');
+  await expect(withdrawal.getByRole('alert')).toContainText('pendiente');
+  expect(fixture.cases[0]!.case.status).toBe('closed_by_rectification');
+  expect(fixture.requests.filter(row => row.method === 'GET' && row.path.startsWith('/sanction'))).toEqual([]);
+  await page.getByRole('combobox', { name: 'Organización activa', exact: true }).first().selectOption(fixture.otherOrg);
+  await expect(page).toHaveURL(/\/workspace$/); await navigateFixture(page, '/workspace/sanctions');
+  await expect(page.getByText(id, { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Retirar expediente', exact: true })).toHaveCount(0);
+});

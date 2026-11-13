@@ -2,25 +2,29 @@
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import Surface from '~/components/ui/Surface.vue';
-import { appealSubmission, type SanctionReceipt } from '~/utils/sanctions';
+import SanctionWithdrawalForm from './SanctionWithdrawalForm.vue';
+import { appealSubmission, type SanctionCase, type SanctionReceipt } from '~/utils/sanctions';
 const props = defineProps<{ allowed: boolean; sanctionId?: string; playerId?: string; priorCaseId?: string }>();
 const emit = defineEmits<{ created: [receipt: SanctionReceipt] }>();
 const { t } = useI18n();
 const api = useSanctionCases();
+const auth = useAuthStore();
 const { busy, error, run } = useSanctionAction();
 const errorTarget = useSanctionErrorFocus(error);
 const prefix = useId();
 const source = ref(props.sanctionId || ''); const represented = ref(props.playerId || '');
 const representation = ref<'player' | 'team'>('player');
 const reason = ref(''); const evidence = ref(''); const links = ref(''); const prior = ref(props.priorCaseId || '');
-const receipt = ref<SanctionReceipt | null>(null);
+const receipt = ref<(SanctionReceipt & Pick<SanctionCase, 'case_type' | 'submitted_by_user_id'>) | null>(null);
+function withdrawn(value: SanctionReceipt) { if (receipt.value) receipt.value.status = value.status; }
 watch(representation, () => { represented.value = ''; });
 async function submit() {
-  if (busy.value || !props.allowed) return;
+  if (busy.value || !props.allowed || !auth.userId) return;
+  const authorId = auth.userId;
   const payload = appealSubmission({ sanctionId: source.value, representation: representation.value, representedId: represented.value, reason: reason.value, evidence: evidence.value, links: links.value, priorCaseId: prior.value });
   if (!payload) { error.value = 'sanction.error.validation'; return; }
   const result = await run({ title: t('sanction.appeal'), message: t('sanction.separation'), confirmLabel: t('sanction.appeal') }, () => props.allowed ? api.appeal(payload.id, payload.body) : Promise.resolve(undefined));
-  if (result) { receipt.value = result; reason.value = ''; evidence.value = ''; links.value = ''; emit('created', result); }
+  if (result) { receipt.value = { ...result, case_type: 'appeal', submitted_by_user_id: authorId }; reason.value = ''; evidence.value = ''; links.value = ''; emit('created', result); }
 }
 </script>
 
@@ -28,6 +32,7 @@ async function submit() {
   <Surface v-if="allowed" as="section">
     <h2>{{ t('sanction.appeal') }}</h2><p>{{ t('sanction.noExpiry') }}</p><p>{{ t('sanction.representationHint') }}</p>
     <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }} · {{ t(`sanction.status.${receipt.status}`) }}</p>
+    <SanctionWithdrawalForm v-if="receipt && !auth.hasPermission('VIEW_SANCTION_CASES')" :key="receipt.id" :case="receipt" :user-id="auth.userId" :submit-permission="allowed" :resolve-permission="false" @withdrawn="withdrawn" />
     <p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <form @submit.prevent="submit"><fieldset :disabled="busy">
       <FormField :for-id="`${prefix}-source`" :label="t('sanction.sanctionId')"><input :id="`${prefix}-source`" v-model="source" required></FormField>

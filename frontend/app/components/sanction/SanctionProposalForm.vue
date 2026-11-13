@@ -2,27 +2,33 @@
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import Surface from '~/components/ui/Surface.vue';
-import { proposalSubmission, type SanctionReceipt } from '~/utils/sanctions';
+import SanctionWithdrawalForm from './SanctionWithdrawalForm.vue';
+import { proposalSubmission, type SanctionCase, type SanctionReceipt } from '~/utils/sanctions';
 const props = defineProps<{ allowed: boolean; priorCaseId?: string }>();
 const emit = defineEmits<{ created: [receipt: SanctionReceipt] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
+const auth = useAuthStore();
 const { busy, error, run } = useSanctionAction();
 const errorTarget = useSanctionErrorFocus(error);
 const source = ref(''); const action = ref<'annul' | 'reduce'>('annul'); const duration = ref<string | number>('');
 const reason = ref(''); const evidence = ref(''); const links = ref(''); const prior = ref(props.priorCaseId || '');
-const receipt = ref<SanctionReceipt | null>(null);
+const receipt = ref<(SanctionReceipt & Pick<SanctionCase, 'case_type' | 'submitted_by_user_id'>) | null>(null);
+function withdrawn(value: SanctionReceipt) { if (receipt.value) receipt.value.status = value.status; }
 async function submit() {
-  if (busy.value || !props.allowed) return;
+  if (busy.value || !props.allowed || !auth.userId) return;
+  const authorId = auth.userId;
   const payload = proposalSubmission({ sanctionId: source.value, action: action.value, duration: duration.value, reason: reason.value, evidence: evidence.value, links: links.value, priorCaseId: prior.value });
   if (!payload) { error.value = 'sanction.error.validation'; return; }
   const result = await run({ title: t('sanction.propose'), message: t('sanction.proposalHint'), confirmLabel: t('sanction.propose') }, () => props.allowed ? api.propose(payload.id, payload.body) : Promise.resolve(undefined));
-  if (result) { receipt.value = result; reason.value = ''; evidence.value = ''; links.value = ''; emit('created', result); }
+  if (result) { receipt.value = { ...result, case_type: 'administrative_proposal', submitted_by_user_id: authorId }; reason.value = ''; evidence.value = ''; links.value = ''; emit('created', result); }
 }
 </script>
 
 <template>
   <Surface v-if="allowed" as="section"><h2>{{ t('sanction.propose') }}</h2><p>{{ t('sanction.proposalHint') }}</p>
-    <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }}</p><p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
+    <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }} · {{ t(`sanction.status.${receipt.status}`) }}</p>
+    <SanctionWithdrawalForm v-if="receipt && !auth.hasPermission('VIEW_SANCTION_CASES')" :key="receipt.id" :case="receipt" :user-id="auth.userId" :submit-permission="false" :resolve-permission="allowed" @withdrawn="withdrawn" />
+    <p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <form @submit.prevent="submit"><fieldset :disabled="busy">
       <FormField :for-id="`${prefix}-source`" :label="t('sanction.sanctionId')"><input :id="`${prefix}-source`" v-model="source" required></FormField>
       <FormField :for-id="`${prefix}-action`" :label="t('sanction.proposedAction')"><select :id="`${prefix}-action`" v-model="action"><option value="annul">{{ t('sanction.decision.annul') }}</option><option value="reduce">{{ t('sanction.decision.reduce') }}</option></select></FormField>
