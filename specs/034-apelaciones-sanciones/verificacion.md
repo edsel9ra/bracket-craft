@@ -62,7 +62,22 @@ Todos los nombres siguientes son archivos de `backend/tests/`, salvo los prefijo
 - T50: dos tests nuevos, regresión singleFlight existente; suite frontend 948 tests, 947 pasan y 1 opt-in de fuente omitido; typecheck/lint correctos.
 - T51: 3 E2E admin con fixture HTTP (sin membresía, consumo, revocación entre preview/decisión, auto-decisión, error/reintento). Un E2E adicional consulta las proyecciones públicas reales y rechaza lecturas F9 anónimas. No prueban login real de plataforma ni auditorías SQL: esas comprobaciones se hacen en `test_sanction_platform.py` con PostgreSQL, dentro de los 18 tests dirigidos que pasan.
 - T52: `RUN_DATABASE_TESTS=1 python -m pytest -q`: **3406 passed in 604.28s (0:10:04)**, PostgreSQL 17 y Python 3.14, sin skips; compileall correcto. Incluye 033, concurrencia, rollback, grants/RLS y migraciones.
-- Capturas, gates finales y aceptación: pendientes de registrar.
+- T53: `VERIFY_FONT_BUILD=1 pnpm test`: **948 tests, 948 pass, 0 fail, 0 skipped**. Typecheck, lint, build y typecheck E2E salen 0; build en 10.5 s. `pnpm run e2e:test` contra pila local ya iniciada: **54 passed (4.6m)**, **RESULTADO: VERDE (0)**. El contenedor del runner no tiene Docker CLI: no hay `server.log` del runner; no afecta las pruebas de navegador ni acredita logs de despliegue.
+
+## Evidencia visual T53
+
+96 PNG reales con Chromium/Playwright 1.64.1 sobre el build local servido en `localhost:3001`, datos ficticios de los fixtures de F9. Capturas fuera del repo, en `/home/ubuntu/f9-visual/`; no forman parte del commit. Matriz completa 1440/390 px × ES/EN × oscuro/claro. En recortes de formularios altos la altura del viewport se amplía para evitar que la cabecera sticky tape el título; los diálogos se capturan con viewport de 1000 px de alto. No hay cambios de layout para producir las capturas.
+
+Rutas exactas enumeradas en `/home/ubuntu/f9-visual/capturas.txt`; metadatos en `manifest.json` y hashes en `SHA256SUMS`, en el mismo directorio. Cada archivo es `<prefijo>-<superficie>.png`:
+
+- Prefijos: `1440-es-dark`, `1440-es-light`, `1440-en-dark`, `1440-en-light`, `390-es-dark`, `390-es-light`, `390-en-dark`, `390-en-light`.
+- Superficies: `workspace`, `appeal`, `appeal-confirmation`, `proposal`, `detail`, `withdrawal`, `owner-authorizations`, `notices`, `lineup`, `admin`, `admin-detail`, `admin-confirmation`.
+- Hojas de revisión: `contact-<prefijo>.png` (ocho hojas).
+- **Claves:** `390-es-light-appeal.png`, `390-es-dark-appeal-confirmation.png`, `1440-en-dark-detail.png`, `390-en-dark-owner-authorizations.png`, `390-en-light-lineup.png`, `390-en-dark-admin.png`, `1440-en-light-admin-detail.png`, `390-en-light-admin-confirmation.png`.
+
+Se miraron las ocho hojas y las capturas clave a mayor resolución. Formularios/confirmaciones, autorizaciones, avisos, aviso de alineación y administración legibles en ambos temas; no se detectaron desbordes horizontales ni claves i18n sin resolver. El texto libre ficticio conserva su idioma original: no es una traducción de interfaz. Se repitieron las tomas con cabecera sticky intercalada por el scroll de captura y se corrigió la fixture externa de captura de `/admin` (respuestas paginadas `{items: []}` en vez de arrays que causaban un error artificial). **No se necesitaron cambios visuales de producto.** La advertencia de conexión en operación es la desconexión esperada del fixture; el aviso F9 se lee y no bloquea guardar/publicar, comprobado en E2E.
+
+No sustituye una auditoría de accesibilidad completa, SMTP real, login productivo de plataforma, CI remota ni aceptación humana. Gates de seguridad y aceptación aún pendientes de registrar.
 
 ## Límites
 

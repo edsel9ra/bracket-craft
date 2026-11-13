@@ -187,7 +187,7 @@ Depende de C. Orden T50 → … → T55; no declarar implementada la spec hasta 
 - [x] **T52. Gate backend completo con PostgreSQL y regresión 033.** RF-001, RF-005, RF-009, RF-010, RF-011, RF-012, RF-016, RF-025, RF-030, RF-033
 - Hecho cuando: suite completa con rol real, concurrencia/rollback y legado pasa sin modificar expectativas ajenas; evidencia registra resultados e inventario de lectores actualizado. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `cd backend && python -m compileall -q app`.
 
-- [ ] **T53. Gate frontend y comprobación visual acotada.** RF-006, RF-015, RF-017, RF-023, RF-029, RF-030, RF-031, RF-032, RF-034
+- [x] **T53. Gate frontend y comprobación visual acotada.** RF-006, RF-015, RF-017, RF-023, RF-029, RF-030, RF-031, RF-032, RF-034
 - Hecho cuando: bandeja/detalle/formularios/admin y aviso no bloqueante se verifican en escritorio/móvil con capturas de los estados cambiados, ES/EN y foco, sin datos reales. Pasan `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build` y `cd frontend && pnpm run e2e`; guardar rutas de evidencia y límites visuales.
 
 - [ ] **T54. Gate de migraciones, infraestructura y seguridad existente.** RF-005, RF-007, RF-016, RF-017, RF-019, RF-023, RF-025
