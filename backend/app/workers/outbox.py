@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.core.database import SessionFactory, validate_application_role
-from app.core.email import send_rectification_decision_email
+from app.core.email import send_rectification_decision_email, send_sanction_notice_email
 from app.core.config import get_settings
 from app.core.outbox import OUTBOX_STREAM, OUTBOX_STREAM_MAXLEN
 from app.modules.sanction_appeals.notifications import deliver_internal
@@ -94,6 +94,16 @@ async def process_once(redis: Redis | None = None) -> int:
             try:
                 if event["event_type"] == "SANCTION_CASE_NOTICE_INTERNAL":
                     await deliver_internal(db, event)
+                elif event["event_type"] == "SANCTION_CASE_NOTICE_EMAIL":
+                    async with db.begin():
+                        payload = (await db.execute(text("SELECT sanction_notice_email_payload(:id)"),
+                            {"id": event["id"]})).scalar_one()
+                    if payload is None:
+                        raise PermissionError("SANCTION_RECIPIENT_NOT_AUTHORIZED")
+                    await send_sanction_notice_email(recipient=payload["recipient"], case_id=payload["case_id"],
+                        notification_type=payload["type"], decision=payload["decision"], reason=payload["reason"])
+                    async with db.begin():
+                        await db.execute(text("SELECT record_sanction_email_delivery(:id)"), {"id": event["id"]})
                 elif event["event_type"] == "RECTIFICATION_DECISION_EMAIL":
                     payload = event["payload"]
                     await send_rectification_decision_email(payload["recipient"], payload["request_id"],

@@ -69,3 +69,19 @@ async def send_rectification_decision_email(recipient: str, request_id: str, dec
     message.set_content(f"Tu solicitud de rectificación {request_id} ha sido {verdict}.\n\nMotivo: {reason}\n")
     await asyncio.to_thread(_send_message, message, settings.smtp_host, settings.smtp_port,
         settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)
+
+
+async def send_sanction_notice_email(recipient: str, case_id: str, notification_type: str, decision: str | None, reason: str) -> None:
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise RuntimeError("SMTP no configurado")
+    acts = {"withdrawn": "retirado", "closed_by_rectification": "cerrado por rectificación", "decision": "resuelto"}
+    decisions = {"maintain": "mantener", "annul": "anular", "reduce": "reducir", "approve": "aprobar", "reject": "rechazar"}
+    act = decisions[decision] if decision else acts[notification_type]
+    message = EmailMessage()
+    message["Subject"] = f"Aviso de expediente {case_id} — Bracket Craft"
+    message["From"] = settings.smtp_from
+    message["To"] = recipient
+    message.set_content(f"Expediente {case_id}: {act}.\n\nMotivo: {reason}\n")
+    await asyncio.to_thread(_send_message, message, settings.smtp_host, settings.smtp_port,
+        settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)
