@@ -778,3 +778,30 @@ No hubo rojo de producto: el coordinador ya satisface estos casos. Los fallos
 de preparación detectaron que el cliente crudo debe procesar el paquete 41 de
 desconexión de namespace y que el productor debe seguir siendo miembro activo;
 se corrigió únicamente el arnés, sin endurecer ni eludir RLS.
+
+### T41 — regresiones ampliadas (gate completo en T44)
+
+Se añaden E2E de respuesta HTTP retenida durante cambio de organización/identidad,
+acción HTTP ocupada con tres invalidaciones y una sola lectura trailing, duplicado
+real en Redis, XTRIM exacto/DEL reales del stream y reconexión real sin replay.
+El arnés firma un JWT de 15 segundos sobre una sesión real y espera su expiración;
+HTTP devuelve 401 y el socket abierto deja de recibir, sin afectar otra sesión.
+No se cambian permisos: short_token solo selecciona columnas autorizadas, sin
+ORDER BY created_at (no concedida a bracket_app).
+
+```text
+in-flight ... organization context (5.2s): passed
+in-flight ... identity context (4.6s): passed
+busy action ... trailing reload (10.8s): passed
+JWT: 1 passed (18.4s)
+drop_transport engine_sid count: 1
+reconexión/duplicado/trim/reset: 1 passed (7.2s)
+```
+
+El cierre Engine.IO anterior no produjo el cierre observable requerido. El arnés
+ahora cierra el WebSocket ASGI real con 1012 y retiene la siguiente autenticación
+hasta publicar/procesar el evento perdido. Playwright observa cierre, otro 40 de
+Socket.IO y lectura HTTP, sin el ID perdido. No se debilitó la aserción ni se
+introdujo un mock. Solo se registra el número de engine_sid, nunca sus valores.
+Los fallos previos fueron de preparación del arnés; no se presentan como rojos
+de producto. T41 no se cierra documentalmente hasta el runner completo T44.

@@ -138,6 +138,155 @@ function versionsPanel(page: Page) {
   return page.getByRole('heading', { name: 'Versiones del acta', exact: true }).locator('..');
 }
 
+function signal() {
+  let release!: () => void;
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release: () => release() };
+}
+
+for (const change of ['organization', 'identity'] as const) {
+  test(`in-flight accepted HTTP cannot restore a previous ${change} context`, async ({ browser }) => {
+    const [tenant, other] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+    await control({ action: 'link_owner', organization_id: other.organization_id, other_organization_id: tenant.organization_id });
+    const owner = await login(browser, tenant);
+    const held = signal();
+    const reached = signal();
+    try {
+      const view = await receiver(owner, tenant);
+      await expect(view.page.locator('.operation-shell')).toBeVisible();
+      await view.page.route(`**/matches/${tenant.match_id}/operation`, async route => {
+        const response = await route.fetch();
+        reached.release();
+        await held.promise;
+        if (change === 'identity') await route.fulfill({ status: 403, json: { detail: 'Forbidden' } });
+        else await route.fulfill({ response });
+      });
+      await publish(tenant);
+      await reached.promise;
+      if (change === 'organization') {
+        await view.page.locator('.workspace-organization-select').selectOption(other.organization_id);
+        await expect(view.page).toHaveURL(/\/workspace$/);
+      } else {
+        await view.page.locator('.workspace-account-button').click();
+        await view.page.getByRole('menuitem', { name: 'Salir', exact: true }).click();
+        await expect(view.page).toHaveURL(baseURL + '/');
+      }
+      held.release();
+      await flush([view.page]);
+      await expect(view.page.locator('.operation-shell')).toHaveCount(0);
+      if (change === 'organization') await expect(view.page.locator('.workspace-organization-select')).toHaveValue(other.organization_id);
+      else await expect(view.page).toHaveURL(baseURL + '/');
+    } finally { held.release(); await owner.close(); }
+  });
+}
+
+test('busy action consolidates invalidations into one trailing reload without losing the action', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  await control({ action: 'prepare_open', organization_id: tenant.organization_id });
+  const owner = await login(browser, tenant);
+  const held = signal();
+  const reached = signal();
+  try {
+    const view = await receiver(owner, { ...tenant, match_id: tenant.open_match_id });
+    await expect(view.page.locator('.operation-shell')).toBeVisible();
+    let reads = 0;
+    view.page.on('request', request => { if (request.url().endsWith(`/matches/${tenant.open_match_id}/operation`)) reads++; });
+    await view.page.route(`**/matches/${tenant.open_match_id}/segments/*/interrupt`, async route => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      reached.release();
+      await held.promise;
+      await route.fulfill({ response });
+    });
+    await view.page.locator('#interrupt-minute').fill('5');
+    await view.page.getByRole('button', { name: 'Registrar interrupción', exact: true }).click();
+    await reached.promise;
+    const before = reads;
+    for (let n = 0; n < 3; n++) {
+      const event = await publish(tenant, { open: true });
+      await expect.poll(() => view.ids().includes(event.event_id)).toBe(true);
+    }
+    await flush([view.page]);
+    expect(reads).toBe(before);
+    held.release();
+    await expect(view.page.getByText('Interrupción registrada', { exact: true })).toBeVisible();
+    await expect.poll(() => reads).toBe(before + 2); // action refresh plus one consolidated trailing read
+    await flush([view.page]);
+    expect(reads).toBe(before + 2);
+  } finally { held.release(); await owner.close(); }
+});
+
+test('duplicates, actual stream trim/reset and reconnect reconstruct HTTP without replay', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  const owner = await login(browser, tenant);
+  try {
+    const view = await receiver(owner, tenant);
+    await expect(view.page.locator('.operation-shell')).toBeVisible();
+    let reads = 0;
+    view.page.on('request', request => { if (request.url().endsWith(`/matches/${tenant.match_id}/operation`)) reads++; });
+    const first = await publish(tenant);
+    await expect.poll(() => reads).toBe(1);
+    await control({ action: 'inject', organization_id: tenant.organization_id, event_id: first.event_id });
+    const marker = await control<{ event_id: string }>({ action: 'inject', organization_id: tenant.organization_id, event_type: 'UNKNOWN' });
+    await delivered(marker.event_id);
+    await flush([view.page]);
+    expect(view.ids().filter(id => id === first.event_id)).toHaveLength(2);
+    expect(reads).toBe(1);
+    for (const kind of ['trim', 'reset']) {
+      const baseline = view.wire.length;
+      const pending = await publish(tenant, { barrier: 'before' });
+      await expect.poll(async () => (await control<Probe>({ action: 'probe' })).paused).toBe(pending.event_id);
+      const lost = await control<{ event_id: string }>({ action: 'stream_gap', kind });
+      const before = reads;
+      await control({ action: 'release' });
+      const reason = kind === 'trim' ? 'STREAM_TRIMMED' : 'REDIS_RESET';
+      await expect.poll(() => view.wire.slice(baseline).some(row => row.event === 'RESYNC' && row.payload.reason === reason)).toBe(true);
+      await expect.poll(() => reads).toBeGreaterThan(before);
+      expect(view.ids()).not.toContain(lost.event_id);
+      await expect(view.page.locator('.operation-shell')).toBeVisible();
+    }
+    const previous = view.opened();
+    const dropped = await control<{ engine_sids: number }>({ action: 'drop_transport' });
+    console.log(`drop_transport engine_sid count: ${dropped.engine_sids}`);
+    expect(dropped.engine_sids).toBeGreaterThan(0);
+    await expect.poll(() => view.closed()).toBeGreaterThan(0);
+    const lost = await publish(tenant);
+    await delivered(lost.event_id);
+    const before = reads;
+    await control({ action: 'release_connect' });
+    await expect.poll(() => view.opened()).toBeGreaterThan(previous);
+    await expect.poll(() => reads).toBeGreaterThan(before);
+    expect(view.ids()).not.toContain(lost.event_id);
+  } finally { await owner.close(); }
+});
+
+test('real JWT expiry cuts off an open socket and HTTP without expiring other sessions', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  const reader = await login(browser, tenant, true);
+  const owner = await login(browser, tenant);
+  try {
+    await control({ action: 'mode', pause_maintenance: true });
+    const credential = await control<{ token: string; deadline: number }>({ action: 'short_token', organization_id: tenant.organization_id });
+    await reader.addCookies([{ name: 'bc_access_token', value: credential.token, url: baseURL }]);
+    const [expired, healthy] = await Promise.all([receiver(reader, tenant, false, true), receiver(owner, tenant, false, true)]);
+    const first = await publish(tenant);
+    await expect.poll(() => expired.ids().includes(first.event_id)).toBe(true);
+    const pending = await publish(tenant, { barrier: 'before' });
+    await expect.poll(async () => (await control<Probe>({ action: 'probe' })).paused).toBe(pending.event_id);
+    await control({ action: 'wait_expiry', deadline: credential.deadline });
+    const response = await reader.request.get(`${demoApiBase()}/matches/${tenant.match_id}/operation`,
+      { headers: { 'X-Organization-ID': tenant.organization_id } });
+    expect(response.status()).toBe(401);
+    await control({ action: 'release' });
+    await delivered(pending.event_id);
+    await expect.poll(() => healthy.ids().includes(pending.event_id)).toBe(true);
+    await flush([expired.page, healthy.page]);
+    expect(expired.ids()).not.toContain(pending.event_id);
+    expect(expired.closed()).toBe(0);
+    expect(expired.opened()).toBe(1);
+  } finally { await reader.close(); await owner.close(); }
+});
+
 test('published rectification refreshes history without manual refresh and preserves an open editor', async ({ browser }) => {
   const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
   const owner = await login(browser, tenant);
