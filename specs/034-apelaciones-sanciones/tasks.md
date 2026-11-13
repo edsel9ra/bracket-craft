@@ -1,6 +1,6 @@
 # Tareas 034 — Apelaciones y resoluciones de sanciones
 
-Estado: **aprobado** por el usuario el 2026-11-12, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. Fase Tareas cerrada; fase actual Implementación, PR A. Ninguna casilla está realizada todavía.
+Estado: **aprobado** por el usuario el 2026-11-12, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. Fase Tareas cerrada; fase actual Implementación, PR A. T1–T10 realizadas; T11–T55 pendientes.
 
 Son **55 tareas**, estimadas en **20–30 min de trabajo por tarea**, en orden de dependencia. **Propuesta: no dividir la spec**, aunque supera diez tareas: la duración efectiva, el bloqueo/cumplimiento y la coordinación 033 forman una garantía indivisible; separarlos en specs permitiría activar resoluciones con lectores antiguos. Por decisión del usuario, la entrega pasa a cinco PRs secuenciales A → B1 → B2 → C → D. Cada PR se verifica y fusiona antes de empezar el siguiente; B1 solo activa lectores equivalentes sin resoluciones y B2 no se fusiona parcialmente. Si una tarea excede el límite al ejecutarla, descomponerla antes de seguir, sin ampliar alcance ni marcarla parcialmente hecha.
 
@@ -42,7 +42,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T9. Proyección pura de duración efectiva y cumplimientos.** RF-003, RF-010, RF-014
 - Hecho cuando: sin resolución equivale al comportamiento base; reducción mayor/igual/menor que cumplido, anulación y declaración conservan historial, saldo nunca negativo ni crédito y `appealed` no crea recurso. Pasa `cd backend && pytest -q tests/test_sanction_effective.py -k duration`.
 
-- [ ] **T10. Funciones temporales puras y compatibilidad de legado (C4).** RF-011, RF-012, RF-027, RF-030
+- [x] **T10. Funciones temporales puras y compatibilidad de legado (C4).** RF-011, RF-012, RF-027, RF-030
 - Hecho cuando: tiempo recibido por parámetro, primera apertura frente a calendario/reprogramación, partido en curso y legado sin fecha tienen resultados deterministas; no reconstrucción inventada ni reloj interno. Pasa `cd backend && pytest -q tests/test_sanction_effective.py -k temporal`.
 
 ## PR B1 — Lectores y cumplimientos efectivos

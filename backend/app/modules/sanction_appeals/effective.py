@@ -1,6 +1,7 @@
 """Pure projections; callers supply ledger facts and temporal boundaries."""
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,3 +59,51 @@ def project_duration(
                         status = "served"
     remaining = 0 if status == "cancelled" else max(0, effective_duration - served_count)
     return DurationProjection(original_duration, effective_duration, served_count, remaining, status, pending)
+
+
+@dataclass(frozen=True, slots=True)
+class MatchTiming:
+    has_started: bool
+    first_started_at: datetime | None = None
+    scheduled_at: datetime | None = None
+    snapshot_exists: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationPlan:
+    should_apply: bool
+    pending_effect: bool
+    preserve_existing: bool
+    requires_review: bool
+
+
+def _require_aware(value: datetime) -> None:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("A timezone-aware instant is required")
+
+
+def plan_application(
+    decision_at: datetime,
+    as_of: datetime,
+    match: MatchTiming,
+    *,
+    opening: bool = False,
+    declarative: bool = False,
+    excluded: bool = False,
+) -> ApplicationPlan:
+    _require_aware(decision_at)
+    _require_aware(as_of)
+    if match.scheduled_at is not None:
+        _require_aware(match.scheduled_at)
+    if match.first_started_at is not None:
+        _require_aware(match.first_started_at)
+        if not match.has_started or match.first_started_at > as_of:
+            raise ValueError("First opening must be an established past boundary")
+    if excluded or declarative or as_of < decision_at or match.snapshot_exists:
+        return ApplicationPlan(False, False, True, False)
+    if match.has_started:
+        review = match.first_started_at is None or match.first_started_at > decision_at
+        return ApplicationPlan(False, False, True, review)
+    if opening:
+        return ApplicationPlan(True, False, False, False)
+    return ApplicationPlan(False, True, True, False)
