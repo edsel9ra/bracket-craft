@@ -181,10 +181,50 @@ CREATE TABLE public.sanction_resolutions (
         OR (action = 'reduce' AND new_duration IS NOT NULL))
 );
 
+CREATE TABLE public.sanction_effect_applications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    resolution_id UUID NOT NULL UNIQUE,
+    suspension_id UUID NOT NULL,
+    match_id UUID NOT NULL,
+    effective_at TIMESTAMPTZ NOT NULL,
+    before_status TEXT NOT NULL CHECK (before_status IN ('active', 'served', 'cancelled', 'appealed')),
+    after_status TEXT NOT NULL CHECK (after_status IN ('active', 'served', 'cancelled')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    FOREIGN KEY (resolution_id, suspension_id, organization_id)
+        REFERENCES public.sanction_resolutions(id, suspension_id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (match_id, organization_id)
+        REFERENCES public.matches(id, organization_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE public.sanction_match_eligibility (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    suspension_id UUID NOT NULL,
+    match_id UUID NOT NULL,
+    effective_duration INTEGER NOT NULL CHECK (effective_duration >= 0),
+    applicable_status TEXT NOT NULL CHECK (applicable_status IN ('active', 'served', 'cancelled', 'appealed')),
+    resolution_id UUID,
+    started_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    UNIQUE (suspension_id, match_id),
+    FOREIGN KEY (suspension_id, organization_id)
+        REFERENCES public.player_suspensions(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (resolution_id, suspension_id, organization_id)
+        REFERENCES public.sanction_resolutions(id, suspension_id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (match_id, organization_id)
+        REFERENCES public.matches(id, organization_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_sanction_applications_match ON public.sanction_effect_applications (organization_id, match_id);
+
 DO $history$
 DECLARE target TEXT;
 BEGIN
-    FOREACH target IN ARRAY ARRAY['sanction_case_decisions', 'sanction_resolutions'] LOOP
+    FOREACH target IN ARRAY ARRAY['sanction_case_decisions', 'sanction_resolutions',
+        'sanction_effect_applications', 'sanction_match_eligibility'] LOOP
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', target);
         EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', target);
         EXECUTE format('CREATE POLICY f9_read ON public.%I FOR SELECT TO bracket_app

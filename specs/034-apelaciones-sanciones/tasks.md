@@ -20,7 +20,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
 - Hecho cuando: decisiones/resoluciones registran base original/efectiva, responsable y motivo, evidencia opcional sin archivos y FK tenant; UPDATE/DELETE rechazados, sin tocar `matches_suspended`. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k decisions`.
 
-- [ ] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030
+- [x] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030
 - Hecho cuando: aplicaciones y snapshots son append-only, tienen FK tenant/unicidad y permiten distinguir decisión, aplicación pendiente y partido efectivo sin exigir un partido ficticio a declaraciones. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k applications`.
 
 - [ ] **T4. Nueva 040: perjuicio, autorizaciones F9 y avisos.** RF-013, RF-023, RF-032, RF-033

@@ -6,7 +6,7 @@ import asyncpg
 import pytest
 
 from migration_helpers import apply_migration, throwaway_database
-from test_migration_031 import MEMBER, ORG, PLAYER_HOME_FIRST, TOURNAMENT, USER, SEED_SQL
+from test_migration_031 import MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, TOURNAMENT, USER, SEED_SQL
 
 
 @pytest.fixture
@@ -71,6 +71,30 @@ async def test_cases_rls_pending_and_history(f9_db):
         await db.execute("SELECT set_config('app.current_organization_id',$1,true)", str(other_org))
         assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 0
     assert await db.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", suspension) == 3
+
+
+async def test_applications_and_match_snapshots(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    decision = await insert_decision(db, case_id)
+    resolution = await db.fetchval("""INSERT INTO sanction_resolutions
+        (organization_id,case_id,decision_id,suspension_id,action,original_duration,
+         before_duration,new_duration,served_count,is_declarative)
+        VALUES ($1,$2,$3,$4,'reduce',3,3,1,0,FALSE) RETURNING id""", ORG, case_id, decision, suspension)
+    assert await db.fetchval("SELECT count(*) FROM sanction_effect_applications") == 0
+    await db.execute("""INSERT INTO sanction_effect_applications
+        (organization_id,resolution_id,suspension_id,match_id,effective_at,before_status,after_status)
+        VALUES ($1,$2,$3,$4,'2026-11-12','active','active')""", ORG, resolution, suspension, MATCH)
+    await db.execute("""INSERT INTO sanction_match_eligibility
+        (organization_id,suspension_id,match_id,effective_duration,applicable_status,started_at)
+        VALUES ($1,$2,$3,1,'active','2026-11-12')""", ORG, suspension, MATCH)
+    for table in ("sanction_effect_applications", "sanction_match_eligibility"):
+        assert await db.fetchval("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid=$1::regclass", table)
+        with pytest.raises(asyncpg.CheckViolationError):
+            await db.execute(f"DELETE FROM {table}")
+        async with db.transaction():
+            await app_context(db)
+            assert await db.fetchval(f"SELECT count(*) FROM {table}") == 0
     assert not await db.fetchval("SELECT rolbypassrls FROM pg_roles WHERE rolname='bracket_app'")
 
 
