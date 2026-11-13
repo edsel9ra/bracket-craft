@@ -77,7 +77,20 @@ Rutas exactas enumeradas en `/home/ubuntu/f9-visual/capturas.txt`; metadatos en 
 
 Se miraron las ocho hojas y las capturas clave a mayor resolución. Formularios/confirmaciones, autorizaciones, avisos, aviso de alineación y administración legibles en ambos temas; no se detectaron desbordes horizontales ni claves i18n sin resolver. El texto libre ficticio conserva su idioma original: no es una traducción de interfaz. Se repitieron las tomas con cabecera sticky intercalada por el scroll de captura y se corrigió la fixture externa de captura de `/admin` (respuestas paginadas `{items: []}` en vez de arrays que causaban un error artificial). **No se necesitaron cambios visuales de producto.** La advertencia de conexión en operación es la desconexión esperada del fixture; el aviso F9 se lee y no bloquea guardar/publicar, comprobado en E2E.
 
-No sustituye una auditoría de accesibilidad completa, SMTP real, login productivo de plataforma, CI remota ni aceptación humana. Gates de seguridad y aceptación aún pendientes de registrar.
+No sustituye una auditoría de accesibilidad completa, SMTP real, login productivo de plataforma, CI remota ni aceptación humana.
+
+## Gate local de seguridad e infraestructura T54
+
+- `ruff check .`: **All checks passed!**. `bandit -r app -ll`: **No issues identified.**, Medium 0 / High 0 (12 Low fuera del umbral existente; sin nuevas exclusiones).
+- `pip-audit -r requirements.txt -r requirements-dev.txt`: **No known vulnerabilities found**.
+- `pnpm audit --prod --json --audit-level low` + `audit_frontend.py`: **Resultado: OK**, 524 dependencias; cinco avisos no accionables visibles (tres moderate y dos low), sin ignorarlos ni cambiar dependencias.
+- Gitleaks v8.30.1 sobre `git archive HEAD`, con configuración del proyecto y redacción: **no leaks found**.
+- Trivy 0.70.0, equivalente CLI de la acción fijada v0.36.0: **salida 0**, requirements y pnpm-lock sin vulnerabilidades HIGH/CRITICAL corregibles; sin cambios al workflow.
+- Runner PostgreSQL: **OK: todas las pruebas de MIGRATION_TARGET pasaron**. Grants, RLS, checksums, limpio/migrado y migración 040 están incluidos en los 3406 tests de T52; no se repiten porque D no cambia backend ni esquema.
+- Sintaxis de migrate/healthcheck: salida 0. Versiones: **OK: Python 3.14, Node 24 y pnpm 12.12.1 coinciden en las fuentes verificadas**; **OK: Docker Compose 5.6.1 >= 2.24.4**.
+- Compose dev y merge prod con dummy: salida 0, estructura y contrato de siete servicios/51 variables OK en ambos perfiles. **OK: self-test del contrato de configuración**.
+
+Son comprobaciones locales. No se ha abierto un PR: los jobs remotos y la aceptación humana son requisitos pendientes del cierre formal T55, no se dan por verdes ni por aceptados.
 
 ## Límites
 
