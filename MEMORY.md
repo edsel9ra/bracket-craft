@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR A (#76) — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. T1–T16 verificadas: núcleo puro, migración 055 invocadora y adaptador batch fresco, sin conectar al relay. Gate local T17 completo (3552 tests con PostgreSQL); CI PR/push verde y Devin Review sin hallazgos en d4372227. T17 abierta solo por fusión pendiente; R32f sigue abierto, no iniciar B antes de fusionar A.
+- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T17 cerradas. Núcleo puro, migración 055 invocadora y adaptador batch fresco aún sin conectar al relay. T18–T37 pendientes; R32f sigue abierto y F8 no está activado.
 
 ## Pendiente
-- Spec 035: fusionar PR A #76 antes de PR B → C; evidencias CI y revisión en verificacion.md, sin fusión ni aceptación humana declaradas. No se habilitan F1 ni Socket.IO para F9.
+- Spec 035: implementar y verificar T18–T37 en PR B antes de PR C; mantener gate privado y recuperación end-to-end juntos según C4. No se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 035 · Usuario comunica fusión de PR A #76 y autoriza PR B T18–T37; T17 cerrada. No equivale a aceptación de F8 ni cierre de R32f.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo las tareas.»; #75 fusionado. Inicio de Implementación, PR A inerte, sin activar el filtro ni cerrar R32f.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo el plan.»; C1–C4 confirmadas como se recomendaron: batch invocador sin caché, invalidaciones de tres IDs, RESYNC compatible y tres PR coordinados. Plan aprobado y paso a Tareas autorizado; tareas borrador pendientes de aprobación expresa.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo la spec.»; clarificación cerrada y paso a Plan autorizado. Spec aprobada, plan borrador; sin autorización para Tareas ni Implementación.
