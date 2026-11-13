@@ -298,7 +298,7 @@ CREATE TABLE public.sanction_notifications (
     channel TEXT NOT NULL CHECK (channel IN ('internal', 'email')),
     notification_type TEXT NOT NULL CHECK (notification_type IN ('decision', 'withdrawn', 'closed_by_rectification')),
     reason TEXT NOT NULL CHECK (btrim(reason) <> ''),
-    outbox_event_id UUID NOT NULL UNIQUE REFERENCES public.outbox_events(id) ON DELETE RESTRICT,
+    outbox_event_id UUID NOT NULL UNIQUE,
     decision_id UUID,
     case_event_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -865,5 +865,195 @@ GRANT EXECUTE ON FUNCTION public.sanction_owner(UUID), public.sanction_platform_
     public.sanction_platform_scopes(), public.sanction_lock_platform_authorization(UUID),
     public.sanction_platform_source(UUID), public.sanction_revoke_authorization(UUID),
     public.record_sanction_platform_audit(UUID) TO bracket_app;
+
+CREATE FUNCTION public.close_sanction_cases_for_rectification(target_version UUID)
+RETURNS INTEGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE version public.match_report_versions; target public.sanction_cases; changed INTEGER := 0;
+    actor UUID := NULLIF(current_setting('app.current_user_id', true), '')::UUID;
+BEGIN
+    SELECT v.* INTO version FROM public.match_report_versions v
+        JOIN public.match_report_rectification_requests q ON q.id = v.request_id AND q.organization_id = v.organization_id
+        WHERE v.id = target_version AND v.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+            AND v.published_by_user_id = actor AND q.requested_by_user_id <> actor
+            AND v.xmin = pg_current_xact_id()::xid AND v.published_at >= CURRENT_TIMESTAMP;
+    IF version.id IS NULL OR NOT (public.sanction_member_has_permission(version.organization_id, 'APPROVE_MATCH_REPORT_RECTIFICATION')
+        OR EXISTS (SELECT 1 FROM public.rectification_platform_scopes() a WHERE a.request_id = version.request_id
+            AND a.organization_id = version.organization_id
+            AND a.id = NULLIF(current_setting('app.rectification_authorization_id', true), '')::UUID)) THEN
+        RAISE EXCEPTION 'SANCTION_RECTIFICATION_PUBLICATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    FOR target IN SELECT c.* FROM public.sanction_cases c
+        JOIN public.player_suspensions ps ON ps.id = c.suspension_id AND ps.organization_id = c.organization_id
+        JOIN public.player_suspension_annulments a ON a.suspension_id = ps.id AND a.organization_id = ps.organization_id
+        WHERE a.version_id = version.id AND ps.origin_match_id = version.match_id AND ps.source_type = 'match_event'
+            AND ps.status = 'cancelled' AND c.status IN ('pending', 'resolved') ORDER BY c.id FOR UPDATE OF c
+    LOOP
+        INSERT INTO public.sanction_case_events(organization_id, case_id, event_type, actor_user_id, reason, rectification_version_id)
+            VALUES (target.organization_id, target.id,
+                CASE WHEN target.status = 'pending' THEN 'closed_by_rectification' ELSE 'affected_by_rectification' END,
+                actor, 'Source sanction changed by published rectification', version.id) ON CONFLICT DO NOTHING;
+        IF FOUND THEN
+            changed := changed + 1;
+            IF target.status = 'pending' THEN PERFORM public.sanction_finalize_case(target.id); END IF;
+        END IF;
+    END LOOP;
+    RETURN changed;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.close_sanction_cases_for_rectification(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.close_sanction_cases_for_rectification(UUID) TO bracket_app;
+
+CREATE FUNCTION public.sanction_recipient_allowed(target_case UUID, recipient UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (SELECT 1 FROM public.sanction_cases c
+        JOIN public.users u ON u.id = recipient AND u.is_active
+        JOIN public.organizations o ON o.id = c.organization_id AND o.is_active
+        JOIN public.organization_users ou ON ou.user_id = u.id AND ou.organization_id = c.organization_id AND ou.is_active
+        JOIN public.organization_user_roles our ON our.organization_user_id = ou.id AND our.organization_id = ou.organization_id
+        JOIN public.roles r ON r.id = our.role_id AND r.organization_id = ou.organization_id
+        WHERE c.id = target_case AND (r.permissions @> '["RESOLVE_SANCTION_CASES"]'::JSONB
+            OR (c.submitted_by_user_id = u.id AND r.permissions @> jsonb_build_array(
+                CASE WHEN c.case_type = 'appeal' THEN 'SUBMIT_SANCTION_APPEALS' ELSE 'RESOLVE_SANCTION_CASES' END))));
+$$;
+
+CREATE FUNCTION public.sanction_notice_recipient_authorized(target_notice UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (SELECT 1 FROM public.sanction_notifications n WHERE n.id = target_notice
+        AND public.sanction_recipient_allowed(n.case_id, n.recipient_user_id));
+$$;
+
+CREATE FUNCTION public.sanction_notice_visible(target_notice UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (SELECT 1 FROM public.sanction_notifications n WHERE n.id = target_notice
+        AND n.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND n.recipient_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        AND public.sanction_notice_recipient_authorized(n.id));
+$$;
+
+CREATE FUNCTION public.sanction_notice_writer(target_case UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (SELECT 1 FROM public.sanction_cases c WHERE c.id = target_case
+        AND c.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND (EXISTS (SELECT 1 FROM public.sanction_case_decisions d WHERE d.case_id = c.id
+            AND d.decided_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+            AND d.xmin = pg_current_xact_id()::xid)
+        OR EXISTS (SELECT 1 FROM public.sanction_case_events e WHERE e.case_id = c.id
+            AND e.event_type IN ('withdrawn', 'closed_by_rectification')
+            AND e.actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+            AND e.xmin = pg_current_xact_id()::xid)));
+$$;
+
+CREATE FUNCTION public.sanction_validate_notice()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE expected_reason TEXT; event public.outbox_events;
+BEGIN
+    IF NEW.notification_type = 'decision' AND NEW.case_event_id IS NULL THEN
+        SELECT reason INTO expected_reason FROM public.sanction_case_decisions
+            WHERE id = NEW.decision_id AND case_id = NEW.case_id AND organization_id = NEW.organization_id;
+    ELSIF NEW.notification_type IN ('withdrawn', 'closed_by_rectification') AND NEW.decision_id IS NULL THEN
+        SELECT reason INTO expected_reason FROM public.sanction_case_events WHERE id = NEW.case_event_id
+            AND case_id = NEW.case_id AND organization_id = NEW.organization_id AND event_type = NEW.notification_type;
+    END IF;
+    SELECT * INTO event FROM public.outbox_events WHERE id = NEW.outbox_event_id;
+    IF expected_reason IS NULL OR NEW.reason <> expected_reason OR NOT public.sanction_notice_writer(NEW.case_id)
+        OR NOT public.sanction_recipient_allowed(NEW.case_id, NEW.recipient_user_id)
+        OR event.organization_id IS DISTINCT FROM NEW.organization_id OR event.status IS DISTINCT FROM 'pending'
+        OR event.event_type IS DISTINCT FROM (CASE WHEN NEW.channel = 'email' THEN 'SANCTION_CASE_NOTICE_EMAIL' ELSE 'SANCTION_CASE_NOTICE_INTERNAL' END)
+        OR event.payload IS DISTINCT FROM jsonb_build_object('notification_id', NEW.id::TEXT) THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_NOTICE' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_notice BEFORE INSERT ON public.sanction_notifications
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_notice();
+CREATE POLICY f9_notice_insert ON public.sanction_notifications FOR INSERT TO bracket_app
+    WITH CHECK (public.sanction_notice_writer(case_id));
+GRANT INSERT ON public.sanction_notifications TO bracket_app;
+DROP POLICY f9_read ON public.sanction_notifications;
+CREATE POLICY f9_notice_private_read ON public.sanction_notifications FOR SELECT TO bracket_app
+    USING (public.sanction_notice_visible(id));
+
+CREATE TABLE public.sanction_notification_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    notification_id UUID NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('delivered', 'withheld')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (notification_id, outcome),
+    FOREIGN KEY (notification_id, organization_id) REFERENCES public.sanction_notifications(id, organization_id) ON DELETE RESTRICT
+);
+ALTER TABLE public.sanction_notification_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sanction_notification_deliveries FORCE ROW LEVEL SECURITY;
+CREATE POLICY f9_delivery_private_read ON public.sanction_notification_deliveries FOR SELECT TO bracket_app
+    USING (public.sanction_notice_visible(notification_id));
+GRANT SELECT ON public.sanction_notification_deliveries TO bracket_app;
+CREATE TRIGGER trg_sanction_delivery_immutable BEFORE UPDATE OR DELETE ON public.sanction_notification_deliveries
+    FOR EACH ROW EXECUTE FUNCTION public.protect_sanction_history();
+
+CREATE FUNCTION public.sanction_claimed_notice(target_event UUID)
+RETURNS public.sanction_notifications LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE notice public.sanction_notifications; event public.outbox_events;
+BEGIN
+    SELECT * INTO event FROM public.outbox_events WHERE id = target_event FOR UPDATE;
+    SELECT * INTO notice FROM public.sanction_notifications WHERE outbox_event_id = target_event;
+    IF notice.id IS NULL OR event.organization_id IS DISTINCT FROM notice.organization_id
+        OR event.status IS DISTINCT FROM 'processing' OR event.locked_at IS NULL OR event.attempts < 1
+        OR event.payload IS DISTINCT FROM jsonb_build_object('notification_id', notice.id::TEXT)
+        OR event.event_type IS DISTINCT FROM (CASE WHEN notice.channel = 'email' THEN 'SANCTION_CASE_NOTICE_EMAIL' ELSE 'SANCTION_CASE_NOTICE_INTERNAL' END) THEN
+        RAISE EXCEPTION 'SANCTION_CLAIMED_NOTICE_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    RETURN notice;
+END;
+$$;
+
+CREATE FUNCTION public.deliver_sanction_notice(target_event UUID)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE notice public.sanction_notifications; allowed BOOLEAN;
+BEGIN
+    notice := public.sanction_claimed_notice(target_event);
+    IF notice.channel <> 'internal' THEN RAISE EXCEPTION 'SANCTION_INTERNAL_NOTICE_REQUIRED' USING ERRCODE = '42501'; END IF;
+    allowed := public.sanction_notice_recipient_authorized(notice.id);
+    INSERT INTO public.sanction_notification_deliveries(organization_id, notification_id, outcome)
+        VALUES (notice.organization_id, notice.id, CASE WHEN allowed THEN 'delivered' ELSE 'withheld' END)
+        ON CONFLICT DO NOTHING;
+    RETURN allowed;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_notice_email_payload(target_event UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE notice public.sanction_notifications; result JSONB;
+BEGIN
+    notice := public.sanction_claimed_notice(target_event);
+    IF notice.channel <> 'email' THEN RAISE EXCEPTION 'SANCTION_EMAIL_NOTICE_REQUIRED' USING ERRCODE = '42501'; END IF;
+    IF NOT public.sanction_notice_recipient_authorized(notice.id) THEN
+        INSERT INTO public.sanction_notification_deliveries(organization_id, notification_id, outcome)
+            VALUES (notice.organization_id, notice.id, 'withheld') ON CONFLICT DO NOTHING;
+        RETURN NULL;
+    END IF;
+    SELECT jsonb_build_object('recipient', u.email, 'case_id', notice.case_id, 'type', notice.notification_type,
+        'decision', d.decision, 'reason', notice.reason) INTO result FROM public.users u
+        LEFT JOIN public.sanction_case_decisions d ON d.id = notice.decision_id WHERE u.id = notice.recipient_user_id;
+    RETURN result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sanction_notice_recipient_authorized(UUID), public.sanction_notice_visible(UUID),
+    public.sanction_notice_writer(UUID), public.sanction_claimed_notice(UUID), public.deliver_sanction_notice(UUID),
+    public.sanction_notice_email_payload(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_notice_visible(UUID), public.sanction_notice_writer(UUID),
+    public.deliver_sanction_notice(UUID), public.sanction_notice_email_payload(UUID) TO bracket_app;
+
+DO $private_functions$
+DECLARE target REGPROCEDURE;
+BEGIN
+    FOR target IN SELECT p.oid::REGPROCEDURE FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND (p.proname LIKE 'sanction_%' OR p.proname LIKE 'protect_sanction_%')
+    LOOP
+        EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', target);
+    END LOOP;
+END;
+$private_functions$;
 
 COMMIT;
