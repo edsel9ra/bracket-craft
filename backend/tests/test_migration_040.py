@@ -73,6 +73,33 @@ async def test_cases_rls_pending_and_history(f9_db):
     assert await db.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", suspension) == 3
 
 
+async def test_auxiliary_private_authorizations_prejudice_notifications(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    admin = await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-platform@test.invalid','Platform') RETURNING id")
+    authorization = await db.fetchval("""INSERT INTO sanction_platform_authorizations
+        (organization_id,case_id,granted_by_member_id,platform_admin_user_id,reason)
+        VALUES ($1,$2,$3,$4,'Exceptional decision') RETURNING id""", ORG, case_id, MEMBER, admin)
+    assert authorization
+    await db.execute("""INSERT INTO sanction_prejudice_records
+        (organization_id,case_id,match_id,recorded_by_user_id,reason)
+        VALUES ($1,$2,$3,$4,'Played match remains unchanged')""", ORG, case_id, MATCH, USER)
+    event = await db.fetchval("""INSERT INTO outbox_events(organization_id,event_type,payload)
+        VALUES ($1,'SANCTION_CASE_EMAIL','{}') RETURNING id""", ORG)
+    await db.execute("""INSERT INTO sanction_notifications
+        (organization_id,case_id,recipient_user_id,channel,notification_type,reason,outbox_event_id)
+        VALUES ($1,$2,$3,'internal','withdrawn','Withdrawn by applicant',$4)""", ORG, case_id, USER, event)
+    for table in ("sanction_prejudice_records", "sanction_notifications", "sanction_platform_authorizations"):
+        assert await db.fetchval("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid=$1::regclass", table)
+        async with db.transaction():
+            await app_context(db, user=str(admin))
+            assert await db.fetchval(f"SELECT count(*) FROM {table}") == 0
+        with pytest.raises(asyncpg.CheckViolationError):
+            await db.execute(f"DELETE FROM {table}")
+    columns = await db.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='sanction_notifications'")
+    assert not {"evidence_text", "evidence_links", "attachments"} & {r[0] for r in columns}
+
+
 async def test_applications_and_match_snapshots(f9_db):
     db, suspension = f9_db
     case_id = await insert_case(db, suspension)

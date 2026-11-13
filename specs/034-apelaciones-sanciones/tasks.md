@@ -23,7 +23,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030
 - Hecho cuando: aplicaciones y snapshots son append-only, tienen FK tenant/unicidad y permiten distinguir decisión, aplicación pendiente y partido efectivo sin exigir un partido ficticio a declaraciones. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k applications`.
 
-- [ ] **T4. Nueva 040: perjuicio, autorizaciones F9 y avisos.** RF-013, RF-023, RF-032, RF-033
+- [x] **T4. Nueva 040: perjuicio, autorizaciones F9 y avisos.** RF-013, RF-023, RF-032, RF-033
 - Hecho cuando: las tres tablas nacen con RLS/FORCE y referencias tenant; autorización no reutiliza la 033 y aviso es único por acto/destinatario/canal, sin evidencia en su cuerpo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k auxiliary`.
 
 - [ ] **T5. Nueva 040: transiciones, catálogo y anti-auto-decisión en BD.** RF-005, RF-009, RF-020, RF-021, RF-022, RF-029

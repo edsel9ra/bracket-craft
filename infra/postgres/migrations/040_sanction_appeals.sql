@@ -236,4 +236,97 @@ BEGIN
 END;
 $history$;
 
+CREATE TABLE public.sanction_prejudice_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    case_id UUID NOT NULL,
+    match_id UUID,
+    recorded_by_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+    reason TEXT NOT NULL CHECK (btrim(reason) <> ''),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (case_id, organization_id)
+        REFERENCES public.sanction_cases(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (match_id, organization_id)
+        REFERENCES public.matches(id, organization_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE public.sanction_platform_authorizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    case_id UUID NOT NULL,
+    granted_by_member_id UUID NOT NULL,
+    platform_admin_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+    reason TEXT NOT NULL CHECK (btrim(reason) <> ''),
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMPTZ,
+    consumed_at TIMESTAMPTZ,
+    UNIQUE (id, organization_id),
+    UNIQUE (id, case_id, organization_id),
+    FOREIGN KEY (case_id, organization_id)
+        REFERENCES public.sanction_cases(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (granted_by_member_id, organization_id)
+        REFERENCES public.organization_users(id, organization_id) ON DELETE RESTRICT,
+    CHECK (num_nonnulls(revoked_at, consumed_at) <= 1)
+);
+
+ALTER TABLE public.sanction_case_decisions ADD FOREIGN KEY (authorization_id, case_id, organization_id)
+    REFERENCES public.sanction_platform_authorizations(id, case_id, organization_id) ON DELETE RESTRICT;
+
+CREATE FUNCTION public.protect_sanction_authorization()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'SANCTION_HISTORY_IMMUTABLE' USING ERRCODE = '23514';
+    END IF;
+    IF (to_jsonb(NEW) - ARRAY['revoked_at', 'consumed_at']) IS DISTINCT FROM
+            (to_jsonb(OLD) - ARRAY['revoked_at', 'consumed_at'])
+        OR OLD.revoked_at IS NOT NULL OR OLD.consumed_at IS NOT NULL
+        OR num_nonnulls(NEW.revoked_at, NEW.consumed_at) <> 1 THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_AUTHORIZATION_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_authorization BEFORE UPDATE OR DELETE ON public.sanction_platform_authorizations
+    FOR EACH ROW EXECUTE FUNCTION public.protect_sanction_authorization();
+
+CREATE TABLE public.sanction_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    case_id UUID NOT NULL,
+    recipient_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+    channel TEXT NOT NULL CHECK (channel IN ('internal', 'email')),
+    notification_type TEXT NOT NULL CHECK (notification_type IN ('decision', 'withdrawn', 'closed_by_rectification')),
+    reason TEXT NOT NULL CHECK (btrim(reason) <> ''),
+    outbox_event_id UUID NOT NULL UNIQUE REFERENCES public.outbox_events(id) ON DELETE RESTRICT,
+    decision_id UUID,
+    case_event_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    UNIQUE (case_id, notification_type, recipient_user_id, channel),
+    FOREIGN KEY (case_id, organization_id)
+        REFERENCES public.sanction_cases(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (decision_id, case_id, organization_id)
+        REFERENCES public.sanction_case_decisions(id, case_id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (case_event_id, organization_id)
+        REFERENCES public.sanction_case_events(id, organization_id) ON DELETE RESTRICT
+);
+
+DO $auxiliary$
+DECLARE target TEXT;
+BEGIN
+    FOREACH target IN ARRAY ARRAY['sanction_prejudice_records', 'sanction_platform_authorizations', 'sanction_notifications'] LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', target);
+        EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', target);
+        EXECUTE format('CREATE POLICY f9_read ON public.%I FOR SELECT TO bracket_app
+            USING (public.sanction_member_has_permission(organization_id, ''VIEW_SANCTION_CASES''))', target);
+        EXECUTE format('GRANT SELECT ON public.%I TO bracket_app', target);
+        IF target <> 'sanction_platform_authorizations' THEN
+            EXECUTE format('CREATE TRIGGER trg_f9_immutable BEFORE UPDATE OR DELETE ON public.%I
+                FOR EACH ROW EXECUTE FUNCTION public.protect_sanction_history()', target);
+        END IF;
+    END LOOP;
+END;
+$auxiliary$;
+
 COMMIT;
