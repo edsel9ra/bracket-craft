@@ -49,28 +49,28 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 
 Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35. No expone ninguna ruta de escritura de expedientes: los contratos de T11 son inertes; T35 solo registra su lectura privada. Fusionable porque, sin resoluciones, la duración efectiva equivale a la original. Antes de fusionar pasan las pruebas de lectores, apertura, cumplimientos y avisos de estas tareas y `cd backend && RUN_DATABASE_TESTS=1 pytest -q`; no se activa ninguna creación/decisión de expediente.
 
-- [ ] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
+- [x] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
 - Hecho cuando: DTOs con extra forbid, UUID, enums, representación, duración y paginación acotadas; motivo vacío, campos extra/archivos y alcance nuevo rechazados; evidencia ausente válida. Pasa `cd backend && pytest -q tests/test_sanction_schemas.py`.
 
-- [ ] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
+- [x] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
 - Hecho cuando: helper transaccional por organización precede fase/versiones/partidos/segmentos/jugadores/sanciones/expediente/autorización, con IDs estables; no comparte locks entre tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k coordinator`.
 
-- [ ] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
+- [x] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
 - Hecho cuando: primer segmento y cierre adquieren coordinador antes de sus locks actuales; fecha se captura después de esperar locks, sin alterar otras reglas operativas. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k match_lock`.
 
-- [ ] **T15. Repositorio efectivo en lote con contexto RLS.** RF-006, RF-010, RF-014, RF-016
+- [x] **T15. Repositorio efectivo en lote con contexto RLS.** RF-006, RF-010, RF-014, RF-016
 - Hecho cuando: carga original/resoluciones/aplicaciones/cumplimientos sin N+1 y conserva origen; lectura operativa usa funciones mínimas sin conceder evidencia ni consulta de otros expedientes. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k repository`.
 
-- [ ] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
+- [x] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
 - Hecho cuando: apertura aplicable lineariza efecto, partido/instante y snapshot; no depende de convocatoria ni calendario, y no aplica resolución excluida por rectificación. Partido iniciado conserva lectura previa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_effective_integration.py -k opening`.
 
-- [ ] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
+- [x] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
 - Hecho cuando: `_has_suspended_players` y llamadas validan pendientes aplicables, exclusión del acta origen y corte de creación; status actual no levanta indebidamente restricción de un partido ya comenzado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k blocking`.
 
-- [ ] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
+- [x] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
 - Hecho cuando: INSERT y actualización de `_serve_suspensions` usan los mismos datos efectivos, IDs bloqueados y deduplicación, conservan filas y no reviven una anulada tras cerrar un partido anterior. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k serves`.
 
-- [ ] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
+- [x] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
 - Hecho cuando: permiso operativo del partido da aviso mínimo por jugador sin expediente/motivo/evidencia; guardar/publicar no bloquean ni modifican alineación y cierre sigue revalidando. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_warnings.py`.
 
 ## PR B2 — Expedientes y efectos coordinados

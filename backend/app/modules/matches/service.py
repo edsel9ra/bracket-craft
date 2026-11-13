@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
-from app.core.locking import lock_stage_and_version
+from app.core.locking import lock_discipline, lock_stage_and_version
 from app.core.outbox import enqueue_outbox
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
@@ -56,6 +56,7 @@ from app.modules.rules_engine.substitutions import (
     validate_roster_minutes,
     validate_substitution,
 )
+from app.modules.sanction_appeals.repository import load_effective_sanctions
 
 
 # Structural request limits (RF-043): they are form limits, never a sporting
@@ -666,6 +667,7 @@ async def load_report_payload_snapshot(
     known = await service._load_event_team_scope(context, payload, match)
     suspended = await service._has_suspended_players(
         context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
+        match_id=match["id"],
         exclude_origin_match_id=exclude_suspensions_from_match_id,
         created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
     )
@@ -759,6 +761,7 @@ class CloseMatchReportService:
         async with self.db.begin():
             # --- 1. Sesión, organización y aislamiento ----------------------
             await set_rls_context(self.db, context.organization_id, context.user_id)
+            await lock_discipline(self.db, context.organization_id)
             identity = await self._load_match_identity(context, match_id)
             # Orden de bloqueo declarado (RF-018): fase → versión → destinos de
             # avance → partido → segmento activo → jugadores. Los bloqueos no
@@ -1534,39 +1537,17 @@ class CloseMatchReportService:
 
     async def _has_suspended_players(
         self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
-        *, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
+        *, match_id: UUID, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
     ) -> bool:
         if not player_ids:
             return False
-        result = await self.db.execute(
-            text("""
-                SELECT ps.player_id
-                FROM player_suspensions ps
-                LEFT JOIN player_suspension_serves pss
-                  ON pss.suspension_id = ps.id
-                 AND pss.is_voided = FALSE
-                WHERE ps.organization_id = :organization_id
-                  AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
-                  AND ps.status = 'active'
-                  AND (CAST(:created_before AS timestamptz) IS NULL OR ps.created_at <= :created_before)
-                  AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
-                       OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
-                  AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
-                GROUP BY ps.id, ps.player_id, ps.matches_suspended
-                HAVING COUNT(pss.id) < ps.matches_suspended
-            """),
-            {
-                "organization_id": str(context.organization_id),
-                "player_ids": player_ids,
-                "tournament_id": str(tournament_id),
-                "exclude_origin_match_id": exclude_origin_match_id,
-                "created_before": created_before,
-            },
-        )
-        return result.first() is not None
+        facts = await load_effective_sanctions(self.db, match_id, as_of=datetime.now(timezone.utc))
+        return any(f.player_id in player_ids and f.projection.blocking
+            and (exclude_origin_match_id is None or f.origin_match_id != exclude_origin_match_id)
+            and (created_before is None or f.created_at <= created_before) for f in facts)
 
-    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID]) -> None:
-        if await self._has_suspended_players(context, tournament_id, player_ids):
+    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID], *, match_id: UUID) -> None:
+        if await self._has_suspended_players(context, tournament_id, player_ids, match_id=match_id):
             raise ValueError("La planilla contiene un jugador suspendido")
 
     @staticmethod
@@ -1757,6 +1738,11 @@ class CloseMatchReportService:
         return {str(row["source_event_id"]) for row in result.mappings().all()}
 
     async def _serve_suspensions(self, context, match) -> None:
+        facts = await load_effective_sanctions(self.db, match["id"], as_of=datetime.now(timezone.utc))
+        suspension_ids = [f.suspension_id for f in facts if f.projection.status == "active"]
+        await self.db.execute(text("""SELECT id FROM player_suspensions WHERE organization_id=:org
+            AND id=ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"""),
+            {"org": context.organization_id, "ids": suspension_ids})
         await self.db.execute(
             text("""
                 INSERT INTO player_suspension_serves (organization_id, suspension_id, match_id)
@@ -1768,7 +1754,7 @@ class CloseMatchReportService:
                  AND r.organization_id = ps.organization_id
                  AND r.is_active = TRUE
                 WHERE ps.organization_id = :organization_id
-                  AND ps.status = 'active'
+                  AND ps.id = ANY(CAST(:suspension_ids AS uuid[]))
                   AND NOT EXISTS (
                       SELECT 1 FROM match_segments ms
                       WHERE ms.organization_id = ps.organization_id AND ms.match_id = :match_id
@@ -1792,24 +1778,11 @@ class CloseMatchReportService:
                 "match_id": str(match["id"]),
                 "home_team_id": str(match["home_team_id"]),
                 "away_team_id": str(match["away_team_id"]),
+                "suspension_ids": suspension_ids,
             },
         )
-        await self.db.execute(
-            text("""
-                UPDATE player_suspensions ps
-                SET status = 'served'
-                WHERE ps.organization_id = :organization_id
-                  AND ps.status = 'active'
-                  AND (
-                      SELECT COUNT(*)
-                      FROM player_suspension_serves pss
-                      WHERE pss.organization_id = ps.organization_id
-                        AND pss.suspension_id = ps.id
-                        AND pss.is_voided = FALSE
-                  ) >= ps.matches_suspended
-            """),
-            {"organization_id": str(context.organization_id)},
-        )
+        await self.db.execute(text("SELECT refresh_served_sanctions(:match_id,:as_of)"),
+            {"match_id": match["id"], "as_of": datetime.now(timezone.utc)})
 
     async def _insert_suspensions(self, context, match, suspensions) -> list[dict[str, Any]]:
         """Inserta las sanciones derivadas y devuelve las filas **creadas**.

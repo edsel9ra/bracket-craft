@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, set_rls_context
-from app.core.locking import lock_matches
+from app.core.locking import lock_discipline, lock_matches
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.crests.resolver import MediaGroup, sign_media_rows
@@ -61,6 +62,9 @@ from app.modules.rules_engine.substitutions import (
     remaining_limits,
     team_usage,
 )
+from app.modules.sanction_appeals.application import record_opening
+from app.modules.sanction_appeals.repository import load_effective_sanctions
+from app.modules.sanction_appeals.schemas import SuspensionWarning
 from app.modules.tournaments.roster_status import (
     RosterSizeOutOfRange,
     count_active_roster_players_by_team,
@@ -483,6 +487,23 @@ async def close_match(
         raise HTTPException(status_code=409, detail="El acta no cumple las reglas de integridad del partido") from exc
 
 
+@router.get("/{match_id}/suspension-warnings", response_model=list[SuspensionWarning])
+async def get_suspension_warnings(
+    match_id: UUID,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+):
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _load_operation_match(db, context, match_id, lock=False)
+        facts = await load_effective_sanctions(db, match_id, as_of=datetime.now(timezone.utc), preview=True)
+        remaining = {}
+        for fact in facts:
+            if fact.projection.blocking and fact.origin_match_id != match_id:
+                remaining[fact.player_id] = max(remaining.get(fact.player_id, 0), fact.projection.remaining)
+        return [SuspensionWarning(player_id=player, remaining=remaining[player]) for player in sorted(remaining, key=str)]
+
+
 @router.get("/{match_id}/operation", response_model=MatchOperationResponse)
 async def get_match_operation(
     match_id: UUID,
@@ -724,6 +745,7 @@ async def create_match_segment(
 
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
+        await lock_discipline(db, context.organization_id)
         match = await _load_operation_match(db, context, match_id)
         await db.execute(text("SELECT assert_no_open_competitive_impact(:id,:org)"),
             {"id": match_id, "org": context.organization_id})
@@ -794,8 +816,8 @@ async def create_match_segment(
                 )
             result = await db.execute(
                 text("""
-                    INSERT INTO match_segments (organization_id, match_id, segment_number, minute_start)
-                    VALUES (:organization_id, :match_id, :segment_number, :minute_start)
+                    INSERT INTO match_segments (organization_id, match_id, segment_number, minute_start, created_at)
+                    VALUES (:organization_id, :match_id, :segment_number, :minute_start, :opened_at)
                     RETURNING id, segment_number, minute_start, minute_end, status
                 """),
                 {
@@ -803,11 +825,14 @@ async def create_match_segment(
                     "match_id": str(match_id),
                     "segment_number": payload.segment_number,
                     "minute_start": payload.minute_start,
+                    "opened_at": datetime.now(timezone.utc),
                 },
             )
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="El número de segmento ya existe para este partido") from exc
         segment = dict(result.mappings().one())
+        if latest_segment is None:
+            await record_opening(db, match_id, segment["id"])
         limits = SubstitutionLimits.from_config(
             effective_substitutions(match.get("rules_config") or {})
         )

@@ -18,6 +18,47 @@ from test_rectification_flow import UNCONFIRMED, add_approver, create, database_
 from test_rectification_flow import flow as flow
 
 
+@pytest.mark.parametrize("flow", [{"schema": 39}, {"schema": 43}], indirect=True)
+async def test_recalculation_without_resolutions_matches_039_baseline(flow, monkeypatch):
+    if not await flow.admin.fetchval("SELECT to_regclass('public.sanction_resolutions') IS NOT NULL"):
+        async def original_blocking(self, context, tournament_id, player_ids, **kwargs):
+            result = await self.db.execute(text("""SELECT 1 FROM player_suspensions ps
+                WHERE ps.organization_id=:org AND ps.status='active' AND ps.player_id=ANY(CAST(:players AS uuid[]))
+                AND (ps.scope_type='organization' OR ps.source_tournament_id=:tournament)
+                AND ps.origin_match_id IS DISTINCT FROM :origin
+                AND (CAST(:cutoff AS timestamptz) IS NULL OR ps.created_at<=:cutoff)
+                AND (SELECT count(*) FROM player_suspension_serves s WHERE s.suspension_id=ps.id AND NOT s.is_voided)<ps.matches_suspended"""),
+                {"org": context.organization_id, "players": player_ids, "tournament": tournament_id,
+                 "origin": kwargs.get("exclude_origin_match_id"), "cutoff": kwargs.get("created_before")})
+            return result.first() is not None
+        monkeypatch.setattr(CloseMatchReportService, "_has_suspended_players", original_blocking)
+    requester = flow.context
+    body = card_report()
+    request = await submit(flow, body)
+    assert (await decide(flow, request)).status_code == 200
+    original = dict(await flow.admin.fetchrow("SELECT * FROM player_suspensions"))
+    assert original["status"] == "active" and original["source_type"] == "match_event"
+    duration = original["matches_suspended"]
+    await flow.admin.execute("INSERT INTO player_suspension_serves(organization_id,suspension_id,match_id) VALUES ($1,$2,$3)", ORG, original["id"], UNCONFIRMED)
+    serves = [dict(row) for row in await flow.admin.fetch("SELECT * FROM player_suspension_serves")]
+    approver = flow.context
+    for number, report in [(2, body), (3, proposal())]:
+        report = deepcopy(report)
+        if number == 2:
+            report["proposed_report"]["events"][0]["minute"] = 12
+        flow.context = requester
+        response = await create(flow, report)
+        assert response.status_code == 201, response.text
+        flow.context = approver
+        response = await decide(flow, response.json()["id"], expected_base_version=number)
+        assert response.status_code == 200, response.text
+        rows = [dict(row) for row in await flow.admin.fetch("SELECT * FROM player_suspensions")]
+        assert len(rows) == 1 and rows[0]["id"] == original["id"]
+        assert rows[0]["matches_suspended"] == duration
+        assert rows[0]["status"] == ("active" if number == 2 else "cancelled")
+        assert [dict(row) for row in await flow.admin.fetch("SELECT * FROM player_suspension_serves")] == serves
+
+
 def card_report():
     body = proposal()
     body["proposed_report"]["events"].append({

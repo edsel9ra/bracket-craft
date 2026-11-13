@@ -282,6 +282,15 @@ class CloseOrderSession:
         return [params for sql, params in self.calls if fragment in sql]
 
     def handle(self, sql: str, params: dict) -> Result:
+        if "sanction_operational_facts" in sql:
+            return Result(rows=[{
+                "suspension_id": UUID(int=1), "player_id": self.rosters[0]["player_id"],
+                "origin_match_id": None, "created_at": self.match["match_date"],
+                "original_duration": 1, "status": "active", "serves": [],
+                "resolutions": [], "applications": [], "snapshot": None,
+            }] if self.suspended else [])
+        if "min(created_at)" in sql or "refresh_served_sanctions" in sql:
+            return Result()
         if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code" in sql:
