@@ -104,6 +104,10 @@ No invocar todavía el nuevo gate desde el relay ni cambiar entrega observable. 
 - Dependencias: T1–T16; PR A.
 - Tests primero: regresión P/D/L y tests existentes de outbox/sockets; caracterizar que el relay aún no invoca el adaptador, sin modificar el comportamiento para fingir un rojo.
 - Hecho cuando: pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `cd backend && python -m compileall -q app`, `cd backend && ruff check .` y `git diff --check`; CI PR/push de A verdes con E2E de PR. Evidencia inicial de contrato en `verificacion.md`, R32f aún abierto, ninguna migración aplicada editada ni producto nuevo anunciado. Revisión y fusión de A antes de B.
+  - [x] T1–T16 y gate local verificados; contrato inerte y R32f abierto documentados.
+  - [x] CI de PR #76 y push verdes en `d4372227`, incluido E2E del PR; ejecuciones y resultados en `verificacion.md`.
+  - [x] Devin Review revisado: «No Issues Found», sin comentarios inline ni hallazgos pendientes.
+  - [ ] Fusión de PR A antes de iniciar B. T17 permanece abierta hasta cumplir este último requisito.
 
 ## PR B — Entrega privada y recuperación end-to-end (T18–T37)
 

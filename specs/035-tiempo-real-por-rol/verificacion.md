@@ -1,6 +1,7 @@
 # Verificación 035 — PR A inerte
 
-T1–T16 implementadas y verificadas; gate local T17 completo, externo pendiente.
+T1–T16 implementadas y verificadas; T17 con gates local/CI/revisión automatizada
+verificados, fusión pendiente.
 R32f permanece abierto: nada está conectado al relay.
 No certifica PR B/C ni aceptación del usuario.
 
@@ -188,10 +189,10 @@ y planes de ejecución no están contadas separadamente. SQL **no es O(1)**:
 el coste depende de usuarios, sesiones y relaciones, pero no de pestañas.
 Logs `/home/ubuntu/f8-a-t16-{unit-red,unit-green,db-red,db-green}.log`.
 
-## T17 — Gate local completo; gate externo pendiente
+## T17 — Gate local, CI y Devin Review verificados; fusión pendiente
 
-El usuario abrirá el PR. T17 exige también CI de PR/push, revisión y fusión:
-no se marca completada antes de esa evidencia. No hay ningún import nuevo en
+PR #76 abierto. T17 exige también fusión: esa parte permanece pendiente y la
+casilla principal sigue abierta. No hay ningún import nuevo en
 `main.py`/relay/worker ni cambios de frontend. PR A no activa F8 ni cierra R32f.
 
 ### Checks locales (Python 3.14/PostgreSQL 17)
@@ -244,6 +245,40 @@ worker, frontend, init y migraciones 001–054 intactos. No hay nuevo contrato H
 emisión, dependencia ni flag de activación. README/AGENTS/manual quedan para B/C,
 como el plan: no se sustituye su descripción observable actual prematuramente.
 
-No se ejecutan frontend ni E2E locales: no hay cambio de su superficie ni del
-relay. El E2E de PR y CI remota siguen pendientes de abrir el PR; no se certifican
-verificación visual, aceptación humana, despliegue coordinado ni F8 activo.
+No se ejecutaron frontend ni E2E locales: no hay cambio de su superficie ni del
+relay. Sí se verificaron en CI como consta a continuación. No se certifican
+verificación visual, aceptación humana, fusión, despliegue coordinado ni F8 activo.
+
+### CI y revisión remotas de PR #76 — 2026-11-13
+
+SHA funcional revisado: `d43722274759583d03ca13fb73f504b3c9056066`.
+`git_pr_checks(wait_mode="all")` terminó con:
+
+```text
+Summary: 7 passed, 0 failed, 0 pending, 0 skipped
+```
+
+| Evento | Run | Resultado |
+|---|---|---|
+| `pull_request` | [43462708237](https://github.com/edsel9ra/bracket-craft/actions/runs/43462708237) | success; cinco jobs verdes, incluido E2E |
+| `push` | [43462371097](https://github.com/edsel9ra/bracket-craft/actions/runs/43462371097) | success; cuatro jobs verdes, E2E omitido por condición prevista |
+
+Logs remotos:
+
+```text
+Backend PR:   3548 passed, 4 skipped in 834.23s (0:13:54)
+Backend push: 3548 passed, 4 skipped in 858.15s (0:14:18)
+Frontend PR/push: tests 952; pass 951; fail 0; skipped 1
+Build PR:   Build complete in 11.7s!
+Build push: Build complete in 11.8s!
+E2E PR: 54 passed (5.8m); RESULTADO: VERDE (0)
+```
+
+Devin Review, review `5894554689` en ese SHA: «No Issues Found». API de
+`review_comments`: cero eventos, última página. No hubo hallazgos reales que
+corregir, falsos positivos que descartar ni fallos de CI. Se mantienen sin cambios
+el código funcional y los tests; esta actualización solo registra evidencia.
+
+Logs descargados en `/home/ubuntu/f8-pr76-initial-{pr,push}.log`. El commit
+documental posterior se vuelve a comprobar por CI; su resultado final se informa
+en la entrega, sin dar por fusionado el PR ni cerrar R32f.
