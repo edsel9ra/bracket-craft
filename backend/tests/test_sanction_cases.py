@@ -157,3 +157,25 @@ async def test_read_view_permission_is_independent_and_detail_is_private(cases):
     async with f.service() as service:
         with pytest.raises(LookupError):
             await service.detail(f.context, uuid4())
+
+
+async def test_preview_requires_view_and_resolve_and_never_writes(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f))
+    for permission in ("VIEW_SANCTION_CASES", "RESOLVE_SANCTION_CASES"):
+        await permissions(f, permission)
+        async with f.service() as service:
+            with pytest.raises(PermissionError):
+                await service.preview(f.context, receipt["id"])
+    await permissions(f, "VIEW_SANCTION_CASES", "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        result = await service.preview(f.context, receipt["id"])
+    assert result["expected_base_duration"] == 3
+    assert result["allowed_decisions"] == ["maintain", "annul", "reduce"]
+    assert result["can_decide"] is False
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM outbox_events") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 0

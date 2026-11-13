@@ -161,6 +161,20 @@ class SanctionCaseService:
         async with self.transaction(context, "VIEW_SANCTION_CASES"):
             return await self._detail(context, case_id)
 
+    async def preview(self, context, case_id):
+        async with self.transaction(context, "VIEW_SANCTION_CASES"):
+            await require_permission(self.db, context, "RESOLVE_SANCTION_CASES")
+            detail = await self._detail(context, case_id)
+            return self._preview(detail, context.user_id)
+
+    @staticmethod
+    def _preview(detail, actor_id):
+        case = detail["case"]
+        return {"id": case["id"], "status": case["status"], "projection": detail["projection"],
+            "expected_base_duration": case["base_duration"],
+            "allowed_decisions": ["maintain", "annul", "reduce"] if case["case_type"] == "appeal" else ["approve", "reject"],
+            "can_decide": case["status"] == "pending" and case["submitted_by_user_id"] != actor_id}
+
     async def _detail(self, context, case_id):
         case = await self.case(context, case_id)
         source = await self.source(context, case["suspension_id"])
