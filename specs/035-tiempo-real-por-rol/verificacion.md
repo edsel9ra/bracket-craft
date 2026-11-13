@@ -390,6 +390,104 @@ PostgreSQL dirigido usa el cluster local aislado `bc-f9-postgres` (5540) y el
 rol real `bracket_app` mediante SET ROLE, sin ejecutar MIGRATION_TARGET ni
 alterar contraseñas de aplicación. No hay inyección de fallo productiva.
 
-T27–T37 siguen pendientes: frontend, E2E real T32/T34, gates PostgreSQL completo,
+Al cerrar este tramo, T27–T37 seguían pendientes: frontend, E2E real T32/T34, gates PostgreSQL completo,
 frontend/infra/security finales, despliegue documentado y CI/revisión. Este estado
 intermedio no se despliega ni acredita PR B completo, aceptación F8 o cierre R32f.
+
+## PR B — T27–T36 y gate local T37 (2026-11-13)
+
+T19–T26 quedaron publicados previamente en `a19c086e`. Este tramo completa el
+frontend y las pruebas reales, sin nueva migración ni cambio de C1–C4:
+
+- `useRealtime`: generaciones de socket/contexto, identidad dentro de la clave
+  privada y descarte de callbacks/manager/timers antiguos; público conserva su socket.
+- Operación y Workspace: `useApi`, protección de GET/errores y carga inicial obsoletos,
+  limpieza ante denegación actual, lectura terminal y una intención trailing durante
+  acción ocupada. Se conservan controles de escritura y borradores clásico/táctico.
+- `realtime-private-context.test.ts`: 17 escenarios funcionales de composables/stores
+  reales ejecutados en VM, incluidos contexto vacío/ABA, terminal, acción exitosa o
+  fallida, respuestas fuera de orden, desmontaje y denegaciones 401/403/404.
+  Los primeros 14 se escribieron antes de implementar; tres regresiones adicionales
+  amplían contexto vacío, trailing tras cambio de contexto y respuesta tras desmontaje.
+  El rojo inicial incluía `h.realtime.captureContext is not a function` y `0 !== 1`
+  en recargas terminales/ocupadas. No se contabilizan como rojo funcional los fallos
+  de preparación del harness ni el ajuste de firma exigido por un test fuente existente.
+- E1/E2 en `e2e/private-realtime.spec.ts`, proyecto propio dentro del gate completo:
+  sesiones HTTP reales con CSRF, dos tenants, dos pestañas, multirrol, permisos vacíos,
+  retirada de oficial no requerido, payload mínimo, sonda excluida y paridad HTTP.
+  Captura `framereceived` antes del dispatcher; en los tres cortes de revocación usa
+  transporte Engine.IO/Socket.IO real sin UI para que una navegación por GET denegado
+  no cierre el socket antes de observar la evaluación posterior. La recuperación sí
+  usa el frontend real. Barreras IPC antes/después de SQL verifican tránsito aprobado,
+  retirada confirmada de rol/membresía/sesión y concesión/restablecimiento posterior
+  (sesión revocada: nuevo login, nunca desrevocar la anterior).
+- Fallo exclusivo de autorización y fallo independiente de 032: el válido sigue
+  conectado, el revocado no recibe RESYNC, la recuperación ocurre sin evento nuevo ni
+  replay y actualiza el marcador terminal por GET sin habilitar edición. Cambio real
+  de organización durante la suspensión reconstruye solo el contexto vigente; el
+  receptor público sigue recibiendo su contrato anterior.
+- Arnés en `backend/tests/realtime_e2e_server.py`, IPC ignorado en `.auth/realtime`,
+  guardado por DEVELOPMENT_ENVS antes de instalar adaptadores. Sin ruta productiva
+  ni opción operativa de producción. Cadencia de dos segundos solo allí; producto
+  conserva 30. El override E2E cambia únicamente entrypoint/mount; CI añade ese
+  override en una línea y el runner local lo reutiliza. Las fixtures se archivan al
+  acabar para no contaminar el descubrimiento público de las regresiones existentes.
+- README/AGENTS enlazan el runbook coordinado: 055 previa, retirar todos los API
+  antiguos y sus WebSockets, frontend actualizado, filas históricas compatibles,
+  ningún rollback a broadcast y ninguna eliminación/rebobinado de outbox/migraciones.
+
+Resultados locales finales:
+
+```text
+RUN_DATABASE_TESTS=1 pytest -q: 3617 passed in 650.81s (0:10:50)
+pytest -q tests/test_realtime_e2e_fixture.py: 4 passed in 1.25s
+pytest -q tests/test_realtime_delivery.py -k rollout: 2 passed, 64 deselected in 0.85s
+Ruff: All checks passed!
+compileall -q app: exit 0
+Bandit -r app -ll: Low 12, Medium 0, High 0
+pnpm test: tests 969; pass 968; fail 0; skipped 1
+pnpm run typecheck: exit 0
+pnpm run lint: exit 0
+pnpm run build: Build complete in 11.0s!
+pnpm run typecheck:e2e: exit 0
+pnpm run e2e:test: 59 passed (5.2m); RESULTADO: VERDE (0)
+Infraestructura CI desarrollo + producción, contratos, versiones y shell: OK
+055 clean + reejecución idempotente; 55 checksums registrados: OK
+055 incremental + reejecución idempotente; 55 checksums registrados: OK
+todas las pruebas de MIGRATION_TARGET: OK
+pip-audit: No known vulnerabilities found
+pnpm audit: Dependencias auditadas 524; Resultado: OK
+Gitleaks snapshot de trabajo: no leaks found
+Trivy snapshot de trabajo: requirements.txt 0; pnpm-lock.yaml 0; secrets 0
+git diff --check: exit 0
+```
+
+pnpm muestra cinco avisos no accionables (node-forge moderate y deepmerge low sin
+corrección); no hay excepciones nuevas. El build conserva el aviso preexistente
+`Cannot extract styles ... operation.css ... Its styles will not be inlined when
+server-rendering`, también presente en los logs B2/C: Node 24/Nuxt preparados y
+build correcto; no se cambian estilos ni se aplica un workaround de entorno.
+
+El seed de la pila reutilizada abortó por avance demo SF1 modificado por pruebas
+anteriores (`RuntimeError: El avance de SF1 no coincide con el estado demo esperado`).
+Se descartó esa corrida de preparación y se creó `bc_f8_b_e2e_verified`, con init real,
+migraciones 001–055, seed real y API/worker Compose dirigidos a ella sin editar `.env`.
+Ahí pasó el gate completo de 59 pruebas, no solo las cinco nuevas. La suite backend
+usó la base original del cluster local y terminó con 3617 pass sin skips. El runner
+Node/Playwright no lleva Docker CLI: su `server.log` lo declara; los logs API/worker
+se recogieron desde el host en `/home/ubuntu/f8-b-e2e-server.log`. Gates y salidas
+persistentes están en `/home/ubuntu/f8-b-*.log`, fuera del repositorio.
+
+MIGRATION_TARGET y la matriz clean/incremental se ejecutaron en el cluster aislado
+`bc-f9-postgres` (5540), no en el de la suite/Compose; se restauró su rol mediante
+`00_roles.sh`. No se interrumpió la suite ni se sustituyeron credenciales por comando.
+Los ajustes de preparación E2E (permisos IPC, hints de identidad del frontend tras
+login HTTP, CSRF/origen, dominio de correo válido y selector terminal correcto) no
+son rojos funcionales del producto. E1/E2 se construyeron sobre backend T19–T26 ya
+verde; no se afirma un rojo E2E de autorización anterior a ese backend.
+
+Sin nueva UI/copy ni cambios visuales: se conservaron regresiones ES/EN, teclado,
+tema y axe dentro del gate, pero **no se realizó inspección visual manual**.
+T1–T36 verificadas; T37 mantiene CI PR/push, revisión y fusión pendientes del PR
+que abrirá el usuario. No hubo despliegue productivo, PR nuevo, cierre R32f ni
+aceptación F8; F1 y F9 mantienen sus restricciones.

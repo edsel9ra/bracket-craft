@@ -35,9 +35,11 @@ let disposed = false;
 
 const workspaceReload = createReloadCoordinator(async () => {
   if (disposed) return;
+  const isCurrent = realtime.captureContext();
   try {
     await tournamentsStore.load();
   } catch (cause) {
+    if (disposed || !isCurrent()) return;
     await redirectOnSessionFailure(cause);
   }
 });

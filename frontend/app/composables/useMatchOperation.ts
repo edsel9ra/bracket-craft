@@ -43,6 +43,10 @@ export function useMatchOperation() {
   const { clearEventFieldIssues } = eventsActions;
 
   let disposed = false;
+  let refreshGeneration = 0;
+  let pendingReload = false;
+  const contextIsCurrent = realtime.captureContext();
+  const canUpdate = () => !disposed && contextIsCurrent();
 
   function failureMessage(cause: unknown, fallback: string): string {
     return errorMessage(cause, fallback);
@@ -66,11 +70,26 @@ export function useMatchOperation() {
   }
 
   async function refreshOperation(cause: SegmentRefreshCause = 'refresh') {
-    applyOperation(await fetchOperation(), cause);
+    if (!canUpdate()) return;
+    const deferWhileBusy = !busyAction.value;
+    const generation = ++refreshGeneration;
+    try {
+      const value = await fetchOperation();
+      if (!canUpdate() || generation !== refreshGeneration) return;
+      if (deferWhileBusy && busyAction.value) {
+        pendingReload = true;
+        return;
+      }
+      applyOperation(value, cause);
+    } catch (failure) {
+      if (!canUpdate() || generation !== refreshGeneration) return;
+      if (isUnauthorized(failure) || isForbidden(failure) || isNotFound(failure)) operation.value = null;
+      throw failure;
+    }
   }
 
   function requestOperationReload(trigger: ReloadTrigger, payload?: unknown) {
-    if (!payloadTargetsMatch(payload) || busyAction.value || isTerminal.value) return;
+    if (!canUpdate() || !payloadTargetsMatch(payload)) return;
     const decision = decideReload({
       consumer: 'workspace',
       trigger,
@@ -78,6 +97,10 @@ export function useMatchOperation() {
       initializedWithJoin: realtime.initialization.initializedWithJoin,
     });
     if (decision.action === 'reload') {
+      if (busyAction.value) {
+        pendingReload = true;
+        return;
+      }
       void operationReload.request({ resetPagination: decision.resetPagination });
     }
   }
@@ -102,12 +125,14 @@ export function useMatchOperation() {
     callback: () => Promise<void>,
     onError?: (cause: unknown) => boolean,
   ) {
+    if (!canUpdate()) return;
     busyAction.value = action;
     actionError.value = null;
     clearEventFieldIssues();
     try {
       await callback();
     } catch (cause) {
+      if (!canUpdate()) return;
       if (await redirectOnSessionFailure(cause)) return;
       if (onError?.(cause)) return;
       openingBlocked.value = null;
@@ -120,6 +145,10 @@ export function useMatchOperation() {
       actionError.value = failureMessage(cause, t('match.noOperation'));
     } finally {
       busyAction.value = null;
+      if (pendingReload) {
+        pendingReload = false;
+        if (canUpdate()) void operationReload.request();
+      }
     }
   }
 
@@ -212,13 +241,24 @@ export function useMatchOperation() {
   }
 
   const operationReload = createReloadCoordinator(async () => {
-    if (disposed) return;
+    if (!canUpdate()) return;
+    if (busyAction.value) {
+      pendingReload = true;
+      return;
+    }
     try {
       await refreshOperation();
     } catch (cause) {
+      if (!canUpdate()) return;
       if (!(await redirectOnSessionFailure(cause))) actionError.value = failureMessage(cause, t('match.noLoad'));
     }
   });
+
+  watch(realtime.contextKey, () => {
+    operation.value = null;
+    pendingReload = false;
+    refreshGeneration += 1;
+  }, { flush: 'sync' });
 
   useHead(() => ({
     title: `${t('match.matchReport')} | Bracket Craft`,
@@ -329,6 +369,7 @@ export function useMatchOperation() {
 
   const unmountOperation = () => {
     disposed = true;
+    pendingReload = false;
     window.removeEventListener('beforeunload', handleBeforeUnload);
     realtime.disconnect();
   };

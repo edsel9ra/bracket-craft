@@ -285,7 +285,8 @@ async function prepareStack(noStack: boolean): Promise<StackPreparation> {
   const startedAt = Date.now();
   const up = await runCommand(
     'docker',
-    ['compose', 'up', '-d', '--build', '--wait', '--wait-timeout', '300'],
+    ['compose', '-f', 'docker-compose.yml', '-f', 'frontend/e2e/docker-compose.realtime.yml',
+      'up', '-d', '--build', '--wait', '--wait-timeout', '300'],
     { cwd: REPO_ROOT, timeoutMs: MAX_MS.stackStart },
   );
   if (up.code !== 0 || up.timedOut) {

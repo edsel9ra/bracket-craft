@@ -158,65 +158,69 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 - Tests primero: S1 pausa entre consulta/control/emit y cambia o desconecta el contexto, incluidas sesiones diferentes del mismo usuario y sid nuevo.
 - Hecho cuando: antes de emitir se comprueba generación/contexto, sin aplicar la autorización de A a B ni confundir el caso con la entrega aprobada en tránsito de DA-2. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k generation`.
 
-- [ ] **T27. Aislar callbacks y respuestas HTTP del contexto frontend anterior.** RF-010, RF-015, RF-017, RF-018
+- [x] **T27. Aislar callbacks y respuestas HTTP del contexto frontend anterior.** RF-010, RF-015, RF-017, RF-018
 - Dependencias: T26; PR B.
 - Tests primero: F1 del composable real con cambio de usuario/organización mientras hay callback, reconexión o GET pendiente; contexto vacío/error.
 - Hecho cuando: `useRealtime.ts` y consumidores ignoran generaciones viejas, limpian suscripción/marcas y mantienen un socket del contexto vigente; usan `useApi`. Pasa `cd frontend && pnpm test` con los nuevos escenarios incluidos, sin limitarse a regex del código fuente.
 
-- [ ] **T28. Conservar dispatcher y deduplicación con las invalidaciones mínimas.** RF-013, RF-015, RF-016, RF-018
+- [x] **T28. Conservar dispatcher y deduplicación con las invalidaciones mínimas.** RF-013, RF-015, RF-016, RF-018
 - Dependencias: T21, T24, T27; PR B.
 - Tests primero: F1 entrega los tres IDs, mismo `event_id` repetido, varios IDs de una publicación, RESYNC válido/vacío/malformado y eventos públicos actuales.
 - Hecho cuando: no se depende de `version_id/rectified_at`, no se añade callback redundante a `MATCH_REPORT_RECTIFIED` ni se multiplican recargas/suscripciones respecto al baseline. Pasa `cd frontend && pnpm test`, incluidas `realtime-dedup.test.ts` y `realtime-reload.test.ts`.
 
-- [ ] **T29. Reconstruir por HTTP la operación de un acta terminal.** RF-013, RF-015, RF-017
+- [x] **T29. Reconstruir por HTTP la operación de un acta terminal.** RF-013, RF-015, RF-017
 - Dependencias: T27, T28; PR B.
 - Tests primero: F2 reproduce en rojo el composable real descartando RESYNC/invalidación con `isTerminal`; casos de partido distinto, vacío y GET fallido.
 - Hecho cuando: una lectura autorizada de terminal sí se solicita y actualiza, sin habilitar edición, reabrir acta ni usar el evento como credencial. Pasa `cd frontend && pnpm test` con regresión del composable y de controles de escritura terminal.
 
-- [ ] **T30. Consolidar la recarga aplazada durante una acción ocupada.** RF-010, RF-015, RF-017, RF-018
+- [x] **T30. Consolidar la recarga aplazada durante una acción ocupada.** RF-010, RF-015, RF-017, RF-018
 - Dependencias: T29; PR B.
 - Tests primero: F2 reproduce pérdida de señal durante `busyAction`, múltiples señales, éxito/error de acción y cambio de contexto antes de finalizar; borrador local y planilla clásica/táctica.
 - Hecho cuando: una sola intención trailing sobrevive hasta poder leer, no se aplica a otro contexto ni borra borradores/ediciones por el filtro; el coordinador no duplica recargas. Pasa `cd frontend && pnpm test` con pruebas reales del composable y regresiones de hidratación de planilla.
 
-- [ ] **T31. Reconstruir Workspace con la autorización HTTP vigente.** RF-005, RF-010, RF-015, RF-017, RF-018
+- [x] **T31. Reconstruir Workspace con la autorización HTTP vigente.** RF-005, RF-010, RF-015, RF-017, RF-018
 - Dependencias: T27, T28, T30; PR B.
 - Tests primero: F2 comprueba invalidación/RESYNC, GET autorizado/vacío/401/403/404 y respuesta antigua después de cambiar organización.
 - Hecho cuando: Workspace usa `useApi`, conserva coordinación de recargas y tratamiento de acceso/error, no restaura detalle desde evento ni conserva una recarga denegada como exitosa. Pasa `cd frontend && pnpm test`.
 
-- [ ] **T32. Preparar la observación E2E de receptores reales.** RF-001, RF-002, RF-006, RF-010
+- [x] **T32. Preparar la observación E2E de receptores reales.** RF-001, RF-002, RF-006, RF-010
 - Nota: desglose interno sin cambio de alcance, 2026-11-13; confirmado por el usuario, C4 intacta y B en un único PR:
-  - [ ] T32a: fixtures aisladas de dos tenants y sesiones reales.
-  - [ ] T32b: captura del transporte por receptor antes del dispatcher.
-  - [ ] T32c: arnés de barreras de commit/evaluación entre procesos.
+  - [x] T32a: fixtures aisladas de dos tenants y sesiones reales.
+  - [x] T32b: captura del transporte por receptor antes del dispatcher.
+  - [x] T32c: arnés de barreras de commit/evaluación entre procesos.
+- Precisión de ejecución, 2026-11-13: E1/E2 quedan en `e2e/private-realtime.spec.ts`, proyecto `private-realtime`, junto a las regresiones workspace/operation/public existentes. Ejecutar `pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` o el gate completo `pnpm run e2e:test`; los comandos originales siguientes conservan su papel de regresión.
 - Dependencias: T19, T22, T26, T31; PR B.
 - Tests primero: E1 con fixtures sintéticas de dos tenants, sesiones/roles/pestañas y captura del socket **antes** del dispatcher; control de orden de publicación/commit desde el arnés.
 - Hecho cuando: las aserciones de recepción/no recepción no se satisfacen solo ocultando UI; no se añade endpoint productivo ni se amplía seed de producción. Pasan `cd frontend && pnpm run typecheck:e2e` y `cd frontend && pnpm exec playwright test e2e/realtime-workspace.spec.ts --project workspace` con el escenario de fixtures incluido.
 
-- [ ] **T33. Verificar autorización y revocación con sockets abiertos.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-007, RF-008, RF-009, RF-011, RF-013
+- [x] **T33. Verificar autorización y revocación con sockets abiertos.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-007, RF-008, RF-009, RF-011, RF-013
 - Dependencias: T14, T32; PR B.
 - Tests primero: E1 compara GET/socket para lectores generales, multirrol, otro tenant y asignados/no asignados; retira sesión/membresía/rol con orden de commit controlado y concede de nuevo donde corresponda.
 - Hecho cuando: el desautorizado no recibe ni existencia ni IDs; retirar oficial/permiso no requerido no restringe HTTP ni evento, y tránsito aprobado antes del corte se distingue del posterior. Pasa `cd frontend && pnpm exec playwright test e2e/realtime-workspace.spec.ts --project workspace`.
 
-- [ ] **T34. Verificar recuperación real sin replay y público independiente.** RF-010, RF-014, RF-015, RF-016, RF-017, RF-018
+- [x] **T34. Verificar recuperación real sin replay y público independiente.** RF-010, RF-014, RF-015, RF-016, RF-017, RF-018
 - Nota: desglose interno sin cambio de alcance, 2026-11-13; confirmado por el usuario, C4 intacta y B en un único PR:
-  - [ ] T34a: inyección de fallo exclusiva de autorización en fixture/arnés de pruebas, sin ruta productiva ni configuración de producción.
-  - [ ] T34b: recuperación sin evento adicional, sin replay y con sockets conectados.
-  - [ ] T34c: acta terminal, contexto cambiado y carril público independiente.
+  - [x] T34a: inyección de fallo exclusiva de autorización en fixture/arnés de pruebas, sin ruta productiva ni configuración de producción.
+  - [x] T34b: recuperación sin evento adicional, sin replay y con sockets conectados.
+  - [x] T34c: acta terminal, contexto cambiado y carril público independiente.
 - Dependencias: T24, T25, T29, T30, T31, T32; PR B.
 - Tests primero: E2 interrumpe solo comprobación privada mediante arnés de test, mantiene sockets, publica, recupera sin evento adicional y observa RESYNC+GET; acta terminal y contexto cambiado.
 - Hecho cuando: no hay replay, desconexión masiva ni señal privada pública, se reconstruye contexto vigente y el receptor público mantiene contrato/recuperación. Pasan `cd frontend && pnpm exec playwright test e2e/realtime-operation.spec.ts --project operation` y `cd frontend && pnpm exec playwright test e2e/realtime-public.spec.ts --project public`.
 
-- [ ] **T35. Verificar regresión frontend, accesibilidad e idioma.** RF-010, RF-013, RF-015, RF-016, RF-017, RF-018
+- [x] **T35. Verificar regresión frontend, accesibilidad e idioma.** RF-010, RF-013, RF-015, RF-016, RF-017, RF-018
 - Dependencias: T27–T34; PR B.
 - Tests primero: F1/F2 y regresiones existentes, sin crear etiquetas/estados de conexión nuevos; si hubiera mensaje visible necesario, test ES/EN, teclado y ausencia de recursos denegados.
 - Hecho cuando: pasan `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck`, `cd frontend && pnpm run lint`, `cd frontend && pnpm run build` y `cd frontend && pnpm run typecheck:e2e`. Documentar si no hay UI nueva; cualquier cambio visual exige inspección real y evidencia, no afirmar validación visual por build.
 
-- [ ] **T36. Preparar despliegue coordinado y contingencia fail-closed.** RF-002, RF-011, RF-014, RF-016, RF-017, RF-020
+- [x] **T36. Preparar despliegue coordinado y contingencia fail-closed.** RF-002, RF-011, RF-014, RF-016, RF-017, RF-020
 - Dependencias: T20, T22, T23, T25, T26, T34; PR B.
 - Tests primero: S1/S2 ensayan función ausente/error de migración y contingencia sin emisiones organizativas, manteniendo HTTP/público. Revisar el procedimiento para no dejar procesos API antiguos haciendo broadcast.
 - Hecho cuando: README/AGENTS documentan migración previa, sustitución/drenaje de todos los API, compatibilidad de filas históricas y rollback que **no** restaura rooms vulnerables ni borra migración/outbox. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k rollout` y `git diff --check`; no se ejecuta despliegue productivo como parte de la prueba.
 
 - [ ] **T37. Gate indivisible de PR B.** RF-001, RF-002, RF-006, RF-011, RF-012, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
+- [x] Gate local completo (2026-11-13): backend PostgreSQL 3617 pass; frontend 968 pass/1 skip; E2E Compose 59 pass; infraestructura, migraciones 055/runner y escaneos. Evidencia y límites en `verificacion.md`.
+- [ ] CI de PR/push y revisión de B: pendientes de apertura del PR por el usuario.
+- [ ] Fusión de B: pendiente; no iniciar C ni declarar F8/R32f aceptados.
 - Dependencias: T18–T36; PR B.
 - Tests primero: regresión completa y E1/E2 mínimos, incluida no recepción antes de UI, sin posponer estos controles a C.
 - Hecho cuando: pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `cd backend && python -m compileall -q app`, `cd frontend && pnpm run e2e:test` y `git diff --check`, junto con frontend T35 e infrastructure/security de CI. CI PR/push verdes y revisión de B; no hay fallback a broadcast ni implantación parcial. Fusionar B antes de C, sin declarar aún cierre R32f/F8 aceptado.

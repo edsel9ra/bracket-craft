@@ -22,16 +22,17 @@ const context = useMatchOperation();
 const { action, actionDisabled, activateAction } = useMatchOperationView(context);
 const { auth, t, matchId, operation, loading, error, actionError, openingBlocked, busyAction, match, isTerminal, canOperateMatch, workspaceBreadcrumbs, tournamentContext, operationChecklist, loadPersistedDraft, failureMessage, redirectOnSessionFailure, applyOperation, fetchOperation, retryOperation, createSegment, teamRosterLink, restoreSelectedSegment } = context;
 
+const initialContextIsCurrent = context.realtime.captureContext();
 const { data: initialOperation, error: initialOperationError } = await useAsyncData<MatchOperation>(
   `workspace-match-${matchId}-${auth.userId || 'none'}-${auth.organizationId || 'none'}-${auth.sessionVersion}`,
   fetchOperation,
 );
 
-if (initialOperationError.value) {
+if (initialContextIsCurrent() && initialOperationError.value) {
   if (!(await redirectOnSessionFailure(initialOperationError.value))) {
     error.value = failureMessage(initialOperationError.value, t('match.noLoad'));
   }
-} else if (initialOperation.value) {
+} else if (initialContextIsCurrent() && initialOperation.value) {
   // Primer prerrelleno del formulario de segmento: es el único refresco que
   // escribe el minuto propuesto además de crear o interrumpir.
   applyOperation(initialOperation.value, 'mount');

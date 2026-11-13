@@ -6,10 +6,10 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T26 verificadas. Gate privado conectado en código, por sid y sin broadcast; recuperación con 032. PR B incompleto, no desplegar: T27–T37 pendientes; R32f sigue abierto y F8 no está aceptado.
+- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T36 verificadas, gate local T37 completo. Entrega privada por sid y recuperación 032/HTTP; frontend descarta generaciones obsoletas y consolida recargas terminales/ocupadas. PR B sin abrir, CI/revisión/fusión pendientes; R32f sigue abierto y F8 no está aceptado.
 
 ## Pendiente
-- Spec 035: seguir T27–T37 (frontend, E2E real, despliegue y gates completos) antes de publicar B como terminado. T19–T26: unitarios sin DB 2673 pass/940 skip; DB dirigidos 52+66 pass. Falta PostgreSQL completo, frontend/E2E, infra/security final y CI/revisión. No se habilitan F1 ni Socket.IO para F9.
+- Spec 035: usuario abre PR B y completa CI PR/push, revisión y fusión (T37); después C. Gates locales: backend PostgreSQL 3617 pass, frontend 968 pass/1 skip, typecheck/lint/build/E2E types OK, E2E Compose 59 pass, infra/migraciones 055/runner y escaneos OK. Arnés de pruebas sustituye adaptador solo en desarrollo; runbook en docs/despliegue-tiempo-real-por-rol.md. Sin despliegue, UI nueva ni aceptación humana; no se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
 - 2026-11-13 · Spec 035 · Usuario descarta 056: C3 reutiliza 032 SECURITY INVOKER por lotes de hasta 256 sockets suspendidos; válidos reciben RESYNC RELAY_START dirigido, inválidos tratamiento 032, error/fila ausente conserva suspensión y reintenta. Sin recursos ni replay; HTTP autoriza cada reconstrucción. Precisión en plan sin cambiar C3.
