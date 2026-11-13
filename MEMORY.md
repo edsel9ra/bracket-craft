@@ -3,7 +3,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
 - specs/034-apelaciones-sanciones — fase actual: Implementación, PR A — spec, plan y tareas aprobados por el usuario el 2026-11-12.
-- PR A T1–T10 implementadas con tests primero y commits por tarea; validación final y push en curso. B dividido por el usuario en B1 (lectores/cumplimientos sin escrituras de expedientes) y B2 (API y efectos coordinados); luego C y D. C1–C5 confirmadas, 34 RF cubiertos.
+- PR A T1–T10 implementadas con tests primero y commits por tarea; checks locales completos, entrega en rama sin abrir PR. B dividido por el usuario en B1 (lectores/cumplimientos sin escrituras de expedientes) y B2 (API y efectos coordinados); luego C y D. C1–C5 confirmadas, 34 RF cubiertos.
 
 ## Decisiones tomadas
 - 2026-11-12 · Spec 034 · Tareas aprobadas por el usuario; B1 T11/T12/T14/T15/T24/T25/T26/T35, resto de T11–T39 en B2. Sin resoluciones, lector efectivo equivale al original; B1 no activa escrituras de expedientes. Fase actual Implementación, PR A.
@@ -30,6 +30,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - 2026-11-12 · Spec 034 · DA-5 cerrada por el usuario: sin efecto suspensivo ni suspensión provisional por el recurso; la sanción sigue bloqueando conforme a los controles actuales hasta una resolución aplicable.
 
 ## Estado (entrada más reciente primero; el resto es histórico)
+- 2026-11-13 · **034 PR A verificado:** PostgreSQL 17/Python 3.14, backend completo `3224 passed, 4 skipped`; ruff, compileall, bandit -ll, runner MIGRATION_TARGET y contratos/Compose desarrollo-producción correctos. La primera corrida detectó la allowlist antigua de FK a players; se añadió la pareja compuesta F9 manteniendo todas las aserciones de aislamiento. Frontend intacto, sin comprobación visual ni E2E nuevos; no es cierre de la spec.
 - 2026-11-13 · **034 PR A implementado:** 040 nueva, sin editar 001–039/hardening, RLS/FORCE y capacidades propias sin membresía global ni BYPASSRLS; dominio puro de duración/primera apertura, sin rutas ni handlers activos. Integración de lectores/apertura en B1 y publicación 033/API/avisos en B2; no avanzados.
 - 2026-11-13 · **034 detalles mínimos:** avisos conservan UUID de outbox sin FK permanente a la cola purgable (como 033); trigger valida acto, destinatario, organización, tipo y payload al insertarlos. Entrega exige evento reclamado y revalida acceso sin suplantar miembros; legado temporal incierto conserva restricción acreditada y exige revisión.
 - 2026-11-12 · **034 Tareas aprobadas:** fase Tareas cerrada, Implementación PR A. #68 fusionado por squash; la rama funcional nace de origin/main y lleva la aprobación que aún no estaba en main.
