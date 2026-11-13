@@ -107,7 +107,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
 - Hecho cuando: cancelación/recreación/cambio disciplinario cierra expedientes con referencia/motivo; marcador sin cambio no cierra; fallo del puente revierte publicación y outbox completos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k closure`.
 
-- [ ] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017
+- [x] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017
 - Hecho cuando: duración derivada original no neutraliza reducción; recreación no copia efecto/autorización y deja constancia; resolución pendiente afectada queda excluida explícitamente. Deduplicación de rojas y dependencias de regeneración conservan existencia histórica. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k reconcile` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py`, incluido el inventario de lectores.
 
 - [ ] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013

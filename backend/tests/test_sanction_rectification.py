@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.sanction_appeals.cases import SanctionCaseService
-from app.modules.sanction_appeals.schemas import AppealRequest
+from app.modules.sanction_appeals.schemas import AppealRequest, DecisionRequest
 from app.modules.rectifications import effects
 from migration_helpers import apply_migrations
 from test_migration_031 import ORG, PLAYER_HOME_FIRST
@@ -24,6 +24,12 @@ async def case_service(flow):
             yield SanctionCaseService(db)
 
 
+async def publication_only(flow, context):
+    await flow.admin.execute("""UPDATE roles SET permissions='["APPROVE_MATCH_REPORT_RECTIFICATION"]'
+        WHERE organization_id=$1 AND id IN (SELECT role_id FROM organization_user_roles
+            WHERE organization_id=$1 AND organization_user_id=$2)""", ORG, context.organization_user_id)
+
+
 @pytest.mark.parametrize("changed", [False, True])
 async def test_closure_from_publication_without_case_view(flow, changed):
     await apply_migrations(flow.admin, first=44)
@@ -32,6 +38,7 @@ async def test_closure_from_publication_without_case_view(flow, changed):
     request = await submit(flow, body)
     assert (await decide(flow, request)).status_code == 200
     approver = flow.context
+    await publication_only(flow, approver)
     suspension = await flow.admin.fetchval("SELECT id FROM player_suspensions")
     async with case_service(flow) as service:
         case = await service.submit_appeal(requester, AppealRequest(
@@ -79,3 +86,53 @@ async def test_closure_failure_rolls_back_publication(flow, monkeypatch):
     assert await flow.admin.fetchval("SELECT count(*) FROM sanction_case_events") == 1
     assert await flow.admin.fetchval("SELECT count(*) FROM match_report_versions") == 1
     assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events") == before
+
+
+@pytest.mark.parametrize("action", ["annul", "reduce"])
+async def test_reconcile_does_not_recreate_or_erase_f9_resolution(flow, action):
+    await apply_migrations(flow.admin, first=44)
+    requester = flow.context
+    body = card_report()
+    request = await submit(flow, body)
+    assert (await decide(flow, request)).status_code == 200
+    approver = flow.context
+    source = dict(await flow.admin.fetchrow("SELECT * FROM player_suspensions"))
+    if action == "annul":
+        await flow.admin.execute("UPDATE player_suspensions SET status='served' WHERE id=$1", source["id"])
+    async with case_service(flow) as service:
+        case = await service.submit_appeal(requester, AppealRequest(suspension_id=source["id"],
+            represented_player_id=PLAYER_HOME_FIRST, reason="Recurso"))
+    async with case_service(flow) as service:
+        await service.decide(approver, case["id"], DecisionRequest(decision=action, expected_base_duration=source["matches_suspended"],
+            after_duration=0 if action == "reduce" else None, reason="Resolución F9"))
+    resolution = dict(await flow.admin.fetchrow("SELECT * FROM sanction_resolutions"))
+    unchanged = deepcopy(body)
+    unchanged["proposed_report"]["events"][-1]["minute"] = 25
+    await publication_only(flow, approver)
+    flow.context = requester
+    response = await create(flow, unchanged)
+    flow.context = approver
+    response = await decide(flow, response.json()["id"], expected_base_version=2)
+    assert response.status_code == 200, response.text
+    assert await flow.admin.fetchval("SELECT count(*) FROM player_suspensions") == 1
+    assert dict(await flow.admin.fetchrow("SELECT * FROM sanction_resolutions")) == resolution
+    assert await flow.admin.fetchval("SELECT count(*) FROM sanction_case_events WHERE event_type='affected_by_rectification'") == 0
+    flow.context = requester
+    response = await create(flow, proposal())
+    flow.context = approver
+    response = await decide(flow, response.json()["id"], expected_base_version=3)
+    assert response.status_code == 200, response.text
+    assert await flow.admin.fetchval("SELECT count(*) FROM sanction_case_events WHERE event_type='affected_by_rectification'") == 1
+    assert dict(await flow.admin.fetchrow("SELECT * FROM sanction_resolutions")) == resolution
+    flow.context = requester
+    response = await create(flow, body)
+    flow.context = approver
+    response = await decide(flow, response.json()["id"], expected_base_version=4)
+    assert response.status_code == 200, response.text
+    successor = await flow.admin.fetchval("SELECT id FROM player_suspensions WHERE status='active'")
+    assert successor != source["id"]
+    assert await flow.admin.fetchval("SELECT count(*) FROM sanction_resolutions WHERE suspension_id=$1", successor) == 0
+    async with case_service(flow) as service:
+        new_case = await service.submit_appeal(requester, AppealRequest(suspension_id=successor,
+            represented_player_id=PLAYER_HOME_FIRST, reason="Revisión expresa", prior_case_id=case["id"]))
+    assert new_case["id"] != case["id"]
