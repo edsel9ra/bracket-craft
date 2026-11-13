@@ -89,9 +89,7 @@ async def test_auxiliary_private_authorizations_prejudice_notifications(f9_db):
     db, suspension = f9_db
     case_id = await insert_case(db, suspension)
     admin = await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-platform@test.invalid','Platform') RETURNING id")
-    authorization = await db.fetchval("""INSERT INTO sanction_platform_authorizations
-        (organization_id,case_id,granted_by_member_id,platform_admin_user_id,reason)
-        VALUES ($1,$2,$3,$4,'Exceptional decision') RETURNING id""", ORG, case_id, MEMBER, admin)
+    authorization = await authorize_platform(db, case_id, admin)
     assert authorization
     await db.execute("""INSERT INTO sanction_prejudice_records
         (organization_id,case_id,match_id,recorded_by_user_id,reason)
@@ -222,6 +220,86 @@ async def test_permissions_defaults_and_minimal_operational_facts(f9_db):
         async with db.transaction():
             await app_context(db, org=str(uuid4()))
             await db.fetch("SELECT * FROM sanction_operational_facts($1)", MATCH)
+
+
+async def authorize_platform(db, case_id, admin):
+    await db.execute("INSERT INTO platform_admins(user_id,role_code) VALUES ($1,'platform_admin')", admin)
+    role = await db.fetchval("""INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+        SELECT $1,id,'F9 owner',system_permissions FROM role_definitions WHERE code='owner' RETURNING id""", ORG)
+    await db.execute("INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES ($1,$2,$3)", ORG, MEMBER, role)
+    await db.execute("SELECT set_config('app.current_user_id',$1,false)", USER)
+    return await db.fetchval("""INSERT INTO sanction_platform_authorizations
+        (organization_id,case_id,granted_by_member_id,platform_admin_user_id,reason)
+        VALUES ($1,$2,$3,$4,'Exceptional decision') RETURNING id""", ORG, case_id, MEMBER, admin)
+
+
+async def test_platform_scopes_are_case_local_and_not_membership(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension, kind="administrative_proposal")
+    admin = await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-scoped@test.invalid','Admin') RETURNING id")
+    authorization = await authorize_platform(db, case_id, admin)
+    async with db.transaction():
+        await app_context(db, user=str(admin))
+        await db.execute("SELECT set_config('app.rectification_authorization_id',$1,true)", str(authorization))
+        assert not await db.fetchval("SELECT sanction_platform_scope($1)", case_id)
+        await db.execute("SELECT set_config('app.sanction_authorization_id',$1,true)", str(authorization))
+        assert await db.fetchval("SELECT sanction_platform_scope($1)", case_id)
+        assert not await db.fetchval("SELECT sanction_platform_scope($1)", uuid4())
+        assert not await db.fetchval("SELECT fn_verify_user_org_membership($1)", ORG)
+        assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 1
+        assert await db.fetchval("SELECT count(*) FROM player_suspensions") == 0
+        source = json.loads(await db.fetchval("SELECT sanction_platform_source($1)", case_id))
+        assert source["id"] == str(suspension)
+        assert "reason" not in source
+        decision = uuid4()
+        await db.execute("""INSERT INTO sanction_case_decisions
+            (id,organization_id,case_id,decided_by_user_id,decided_as,authorization_id,decision,reason,before_duration)
+            VALUES ($1,$2,$3,$4,'platform_admin',$5,'reject','Verified',3)""", decision, ORG, case_id, admin, authorization)
+        await db.execute("SELECT sanction_finalize_case($1)", case_id)
+        assert not await db.fetchval("SELECT sanction_platform_scope($1)", case_id)
+    assert await db.fetchval("SELECT consumed_at IS NOT NULL FROM sanction_platform_authorizations WHERE id=$1", authorization)
+    assert await db.fetchval("SELECT count(*) FROM platform_audit_logs WHERE action='DECIDE_SANCTION_CASE'") == 1
+    assert await db.fetchval("SELECT count(*) FROM administrative_audit_logs WHERE action='DECIDE_SANCTION_CASE'") == 1
+    async with db.transaction():
+        await app_context(db, user=str(admin))
+        assert not await db.fetchval("SELECT sanction_platform_scope($1)", case_id)
+
+
+@pytest.mark.parametrize("invalidated", ["owner", "admin", "support", "organization", "revoked"])
+async def test_platform_authority_revalidated(f9_db, invalidated):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    admin = await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-invalid@test.invalid','Admin') RETURNING id")
+    authorization = await authorize_platform(db, case_id, admin)
+    if invalidated == "owner":
+        await db.execute("UPDATE organization_users SET is_active=FALSE WHERE id=$1", MEMBER)
+    elif invalidated == "admin":
+        await db.execute("UPDATE users SET is_active=FALSE WHERE id=$1", admin)
+    elif invalidated == "support":
+        await db.execute("UPDATE platform_admins SET role_code='platform_support' WHERE user_id=$1", admin)
+    elif invalidated == "organization":
+        await db.execute("UPDATE organizations SET is_active=FALSE WHERE id=$1", ORG)
+    else:
+        await db.execute("SELECT sanction_revoke_authorization($1)", authorization)
+    async with db.transaction():
+        await app_context(db, user=str(admin))
+        await db.execute("SELECT set_config('app.sanction_authorization_id',$1,true)", str(authorization))
+        assert not await db.fetchval("SELECT sanction_platform_scope($1)", case_id)
+        assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 0
+
+
+async def test_platform_self_decision_even_with_authorization(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension, kind="administrative_proposal")
+    authorization = await authorize_platform(db, case_id, USER)
+    with pytest.raises(asyncpg.CheckViolationError, match="SANCTION_SELF_DECISION"):
+        async with db.transaction():
+            await app_context(db)
+            await db.execute("SELECT set_config('app.sanction_authorization_id',$1,true)", str(authorization))
+            await db.execute("""INSERT INTO sanction_case_decisions
+                (organization_id,case_id,decided_by_user_id,decided_as,authorization_id,decision,reason,before_duration)
+                VALUES ($1,$2,$3,'platform_admin',$4,'approve','Own proposal',3)""", ORG, case_id, USER, authorization)
+    assert await db.fetchval("SELECT consumed_at FROM sanction_platform_authorizations WHERE id=$1", authorization) is None
 
 
 async def insert_decision(db, case_id, actor=None, action="reduce"):

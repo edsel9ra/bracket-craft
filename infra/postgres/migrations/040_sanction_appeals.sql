@@ -434,6 +434,9 @@ BEGIN
                 AND public.sanction_platform_scope(NEW.case_id))) THEN
         RAISE EXCEPTION 'SANCTION_DECISION_DENIED' USING ERRCODE = '42501';
     END IF;
+    IF NEW.decided_as = 'platform_admin' THEN
+        PERFORM public.sanction_lock_platform_authorization(NEW.case_id);
+    END IF;
     IF NEW.created_at <> CURRENT_TIMESTAMP OR NEW.before_duration <> target.base_duration
         OR (target.case_type = 'appeal' AND NEW.decision NOT IN ('maintain', 'annul', 'reduce'))
         OR (target.case_type = 'administrative_proposal' AND (NEW.decision NOT IN ('approve', 'reject')
@@ -509,6 +512,9 @@ BEGIN
     IF decided.id IS NOT NULL AND decided.decided_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
         AND (public.sanction_member_has_permission(target.organization_id, 'RESOLVE_SANCTION_CASES')
             OR public.sanction_platform_scope(target.id)) THEN
+        IF decided.decided_as = 'platform_admin' THEN
+            PERFORM public.record_sanction_platform_audit(decided.id);
+        END IF;
         UPDATE public.sanction_cases SET status = 'resolved' WHERE id = target.id;
     ELSIF event.id IS NOT NULL AND event.actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID THEN
         UPDATE public.sanction_cases SET status = event.event_type WHERE id = target.id;
@@ -632,5 +638,232 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.sanction_operational_facts(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.sanction_operational_facts(UUID) TO bracket_app;
+
+CREATE FUNCTION public.sanction_owner(target_org UUID)
+RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT ou.id FROM public.organization_users ou
+    JOIN public.users u ON u.id = ou.user_id AND u.is_active
+    JOIN public.organizations o ON o.id = ou.organization_id AND o.is_active
+    WHERE ou.organization_id = target_org AND ou.is_active
+        AND target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND ou.user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        AND EXISTS (SELECT 1 FROM public.organization_user_roles our
+            JOIN public.roles r ON r.id = our.role_id AND r.organization_id = our.organization_id
+            JOIN public.role_definitions rd ON rd.id = r.role_definition_id AND rd.code = 'owner'
+            WHERE our.organization_id = target_org AND our.organization_user_id = ou.id);
+$$;
+
+CREATE FUNCTION public.sanction_platform_candidate(target_email TEXT)
+RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT u.id FROM public.users u JOIN public.platform_admins pa ON pa.user_id = u.id
+    WHERE lower(u.email) = lower(btrim(target_email)) AND u.is_active AND pa.is_active AND pa.role_code = 'platform_admin'
+        AND public.sanction_owner(NULLIF(current_setting('app.current_organization_id', true), '')::UUID) IS NOT NULL;
+$$;
+
+CREATE FUNCTION public.sanction_valid_platform_authorizations()
+RETURNS TABLE (id UUID, organization_id UUID, case_id UUID, granted_by_member_id UUID)
+LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT a.id, a.organization_id, a.case_id, a.granted_by_member_id
+    FROM public.sanction_platform_authorizations a
+    JOIN public.sanction_cases c ON c.id = a.case_id AND c.organization_id = a.organization_id
+    JOIN public.platform_admins pa ON pa.user_id = a.platform_admin_user_id AND pa.is_active AND pa.role_code = 'platform_admin'
+    JOIN public.users actor ON actor.id = pa.user_id AND actor.is_active
+    JOIN public.organizations o ON o.id = a.organization_id AND o.is_active
+    JOIN public.organization_users owner ON owner.id = a.granted_by_member_id AND owner.organization_id = a.organization_id AND owner.is_active
+    JOIN public.users owner_user ON owner_user.id = owner.user_id AND owner_user.is_active
+    WHERE a.platform_admin_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        AND c.submitted_by_user_id <> a.platform_admin_user_id AND a.revoked_at IS NULL AND a.consumed_at IS NULL
+        AND EXISTS (SELECT 1 FROM public.organization_user_roles our
+            JOIN public.roles r ON r.id = our.role_id AND r.organization_id = our.organization_id
+            JOIN public.role_definitions rd ON rd.id = r.role_definition_id AND rd.code = 'owner'
+            WHERE our.organization_id = owner.organization_id AND our.organization_user_id = owner.id);
+$$;
+
+CREATE FUNCTION public.sanction_platform_scopes()
+RETURNS TABLE (id UUID, organization_id UUID, case_id UUID, granted_by_member_id UUID)
+LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT a.* FROM public.sanction_valid_platform_authorizations() a
+    JOIN public.sanction_cases c ON c.id = a.case_id AND c.status = 'pending';
+$$;
+
+CREATE OR REPLACE FUNCTION public.sanction_platform_scope(target_case UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT EXISTS (SELECT 1 FROM public.sanction_platform_scopes() a WHERE a.case_id = target_case
+        AND a.id = NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID
+        AND a.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID);
+$$;
+
+CREATE FUNCTION public.sanction_lock_platform_authorization(target_case UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE grant_record public.sanction_platform_authorizations;
+BEGIN
+    IF NOT public.sanction_platform_scope(target_case) THEN
+        RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO grant_record FROM public.sanction_platform_authorizations
+        WHERE id = NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID AND case_id = target_case FOR UPDATE;
+    PERFORM 1 FROM public.organization_users ou JOIN public.users u ON u.id = ou.user_id
+        JOIN public.organizations o ON o.id = ou.organization_id
+        WHERE ou.id = grant_record.granted_by_member_id FOR SHARE OF ou, u, o;
+    PERFORM 1 FROM public.organization_user_roles our
+        JOIN public.roles r ON r.id = our.role_id AND r.organization_id = our.organization_id
+        JOIN public.role_definitions rd ON rd.id = r.role_definition_id
+        WHERE our.organization_user_id = grant_record.granted_by_member_id AND our.organization_id = grant_record.organization_id
+        ORDER BY our.id FOR SHARE OF our, r, rd;
+    PERFORM 1 FROM public.platform_admins pa JOIN public.users u ON u.id = pa.user_id
+        WHERE pa.user_id = grant_record.platform_admin_user_id FOR SHARE OF pa, u;
+    IF NOT public.sanction_platform_scope(target_case) THEN
+        RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_platform_source(target_case UUID)
+RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE result JSONB;
+BEGIN
+    IF NOT public.sanction_platform_scope(target_case) THEN
+        RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    SELECT jsonb_build_object('id', ps.id, 'player_id', ps.player_id, 'source_tournament_id', ps.source_tournament_id,
+        'scope_type', ps.scope_type, 'matches_suspended', ps.matches_suspended, 'status', ps.status,
+        'origin_match_id', ps.origin_match_id, 'source_event_id', ps.source_event_id,
+        'source_version_event_id', ps.source_version_event_id, 'created_at', ps.created_at,
+        'stage_id', m.stage_id, 'tournament_version_id', m.tournament_version_id)
+        INTO result FROM public.sanction_cases c JOIN public.player_suspensions ps
+            ON ps.id = c.suspension_id AND ps.organization_id = c.organization_id
+        LEFT JOIN public.matches m ON m.id = ps.origin_match_id AND m.organization_id = ps.organization_id
+        WHERE c.id = target_case;
+    RETURN result;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_validate_authorization()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF NEW.granted_by_member_id IS DISTINCT FROM public.sanction_owner(NEW.organization_id)
+        OR public.sanction_owner(NEW.organization_id) IS NULL
+        OR NEW.revoked_at IS NOT NULL OR NEW.consumed_at IS NOT NULL OR NEW.granted_at <> CURRENT_TIMESTAMP
+        OR NOT EXISTS (SELECT 1 FROM public.sanction_cases WHERE id = NEW.case_id
+            AND organization_id = NEW.organization_id AND status = 'pending')
+        OR NOT EXISTS (SELECT 1 FROM public.platform_admins pa JOIN public.users u ON u.id = pa.user_id AND u.is_active
+            WHERE pa.user_id = NEW.platform_admin_user_id AND pa.is_active AND pa.role_code = 'platform_admin') THEN
+        RAISE EXCEPTION 'SANCTION_OWNER_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_authorization BEFORE INSERT ON public.sanction_platform_authorizations
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_authorization();
+
+CREATE OR REPLACE FUNCTION public.protect_sanction_authorization()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'SANCTION_HISTORY_IMMUTABLE' USING ERRCODE = '23514';
+    END IF;
+    IF (to_jsonb(NEW) - ARRAY['revoked_at', 'consumed_at']) IS DISTINCT FROM
+            (to_jsonb(OLD) - ARRAY['revoked_at', 'consumed_at'])
+        OR OLD.revoked_at IS NOT NULL OR OLD.consumed_at IS NOT NULL
+        OR num_nonnulls(NEW.revoked_at, NEW.consumed_at) <> 1 THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_AUTHORIZATION_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.revoked_at IS NOT NULL THEN
+        IF public.sanction_owner(OLD.organization_id) IS NULL OR NEW.revoked_at <> CURRENT_TIMESTAMP THEN
+            RAISE EXCEPTION 'SANCTION_OWNER_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+        END IF;
+    ELSE
+        IF NEW.consumed_at <> CURRENT_TIMESTAMP OR NOT EXISTS (
+            SELECT 1 FROM public.sanction_valid_platform_authorizations() a
+            JOIN public.sanction_case_decisions d ON d.authorization_id = a.id AND d.case_id = a.case_id
+            JOIN public.sanction_cases c ON c.id = a.case_id AND c.status = 'resolved'
+            WHERE a.id = OLD.id AND a.id = NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID
+                AND a.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+                AND d.decided_as = 'platform_admin' AND d.decided_by_user_id = OLD.platform_admin_user_id
+                AND EXISTS (SELECT 1 FROM public.platform_audit_logs l WHERE l.action = 'DECIDE_SANCTION_CASE'
+                    AND l.target_id = c.id AND l.payload->>'decision_id' = d.id::TEXT)
+                AND EXISTS (SELECT 1 FROM public.administrative_audit_logs l WHERE l.action = 'DECIDE_SANCTION_CASE'
+                    AND l.entity_id = c.id AND l.payload->>'decision_id' = d.id::TEXT)) THEN
+            RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_revoke_authorization(target_authorization UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF public.sanction_owner(NULLIF(current_setting('app.current_organization_id', true), '')::UUID) IS NULL THEN
+        RAISE EXCEPTION 'SANCTION_OWNER_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    UPDATE public.sanction_platform_authorizations SET revoked_at = CURRENT_TIMESTAMP
+        WHERE id = target_authorization AND organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+            AND revoked_at IS NULL AND consumed_at IS NULL;
+    IF NOT FOUND THEN RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501'; END IF;
+END;
+$$;
+
+CREATE FUNCTION public.record_sanction_platform_audit(target_decision UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE decided public.sanction_case_decisions; details JSONB;
+BEGIN
+    SELECT * INTO decided FROM public.sanction_case_decisions WHERE id = target_decision
+        AND decided_as = 'platform_admin' AND decided_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID;
+    IF decided.id IS NULL THEN RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501'; END IF;
+    PERFORM public.sanction_lock_platform_authorization(decided.case_id);
+    IF decided.authorization_id IS DISTINCT FROM NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID THEN
+        RAISE EXCEPTION 'SANCTION_AUTHORIZATION_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    details := jsonb_build_object('decision_id', decided.id, 'authorization_id', decided.authorization_id, 'decision', decided.decision);
+    IF NOT EXISTS (SELECT 1 FROM public.platform_audit_logs WHERE action = 'DECIDE_SANCTION_CASE'
+        AND target_id = decided.case_id AND payload->>'decision_id' = decided.id::TEXT) THEN
+        INSERT INTO public.platform_audit_logs(actor_user_id, action, target_type, target_id, organization_id, payload)
+            VALUES (decided.decided_by_user_id, 'DECIDE_SANCTION_CASE', 'sanction_cases', decided.case_id, decided.organization_id, details);
+        INSERT INTO public.administrative_audit_logs(organization_id, entity_type, entity_id, action, payload, performed_by_user_id)
+            VALUES (decided.organization_id, 'sanction_cases', decided.case_id, 'DECIDE_SANCTION_CASE', details, decided.decided_by_user_id);
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_consume_authorization()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF NEW.status = 'resolved' THEN
+        UPDATE public.sanction_platform_authorizations a SET consumed_at = CURRENT_TIMESTAMP
+            FROM public.sanction_case_decisions d WHERE d.case_id = NEW.id AND d.decided_as = 'platform_admin'
+                AND a.id = d.authorization_id AND a.case_id = NEW.id AND a.organization_id = NEW.organization_id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_consume_authorization AFTER UPDATE ON public.sanction_cases
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_consume_authorization();
+
+CREATE POLICY f9_platform_read ON public.sanction_cases FOR SELECT TO bracket_app USING (public.sanction_platform_scope(id));
+DO $platform_read$
+DECLARE target TEXT;
+BEGIN
+    FOREACH target IN ARRAY ARRAY['sanction_case_events', 'sanction_case_decisions', 'sanction_resolutions', 'sanction_prejudice_records'] LOOP
+        EXECUTE format('CREATE POLICY f9_platform_read ON public.%I FOR SELECT TO bracket_app
+            USING (public.sanction_platform_scope(case_id))', target);
+    END LOOP;
+END;
+$platform_read$;
+CREATE POLICY f9_authorization_insert ON public.sanction_platform_authorizations FOR INSERT TO bracket_app
+    WITH CHECK (granted_by_member_id = public.sanction_owner(organization_id));
+CREATE POLICY f9_authorization_scope_read ON public.sanction_platform_authorizations FOR SELECT TO bracket_app
+    USING (public.sanction_owner(organization_id) IS NOT NULL OR
+        (id = NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID AND public.sanction_platform_scope(case_id)));
+GRANT INSERT ON public.sanction_platform_authorizations TO bracket_app;
+
+REVOKE ALL ON FUNCTION public.sanction_owner(UUID), public.sanction_platform_candidate(TEXT),
+    public.sanction_valid_platform_authorizations(), public.sanction_platform_scopes(),
+    public.sanction_lock_platform_authorization(UUID), public.sanction_platform_source(UUID),
+    public.sanction_revoke_authorization(UUID), public.record_sanction_platform_audit(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_owner(UUID), public.sanction_platform_candidate(TEXT),
+    public.sanction_platform_scopes(), public.sanction_lock_platform_authorization(UUID),
+    public.sanction_platform_source(UUID), public.sanction_revoke_authorization(UUID),
+    public.record_sanction_platform_audit(UUID) TO bracket_app;
 
 COMMIT;

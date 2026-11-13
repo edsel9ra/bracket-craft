@@ -32,7 +32,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T6. Nueva 040: RBAC y lecturas operativas mínimas.** RF-014, RF-015, RF-016, RF-018, RF-019
 - Hecho cuando: claves nuevas en `core/roles.py`, defaults owner/admin en roles nuevos/existentes y funciones de elegibilidad por partido verifican permiso sin revelar expediente/evidencia; cerrar o rectificar no concede consulta F9. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k permissions`.
 
-- [ ] **T7. Nueva 040: scopes y capacidades de plataforma acotadas (C2).** RF-015, RF-016, RF-023, RF-024
+- [x] **T7. Nueva 040: scopes y capacidades de plataforma acotadas (C2).** RF-015, RF-016, RF-023, RF-024
 - Hecho cuando: funciones F9 verifican admin/dueño/organización/expediente y contexto local propio, grants y search_path seguros; autorización 033 no abre F9 y no se amplía membresía global ni BYPASSRLS. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k platform`.
 
 - [ ] **T8. Nueva 040: puente 033 y entrega privada; gate de migración.** RF-007, RF-016, RF-025, RF-032, RF-033
