@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.sanction_appeals.cases import SanctionCaseService
-from app.modules.sanction_appeals.schemas import AppealRequest, ProposalRequest
+from app.modules.sanction_appeals.schemas import AppealRequest, CaseFilters, ProposalRequest, SanctionFilters
 from test_migration_031 import MATCH, ORG, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_HOME, VERSION
 from test_sanction_readers import readers as readers
 
@@ -125,3 +125,35 @@ async def test_proposal_requires_resolve_and_reduction_cannot_increase(cases):
         with pytest.raises(ValueError):
             await service.submit_proposal(f.context, payload)
     assert await f.admin.fetchval("SELECT count(*) FROM sanction_cases") == 0
+
+
+async def test_read_view_permission_is_independent_and_detail_is_private(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f, evidence_text="Private evidence"))
+    for permission in ("SUBMIT_SANCTION_APPEALS", "RESOLVE_SANCTION_CASES"):
+        await permissions(f, permission)
+        async with f.service() as service:
+            with pytest.raises(PermissionError):
+                await service.detail(f.context, receipt["id"])
+    await permissions(f, "VIEW_SANCTION_CASES")
+    async with f.service() as service:
+        detail = await service.detail(f.context, receipt["id"])
+    assert detail["case"]["evidence_text"] == "Private evidence"
+    assert detail["source"]["id"] == f.suspension
+    assert detail["projection"]["effective_duration"] == 3
+    assert len(detail["events"]) == 1 and detail["resolutions"] == []
+    async with f.service() as service:
+        page = await service.list_cases(f.context, CaseFilters(status="pending", limit=1))
+    assert len(page["items"]) == 1 and page["total"] == 1
+    assert "evidence_text" not in page["items"][0]
+    async with f.service() as service:
+        assert (await service.list_cases(f.context, CaseFilters(status="resolved")))["items"] == []
+    async with f.service() as service:
+        assert (await service.list_sanctions(f.context, SanctionFilters()))["items"][0]["projection"]["effective_duration"] == 3
+    async with f.service() as service:
+        assert (await service.list_sanctions(f.context, SanctionFilters(status="served")))["items"] == []
+    async with f.service() as service:
+        with pytest.raises(LookupError):
+            await service.detail(f.context, uuid4())

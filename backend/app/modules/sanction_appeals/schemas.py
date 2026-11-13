@@ -82,3 +82,14 @@ class CaseFilters(BaseModel):
     case_type: Literal["appeal", "administrative_proposal"] | None = None
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+
+class SanctionFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["active", "served", "cancelled", "appealed"] | None = None
+    scope_type: Literal["tournament", "organization"] | None = None
+    player_id: UUID | None = None
+    source_tournament_id: UUID | None = None
+    limit: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)

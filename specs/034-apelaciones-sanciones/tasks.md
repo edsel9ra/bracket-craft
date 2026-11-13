@@ -86,7 +86,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T17. Presentar propuesta administrativa inmutable.** RF-003, RF-019, RF-020, RF-022, RF-028, RF-034
 - Hecho cuando: miembro con resolver propone solo anular/reducir con motivo y medida auditados; no apelación ficticia ni efecto suspensivo y plataforma no propone. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k proposal`.
 
-- [ ] **T18. Bandeja, sanciones y detalle privados.** RF-006, RF-009, RF-015, RF-016, RF-017
+- [x] **T18. Bandeja, sanciones y detalle privados.** RF-006, RF-009, RF-015, RF-016, RF-017
 - Hecho cuando: consulta separada, paginación/filtros y detalle muestran historia, procedencia, duración original/efectiva y efecto pendiente sin mezclar tenants; recibo de presentar no abre consulta completa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k read`.
 
 - [ ] **T19. Preview de decisión sin escritura.** RF-004, RF-010, RF-014, RF-020, RF-030
