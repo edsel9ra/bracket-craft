@@ -6,15 +6,16 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase Validación cerrada — estado: implementada. A #76, B #77 y C #78 fusionados; T1–T49 verificadas. F8 aceptada expresamente el 2026-11-13 y R32f cerrado. No habilita borradores F1 ni acredita despliegue productivo.
+- specs/036-partido-en-vivo — fase actual: Spec — estado: borrador. F1: estados live/suspended, marcador/reloj públicos mínimos y eventos en borrador privados hasta cierre atómico. Sin aprobación de spec, plan, tareas ni implementación; F8 aceptada no habilita todavía estos borradores.
 
 ## Pendiente
-- Iniciar la spec 036 de F1 en fase Spec y estado borrador; sin aprobación de plan/tareas/implementación. F9 permanece fuera de Socket.IO.
+- Clarificar DA-1 lectores/operadores, DA-2 suspensión/visibilidad, DA-3 reloj y DA-4 revisión/consolidación; opciones y recomendaciones en spec 036, ninguna aprobada. DA-2 advierte que 020 hoy oculta suspendidos; F13 no se adelanta y F9 sigue fuera del tiempo real. No abrir PR.
 
 ## Historial de fases
 - 2026-11-13 · Spec 035 · Implementación y Validación cerradas con aprobación expresa del usuario: «Opción A» («Acepto F8; ciérrala y empieza la spec de F1»). T47–T49 verificadas; F8 aceptada y R32f cerrado. #78 fusionado en `4b13d55d`, árbol idéntico al SHA validado `1edcb5bb`. CI PR `43512284375` y push `43511994626` success: backend 3625 pass/4 skip, frontend 978 pass/1 skip, E2E PR 66 pass; Review sin hallazgos (`end_triage` no disponible). Gates locales, carga real de 1.000 sockets/100 principales y límites en verificacion.md; no acredita producción.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 036 · Usuario autoriza únicamente iniciar Spec de F1 tras aceptar F8. Borrador EARS basado en constitución, informe F1/6.3, auditorías y specs 020/033/035. Sin conflicto constitucional si lo provisional no edita resultados cerrados ni amplía datos personales; cualquier cronología pública requiere F13. No se adoptan las recomendaciones de DA-1–DA-4 sin respuesta humana.
 - 2026-11-13 · Spec 035 · Usuario descarta 056: C3 reutiliza 032 SECURITY INVOKER por lotes de hasta 256 sockets suspendidos; válidos reciben RESYNC RELAY_START dirigido, inválidos tratamiento 032, error/fila ausente conserva suspensión y reintenta. Sin recursos ni replay; HTTP autoriza cada reconstrucción. Precisión en plan sin cambiar C3.
 - 2026-11-13 · Spec 035 · Usuario confirma T32a–c y T34a–c como desglose interno sin cambio de alcance; C4 y PR B único intactos. Inyección de fallos solo en pruebas, sin ruta productiva ni configuración de producción.
 - 2026-11-13 · Spec 035 · Usuario comunica fusión de PR A #76 y autoriza PR B T18–T37; T17 cerrada. No equivale a aceptación de F8 ni cierre de R32f.
