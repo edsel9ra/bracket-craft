@@ -101,7 +101,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030
 - Hecho cuando: resolución conserva valores originales/anteriores/resultantes; efecto queda pendiente si cambia elegibilidad, cumplida admite declaración sin partido ficticio, no aumento/ámbito/crédito ni UPDATE de duración. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k resolution`.
 
-- [ ] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
+- [x] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
 - Hecho cuando: misma base resuelta no admite otro recurso; retirada permite nueva presentación y cierre rectificativo exige presentación manual vinculada. Base cambiada cierra sin decisión ni consumo; respuesta no revierte el cierre. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k stale`.
 
 - [ ] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025

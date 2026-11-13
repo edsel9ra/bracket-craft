@@ -277,3 +277,88 @@ async def test_resolution_preserves_original_and_waits_for_real_opening(cases, k
     assert detail["projection"]["effective_duration"] == ((0 if action == "annul" else 1) if served else 3)
     assert detail["projection"]["pending_effect"] is (not served)
     assert detail["projection"]["remaining"] >= 0
+
+
+async def test_revalidation_rejects_stale_preview_and_unaccredited_change(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f))
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        with pytest.raises(ValueError, match="SANCTION_STALE_BASE"):
+            await service.decide(reviewer, receipt["id"], DecisionRequest(
+                decision="maintain", expected_base_duration=2, reason="Preview antiguo"))
+    await f.admin.execute("UPDATE player_suspensions SET status='cancelled' WHERE id=$1", f.suspension)
+    async with f.service() as service:
+        with pytest.raises(ValueError, match="SANCTION_STALE_BASE"):
+            await service.decide(reviewer, receipt["id"], DecisionRequest(
+                decision="maintain", expected_base_duration=3, reason="Huella antigua"))
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0
+
+
+async def match_source(f):
+    await f.admin.execute("""INSERT INTO match_rosters(organization_id,match_id,roster_id,player_id,team_id,tournament_id,role)
+        SELECT organization_id,$1,id,player_id,team_id,tournament_id,'starter' FROM rosters""", MATCH)
+    event = await f.admin.fetchval("""INSERT INTO match_events
+        (organization_id,match_id,segment_id,team_id,player_id,event_type,minute,client_event_id)
+        VALUES ($1,$2,$3,$4,$5,'red_card',10,$6) RETURNING id""",
+        ORG, MATCH, SEGMENT_FIRST, TEAM_HOME, PLAYER_HOME_FIRST, str(uuid4()))
+    f.suspension = await f.admin.fetchval("""INSERT INTO player_suspensions
+        (organization_id,source_tournament_id,player_id,source_type,dedupe_key,scope_type,matches_suspended,
+         reason,origin_match_id,source_event_id)
+        SELECT organization_id,source_tournament_id,player_id,'match_event',$2,'tournament',3,'Original',$3,$4
+        FROM player_suspensions WHERE id=$1 RETURNING id""", f.suspension, str(uuid4()), MATCH, event)
+    await f.admin.execute("""UPDATE matches SET status='finished',result_confirmed=TRUE,
+        resolution_type='regular',home_score_regular=0,away_score_regular=0,home_score=0,away_score=0 WHERE id=$1""", MATCH)
+
+
+async def published_change(f, publisher):
+    request = await f.admin.fetchval("""INSERT INTO match_report_rectification_requests
+        (organization_id,match_id,base_version_number,proposed_report,reason,requested_by_user_id,requested_by_member_id)
+        VALUES ($1,$2,1,'{}','Rectificar',$3,$4) RETURNING id""", ORG, MATCH, f.context.user_id, f.context.organization_user_id)
+    version = await f.admin.fetchval("""INSERT INTO match_report_versions(organization_id,match_id,version_number,
+        supersedes_version_number,resolution_type,home_score,away_score,request_id,published_by_user_id)
+        VALUES ($1,$2,2,1,'regular',0,0,$3,$4) RETURNING id""", ORG, MATCH, request, publisher.user_id)
+    await f.admin.execute("UPDATE player_suspensions SET status='cancelled' WHERE id=$1", f.suspension)
+    await f.admin.execute("""INSERT INTO player_suspension_annulments(organization_id,suspension_id,version_id,reason)
+        VALUES ($1,$2,$3,'Rectificación acreditada')""", ORG, f.suspension, version)
+    return version
+
+
+async def test_stale_rectification_closes_without_decision_or_resolution(cases):
+    f = cases
+    await match_source(f)
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f))
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+    await published_change(f, reviewer)
+    async with f.service() as service:
+        result = await service.decide(reviewer, receipt["id"], DecisionRequest(
+            decision="maintain", expected_base_duration=3, reason="Revalidar"))
+    assert result == {"id": receipt["id"], "status": "closed_by_rectification"}
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
+
+
+@pytest.mark.parametrize("terminal", ["resolved", "withdrawn"])
+async def test_stale_terminal_cannot_reopen_resolved_but_can_link_withdrawal(cases, terminal):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f))
+    if terminal == "resolved":
+        reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+        async with f.service() as service:
+            await service.decide(reviewer, receipt["id"], DecisionRequest(
+                decision="maintain", expected_base_duration=3, reason="Definitiva"))
+        async with f.service() as service:
+            with pytest.raises(ValueError):
+                await service.submit_appeal(f.context, appeal(f, prior_case_id=receipt["id"]))
+    else:
+        async with f.service() as service:
+            await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro"))
+        async with f.service() as service:
+            successor = await service.submit_appeal(f.context, appeal(f, prior_case_id=receipt["id"]))
+        assert successor["id"] != receipt["id"]
