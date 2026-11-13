@@ -14,7 +14,7 @@ Entorno PostgreSQL como CI: exportar previamente `DATABASE_URL` (rol app) y `DAT
 
 Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican juntas antes de fusionar A; ningún grant provisional queda abierto. Dependencias internas: T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10.
 
-- [ ] **T1. Nueva 040: expedientes, eventos y unicidad de pendiente.** RF-001, RF-009, RF-016, RF-029
+- [x] **T1. Nueva 040: expedientes, eventos y unicidad de pendiente.** RF-001, RF-009, RF-016, RF-029
 - Hecho cuando: tablas de expediente/eventos nacen con RLS/FORCE, FK tenant, motivo y autor, índice parcial compartido por apelación/propuesta y grants mínimos; no se importan filas `appealed`. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k cases` y `sh -n infra/postgres/migrate.sh`.
 
 - [ ] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
