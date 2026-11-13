@@ -131,7 +131,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T36. Registrar router completo y probar contratos HTTP.** RF-002, RF-006, RF-015, RF-018, RF-020, RF-023, RF-029, RF-034
 - Hecho cuando: rutas organización y `/api/v1/platform` registradas en `main.py`, sin presentar/proponer desde plataforma; 401/403/404 indistinguible/409/422 y recibos mínimos siguen plan, preview no escribe. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_api.py` y `cd backend && python -m compileall -q app`.
 
-- [ ] **T37. Carreras reales de casos, autorizaciones y comienzo.** RF-021, RF-023, RF-025, RF-029, RF-030
+- [x] **T37. Carreras reales de casos, autorizaciones y comienzo.** RF-021, RF-023, RF-025, RF-029, RF-030
 - Hecho cuando: dos sesiones prueban apelación/propuesta, doble decisión, retirada/decisión, revocar/decidir, 033/decisión y apertura/cierre entre torneos; un único resultado y sin deadlock ni efecto retroactivo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py`.
 
 - [ ] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
