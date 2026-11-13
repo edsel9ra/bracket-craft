@@ -5,7 +5,7 @@ RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pub
 DECLARE org UUID := NULLIF(current_setting('app.current_organization_id', true), '')::UUID;
     target public.player_suspensions; duration INTEGER;
 BEGIN
-    IF NOT public.sanction_can_operate_match(org, target_match) OR as_of IS NULL THEN
+    IF NOT public.sanction_can_close_match(org, target_match) OR as_of IS NULL THEN
         RAISE EXCEPTION 'SANCTION_OPERATION_DENIED' USING ERRCODE = '42501';
     END IF;
     PERFORM pg_advisory_xact_lock(hashtextextended('discipline:' || org::TEXT, 0));

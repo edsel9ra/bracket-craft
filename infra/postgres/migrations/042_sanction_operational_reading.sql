@@ -1,10 +1,30 @@
 BEGIN;
 
+CREATE FUNCTION public.sanction_can_close_match(target_org UUID, target_match UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT public.sanction_can_operate_match(target_org, target_match) OR COALESCE(
+        target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND EXISTS (
+            SELECT 1 FROM public.matches m
+            JOIN public.organizations o ON o.id = m.organization_id AND o.is_active
+            JOIN public.organization_users ou ON ou.organization_id = m.organization_id AND ou.is_active
+            JOIN public.users u ON u.id = ou.user_id AND u.is_active
+            JOIN public.organization_user_roles our ON our.organization_user_id = ou.id AND our.organization_id = ou.organization_id
+            JOIN public.roles r ON r.id = our.role_id AND r.organization_id = ou.organization_id
+            JOIN public.role_definitions rd ON rd.id = r.role_definition_id
+            WHERE m.id = target_match AND m.organization_id = target_org
+                AND ou.user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+                AND rd.code IN ('owner', 'administrator')
+                AND r.permissions @> '["RESOLVE_MATCH_ADMINISTRATIVELY"]'::JSONB
+        ), FALSE);
+$$;
+REVOKE ALL ON FUNCTION public.sanction_can_close_match(UUID, UUID) FROM PUBLIC;
+
 CREATE FUNCTION public.sanction_can_read_match(target_org UUID, target_match UUID)
 RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
     SELECT COALESCE(target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
         AND EXISTS (SELECT 1 FROM public.matches WHERE id = target_match AND organization_id = target_org)
-        AND (public.sanction_can_operate_match(target_org, target_match)
+        AND (public.sanction_can_close_match(target_org, target_match)
             OR public.sanction_member_has_permission(target_org, 'REQUEST_MATCH_REPORT_RECTIFICATION')
             OR public.sanction_member_has_permission(target_org, 'APPROVE_MATCH_REPORT_RECTIFICATION')
             OR EXISTS (SELECT 1 FROM public.rectification_platform_scopes() a
