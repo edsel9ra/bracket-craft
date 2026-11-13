@@ -155,9 +155,39 @@ function operationHarness() {
   modules['~/utils/matchResolution'] = { classifyMatchConflict: () => null };
   modules['~/utils/navigation'] = { safeInternalRedirect: (path: string) => path };
   const exports = load<{ useMatchOperation: typeof useMatchOperation }>('composables/useMatchOperation.ts', modules,
-    { watch: () => {}, useHead: () => {}, onBeforeRouteLeave: () => {},
+    { watch, useHead: () => {}, onBeforeRouteLeave: () => {},
       navigateTo: async (target: unknown) => { navigations.push(target); }, window: { removeEventListener() {} } });
-  return { operation: exports.useMatchOperation(), state, requests, navigations, changeContext: () => { version++; } };
+  return { operation: exports.useMatchOperation(), state, requests, navigations, changeContext: (key?: string) => {
+    version++;
+    if (key !== undefined) state.realtime.contextKey.value = key;
+  } };
+}
+
+for (const failure of [false, true]) {
+  test(`failed organization switch restores the mounted match with fresh HTTP, not stale responses (error=${failure})`, async () => {
+    const h = operationHarness();
+    h.state.operation.value = { original: true };
+    h.operation.requestOperationReload('resync-gap');
+    h.changeContext(OTHER);
+    assert.equal(h.state.operation.value, null);
+    h.operation.requestOperationReload('resync-gap');
+    assert.equal(h.requests.length, 1);
+    h.changeContext(ORG);
+    if (failure) h.requests[0]!.reject({ statusCode: 403 });
+    else h.requests[0]!.resolve({ stale: true });
+    await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state.operation.value, null);
+    assert.equal(h.navigations.length, 0);
+    h.requests[1]!.resolve({ restored: true });
+    await settle();
+    assert.deepEqual(h.state.operation.value, { restored: true });
+    h.operation.requestOperationReload('resync-gap');
+    assert.equal(h.requests.length, 3);
+    h.requests[2]!.resolve({ current: true });
+    await settle();
+    assert.deepEqual(h.state.operation.value, { current: true });
+  });
 }
 
 test('terminal operations reload by HTTP from minimal invalidations, without discarding local draft', async () => {

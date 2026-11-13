@@ -45,8 +45,9 @@ export function useMatchOperation() {
   let disposed = false;
   let refreshGeneration = 0;
   let pendingReload = false;
-  const contextIsCurrent = realtime.captureContext();
-  const canUpdate = () => !disposed && contextIsCurrent();
+  const mountedContextKey = realtime.contextKey.value;
+  let contextIsCurrent = realtime.captureContext();
+  const canUpdate = () => !disposed && realtime.contextKey.value === mountedContextKey && contextIsCurrent();
 
   function failureMessage(cause: unknown, fallback: string): string {
     return errorMessage(cause, fallback);
@@ -254,10 +255,14 @@ export function useMatchOperation() {
     }
   });
 
-  watch(realtime.contextKey, () => {
+  watch(realtime.contextKey, (key) => {
     operation.value = null;
     pendingReload = false;
     refreshGeneration += 1;
+    if (!disposed && key === mountedContextKey) {
+      contextIsCurrent = realtime.captureContext();
+      void operationReload.request();
+    }
   }, { flush: 'sync' });
 
   useHead(() => ({
