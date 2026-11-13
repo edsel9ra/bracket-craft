@@ -26,7 +26,7 @@ FUTURE = "31000000-0000-4000-8000-000000000053"
 @pytest.fixture
 async def readers(database_admin_url, request):
     options = request.param if isinstance(getattr(request, "param", None), dict) else {}
-    async with throwaway_database(database_admin_url, last=options.get("last", 42)) as admin:
+    async with throwaway_database(database_admin_url, last=options.get("last", 43)) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches(id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
@@ -41,8 +41,9 @@ async def readers(database_admin_url, request):
         await admin.execute("""INSERT INTO rosters(organization_id,tournament_id,team_id,player_id,dorsal_number,valid_from,eligible_from)
             VALUES ($1,$2,$3,$4,1,'2026-01-01','2026-01-01')""", ORG, TOURNAMENT, TEAM_HOME, PLAYER_HOME_FIRST)
         suspension = await admin.fetchval("""INSERT INTO player_suspensions(organization_id,source_tournament_id,player_id,
-            source_type,dedupe_key,scope_type,matches_suspended,reason) VALUES ($1,$2,$3,'competition_rule','original','organization',3,'test')
-            RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST)
+            source_type,dedupe_key,scope_type,matches_suspended,reason,created_at)
+            VALUES ($1,$2,$3,'competition_rule','original','organization',$4,'test','2026-01-01')
+            RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST, options.get("duration", 3))
         await admin.execute("SELECT set_config('app.current_organization_id',$1,false),set_config('app.current_user_id',$2,false)", ORG, USER)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
@@ -178,3 +179,36 @@ async def test_blocking_retains_started_match_after_later_annulment(readers):
         service = CloseMatchReportService(db)
         assert await service._has_suspended_players(readers.context, UUID(TOURNAMENT), [UUID(PLAYER_HOME_FIRST)], match_id=UUID(MATCH))
         assert not await service._has_suspended_players(readers.context, UUID(TOURNAMENT), [UUID(PLAYER_HOME_FIRST)], match_id=readers.future)
+
+
+@pytest.mark.parametrize("action", ["reduce", "annul"])
+async def test_serves_effective_duration_and_does_not_revive_annulment(readers, action):
+    case = await insert_case(readers.admin, readers.suspension)
+    await insert_decision(readers.admin, case, action=action)
+    async with readers.session() as db:
+        segment = (await db.execute(text("""INSERT INTO match_segments(organization_id,match_id,segment_number,minute_start,created_at)
+            VALUES (:org,:match,1,0,:now) RETURNING id"""),
+            {"org": UUID(ORG), "match": readers.future, "now": datetime.now(timezone.utc)})).scalar_one()
+        await record_opening(db, readers.future, segment)
+        match = (await db.execute(text("SELECT * FROM matches WHERE id=:id"), {"id": readers.future})).mappings().one()
+        await CloseMatchReportService(db)._serve_suspensions(readers.context, match)
+        await CloseMatchReportService(db)._serve_suspensions(readers.context, match)
+        if action == "annul":
+            old = (await db.execute(text("SELECT * FROM matches WHERE id=:id"), {"id": UUID(MATCH)})).mappings().one()
+            await CloseMatchReportService(db)._serve_suspensions(readers.context, old)
+    assert await readers.admin.fetchval("SELECT status FROM player_suspensions WHERE id=$1", readers.suspension) == ("served" if action == "reduce" else "cancelled")
+    assert await readers.admin.fetchval("SELECT count(*) FROM player_suspension_serves WHERE suspension_id=$1", readers.suspension) == 1
+
+
+@pytest.mark.parametrize("readers", [{"duration": 1}, {"duration": 2}, {"duration": 3}], indirect=True)
+async def test_serves_without_resolutions_preserves_original_count_and_status(readers):
+    await readers.admin.execute("INSERT INTO player_suspension_serves(organization_id,suspension_id,match_id) VALUES ($1,$2,$3)", ORG, readers.suspension, MATCH)
+    async with readers.session() as db:
+        match = (await db.execute(text("SELECT * FROM matches WHERE id=:id"), {"id": readers.future})).mappings().one()
+        before = (await db.execute(text("SELECT count(*) FROM player_suspension_serves WHERE suspension_id=:id AND NOT is_voided"), {"id": readers.suspension})).scalar_one()
+        original = (await db.execute(text("SELECT matches_suspended FROM player_suspensions WHERE id=:id"), {"id": readers.suspension})).scalar_one()
+        await CloseMatchReportService(db)._serve_suspensions(readers.context, match)
+        await CloseMatchReportService(db)._serve_suspensions(readers.context, match)
+        count = (await db.execute(text("SELECT count(*) FROM player_suspension_serves WHERE suspension_id=:id AND NOT is_voided"), {"id": readers.suspension})).scalar_one()
+        assert count == before + 1
+        assert (await db.execute(text("SELECT status FROM player_suspensions WHERE id=:id"), {"id": readers.suspension})).scalar_one() == ("served" if count >= original else "active")

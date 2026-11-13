@@ -67,7 +67,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 - [x] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
 - Hecho cuando: `_has_suspended_players` y llamadas validan pendientes aplicables, exclusión del acta origen y corte de creación; status actual no levanta indebidamente restricción de un partido ya comenzado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k blocking`.
 
-- [ ] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
+- [x] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
 - Hecho cuando: INSERT y actualización de `_serve_suspensions` usan los mismos datos efectivos, IDs bloqueados y deduplicación, conservan filas y no reviven una anulada tras cerrar un partido anterior. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k serves`.
 
 - [ ] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031

@@ -1738,6 +1738,11 @@ class CloseMatchReportService:
         return {str(row["source_event_id"]) for row in result.mappings().all()}
 
     async def _serve_suspensions(self, context, match) -> None:
+        facts = await load_effective_sanctions(self.db, match["id"], as_of=datetime.now(timezone.utc))
+        suspension_ids = [f.suspension_id for f in facts if f.projection.status == "active"]
+        await self.db.execute(text("""SELECT id FROM player_suspensions WHERE organization_id=:org
+            AND id=ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"""),
+            {"org": context.organization_id, "ids": suspension_ids})
         await self.db.execute(
             text("""
                 INSERT INTO player_suspension_serves (organization_id, suspension_id, match_id)
@@ -1749,7 +1754,7 @@ class CloseMatchReportService:
                  AND r.organization_id = ps.organization_id
                  AND r.is_active = TRUE
                 WHERE ps.organization_id = :organization_id
-                  AND ps.status = 'active'
+                  AND ps.id = ANY(CAST(:suspension_ids AS uuid[]))
                   AND NOT EXISTS (
                       SELECT 1 FROM match_segments ms
                       WHERE ms.organization_id = ps.organization_id AND ms.match_id = :match_id
@@ -1773,24 +1778,11 @@ class CloseMatchReportService:
                 "match_id": str(match["id"]),
                 "home_team_id": str(match["home_team_id"]),
                 "away_team_id": str(match["away_team_id"]),
+                "suspension_ids": suspension_ids,
             },
         )
-        await self.db.execute(
-            text("""
-                UPDATE player_suspensions ps
-                SET status = 'served'
-                WHERE ps.organization_id = :organization_id
-                  AND ps.status = 'active'
-                  AND (
-                      SELECT COUNT(*)
-                      FROM player_suspension_serves pss
-                      WHERE pss.organization_id = ps.organization_id
-                        AND pss.suspension_id = ps.id
-                        AND pss.is_voided = FALSE
-                  ) >= ps.matches_suspended
-            """),
-            {"organization_id": str(context.organization_id)},
-        )
+        await self.db.execute(text("SELECT refresh_served_sanctions(:match_id,:as_of)"),
+            {"match_id": match["id"], "as_of": datetime.now(timezone.utc)})
 
     async def _insert_suspensions(self, context, match, suspensions) -> list[dict[str, Any]]:
         """Inserta las sanciones derivadas y devuelve las filas **creadas**.

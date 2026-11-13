@@ -48,7 +48,7 @@ async def flow(database_admin_url, request):
     legacy = isinstance(getattr(request, "param", None), dict) and request.param.get("legacy_confirmation")
     options = request.param if isinstance(getattr(request, "param", None), dict) else {}
     advancement = options.get("advancement")
-    async with throwaway_database(database_admin_url, last=36 if legacy else 42) as admin:
+    async with throwaway_database(database_admin_url, last=36 if legacy else options.get("schema", 43)) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         if advancement is not None:
             team = TEAM_HOME if advancement.get("outcome", "winner") == "winner" else TEAM_AWAY
@@ -185,6 +185,7 @@ async def flow(database_admin_url, request):
             await apply_migration(admin, 40)
             await apply_migration(admin, 41)
             await apply_migration(admin, 42)
+            await apply_migration(admin, 43)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(database_admin_url).set(database=database))
         state = SimpleNamespace(admin=admin, engine=engine,
