@@ -22,8 +22,7 @@ class EvidenceRequest(ReasonRequest):
     evidence_links: list[HttpUrl] = Field(default_factory=list)
 
 
-class AppealRequest(EvidenceRequest):
-    suspension_id: UUID
+class AppealBody(EvidenceRequest):
     represented_player_id: UUID | None = None
     represented_team_id: UUID | None = None
     prior_case_id: UUID | None = None
@@ -35,8 +34,11 @@ class AppealRequest(EvidenceRequest):
         return self
 
 
-class ProposalRequest(EvidenceRequest):
+class AppealRequest(AppealBody):
     suspension_id: UUID
+
+
+class ProposalBody(EvidenceRequest):
     proposed_action: Literal["annul", "reduce"]
     proposed_duration: int | None = Field(default=None, ge=0, strict=True)
     prior_case_id: UUID | None = None
@@ -46,6 +48,10 @@ class ProposalRequest(EvidenceRequest):
         if (self.proposed_action == "reduce") != (self.proposed_duration is not None):
             raise ValueError("Solo una reducción exige duración")
         return self
+
+
+class ProposalRequest(ProposalBody):
+    suspension_id: UUID
 
 
 class PrejudiceRequest(ReasonRequest):
