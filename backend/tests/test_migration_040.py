@@ -36,16 +36,16 @@ async def app_context(db, org=ORG, user=USER):
     await db.execute("SELECT set_config('app.current_user_id',$1,true)", user)
 
 
-async def insert_case(db, suspension, *, case_id=None, kind="appeal", evidence=None):
+async def insert_case(db, suspension, *, case_id=None, kind="appeal", evidence=None, prior_case=None):
     case_id = case_id or uuid4()
     await db.execute("SELECT set_config('app.current_user_id',$1,false)", USER)
     async with db.transaction():
         await db.execute("""INSERT INTO sanction_cases
             (id,organization_id,suspension_id,case_type,submitted_by_user_id,submitted_by_member_id,
-             represented_player_id,reason,base_fingerprint,base_duration,proposed_action,evidence_text)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'Review','{}',3,$8,$9)""",
+             represented_player_id,reason,base_fingerprint,base_duration,proposed_action,evidence_text,prior_case_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'Review','{}',3,$8,$9,$10)""",
             case_id, ORG, suspension, kind, USER, MEMBER, PLAYER_HOME_FIRST,
-            "annul" if kind == "administrative_proposal" else None, evidence)
+            "annul" if kind == "administrative_proposal" else None, evidence, prior_case)
         await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
             VALUES ($1,$2,'submitted',$3,'Review')""", ORG, case_id, USER)
     return case_id
@@ -364,7 +364,8 @@ async def test_delivery_claimed_event_without_impersonation_and_private_reads(f9
         assert await db.fetchval("SELECT count(*) FROM sanction_notifications") == 0
 
 
-async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9_db):
+@pytest.mark.parametrize("resolved", [False, True])
+async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9_db, resolved):
     db, _ = f9_db
     await db.execute("""INSERT INTO rosters(organization_id,tournament_id,team_id,player_id,dorsal_number,valid_from,eligible_from)
         VALUES ($1,$2,$3,$4,1,now(),now())""", ORG, TOURNAMENT, TEAM_HOME, PLAYER_HOME_FIRST)
@@ -376,6 +377,8 @@ async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9
         origin_match_id,source_event_id,source_type,dedupe_key,scope_type,matches_suspended,reason)
         VALUES ($1,$2,$3,$4,$5,'match_event','f9-bridge','organization',3,'red') RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST, MATCH, source)
     case_id = await insert_case(db, suspension)
+    if resolved:
+        await insert_decision(db, case_id, action="maintain")
     publisher = await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-bridge@test.invalid','Rectifier') RETURNING id")
     member = await db.fetchval("INSERT INTO organization_users(organization_id,user_id) VALUES ($1,$2) RETURNING id", ORG, publisher)
     role = await db.fetchval("""INSERT INTO roles(organization_id,role_definition_id,name,permissions)
@@ -397,8 +400,24 @@ async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9
         assert await db.fetchval("SELECT close_sanction_cases_for_rectification($1)", version) == 1
         assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 0
         assert not await db.fetchval("SELECT has_column_privilege('bracket_app','sanction_cases','status','UPDATE')")
-    assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "closed_by_rectification"
-    assert await db.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0
+    assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == ("resolved" if resolved else "closed_by_rectification")
+    assert await db.fetchval("SELECT count(*) FROM sanction_case_decisions") == int(resolved)
+    successor = await db.fetchval("""INSERT INTO player_suspensions(organization_id,source_tournament_id,player_id,
+        source_type,dedupe_key,scope_type,matches_suspended,reason)
+        VALUES ($1,$2,$3,'competition_rule','successor','organization',3,'New sanction') RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST)
+    new_case = await insert_case(db, successor, prior_case=case_id)
+    assert await db.fetchval("SELECT prior_case_id FROM sanction_cases WHERE id=$1", new_case) == case_id
+
+
+async def test_resolved_antecedent_without_rectification_still_rejected(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    await insert_decision(db, case_id, action="maintain")
+    other = await db.fetchval("""INSERT INTO player_suspensions(organization_id,source_tournament_id,player_id,
+        source_type,dedupe_key,scope_type,matches_suspended,reason)
+        VALUES ($1,$2,$3,'competition_rule','other','organization',3,'Other sanction') RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST)
+    with pytest.raises(asyncpg.CheckViolationError, match="SANCTION_INVALID_ANTECEDENT"):
+        await insert_case(db, other, prior_case=case_id)
 
 
 @pytest.mark.parametrize("incremental", [False, True])

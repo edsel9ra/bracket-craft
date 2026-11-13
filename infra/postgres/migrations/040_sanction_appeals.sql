@@ -359,7 +359,10 @@ BEGIN
     END IF;
     IF NEW.prior_case_id IS NOT NULL THEN
         SELECT * INTO previous FROM public.sanction_cases WHERE id = NEW.prior_case_id AND organization_id = NEW.organization_id;
-        IF previous.id IS NULL OR previous.status <> 'closed_by_rectification' THEN
+        IF previous.id IS NULL OR NOT (previous.status = 'closed_by_rectification'
+            OR (previous.status = 'resolved' AND EXISTS (SELECT 1 FROM public.sanction_case_events
+                WHERE case_id = previous.id AND organization_id = previous.organization_id
+                    AND event_type = 'affected_by_rectification'))) THEN
             RAISE EXCEPTION 'SANCTION_INVALID_ANTECEDENT' USING ERRCODE = '23514';
         END IF;
     END IF;
