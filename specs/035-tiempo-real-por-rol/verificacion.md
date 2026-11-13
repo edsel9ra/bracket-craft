@@ -282,3 +282,55 @@ el código funcional y los tests; esta actualización solo registra evidencia.
 Logs descargados en `/home/ubuntu/f8-pr76-initial-{pr,push}.log`. El commit
 documental posterior se vuelve a comprobar por CI; su resultado final se informa
 en la entrega, sin dar por fusionado el PR ni cerrar R32f.
+
+## PR B — T18 verificada; integración pendiente
+
+El usuario confirmó el desglose interno T32a–c/T34a–c el 2026-11-13,
+sin cambiar alcance, C4 ni el PR B único. Consta en `tasks.md`. La inyección
+de fallos queda restringida a pruebas; no se ha añadido ninguna al producto.
+
+T18: `SocketRegistry` indexa organización/principal/sid y limpia reemplazos,
+bajas y vaciado. El handshake conserva generación nueva y expiración del JWT
+ya verificado. Los nuevos metadatos se serializan para el mantenimiento 032.
+
+```text
+Rojo inicial: 2 failed, 11 deselected in 0.67s
+Verde T18 final: 6 passed, 11 deselected in 0.67s
+Regresión política/adaptador/revalidación: 106 passed in 0.69s
+Suite final sin PostgreSQL: 2624 passed, 934 skipped in 8.19s
+Ruff de archivos Python cambiados: All checks passed!
+compileall app: exit 0
+```
+
+Casos nuevos: dos pestañas de una sesión, generación nueva al reconectar,
+expiración proveniente del token, sustitución de tenant, limpieza al desconectar
+y vaciar, organización sin conexiones y claims ausentes/malformados.
+
+Antes de integrar el relay se detectó que falta una primitiva de contexto para
+los controles de C3 (§6.2 del plan), que no deben depender de un partido:
+
+```text
+context_api_present: False
+resource_free_decision: DENY
+database_calls: 0
+```
+
+Comprobación ejecutada con `RealtimeAuthorizer.evaluate_batch(None, principals)`
+y el harness unitario existente. `realtime_authorization.py:40–48` solo acepta
+un evento clasificado con referencias. La función 055 exige partido y torneo
+(`055_realtime_delivery_authorization.sql:34–51`), y versión para variantes
+privadas. No basta con invocarla sin evento para recuperar un contexto. La 032
+compara la huella guardada con la vigente; no sustituye a un gate de contexto
+que compruebe la membresía/roles actuales sin usar esa huella como permiso.
+
+Propuesta pendiente de confirmación: migración 056 append-only con función de
+contexto batch `SECURITY INVOKER`, snapshot fresco, límite 256, contexto RLS por
+usuario y sin recurso. Sin editar 055, BYPASSRLS, caché, tablas nuevas ni cambios
+en permisos HTTP. Implica comprobar migración limpia y 055→056 y ejecutar E2E
+con la 056 aplicada, además de la 055 indicada en el brief. No se implementó
+esa extensión ni se cambió el plan unilateralmente.
+
+T19–T37 siguen pendientes: sin gate conectado, cambio de emisiones, frontend,
+arnés de fallos ni nuevos endpoints. No se ejecutaron PostgreSQL, frontend,
+E2E ni gates completos de infraestructura en este avance parcial. No equivale
+a PR B terminado, activación de F8 ni cierre R32f.

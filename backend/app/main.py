@@ -4,6 +4,7 @@ import logging
 import tomllib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -34,6 +35,7 @@ from app.core.database import (
 )
 from app.core.outbox import OUTBOX_STREAM
 from app.core.rate_limit import enforce_identity_rate_limit
+from app.core.realtime_registry import SocketRegistry
 from app.core.security import decode_access_token_claims
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.modules.crests.errors import CrestError
@@ -96,7 +98,7 @@ sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins=allowed_origins,
 )
-connected_socket_sessions: dict[str, dict[str, str]] = {}
+connected_socket_sessions = SocketRegistry()
 
 
 async def _load_role_fingerprint(db, organization_id: UUID, user_id: UUID) -> str | None:
@@ -156,6 +158,7 @@ async def connect(sid, environ, auth):
             user_id = UUID(claims["sub"])
             session_id = UUID(claims["jti"])
             organization_id = UUID(str(organization_value))
+            jwt_expires_at = datetime.fromtimestamp(claims['exp'], timezone.utc)
         except Exception:
             return False
 
@@ -193,6 +196,8 @@ async def connect(sid, environ, auth):
             "session_id": str(session_id),
             "organization_id": str(organization_id),
             "role_fingerprint": role_fingerprint,
+            "generation": str(uuid4()),
+            "jwt_expires_at": jwt_expires_at,
         }
         await sio.save_session(sid, session_metadata)
         await sio.enter_room(sid, f"organization:{organization_id}")
@@ -552,7 +557,8 @@ async def revalidate_socket_sessions_cycle():
             async with db.begin():
                 result = await db.execute(
                     text("SELECT sid, is_valid FROM public.revalidate_socket_sessions(CAST(:sockets AS JSONB))"),
-                    {"sockets": json.dumps([dict(metadata, sid=sid) for sid, metadata in sessions.items()])},
+                    {"sockets": json.dumps([dict(metadata, sid=sid) for sid, metadata in sessions.items()],
+                                           default=lambda value: value.isoformat())},
                 )
                 validations = result.mappings().all()
     except Exception:

@@ -113,7 +113,7 @@ No invocar todavía el nuevo gate desde el relay ni cambiar entrega observable. 
 
 Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control compatible y reconstrucción HTTP. Los estados intermedios de estas tareas no se despliegan ni fusionan. **T37 exige T18–T36 completas**; C no se usa para posponer una comprobación esencial de privacidad.
 
-- [ ] **T18. Indexar conexiones y conservar hechos del handshake.** RF-002, RF-006, RF-010, RF-018
+- [x] **T18. Indexar conexiones y conservar hechos del handshake.** RF-002, RF-006, RF-010, RF-018
 - Dependencias: T17; PR B.
 - Tests primero: S1 para alta/baja, varios sid de una sesión, JWT verificado/expiración, sesión ausente, otro tenant y generación nueva.
 - Hecho cuando: `main.py` mantiene índice local organización→principal→sid coherente, con expiración procedente del token validado y limpieza al desconectar; sin nuevo permiso del cliente ni sockets duplicados. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k registry`.
@@ -184,6 +184,10 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 - Hecho cuando: Workspace usa `useApi`, conserva coordinación de recargas y tratamiento de acceso/error, no restaura detalle desde evento ni conserva una recarga denegada como exitosa. Pasa `cd frontend && pnpm test`.
 
 - [ ] **T32. Preparar la observación E2E de receptores reales.** RF-001, RF-002, RF-006, RF-010
+- Nota: desglose interno sin cambio de alcance, 2026-11-13; confirmado por el usuario, C4 intacta y B en un único PR:
+  - [ ] T32a: fixtures aisladas de dos tenants y sesiones reales.
+  - [ ] T32b: captura del transporte por receptor antes del dispatcher.
+  - [ ] T32c: arnés de barreras de commit/evaluación entre procesos.
 - Dependencias: T19, T22, T26, T31; PR B.
 - Tests primero: E1 con fixtures sintéticas de dos tenants, sesiones/roles/pestañas y captura del socket **antes** del dispatcher; control de orden de publicación/commit desde el arnés.
 - Hecho cuando: las aserciones de recepción/no recepción no se satisfacen solo ocultando UI; no se añade endpoint productivo ni se amplía seed de producción. Pasan `cd frontend && pnpm run typecheck:e2e` y `cd frontend && pnpm exec playwright test e2e/realtime-workspace.spec.ts --project workspace` con el escenario de fixtures incluido.
@@ -194,6 +198,10 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 - Hecho cuando: el desautorizado no recibe ni existencia ni IDs; retirar oficial/permiso no requerido no restringe HTTP ni evento, y tránsito aprobado antes del corte se distingue del posterior. Pasa `cd frontend && pnpm exec playwright test e2e/realtime-workspace.spec.ts --project workspace`.
 
 - [ ] **T34. Verificar recuperación real sin replay y público independiente.** RF-010, RF-014, RF-015, RF-016, RF-017, RF-018
+- Nota: desglose interno sin cambio de alcance, 2026-11-13; confirmado por el usuario, C4 intacta y B en un único PR:
+  - [ ] T34a: inyección de fallo exclusiva de autorización en fixture/arnés de pruebas, sin ruta productiva ni configuración de producción.
+  - [ ] T34b: recuperación sin evento adicional, sin replay y con sockets conectados.
+  - [ ] T34c: acta terminal, contexto cambiado y carril público independiente.
 - Dependencias: T24, T25, T29, T30, T31, T32; PR B.
 - Tests primero: E2 interrumpe solo comprobación privada mediante arnés de test, mantiene sockets, publica, recupera sin evento adicional y observa RESYNC+GET; acta terminal y contexto cambiado.
 - Hecho cuando: no hay replay, desconexión masiva ni señal privada pública, se reconstruye contexto vigente y el receptor público mantiene contrato/recuperación. Pasan `cd frontend && pnpm exec playwright test e2e/realtime-operation.spec.ts --project operation` y `cd frontend && pnpm exec playwright test e2e/realtime-public.spec.ts --project public`.

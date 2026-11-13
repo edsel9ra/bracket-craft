@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -122,3 +123,72 @@ async def test_batching_next_snapshot_is_lazy_and_errors_are_not_cached():
     second = await anext(stream)
     assert len(databases) == 2 and len(second) == 1
     assert all(row.decision == policy.Decision.INDETERMINATE for row in first + second)
+
+
+async def test_registry_handshake_expiry_generation_and_session_tabs(monkeypatch):
+    from app import main
+
+    event, _, row = inputs()
+    claims = {'sub': str(row['user_id']), 'jti': str(row['session_id']),
+              'exp': (NOW + timedelta(days=3650)).timestamp()}
+
+    class HandshakeDatabase(Database):
+        async def execute(self, statement, params=None):
+            return SimpleNamespace(scalar_one_or_none=lambda: 'roles', scalar_one=lambda: True)
+
+    @asynccontextmanager
+    async def factory():
+        yield HandshakeDatabase([])
+
+    async def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(main, 'SessionFactory', factory)
+    monkeypatch.setattr(main, 'decode_access_token_claims', lambda token: claims)
+    monkeypatch.setattr(main.sio, 'save_session', noop)
+    monkeypatch.setattr(main.sio, 'enter_room', noop)
+    monkeypatch.setattr(main, 'emit_join_resync', noop)
+    monkeypatch.setattr(main, 'connected_socket_sessions', main.SocketRegistry())
+    for sid in ('a', 'b'):
+        assert await main.connect(sid, {}, {'organization_id': str(event.organization_id), 'token': 'verified'}) is True
+    sessions = main.connected_socket_sessions
+    assert sessions['a']['jwt_expires_at'].timestamp() == claims['exp']
+    assert sessions['a']['generation'] != sessions['b']['generation']
+    assert set(sessions.organization_sessions(event.organization_id)) == {'a', 'b'}
+    assert len(policy.group_recipients(sessions, event.organization_id)[0]) == 1
+    previous = sessions['a']['generation']
+    await main.disconnect('a')
+    assert set(sessions.organization_sessions(event.organization_id)) == {'b'}
+    assert await main.connect('a', {}, {'organization_id': str(event.organization_id), 'token': 'verified'})
+    assert sessions['a']['generation'] != previous
+    assert not sessions.organization_sessions(uuid4())
+
+
+def test_registry_replacement_pop_clear_and_other_tenant():
+    from app import main
+
+    first, second = uuid4(), uuid4()
+    registry = main.SocketRegistry()
+    registry['a'] = socket_metadata(first)
+    registry['b'] = socket_metadata(first)
+    registry['a'] = socket_metadata(second)
+    assert set(registry.organization_sessions(first)) == {'b'}
+    assert set(registry.organization_sessions(second)) == {'a'}
+    registry.pop('a')
+    assert not registry.organization_sessions(second)
+    registry.clear()
+    assert not registry.organization_sessions(first)
+    assert not registry
+
+
+@pytest.mark.parametrize('claims', [
+    {'sub': str(uuid4()), 'jti': str(uuid4())},
+    {'sub': str(uuid4()), 'exp': 2000000000},
+    {'sub': 'invalid', 'jti': str(uuid4()), 'exp': 2000000000},
+    {'sub': str(uuid4()), 'jti': str(uuid4()), 'exp': None},
+])
+async def test_registry_missing_or_invalid_verified_claims_reject_before_database(monkeypatch, claims):
+    from app import main
+
+    monkeypatch.setattr(main, 'decode_access_token_claims', lambda token: claims)
+    assert await main.connect('sid', {}, {'organization_id': str(uuid4()), 'token': 'verified'}) is False
