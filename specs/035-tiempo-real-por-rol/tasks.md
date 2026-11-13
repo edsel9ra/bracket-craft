@@ -1,6 +1,6 @@
 # Tareas 035 — Tiempo real privado según permisos de lectura
 
-Estado: **borrador**. Fecha: 2026-11-13. Spec y plan aprobados por el usuario el 2026-11-13, incluidas C1–C4 tal como estaban recomendadas. La aprobación del plan no aprueba este documento ni autoriza implementar. Todas las casillas permanecen abiertas hasta realizar y comprobar el trabajo correspondiente.
+Estado: **aprobado** por el usuario el 2026-11-13 («Apruebo las tareas.»). Spec y plan aprobados por el usuario el 2026-11-13, incluidas C1–C4 tal como estaban recomendadas. Implementación autorizada en orden PR A → B → C. Las casillas permanecen abiertas hasta realizar y comprobar el trabajo correspondiente.
 
 Son **49 tareas**, estimadas en **20–30 min de trabajo activo por tarea**, más esperas de CI. Orden de entrega aprobado: **PR A → PR B → PR C**. A: **17 tareas** (T1–T17); B: **20 tareas** (T18–T37); C: **12 tareas** (T38–T49). Cada PR se verifica y fusiona antes de empezar el siguiente. Las dependencias indicadas son necesarias; no autorizan paralelismo de implementación: una tarea cada vez, conforme a SDD.
 
@@ -20,82 +20,82 @@ Son **49 tareas**, estimadas en **20–30 min de trabajo activo por tarea**, má
 
 No invocar todavía el nuevo gate desde el relay ni cambiar entrega observable. R32f permanece abierto. Dependencias internas detalladas abajo; **T17 exige T1–T16 completas**. Contrato C1/C2, sin nuevas lecturas HTTP, permisos ni borradores F1.
 
-- [ ] **T1. Caracterizar las lecturas HTTP y preparar fixtures de paridad.** RF-001, RF-002, RF-003, RF-004, RF-005
+- [x] **T1. Caracterizar las lecturas HTTP y preparar fixtures de paridad.** RF-001, RF-002, RF-003, RF-004, RF-005
 - Dependencias: aprobación expresa de estas tareas; PR A.
 - Tests primero: crear casos HTTP reales de operación y versiones con dos tenants, miembro lector sin permiso de escritura ni oficial, multirrol, vacío/404 y plataforma sin membresía. Baseline verde sin cambiar HTTP; dejar documentadas las condiciones exactas por variante del catálogo.
 - Hecho cuando: los fixtures de `test_realtime_delivery_db.py` cubren las rutas existentes, no inventan `/tournaments/{id}/standings` ni restringen lecturas. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k http_baseline` (D1).
 
-- [ ] **T2. Clasificar el catálogo cerrado y sus exclusiones.** RF-012, RF-016, RF-019, RF-020
+- [x] **T2. Clasificar el catálogo cerrado y sus exclusiones.** RF-012, RF-016, RF-019, RF-020
 - Dependencias: T1; PR A.
 - Tests primero: P1 en `test_realtime_policy.py`, seis variantes actuales, desconocido, scope incoherente, sonda, correo, avisos F9 y borrador F1.
 - Hecho cuando: `realtime_policy.py` declara tipo+variante+lectura, sin herencia por nombre público ni comodín de membresía. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k catalog`; desconocidos/excluidos no producen intención de entrega.
 
-- [ ] **T3. Validar el sobre privado y el ID legado.** RF-012, RF-013, RF-018
+- [x] **T3. Validar el sobre privado y el ID legado.** RF-012, RF-013, RF-018
 - Dependencias: T2; PR A.
 - Tests primero: P1 con `event_id`, alias `id`, ambos iguales/divergentes, ID ausente, sobre vacío/malformado y organización inválida.
 - Hecho cuando: clasificación privada deniega incoherencia sin alterar parseo público ni generar un segundo ID. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k envelope`.
 
-- [ ] **T4. Resolver referencias tipadas sin atribuir autorización.** RF-001, RF-002, RF-012
+- [x] **T4. Resolver referencias tipadas sin atribuir autorización.** RF-001, RF-002, RF-012
 - Dependencias: T3; PR A.
 - Tests primero: P1 normal/vacío/error para partido/torneo y versión obligatoria en variantes rectificativas; referencias desconocidas o incompletas.
 - Hecho cuando: el resolver puro solo devuelve qué verificar por RLS, no declara legible un recurso por UUID. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k references`.
 
-- [ ] **T5. Proyectar invalidaciones de tres IDs por whitelist.** RF-013, RF-015, RF-016
+- [x] **T5. Proyectar invalidaciones de tres IDs por whitelist.** RF-013, RF-015, RF-016
 - Dependencias: T4; PR A.
 - Tests primero: P1 con referencias autorizadas, vacías y dato de negocio inesperado; entrada histórica con timestamp conocido.
 - Hecho cuando: `build_private_invalidation` produce únicamente `event_id,match_id,tournament_id`, sin copiar payload ni emitir versión/scope/timestamp/negocio. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k invalidation`; el contrato público permanece separado.
 
-- [ ] **T6. Agrupar principales y sockets por tenant.** RF-002, RF-010, RF-018
+- [x] **T6. Agrupar principales y sockets por tenant.** RF-002, RF-010, RF-018
 - Dependencias: T3; PR A.
 - Tests primero: P3 para cero candidatos, varias pestañas/sesiones, metadatos inválidos, otro tenant y límites 256/257.
 - Hecho cuando: agrupación determinista por organización/usuario/sesión, con sid/generación y lotes de hasta 256 principales; no combina derechos de identidades distintas. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k recipients`.
 
-- [ ] **T7. Decidir lectura efectiva multirrol sin inventar permisos.** RF-001, RF-003, RF-004, RF-005, RF-012
+- [x] **T7. Decidir lectura efectiva multirrol sin inventar permisos.** RF-001, RF-003, RF-004, RF-005, RF-012
 - Dependencias: T1, T2, T4; PR A.
 - Tests primero: P2 con hechos de varios roles, acceso organizativo general y predicado condicional permiso+oficial/exención; hechos incompletos o incompatibles.
 - Hecho cuando: decisión pura `ALLOW/DENY/INDETERMINATE` respeta las conjunciones de HTTP y no exige `CLOSE_MATCH_REPORT` ni oficial a lecturas generales. La fixture condicional no añade evento/permiso de producto. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k permissions`.
 
-- [ ] **T8. Aplicar tiempo explícito a sesión y JWT por destinatario.** RF-006, RF-007, RF-011
+- [x] **T8. Aplicar tiempo explícito a sesión y JWT por destinatario.** RF-006, RF-007, RF-011
 - Dependencias: T6, T7; PR A.
 - Tests primero: P2 para sesión/usuario/membresía inválidos y expiración antes/igual/después de `evaluation_time`, incluidos sid de una sesión con expiraciones JWT diferentes.
 - Hecho cuando: el núcleo no lee el reloj ni confía en metadatos del cliente, y compartir hechos SQL no comparte indebidamente la vigencia del token. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k temporal`.
 
-- [ ] **T9. Modelar suspensión y recuperación como transición pura.** RF-009, RF-010, RF-014, RF-017, RF-018
+- [x] **T9. Modelar suspensión y recuperación como transición pura.** RF-009, RF-010, RF-014, RF-017, RF-018
 - Dependencias: T6, T8; PR A.
 - Tests primero: P2/P3 para error repetido, DENY, recuperación, marca vacía, generación obsoleta y fallo de control.
 - Hecho cuando: estado por sid/generación genera una intención de RESYNC por episodio, sin almacenar IDs de recursos perdidos ni decisiones reutilizables; `now`/instantes son parámetros. Pasa `cd backend && pytest -q tests/test_realtime_policy.py -k recovery_state`.
 
-- [ ] **T10. Construir la nueva función invocadora: identidad y contexto.** RF-002, RF-006, RF-007
+- [x] **T10. Construir la nueva función invocadora: identidad y contexto.** RF-002, RF-006, RF-007
 - Dependencias: T1, T8; PR A.
 - Tests primero: D1/D3 con rol app, sesiones válidas/retiradas/ajenas, usuario u organización inactivos, membresía real y ausencia de rol; contextos administrativos excepcionales presentes.
 - Hecho cuando: nueva 055 comprueba identidad/sesión/membresía por principal, fija contexto RLS local por usuario, limpia excepciones 033/F9 y recibe `evaluation_time`; no usa BYPASSRLS ni membresía de plataforma. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k identity`.
 
-- [ ] **T11. Completar la función batch: recursos y variantes verificables.** RF-001, RF-002, RF-005, RF-012, RF-013
+- [x] **T11. Completar la función batch: recursos y variantes verificables.** RF-001, RF-002, RF-005, RF-012, RF-013
 - Dependencias: T4, T10; PR A.
 - Tests primero: D1 con JOIN/accesibilidad de operación, partido/torneo/versión cruzados, inexistentes, acta no confirmada y versión ajena; lectura válida sin publicación pública del torneo.
 - Hecho cuando: cada regla verifica el recurso concreto por RLS y conserva las condiciones HTTP, sin endpoint de clasificación inventado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k resources`.
 
-- [ ] **T12. Completar la función batch: roles efectivos y paridad.** RF-001, RF-003, RF-004, RF-005, RF-008, RF-009
+- [x] **T12. Completar la función batch: roles efectivos y paridad.** RF-001, RF-003, RF-004, RF-005, RF-008, RF-009
 - Dependencias: T7, T11; PR A.
 - Tests primero: D1 compara HTTP/gate por variante, lector sin permisos de escritura, dos roles, retirada de uno con otro vigente, concesión posterior y oficial con/sin permiso/asignación.
 - Hecho cuando: ninguna restricción se infiere de un permiso de escritura o de `system_permissions` fuera de la semántica HTTP. Quitar oficial/permiso que HTTP no exige no retira esa lectura. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k parity`.
 
-- [ ] **T13. Implementar el adaptador de evaluación fresca por lote.** RF-006, RF-007, RF-008, RF-009, RF-011, RF-014
+- [x] **T13. Implementar el adaptador de evaluación fresca por lote.** RF-006, RF-007, RF-008, RF-009, RF-011, RF-014
 - Dependencias: T6, T8, T10, T11, T12; PR A.
 - Tests primero: S1/D2 en `test_realtime_delivery.py` para nueva transacción REPEATABLE READ por lote, snapshot/tiempo de frontera, contexto previo a lectura, principal faltante/error y cero candidatos.
 - Hecho cuando: `realtime_authorization.py` consulta primaria sin reutilizar autorización positiva/negativa y valida JWT por sid con el mismo instante; una llamada autorizadora por lote más coste constante de contexto. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k adapter` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k snapshot`.
 
-- [ ] **T14. Demostrar el corte DA-2 con barreras de commit.** RF-007, RF-008, RF-009, RF-011
+- [x] **T14. Demostrar el corte DA-2 con barreras de commit.** RF-007, RF-008, RF-009, RF-011
 - Dependencias: T12, T13; PR A.
 - Tests primero: D2 sincroniza retirada confirmada antes de evaluación, autorización antes del commit/envío después y evaluación siguiente; evento creado antes de retirada, expiración, concesión posterior y siguiente lote del mismo evento.
 - Hecho cuando: tests reales, sin sleeps, prueban instantánea nueva después del commit y permiten solo el tránsito aprobado antes del corte; no inventan una retirada de lectura por quitar un permiso irrelevante. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k cutoff`.
 
-- [ ] **T15. Verificar migración, grants y limpieza de contexto.** RF-001, RF-002, RF-006, RF-012, RF-014
+- [x] **T15. Verificar migración, grants y limpieza de contexto.** RF-001, RF-002, RF-006, RF-012, RF-014
 - Dependencias: T10, T11, T12, T13; PR A.
 - Tests primero: D3 para EXECUTE de PUBLIC revocado/grant mínimo, función invocadora, rol app no superusuario/BYPASSRLS, salida parcial y error, reutilización de pool sin contexto anterior.
 - Hecho cuando: D3 aplica la nueva migración en base limpia y 054→055 mediante runner, con reejecución controlada y políticas/FORCE intactos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k migration` y `sh -n infra/postgres/migrate.sh`; ejecutar además `infra/scripts/test_migrate_target.sh` con el contenedor PostgreSQL y variables indicados en AGENTS, registrando ambas rutas de migración.
 
-- [ ] **T16. Medir agrupación y coste SQL de la autorización inerte.** RF-001, RF-011, RF-014, RF-018
+- [x] **T16. Medir agrupación y coste SQL de la autorización inerte.** RF-001, RF-011, RF-014, RF-018
 - Dependencias: T6, T13, T14, T15; PR A.
 - Tests primero: L1 con 1.000 sockets/100 principales y 257 principales, lotes vacíos y error DB; contar llamadas de red y trabajo SQL por usuario, no solo la llamada exterior.
 - Hecho cuando: se observa una/dos llamadas autorizadoras respectivamente, más coste constante por lote, sin consulta por sid ni caché de permisos; se registran datos/medidas sin afirmar O(1) dentro de SQL. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k batching` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k batching`.
@@ -104,6 +104,10 @@ No invocar todavía el nuevo gate desde el relay ni cambiar entrega observable. 
 - Dependencias: T1–T16; PR A.
 - Tests primero: regresión P/D/L y tests existentes de outbox/sockets; caracterizar que el relay aún no invoca el adaptador, sin modificar el comportamiento para fingir un rojo.
 - Hecho cuando: pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `cd backend && python -m compileall -q app`, `cd backend && ruff check .` y `git diff --check`; CI PR/push de A verdes con E2E de PR. Evidencia inicial de contrato en `verificacion.md`, R32f aún abierto, ninguna migración aplicada editada ni producto nuevo anunciado. Revisión y fusión de A antes de B.
+  - [x] T1–T16 y gate local verificados; contrato inerte y R32f abierto documentados.
+  - [x] CI de PR #76 y push verdes en `d4372227`, incluido E2E del PR; ejecuciones y resultados en `verificacion.md`.
+  - [x] Devin Review revisado: «No Issues Found», sin comentarios inline ni hallazgos pendientes.
+  - [ ] Fusión de PR A antes de iniciar B. T17 permanece abierta hasta cumplir este último requisito.
 
 ## PR B — Entrega privada y recuperación end-to-end (T18–T37)
 
