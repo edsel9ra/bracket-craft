@@ -134,7 +134,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T37. Carreras reales de casos, autorizaciones y comienzo.** RF-021, RF-023, RF-025, RF-029, RF-030
 - Hecho cuando: dos sesiones prueban apelación/propuesta, doble decisión, retirada/decisión, revocar/decidir, 033/decisión y apertura/cierre entre torneos; un único resultado y sin deadlock ni efecto retroactivo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py`.
 
-- [ ] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
+- [x] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
 - Hecho cuando: fallos tras decisión/efecto/auditoría/outbox revierten todo y consumo; fallo posterior de entrega no revierte acto; FK cruzadas, scope vencido y contexto del pool no filtran tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rollback.py tests/test_sanction_security.py`.
 
 - [ ] **T39. Gate B: RBAC, lectores y público sin regresión.** RF-003, RF-007, RF-008, RF-014, RF-015, RF-016, RF-017, RF-019
