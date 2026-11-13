@@ -1,6 +1,8 @@
 # Spec 035 — Tiempo real privado según permisos de lectura
 
-Estado: borrador
+Estado: aprobada
+
+Aprobada por el usuario: 2026-11-13 («Apruebo la spec.»).
 
 ## Contexto y objetivo
 
@@ -12,7 +14,7 @@ La autorización combina los permisos efectivos de los roles con las condiciones
 
 Esta funcionalidad es un requisito previo de F1, conforme a la hoja de ruta F8 → F1 → F13 y al apartado 6.3 del informe. La emisión de borradores de goles, tarjetas, sustituciones e incidencias no se habilita aquí. Su contenido y sus responsables lectores deberán definirse y aprobarse en F1 antes de emitirlos. Tampoco se incorpora al canal la gestión de sanciones F9, que mantiene sus avisos privados independientes.
 
-Esta entrega documental está en fase de clarificación. El usuario cerró DA-1 a DA-4 el 2026-11-13; sus decisiones están incorporadas a los requisitos. La spec permanece en borrador, pendiente de aprobación expresa; no se autoriza avanzar a plan, tareas ni implementación.
+El usuario cerró DA-1 a DA-4 y aprobó expresamente la spec completa el 2026-11-13. Sus decisiones están incorporadas a los requisitos. Se autoriza la fase Plan; su aprobación será necesaria antes de avanzar a tareas e implementación.
 
 ## Usuarios
 
@@ -148,7 +150,7 @@ Esta entrega documental está en fase de clarificación. El usuario cerró DA-1 
 
 ## Criterios de finalización
 
-Los siguientes criterios corresponden a la futura implementación y validación, no se dan por cumplidos al redactar este borrador:
+Los siguientes criterios corresponden a la futura implementación y validación; la aprobación de la spec no acredita su cumplimiento técnico:
 
 1. Las decisiones DA-1 a DA-4 del 2026-11-13 están incorporadas a los RF; el usuario aprueba expresamente la spec completa y esta deja de estar en borrador antes de planificar su implementación. Cerrar las dudas no equivale a aprobar la spec.
 2. Existe una matriz cerrada de eventos privados actuales, representaciones, lecturas de referencia y destinatarios; los eventos desconocidos no se entregan. Se distinguen las variantes privadas de nombres públicos y los avisos que no pertenecen al canal.
@@ -162,7 +164,7 @@ Los siguientes criterios corresponden a la futura implementación y validación,
 
 ## Dudas abiertas
 
-No quedan dudas abiertas identificadas. Pendiente de aprobación expresa de la spec completa.
+No quedan dudas abiertas identificadas. Spec completa aprobada por el usuario el 2026-11-13; las decisiones de diseño se revisan en la fase Plan.
 
 ### Decisiones de clarificación cerradas
 

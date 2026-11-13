@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: clarificación (Fase 2) — estado: borrador. DA-1–DA-4 cerradas por el usuario el 2026-11-13; pendiente de aprobación expresa de la spec completa. Sin código, plan ni tareas de implementación.
+- specs/035-tiempo-real-por-rol — fase actual: Plan (Fase 3) — estado de la spec: aprobada el 2026-11-13. `plan.md` en borrador, pendiente de revisión y aprobación; sin código funcional ni tareas de implementación.
 
 ## Pendiente
-- Spec 035: sin dudas abiertas identificadas; falta aprobación expresa de la spec completa antes de avanzar al plan. Cerrar DA-1–DA-4 no cambia su estado borrador.
+- Spec 035: confirmar C1–C4 y aprobar el plan antes de redactar tareas. Las recomendaciones del plan no son decisiones aprobadas; no se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 035 · Usuario: «Apruebo la spec.»; clarificación cerrada y paso a Plan autorizado. Spec aprobada, plan borrador; sin autorización para Tareas ni Implementación.
 - 2026-11-13 · Spec 035 · Usuario acepta las recomendaciones: DA-1 C, lectura HTTP y recurso concreto sin roles por torneo ni endurecer HTTP; DA-2 B, denegar evaluaciones iniciadas desde la retirada confirmada sin retirar lo ya enviado o aprobado en tránsito; DA-3 B, invalidaciones mínimas con identificadores autorizados y detalle HTTP, sin decidir F1; DA-4 B, suspender entregas no verificables sin gracia ni desconexión masiva, reautorizar y resincronizar por HTTP sin replay privado. RF concretados; decisiones cerradas, spec aún borrador en clarificación.
 - 2026-11-13 · Spec 035 · Investigación estática: entrega organizativa sin filtro por evento, revalidación periódica 032 sin asignaciones de oficiales y conservación de conexiones ante errores; algunas lecturas HTTP actuales solo exigen membresía con rol. No inventar permisos de lectura a partir de permisos de escritura ni incorporar F9 al canal. F1 definirá sus borradores y responsables lectores por separado. Fase 1 redactada, sin aprobar ni implementar.
 - 2026-11-13 · D · `/admin/sanction-cases` reutiliza detalle/decisión con API propia de plataforma vía useApi y confirmación singleFlight sin organización; solo lista scopes F9/detalle/preview/decisión, nunca presenta/propone. La denegación durante preview/decisión limpia el detalle privado; E2E de consumo, revocación, auto-decisión, vacío/error y matriz pública real. Fixture HTTP propia, sin necesitar cuenta platform_admin en seed; backend/migraciones/permisos/público intactos.
