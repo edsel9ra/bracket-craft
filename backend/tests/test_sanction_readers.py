@@ -22,8 +22,9 @@ FUTURE = "31000000-0000-4000-8000-000000000053"
 
 
 @pytest.fixture
-async def readers(database_admin_url):
-    async with throwaway_database(database_admin_url, last=40) as admin:
+async def readers(database_admin_url, request):
+    options = request.param if isinstance(getattr(request, "param", None), dict) else {}
+    async with throwaway_database(database_admin_url, last=options.get("last", 41)) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches(id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
@@ -76,6 +77,18 @@ async def test_repository_batches_operational_facts_without_case_access(readers)
     with pytest.raises(DBAPIError, match="SANCTION_OPERATION_DENIED"):
         async with readers.session(org=str(uuid4())) as db:
             await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc))
+
+
+@pytest.mark.parametrize("readers", [{"last": 40}], indirect=True)
+async def test_requester_already_reads_original_suspensions_under_040_rls(readers):
+    await readers.admin.execute("UPDATE roles SET permissions='[\"REQUEST_MATCH_REPORT_RECTIFICATION\"]'")
+    async with readers.session() as db:
+        assert (await db.execute(text("SELECT current_user"))).scalar_one() == "bracket_app"
+        rows = (await db.execute(text("SELECT id, organization_id, matches_suspended, status FROM player_suspensions"))).mappings().all()
+        assert len(rows) == 1
+        assert rows[0]["id"] == readers.suspension
+        assert rows[0]["organization_id"] == UUID(ORG)
+        assert rows[0]["matches_suspended"] == 3 and rows[0]["status"] == "active"
 
 
 async def test_repository_pending_preview_empty_and_applied_resolution(readers):

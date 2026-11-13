@@ -62,6 +62,7 @@ from app.modules.rules_engine.substitutions import (
     remaining_limits,
     team_usage,
 )
+from app.modules.sanction_appeals.application import record_opening
 from app.modules.tournaments.roster_status import (
     RosterSizeOutOfRange,
     count_active_roster_players_by_team,
@@ -811,6 +812,8 @@ async def create_match_segment(
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="El número de segmento ya existe para este partido") from exc
         segment = dict(result.mappings().one())
+        if latest_segment is None:
+            await record_opening(db, match_id, segment["id"])
         limits = SubstitutionLimits.from_config(
             effective_substitutions(match.get("rules_config") or {})
         )

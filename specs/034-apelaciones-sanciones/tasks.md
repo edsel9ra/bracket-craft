@@ -61,7 +61,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 - [x] **T15. Repositorio efectivo en lote con contexto RLS.** RF-006, RF-010, RF-014, RF-016
 - Hecho cuando: carga original/resoluciones/aplicaciones/cumplimientos sin N+1 y conserva origen; lectura operativa usa funciones mínimas sin conceder evidencia ni consulta de otros expedientes. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k repository`.
 
-- [ ] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
+- [x] **T24. Aplicar en la primera apertura y registrar snapshot.** RF-010, RF-012, RF-030
 - Hecho cuando: apertura aplicable lineariza efecto, partido/instante y snapshot; no depende de convocatoria ni calendario, y no aplica resolución excluida por rectificación. Partido iniciado conserva lectura previa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_effective_integration.py -k opening`.
 
 - [ ] **T25. Bloqueo del cierre con duración efectiva por partido.** RF-003, RF-014, RF-030, RF-031
