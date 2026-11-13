@@ -2,10 +2,10 @@
 import Button from '~/components/ui/Button.vue';
 import FormField from '~/components/ui/FormField.vue';
 import { canDecideSanction, decisionSubmission, isSanctionConflictKey, sanctionErrorKey, type SanctionCase, type SanctionDecision, type SanctionPreview } from '~/utils/sanctions';
-const props = defineProps<{ case: Pick<SanctionCase, 'id' | 'status' | 'submitted_by_user_id'>; userId: string | null; canResolve: boolean }>();
+const props = defineProps<{ case: Pick<SanctionCase, 'id' | 'status' | 'submitted_by_user_id'>; userId: string | null; canResolve: boolean; platform?: boolean }>();
 const emit = defineEmits<{ changed: [notice?: string] }>();
-const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
-const { busy, error, run } = useSanctionAction();
+const { t } = useI18n(); const prefix = useId(); const api = props.platform ? usePlatformSanctions() : useSanctionCases();
+const { busy, error, run } = useSanctionAction({ platform: props.platform });
 const errorTarget = useSanctionErrorFocus(error);
 const allowed = computed(() => canDecideSanction(props.case.submitted_by_user_id, props.userId, props.canResolve, props.case.status));
 const preview = ref<SanctionPreview | null>(null); const previewBusy = ref(false);

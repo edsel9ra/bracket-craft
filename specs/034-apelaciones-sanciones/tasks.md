@@ -178,7 +178,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 
 Depende de C. Orden T50 → … → T55; no declarar implementada la spec hasta verificar todos sus RF y obtener revisión humana. La aprobación de estas tareas no sustituye la aceptación de implementación.
 
-- [ ] **T50. Composable y pantalla admin de decisión excepcional.** RF-006, RF-015, RF-021, RF-023, RF-024
+- [x] **T50. Composable y pantalla admin de decisión excepcional.** RF-006, RF-015, RF-021, RF-023, RF-024
 - Hecho cuando: `/admin/sanction-cases` lista solo scopes F9, muestra preview/detalle y decide con useApi/useConfirm singleFlight, ES/EN; no permite presentar/proponer ni ve otro expediente. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
 - [ ] **T51. Regresión E2E admin y pública.** RF-007, RF-008, RF-015, RF-016, RF-017, RF-021, RF-023, RF-024
