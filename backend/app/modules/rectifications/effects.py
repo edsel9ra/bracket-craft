@@ -56,7 +56,8 @@ async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping
     effects.extend({**entity, "effect_type": "tiebreak_draw_invalidated", "payload": payload}
         for payload in invalidated_draws(before["draw_groups"], draw_groups))
     sanctions = await recalculate_sanctions(db, context, version, now)
-    await close_for_rectification(db, version["id"])
+    if not version.get("is_preview", False):
+        await close_for_rectification(db, version["id"])
     effects.extend(sanctions.effects)
     advancements, advancement_candidates = await advancement_changes(db, context, version, rows)
     effects.extend(advancements)

@@ -137,8 +137,8 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
 - Hecho cuando: fallos tras decisión/efecto/auditoría/outbox revierten todo y consumo; fallo posterior de entrega no revierte acto; FK cruzadas, scope vencido y contexto del pool no filtran tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rollback.py tests/test_sanction_security.py`.
 
-- [ ] **T39. Gate B: RBAC, lectores y público sin regresión.** RF-003, RF-007, RF-008, RF-014, RF-015, RF-016, RF-017, RF-019
-- Hecho cuando: todos los escritores/lectores B están integrados y las regresiones de cierre/033/matriz pública pasan; ninguna escritura F9 se fusiona antes. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_*.py tests/test_rectification_*.py tests/test_close_match*.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py` y `cd backend && python -m compileall -q app`.
+- [x] **T39. Gate B: RBAC, lectores y público sin regresión.** RF-003, RF-007, RF-008, RF-014, RF-015, RF-016, RF-017, RF-019
+- Hecho cuando: todos los escritores/lectores B están integrados y las regresiones de cierre/033/matriz pública pasan; ninguna escritura F9 se fusiona antes. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_*.py tests/test_rectification_*.py tests/test_close*.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py` y `cd backend && python -m compileall -q app`.
 
 ## PR C — Workspace y aviso preparatorio (T40–T49)
 

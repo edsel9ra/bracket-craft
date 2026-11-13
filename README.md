@@ -741,6 +741,32 @@ El acta se compone con un **catálogo cerrado de siete tipos**. Todos comparten 
 - **Sin rutas ni permisos nuevos.** La escritura sigue siendo la del cierre; el miembro sin rol conserva su **403** y el observador lee sin escribir.
 - **Contrato de reglas.** `docs/contrato-reglas.md` (`engine_version` **2026.1**) no cambia: el catálogo de eventos y la asistencia son aditivos y quedan **fuera** del contrato cerrado, que solo cubre los códigos de llave y las formaciones. El detalle de contrato para clientes está en `AGENTS.md` → «Contratos que cambian».
 
+## Apelaciones y resoluciones de sanciones (034, API B2)
+
+Una apelación o propuesta pendiente no altera la sanción. La resolución auditada es un hecho distinto: conserva duración original y cumplimientos; una reducción o anulación no declarativa se aplica en la primera apertura real posterior, sin cambiar partidos ya comenzados. Las decisiones sobre sanciones cumplidas son declarativas. Nadie decide su propio expediente, tampoco mediante plataforma; las propuestas administrativas requieren otra persona. La 033 revalida/cierra los pendientes afectados o marca el historial ya resuelto, sin trasladar resoluciones a sanciones recreadas ni abrir una segunda instancia.
+
+Todas las rutas siguientes llevan `/api/v1` y son privadas:
+
+| Método y ruta | Facultad vigente |
+|---|---|
+| `GET /sanctions`, `GET /sanction-cases`, `GET /sanction-cases/{id}` | `VIEW_SANCTION_CASES` |
+| `POST /sanctions/{id}/appeals` | `SUBMIT_SANCTION_APPEALS` |
+| `POST /sanctions/{id}/administrative-proposals` | `RESOLVE_SANCTION_CASES` |
+| `POST /sanction-cases/{id}/withdraw` | Autor, pendiente y permiso de presentar/proponer correspondiente |
+| `GET /sanction-cases/{id}/preview` | `VIEW_SANCTION_CASES` y `RESOLVE_SANCTION_CASES` |
+| `POST /sanction-cases/{id}/decision` | `RESOLVE_SANCTION_CASES`, persona distinta |
+| `GET/POST /sanction-cases/{id}/platform-authorizations`, `DELETE /sanction-cases/{id}/platform-authorizations/{aid}` | Owner activo; sin exigir consulta F9 |
+| `GET /platform/sanction-cases`, `GET /platform/sanction-cases/{id}`, `GET /platform/sanction-cases/{id}/preview`, `POST /platform/sanction-cases/{id}/decision` | `platform_admin` activo y autorización F9 propia vigente para ese expediente; sin membresía ni facultad de presentar/proponer |
+| `GET /sanction-notifications` | Destinatario autorizado actualmente; no concede consulta del expediente |
+
+Presentar/proponer devuelve un recibo mínimo `{id,status}` y no exige consulta F9. Motivo obligatorio y evidencia opcional de texto/enlaces en presentación, decisión y retirada; sin archivos. Listados paginados, filtros cerrados y cuerpos con claves desconocidas rechazadas con 422. La decisión exige `expected_base_duration`; las medidas incompatibles o una base obsoleta devuelven conflicto 409. Detalles ajenos o inexistentes son indistinguibles (404).
+
+Las autorizaciones F9 son puntuales y revocables, separadas de la 033. Se revalidan owner, administrador, autoría y sanción al decidir; su consumo, resolución, dos auditorías y avisos son transaccionales. Una pérdida de autorización no permite ampliar consultas ni reutilizar el scope en otro expediente.
+
+Los avisos internos y por correo se registran junto al acto y se entregan desde outbox con revalidación C5. Solo incluyen acto y motivo, nunca evidencia. El payload de cola contiene únicamente `notification_id`; sus dos handlers explícitos no publican en Redis ni Socket.IO. La pérdida de permiso retiene la entrega y activa los reintentos existentes; recuperar permiso permite reintentar. SMTP fallido no revierte la resolución; el correo conserva semántica de al menos una entrega y puede repetirse sin duplicar el acto.
+
+Despliegue: aplicar **044–053**, después actualizar API y worker juntos. No hay cambios en 040–043 ni en hardening; las migraciones no tienen `down`. Los diez archivos conservan unidades de dominio y evolución verificable de funciones; no se añaden catorce migraciones. El frontend de expedientes queda para los PR C/D de la spec; B2 no cierra la spec ni añade campos públicos.
+
 ## Cierre de actas y segmentos
 
 El cierre es una **operación atómica**: se valida completa y, si algo falla, no se escribe nada. El contrato detallado está en `AGENTS.md` → «Cierre del acta (spec 017)», «Marcadores del cierre (spec 017)», «Doble amarilla (spec 017)» y «Segmentos y propuesta (spec 017)»; aquí se describe lo que observa el operador y el cliente.

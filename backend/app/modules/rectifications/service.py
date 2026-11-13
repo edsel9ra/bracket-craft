@@ -277,7 +277,7 @@ class RectificationService:
                 request, match = await self._locked_request_and_match(context, request_id)
                 self._require_pending(request)
                 await self._approval_permission(context, request)
-                result = await self._publish(context, request, match, datetime.now(timezone.utc))
+                result = await self._publish(context, request, match, datetime.now(timezone.utc), preview=True)
                 return {**{key: result[key] for key in ("version", "effects")},
                     "expected_base_version": match["version_number"]}
             finally:
@@ -367,7 +367,7 @@ class RectificationService:
                 action="DECIDE_MATCH_REPORT_RECTIFICATION", payload=audit)
         return self._request_response(row)
 
-    async def _publish(self, context, request, match, now) -> dict:
+    async def _publish(self, context, request, match, now, *, preview: bool = False) -> dict:
         if match["version_number"] != request["base_version_number"]:
             raise RectificationConflict("RECTIFICATION_STALE", "La versión vigente ha cambiado")
         if match["version_status"] == "archived":
@@ -413,7 +413,7 @@ class RectificationService:
             {"version_id": str(version["id"])})
         effects = await apply_effects(self.db, context, {**version, "tournament_id": match["tournament_id"],
             "stage_id": match["stage_id"], "standings_before": standings_before,
-            "discipline_before": discipline_before, "advancement_before": match}, now)
+            "discipline_before": discipline_before, "advancement_before": match, "is_preview": preview}, now)
         return {"version_id": version["id"],
             "version": await self._version(context, request["match_id"], version["version_number"]),
             "effects": effects}

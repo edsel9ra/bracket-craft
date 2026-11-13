@@ -10,7 +10,7 @@ from app.modules.sanction_appeals.schemas import AppealRequest, DecisionRequest
 from app.modules.rectifications import effects
 from migration_helpers import apply_migrations
 from test_migration_031 import ORG, PLAYER_HOME_FIRST
-from test_rectification_flow import create, decide, proposal
+from test_rectification_flow import create, decide, proposal, database_snapshot
 from test_rectification_flow import flow as flow
 from test_rectification_sanctions import card_report, submit
 
@@ -86,6 +86,27 @@ async def test_closure_failure_rolls_back_publication(flow, monkeypatch):
     assert await flow.admin.fetchval("SELECT count(*) FROM sanction_case_events") == 1
     assert await flow.admin.fetchval("SELECT count(*) FROM match_report_versions") == 1
     assert await flow.admin.fetchval("SELECT count(*) FROM outbox_events") == before
+
+
+@pytest.mark.parametrize("preview_as_author", [True, False])
+async def test_rectification_preview_with_pending_case_is_read_only_for_author_and_approver(flow, preview_as_author):
+    await apply_migrations(flow.admin, first=44)
+    requester = flow.context
+    request = await submit(flow, card_report())
+    assert (await decide(flow, request)).status_code == 200
+    approver = flow.context
+    suspension = await flow.admin.fetchval("SELECT id FROM player_suspensions")
+    async with case_service(flow) as service:
+        await service.submit_appeal(requester, AppealRequest(
+            suspension_id=suspension,represented_player_id=PLAYER_HOME_FIRST,reason="Pendiente"))
+    flow.context = requester
+    response = await create(flow, proposal())
+    assert response.status_code == 201,response.text
+    flow.context = requester if preview_as_author else approver
+    before = await database_snapshot(flow.admin)
+    response = await flow.client.get(f"/api/v1/rectifications/{response.json()['id']}/preview")
+    assert response.status_code == 200,response.text
+    assert await database_snapshot(flow.admin) == before
 
 
 @pytest.mark.parametrize("action", ["annul", "reduce"])

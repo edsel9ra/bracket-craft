@@ -1,12 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.platform import PlatformContext, get_platform_context
 from app.core.tenancy import AuthContext, get_auth_context
-from app.modules.sanction_appeals.cases import SanctionCaseService
+from app.modules.sanction_appeals.cases import SanctionCaseService, SanctionConflict
 from app.modules.sanction_appeals.notifications import SanctionNotificationService
 from app.modules.sanction_appeals.platform import SanctionPlatformService
 from app.modules.sanction_appeals.schemas import (
@@ -24,6 +25,9 @@ async def _execute(operation):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SanctionConflict as exc:
+        return JSONResponse(status_code=409, content={"detail":str(exc),"code":exc.code},
+            headers={"Cache-Control":"no-store"})
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

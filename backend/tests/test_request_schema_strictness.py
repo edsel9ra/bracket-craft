@@ -2,12 +2,12 @@
 
 Barrido de comportamiento **puro** (sin base de datos, sin red, sin reloj; plan
 §4 y §7): recorre ``app.main.api``, deriva las operaciones con cuerpo JSON y las
-compara con el inventario literal de **38** operaciones (**33** modelos de
-primer nivel, con **7** anidados), excluyendo las **3** operaciones multipart.
+compara con el inventario literal de **44** operaciones (**38** modelos de
+primer nivel, con **8** anidados), excluyendo las **3** operaciones multipart.
 
 T4 convierte el barrido en la garantía completa: ``STRICT_MODELS`` deja de ser
 una lista escrita a mano y pasa a ser el **conjunto derivado** de los modelos
-alcanzables desde el barrido, recursivamente (**40**), y ese mismo conjunto es
+alcanzables desde el barrido, recursivamente (**46**), y ese mismo conjunto es
 el que se prueba —biyección con el inventario literal en ambos sentidos,
 bandera ``extra="forbid"`` y rechazo ``extra_forbidden`` con el valor
 conservado solo dentro del error de Pydantic—. Tres salvaguardas fallan con
@@ -73,6 +73,7 @@ from app.modules.platform.schemas import (
     SetActiveRequest,
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
+from app.modules.sanction_appeals.schemas import AppealBody, AuthorizationRequest, DecisionRequest, PrejudiceRequest, ProposalBody, WithdrawalRequest
 from app.modules.rules_engine.schemas import (
     CreateTournamentRequest,
     TournamentRulesConfig,
@@ -229,6 +230,12 @@ EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
         "matches.schemas.PublishMatchLineupRequest",
     ),
     ("POST", "/api/v1/matches/{match_id}/officials", "matches.schemas.OfficialAssignmentRequest"),
+    ("POST", "/api/v1/sanctions/{suspension_id}/appeals", "sanction_appeals.schemas.AppealBody"),
+    ("POST", "/api/v1/sanctions/{suspension_id}/administrative-proposals", "sanction_appeals.schemas.ProposalBody"),
+    ("POST", "/api/v1/sanction-cases/{case_id}/withdraw", "sanction_appeals.schemas.WithdrawalRequest"),
+    ("POST", "/api/v1/sanction-cases/{case_id}/decision", "sanction_appeals.schemas.DecisionRequest"),
+    ("POST", "/api/v1/sanction-cases/{case_id}/platform-authorizations", "sanction_appeals.schemas.AuthorizationRequest"),
+    ("POST", "/api/v1/platform/sanction-cases/{case_id}/decision", "sanction_appeals.schemas.DecisionRequest"),
 ]
 
 # Las tres operaciones multipart quedan fuera de alcance (RF-003, RF-006,
@@ -239,7 +246,7 @@ MULTIPART_OPERATIONS: list[tuple[str, str]] = [
     ("POST", "/api/v1/tournaments/{tournament_id}/teams/{team_id}/crest"),
 ]
 
-# Los siete modelos que solo aparecen dentro de otro cuerpo.
+# Los ocho modelos que solo aparecen dentro de otro cuerpo.
 EXPECTED_NESTED_MODELS: set[str] = {
     "matches.schemas.MatchEventPayload",
     "matches.schemas.MatchLineupEntry",
@@ -248,10 +255,11 @@ EXPECTED_NESTED_MODELS: set[str] = {
     "rectifications.schemas.RectificationReportDTO",
     "rules_engine.schemas.TournamentRulesConfig",
     "tournaments.schemas.BulkTournamentTeamItem",
+    "sanction_appeals.schemas.PrejudiceRequest",
 }
 
-# Ancla literal de las 40 referencias alcanzables desde el inventario: las 33
-# de primer nivel (las de EXPECTED_OPERATIONS) más las 7 anidadas. Contra este
+# Ancla literal de las 46 referencias alcanzables desde el inventario: las 38
+# de primer nivel (las de EXPECTED_OPERATIONS) más las 8 anidadas. Contra este
 # conjunto se contrasta, en ambos sentidos, el conjunto **derivado** del barrido
 # (T4): la lista de modelos que se prueba no se escribe a mano.
 EXPECTED_MODEL_REFS: set[str] = (
@@ -261,6 +269,12 @@ EXPECTED_MODEL_REFS: set[str] = (
 # Cuerpos mínimos sintácticamente válidos, en mapa literal por modelo (plan §3):
 # sirven para inyectar la clave extra sin tocar el resto del cuerpo.
 MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
+    AppealBody: {"reason":"Recurso","represented_player_id":"00000000-0000-0000-0000-000000000001"},
+    ProposalBody: {"reason":"Propuesta","proposed_action":"annul"},
+    WithdrawalRequest: {"reason":"Retirada"},
+    AuthorizationRequest: {"reason":"Revisión","platform_admin_email":"admin@example.test"},
+    DecisionRequest: {"reason":"Revisado","decision":"maintain","expected_base_duration":3},
+    PrejudiceRequest: {"reason":"Acreditado","match_id":"00000000-0000-0000-0000-000000000001"},
     PlatformAuthorizationRequest: {"platform_admin_email": "admin@example.test", "reason": "Revisión independiente"},
     RectificationDecisionRequest: {"decision": "approve", "reason": "Revisado", "expected_base_version": 1},
     CloseCompetitiveImpactRequest: {"reason": "Mantener lo jugado"},
@@ -549,9 +563,9 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 # ---------------------------------------------------------------------------
 
 
-def test_inventory_has_38_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 38
-    assert len(set(EXPECTED_OPERATIONS)) == 38
+def test_inventory_has_44_literal_operations():
+    assert len(EXPECTED_OPERATIONS) == 44
+    assert len(set(EXPECTED_OPERATIONS)) == 44
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -565,23 +579,23 @@ def test_json_operations_match_the_literal_inventory():
     extra = sorted((actual - expected).elements())
     assert not missing and not extra, (
         "El barrido de app.main.api no coincide con el inventario literal de "
-        f"38 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
+        f"44 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 38
+    assert len(derived) == 44
 
 
-def test_inventory_declares_33_top_level_models():
+def test_inventory_declares_38_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 33
+    assert len(refs) == 38
 
 
-def test_app_yields_33_top_level_and_7_nested_models():
+def test_app_yields_38_top_level_and_8_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 33, sorted(model_ref(m) for m in top_level)
-    assert len(nested) == 7, sorted(model_ref(m) for m in nested)
+    assert len(top_level) == 38, sorted(model_ref(m) for m in top_level)
+    assert len(nested) == 8, sorted(model_ref(m) for m in nested)
 
 
 def test_nested_models_match_the_literal_inventory():
@@ -637,15 +651,15 @@ def test_json_operation_without_pydantic_model_fails_with_explicit_message():
 
 
 # ---------------------------------------------------------------------------
-# (b) Conjunto derivado de los 40 modelos: biyección, bandera y rechazo
+# (b) Conjunto derivado de los 46 modelos: biyección, bandera y rechazo
 # ---------------------------------------------------------------------------
 
 
-def test_strict_models_are_exactly_the_40_models_of_the_literal_inventory():
+def test_strict_models_are_exactly_the_46_models_of_the_literal_inventory():
     """T4: lo que se prueba es exactamente lo que sirve la app, y viceversa.
 
     El conjunto sale **del barrido** (no de una lista escrita a mano) y se
-    contrasta con las 40 referencias literales en ambos sentidos: un modelo o
+    contrasta con las 46 referencias literales en ambos sentidos: un modelo o
     una operación que aparezca sin entrada literal, o una entrada sin operación,
     falla aquí con mensaje explícito (RF-002, RF-005, RNF-001).
     """
@@ -655,11 +669,11 @@ def test_strict_models_are_exactly_the_40_models_of_the_literal_inventory():
     missing = sorted(EXPECTED_MODEL_REFS - derived_refs)
     extra = sorted(derived_refs - EXPECTED_MODEL_REFS)
     assert not missing and not extra, (
-        "El conjunto derivado del barrido no coincide con las 40 referencias "
+        "El conjunto derivado del barrido no coincide con las 46 referencias "
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 40, f"el barrido deriva {len(derived)} modelos, no 40"
+    assert len(derived) == 46, f"el barrido deriva {len(derived)} modelos, no 46"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."

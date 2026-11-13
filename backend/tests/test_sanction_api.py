@@ -79,6 +79,28 @@ async def test_anonymous_requires_session(client):
     assert (await client.get("/api/v1/sanction-cases")).status_code == 401
 
 
+async def test_domain_conflicts_expose_stable_codes_without_private_data(cases, client):
+    f = cases
+    await permissions(f,"SUBMIT_SANCTION_APPEALS","RESOLVE_SANCTION_CASES")
+    payload = appeal(f).model_dump(mode="json",exclude={"suspension_id"})
+    path = f"/api/v1/sanctions/{f.suspension}/appeals"
+    submitted = await client.post(path,json=payload)
+    case = submitted.json()
+    duplicate = await client.post(path,json=payload)
+    assert duplicate.status_code == 409
+    assert duplicate.json() == {"detail":"SANCTION_CASE_CONFLICT","code":"SANCTION_CASE_CONFLICT"}
+    decision_path = f"/api/v1/sanction-cases/{case['id']}/decision"
+    decision = {"decision":"maintain","expected_base_duration":3,"reason":"Revisado"}
+    own = await client.post(decision_path,json=decision)
+    assert own.status_code == 409
+    assert own.json()["code"] == "SANCTION_SELF_DECISION"
+    reviewer = await second_member(f,"RESOLVE_SANCTION_CASES")
+    api.dependency_overrides[get_auth_context] = lambda:reviewer
+    stale = await client.post(decision_path,json={**decision,"expected_base_duration":2})
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "SANCTION_STALE_BASE"
+
+
 async def test_withdrawal_evidence_is_optional_private_and_idempotent(cases, client):
     f = cases
     await permissions(f, "SUBMIT_SANCTION_APPEALS")

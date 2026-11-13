@@ -168,7 +168,7 @@ class RectificationPlatformService(RectificationService):
             try:
                 actor, request, match, _ = await self._authorized_request(platform, request_id, lock=True)
                 self._require_pending(request)
-                result = await self._publish(actor, request, match, datetime.now(timezone.utc))
+                result = await self._publish(actor, request, match, datetime.now(timezone.utc), preview=True)
                 return {**{key: result[key] for key in ("version", "effects")},
                     "expected_base_version": match["version_number"]}
             finally:
