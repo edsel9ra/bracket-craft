@@ -72,3 +72,29 @@ export function appealSubmission(input: AppealInput): { id: string; body: Appeal
   if (!id || !represented || !evidence || prior === null || !['player', 'team'].includes(input.representation)) return null;
   return { id, body: { ...evidence, ...(input.representation === 'player' ? { represented_player_id: represented } : { represented_team_id: represented }), ...(prior ? { prior_case_id: prior } : {}) } };
 }
+
+export interface ProposalInput { sanctionId: string; action: 'annul' | 'reduce'; duration: string; reason: string; evidence: string; links: string; priorCaseId: string }
+export function proposalSubmission(input: ProposalInput): { id: string; body: ProposalBody } | null {
+  const id = normalizeUuid(input.sanctionId); const evidence = evidencePayload(input.reason, input.evidence, input.links);
+  const prior = input.priorCaseId.trim() ? normalizeUuid(input.priorCaseId) : undefined;
+  const duration = input.duration.trim() ? Number(input.duration) : NaN;
+  if (!id || !evidence || prior === null || !['annul', 'reduce'].includes(input.action) || (input.action === 'reduce' && (!Number.isInteger(duration) || duration < 0))) return null;
+  return { id, body: { ...evidence, proposed_action: input.action, ...(input.action === 'reduce' ? { proposed_duration: duration } : {}), ...(prior ? { prior_case_id: prior } : {}) } };
+}
+
+export function canWithdrawSanction(target: Pick<SanctionCase, 'status' | 'case_type' | 'submitted_by_user_id'>, userId: string | null, submit: boolean, resolve: boolean): boolean {
+  return Boolean(userId && target.submitted_by_user_id === userId && target.status === 'pending' && (target.case_type === 'appeal' ? submit : resolve));
+}
+
+export function decisionSubmission(preview: SanctionPreview, input: { decision: SanctionDecision; duration: string; reason: string; evidence: string; links: string; prejudice: { match_id: string; reason: string }[] }): DecisionBody | null {
+  const evidence = evidencePayload(input.reason, input.evidence, input.links);
+  const duration = input.duration.trim() ? Number(input.duration) : NaN;
+  if (!evidence || !preview.can_decide || preview.status !== 'pending' || !preview.allowed_decisions.includes(input.decision)) return null;
+  if (input.decision === 'reduce' && (!Number.isInteger(duration) || duration < 0 || duration >= preview.expected_base_duration)) return null;
+  if (input.prejudice.length > 100 || input.prejudice.some((row) => !normalizeUuid(row.match_id) || !row.reason.trim()) || new Set(input.prejudice.map((row) => row.match_id.toLowerCase())).size !== input.prejudice.length) return null;
+  return { ...evidence, decision: input.decision, expected_base_duration: preview.expected_base_duration, ...(input.decision === 'reduce' ? { after_duration: duration } : {}), prejudice_records: input.prejudice.map((row) => ({ match_id: normalizeUuid(row.match_id)!, reason: row.reason.trim() })) };
+}
+
+export function isSanctionConflictKey(key: string): boolean {
+  return key === 'sanction.error.conflict' || key.startsWith('sanction.error.SANCTION_');
+}

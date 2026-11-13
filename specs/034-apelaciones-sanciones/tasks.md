@@ -156,7 +156,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 - [x] **T43. Formulario de apelación con representación.** RF-002, RF-003, RF-018, RF-026, RF-028, RF-034
 - Hecho cuando: miembro autorizado registra representación y motivo; evidencia opcional/enlaces seguros, sin input de archivos; errores y ausencia de caducidad no cambian sanción ni conceden acceso al representado. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T44. Proponer y decidir con confirmación singleFlight.** RF-004, RF-020, RF-021, RF-022, RF-029, RF-030, RF-034
+- [x] **T44. Proponer y decidir con confirmación singleFlight.** RF-004, RF-020, RF-021, RF-022, RF-029, RF-030, RF-034
 - Hecho cuando: catálogo y preview correctos, autor no decide, propuesta sin efecto, retirada solo autor; useConfirm ES/EN singleFlight evita doble envío y conflicto refresca estado sin segunda instancia. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
 - [ ] **T45. Gestión owner de autorizaciones F9.** RF-015, RF-023, RF-024

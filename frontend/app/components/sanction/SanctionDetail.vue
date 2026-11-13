@@ -12,6 +12,7 @@ const { t, formatDateTime } = useI18n();
     <p>{{ t('sanction.caseId') }}: {{ detail.case.id }}</p><p>{{ detail.case.reason }}</p>
     <p>{{ t('sanction.author') }}: {{ detail.case.submitted_by_user_id }} · {{ formatDateTime(detail.case.submitted_at) }}</p>
     <p v-if="detail.case.prior_case_id">{{ t('sanction.priorCase') }}: {{ detail.case.prior_case_id }}</p>
+    <p v-if="detail.case.proposed_action">{{ t('sanction.proposedAction') }}: {{ t(`sanction.decision.${detail.case.proposed_action}`) }} <span v-if="detail.case.proposed_duration !== null">· {{ detail.case.proposed_duration }}</span></p>
     <SanctionEvidence :text="detail.case.evidence_text" :links="detail.case.evidence_links" />
     <section>
       <h3>{{ t('sanction.source') }}</h3><p>{{ t(`sanction.source.${detail.source.source_type}`) }} · {{ t(`sanction.scope.${detail.source.scope_type}`) }}</p>
