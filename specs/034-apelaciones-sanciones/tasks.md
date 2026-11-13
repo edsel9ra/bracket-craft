@@ -1,6 +1,6 @@
 # Tareas 034 — Apelaciones y resoluciones de sanciones
 
-Estado: **aprobado** por el usuario el 2026-11-12, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. Fase Tareas cerrada; fase actual Implementación, PR A. T1–T10 realizadas; T11–T55 pendientes.
+Estado: **aprobado e implementado técnicamente en A–D**, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. T1–T54 completas localmente; documentación T55 preparada, cierre formal pendiente de CI remota y aceptación humana. Evidencia por RF y capturas en [verificacion.md](verificacion.md); no confundir checks locales con jobs remotos.
 
 Son **55 tareas**, estimadas en **20–30 min de trabajo por tarea**, en orden de dependencia. **Propuesta: no dividir la spec**, aunque supera diez tareas: la duración efectiva, el bloqueo/cumplimiento y la coordinación 033 forman una garantía indivisible; separarlos en specs permitiría activar resoluciones con lectores antiguos. Por decisión del usuario, la entrega pasa a cinco PRs secuenciales A → B1 → B2 → C → D. Cada PR se verifica y fusiona antes de empezar el siguiente; B1 solo activa lectores equivalentes sin resoluciones y B2 no se fusiona parcialmente. Si una tarea excede el límite al ejecutarla, descomponerla antes de seguir, sin ampliar alcance ni marcarla parcialmente hecha.
 
@@ -196,6 +196,7 @@ Depende de C. Orden T50 → … → T55; no declarar implementada la spec hasta 
 
 - [ ] **T55. Documentación observable y cierre por RF con revisión humana.** RF-001, RF-006, RF-007, RF-010, RF-013, RF-017, RF-019, RF-023, RF-025, RF-029, RF-030, RF-031, RF-032, RF-033, RF-034
 - Hecho cuando: README/AGENTS/manual explican flujo privado, separación de personas, efecto diferido y ausencia de segunda instancia; `verificacion.md` relaciona cada RF-001–RF-034 con test/evidencia y límites, MEMORY refleja fase real. Pasan `git diff --check`, `cd backend && python -m compileall -q app` y `cd frontend && pnpm run typecheck`; CI completa backend/frontend/infrastructure/security/e2e en verde y aceptación humana antes de marcar implementada.
+- Documentación y gates locales completados en D. La casilla permanece abierta únicamente por los requisitos de CI remota y aceptación humana: se entrega por push sin crear PR, como se solicitó. No se declara aceptada la implementación ni se inventan resultados de CI.
 
 ## Cobertura comprobable y condiciones de ejecución
 

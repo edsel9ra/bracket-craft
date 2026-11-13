@@ -127,10 +127,19 @@ Al aprobar o rechazar una rectificación, el solicitante recibe un correo con la
 - «Expedientes de sanciones» abre la bandeja privada. Consultar exige la facultad de ver expedientes: los filtros muestran pendientes o archivo por estado y tipo; el detalle separa duración original/efectiva, cumplimientos, procedencia, resoluciones y su aplicación pendiente o acreditada.
 - Con facultad de presentar puedes registrar una apelación indicando el identificador de sanción, representación de jugador/equipo y su identificador, y motivo. Evidencia opcional de texto/enlaces HTTP(S), sin archivos ni caducidad. El recibo no concede acceso al expediente al presentante ni al representado. La apelación no suspende ni modifica la sanción.
 - Con facultad de resolver puedes proponer anular/reducir. Otra persona debe decidir, también si actúa como plataforma. Previsualiza el expediente, elige una decisión y confirma con motivo; una propuesta pendiente no tiene efecto. Una resolución no declarativa permanece pendiente hasta una apertura posterior acreditada; no cambia partidos ya comenzados.
-- Solo el autor con permiso vigente puede retirar un expediente pendiente, con motivo y evidencia opcional. Un cierre por rectificación permite preparar una nueva presentación vinculada, que debes completar y enviar manualmente sobre una sanción vigente; nunca reabre el expediente anterior.
+- Solo el autor con permiso vigente puede retirar un expediente pendiente, con motivo y evidencia opcional. Si no tiene facultad de consulta, puede hacerlo desde el recibo que acaba de obtener al presentar/proponer, sin consultar el detalle. Un cierre por rectificación permite preparar una nueva presentación vinculada, que debes completar y enviar manualmente sobre una sanción vigente; nunca reabre el expediente anterior. Una decisión es definitiva: no hay segunda instancia ni retirada después de resolver.
 - El dueño puede conceder/revocar autorización F9 puntual a un administrador de plataforma activo, indicando correo y motivo. Si no puede consultar expedientes, introduce un identificador conocido para gestionar únicamente esa autorización. No reutiliza autorizaciones de rectificación 033.
 - «Avisos disciplinarios» contiene avisos internos de acto/motivo/decisión, sin evidencia. Ser destinatario no concede consulta: el enlace al expediente solo aparece con facultad de lectura. Los avisos se obtienen por HTTP, no por Socket.IO.
 - Preparando una alineación, el aviso privado muestra jugador y partidos pendientes. Es informativo incluso si falla su consulta: guardar y publicar siguen disponibles y la alineación nunca se modifica automáticamente. El cierre conserva la revalidación disciplinaria.
+
+### Decisión excepcional desde plataforma (spec 034, Administración)
+
+1. Un dueño activo concede una autorización F9 para el expediente y el administrador de plataforma concretos. No basta con una autorización de rectificación 033.
+2. En `/admin`, abre «Decisión excepcional de sanciones». La bandeja solo lista expedientes con autorización F9 vigente; no ofrece presentar apelaciones ni proponer medidas.
+3. Abre «Ver expediente», consulta el historial privado y pulsa «Previsualizar decisión». Elige la decisión, indica el motivo y confirma «Registrar decisión». No puedes decidir sobre un expediente que hayas presentado tú.
+4. La decisión revalida la sanción y los actores y consume la autorización. Al actualizar la bandeja, el expediente ya no aparece con ese scope; para futuras actuaciones hace falta una nueva autorización válida. Una revocación o denegación durante preview/decisión retira el detalle visible. La fecha de decisión y su aplicación efectiva son hechos distintos: no modifica partidos ya comenzados.
+
+Todo este contenido es privado. La consulta pública no muestra sanciones, expedientes, motivos, evidencia, responsables, decisiones ni cumplimientos. Las pantallas y confirmaciones están disponibles en ES/EN y tema claro/oscuro; las verificaciones y sus límites se documentan en `specs/034-apelaciones-sanciones/verificacion.md`.
 
 ## 8. Consulta pública
 
