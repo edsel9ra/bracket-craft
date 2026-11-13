@@ -1,6 +1,7 @@
 """F9 schema tested with the application role on disposable PostgreSQL databases."""
 
 import json
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import asyncpg
@@ -10,6 +11,15 @@ from app.core.roles import SANCTION_CASE_PERMISSIONS
 
 from migration_helpers import apply_migration, throwaway_database
 from test_migration_031 import MATCH, MEMBER, ORG, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_HOME, TOURNAMENT, USER, SEED_SQL
+
+
+@asynccontextmanager
+async def optional_savepoint(db, nested):
+    if nested:
+        async with db.transaction():
+            yield
+    else:
+        yield
 
 
 @pytest.fixture
@@ -365,7 +375,8 @@ async def test_delivery_claimed_event_without_impersonation_and_private_reads(f9
 
 
 @pytest.mark.parametrize("resolved", [False, True])
-async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9_db, resolved):
+@pytest.mark.parametrize("nested", [False, True])
+async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9_db, resolved, nested):
     db, _ = f9_db
     await db.execute("""INSERT INTO rosters(organization_id,tournament_id,team_id,player_id,dorsal_number,valid_from,eligible_from)
         VALUES ($1,$2,$3,$4,1,now(),now())""", ORG, TOURNAMENT, TEAM_HOME, PLAYER_HOME_FIRST)
@@ -388,12 +399,13 @@ async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9
         (organization_id,match_id,base_version_number,proposed_report,reason,requested_by_user_id,requested_by_member_id)
         VALUES ($1,$2,1,'{}','Correct report',$3,$4) RETURNING id""", ORG, MATCH, USER, MEMBER)
     async with db.transaction():
-        version = await db.fetchval("""INSERT INTO match_report_versions(organization_id,match_id,version_number,
-            supersedes_version_number,resolution_type,home_score,away_score,request_id,published_by_user_id)
-            VALUES ($1,$2,2,1,'regular',0,0,$3,$4) RETURNING id""", ORG, MATCH, request, publisher)
-        async with db.transaction():
-            await app_context(db, user=str(publisher))
-            assert await db.fetchval("SELECT close_sanction_cases_for_rectification($1)", version) == 0
+        async with optional_savepoint(db, nested):
+            version = await db.fetchval("""INSERT INTO match_report_versions(organization_id,match_id,version_number,
+                supersedes_version_number,resolution_type,home_score,away_score,request_id,published_by_user_id)
+                VALUES ($1,$2,2,1,'regular',0,0,$3,$4) RETURNING id""", ORG, MATCH, request, publisher)
+            async with db.transaction():
+                await app_context(db, user=str(publisher))
+                assert await db.fetchval("SELECT close_sanction_cases_for_rectification($1)", version) == 0
         await db.execute("UPDATE player_suspensions SET status='cancelled' WHERE id=$1", suspension)
         await db.execute("INSERT INTO player_suspension_annulments(organization_id,suspension_id,version_id,reason) VALUES ($1,$2,$3,'Corrected card')", ORG, suspension, version)
         await app_context(db, user=str(publisher))
@@ -402,6 +414,10 @@ async def test_bridge_requires_new_publication_and_accredited_sanction_change(f9
         assert not await db.fetchval("SELECT has_column_privilege('bracket_app','sanction_cases','status','UPDATE')")
     assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == ("resolved" if resolved else "closed_by_rectification")
     assert await db.fetchval("SELECT count(*) FROM sanction_case_decisions") == int(resolved)
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="SANCTION_RECTIFICATION_PUBLICATION_REQUIRED"):
+        async with db.transaction():
+            await app_context(db, user=str(publisher))
+            await db.fetchval("SELECT close_sanction_cases_for_rectification($1)", version)
     successor = await db.fetchval("""INSERT INTO player_suspensions(organization_id,source_tournament_id,player_id,
         source_type,dedupe_key,scope_type,matches_suspended,reason)
         VALUES ($1,$2,$3,'competition_rule','successor','organization',3,'New sanction') RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST)
@@ -418,6 +434,63 @@ async def test_resolved_antecedent_without_rectification_still_rejected(f9_db):
         VALUES ($1,$2,$3,'competition_rule','other','organization',3,'Other sanction') RETURNING id""", ORG, TOURNAMENT, PLAYER_HOME_FIRST)
     with pytest.raises(asyncpg.CheckViolationError, match="SANCTION_INVALID_ANTECEDENT"):
         await insert_case(db, other, prior_case=case_id)
+
+
+@pytest.mark.parametrize("act", ["withdrawn", "decision"])
+@pytest.mark.parametrize("released", [False, True])
+async def test_notice_writer_accepts_own_savepoints_not_committed_acts(f9_db, act, released):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    async with db.transaction():
+        savepoint = db.transaction()
+        await savepoint.start()
+        if act == "decision":
+            decision = await insert_decision(db, case_id, action="maintain")
+            actor = await db.fetchval("SELECT decided_by_user_id FROM sanction_case_decisions WHERE id=$1", decision)
+        else:
+            decision = None
+            actor = USER
+            event = await db.fetchval("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
+                VALUES ($1,$2,'withdrawn',$3,'Verified') RETURNING id""", ORG, case_id, USER)
+            await db.execute("SELECT sanction_finalize_case($1)", case_id)
+        if released:
+            await savepoint.commit()
+        await db.execute("SELECT set_config('app.current_user_id',$1,true)", str(actor))
+        assert await db.fetchval("SELECT sanction_notice_writer($1)", case_id)
+        notice = uuid4()
+        outbox = await db.fetchval("""INSERT INTO outbox_events(organization_id,event_type,payload)
+            VALUES ($1,'SANCTION_CASE_NOTICE_INTERNAL',jsonb_build_object('notification_id',$2::TEXT)) RETURNING id""", ORG, str(notice))
+        await db.execute("""INSERT INTO sanction_notifications(id,organization_id,case_id,recipient_user_id,
+            channel,notification_type,reason,outbox_event_id,decision_id,case_event_id)
+            VALUES ($1,$2,$3,$4,'internal',$5,'Verified',$6,$7,$8)""",
+            notice, ORG, case_id, USER, act, outbox, decision, event if act == "withdrawn" else None)
+        if not released:
+            await savepoint.commit()
+    async with db.transaction():
+        await db.execute("SELECT set_config('app.current_user_id',$1,true)", str(actor))
+        assert not await db.fetchval("SELECT sanction_notice_writer($1)", case_id)
+
+
+async def test_transaction_provenance_is_private_immutable_and_rolled_back(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    assert await db.fetchval("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='sanction_transaction_provenance'::regclass")
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        assert not await db.fetchval("SELECT has_table_privilege('bracket_app','sanction_transaction_provenance',$1)", privilege)
+    assert not await db.fetchval("SELECT has_function_privilege('bracket_app','sanction_record_transaction()','EXECUTE')")
+    with pytest.raises(asyncpg.CheckViolationError, match="SANCTION_HISTORY_IMMUTABLE"):
+        await db.execute("UPDATE sanction_transaction_provenance SET transaction_id=pg_current_xact_id()")
+    before = await db.fetchval("SELECT count(*) FROM sanction_transaction_provenance")
+    async with db.transaction():
+        with pytest.raises(RuntimeError, match="rollback"):
+            async with db.transaction():
+                await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
+                    VALUES ($1,$2,'withdrawn',$3,'Withdraw')""", ORG, case_id, USER)
+                assert await db.fetchval("SELECT sanction_notice_writer($1)", case_id)
+                raise RuntimeError("rollback")
+        assert not await db.fetchval("SELECT sanction_notice_writer($1)", case_id)
+        assert await db.fetchval("SELECT count(*) FROM sanction_transaction_provenance") == before
+    assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "pending"
 
 
 @pytest.mark.parametrize("incremental", [False, True])

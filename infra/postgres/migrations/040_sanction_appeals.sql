@@ -874,6 +874,48 @@ GRANT EXECUTE ON FUNCTION public.sanction_owner(UUID), public.sanction_platform_
     public.sanction_platform_source(UUID), public.sanction_revoke_authorization(UUID),
     public.record_sanction_platform_audit(UUID) TO bracket_app;
 
+CREATE TABLE public.sanction_transaction_provenance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
+    version_id UUID UNIQUE,
+    decision_id UUID UNIQUE,
+    case_event_id UUID UNIQUE,
+    transaction_id XID8 NOT NULL,
+    UNIQUE (id, organization_id),
+    CHECK (num_nonnulls(version_id, decision_id, case_event_id) = 1),
+    FOREIGN KEY (version_id, organization_id) REFERENCES public.match_report_versions(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (decision_id, organization_id) REFERENCES public.sanction_case_decisions(id, organization_id) ON DELETE RESTRICT,
+    FOREIGN KEY (case_event_id, organization_id) REFERENCES public.sanction_case_events(id, organization_id) ON DELETE RESTRICT
+);
+ALTER TABLE public.sanction_transaction_provenance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sanction_transaction_provenance FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON public.sanction_transaction_provenance FROM PUBLIC, bracket_app;
+CREATE TRIGGER trg_sanction_provenance_immutable BEFORE UPDATE OR DELETE ON public.sanction_transaction_provenance
+    FOR EACH ROW EXECUTE FUNCTION public.protect_sanction_history();
+
+CREATE FUNCTION public.sanction_record_transaction()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_TABLE_SCHEMA <> 'public' OR TG_TABLE_NAME NOT IN
+        ('match_report_versions', 'sanction_case_decisions', 'sanction_case_events') THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_TRANSACTION_SOURCE' USING ERRCODE = '42501';
+    END IF;
+    INSERT INTO public.sanction_transaction_provenance(organization_id, version_id, decision_id, case_event_id, transaction_id)
+        VALUES (NEW.organization_id,
+            CASE WHEN TG_TABLE_NAME = 'match_report_versions' THEN NEW.id END,
+            CASE WHEN TG_TABLE_NAME = 'sanction_case_decisions' THEN NEW.id END,
+            CASE WHEN TG_TABLE_NAME = 'sanction_case_events' THEN NEW.id END,
+            pg_current_xact_id());
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_version_transaction AFTER INSERT ON public.match_report_versions
+    FOR EACH ROW WHEN (NEW.request_id IS NOT NULL) EXECUTE FUNCTION public.sanction_record_transaction();
+CREATE TRIGGER trg_sanction_decision_transaction AFTER INSERT ON public.sanction_case_decisions
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_record_transaction();
+CREATE TRIGGER trg_sanction_event_transaction AFTER INSERT ON public.sanction_case_events
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_record_transaction();
+
 CREATE FUNCTION public.close_sanction_cases_for_rectification(target_version UUID)
 RETURNS INTEGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE version public.match_report_versions; target public.sanction_cases; changed INTEGER := 0;
@@ -883,7 +925,9 @@ BEGIN
         JOIN public.match_report_rectification_requests q ON q.id = v.request_id AND q.organization_id = v.organization_id
         WHERE v.id = target_version AND v.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
             AND v.published_by_user_id = actor AND q.requested_by_user_id <> actor
-            AND v.xmin = pg_current_xact_id()::xid AND v.published_at >= CURRENT_TIMESTAMP;
+            AND EXISTS (SELECT 1 FROM public.sanction_transaction_provenance p
+                WHERE p.version_id = v.id AND p.organization_id = v.organization_id AND p.transaction_id = pg_current_xact_id())
+            AND v.published_at >= CURRENT_TIMESTAMP;
     IF version.id IS NULL OR NOT (public.sanction_member_has_permission(version.organization_id, 'APPROVE_MATCH_REPORT_RECTIFICATION')
         OR EXISTS (SELECT 1 FROM public.rectification_platform_scopes() a WHERE a.request_id = version.request_id
             AND a.organization_id = version.organization_id
@@ -944,11 +988,13 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalo
         AND c.organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
         AND (EXISTS (SELECT 1 FROM public.sanction_case_decisions d WHERE d.case_id = c.id
             AND d.decided_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
-            AND d.xmin = pg_current_xact_id()::xid)
+            AND EXISTS (SELECT 1 FROM public.sanction_transaction_provenance p
+                WHERE p.decision_id = d.id AND p.organization_id = d.organization_id AND p.transaction_id = pg_current_xact_id()))
         OR EXISTS (SELECT 1 FROM public.sanction_case_events e WHERE e.case_id = c.id
             AND e.event_type IN ('withdrawn', 'closed_by_rectification')
             AND e.actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
-            AND e.xmin = pg_current_xact_id()::xid)));
+            AND EXISTS (SELECT 1 FROM public.sanction_transaction_provenance p
+                WHERE p.case_event_id = e.id AND p.organization_id = e.organization_id AND p.transaction_id = pg_current_xact_id()))));
 $$;
 
 CREATE FUNCTION public.sanction_validate_notice()
