@@ -6,6 +6,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - PR A T1–T10 implementadas con tests primero y commits por tarea; checks locales completos, entrega en rama sin abrir PR. B dividido por el usuario en B1 (lectores/cumplimientos sin escrituras de expedientes) y B2 (API y efectos coordinados); luego C y D. C1–C5 confirmadas, 34 RF cubiertos.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 034 B1 · Usuario autoriza lectura mínima al solicitante 033 activo, además del cierre; plataforma 033 solo con autorización vigente del partido concreto, sin ampliar membresía ni exponer expediente/motivo/evidencia. PostgreSQL con esquema 040 y bracket_app confirma acceso previo del solicitante a player_suspensions bajo RLS. Migración nueva 042; escritura de apertura conserva CLOSE_MATCH_REPORT.
 - 2026-11-12 · Spec 034 · Tareas aprobadas por el usuario; B1 T11/T12/T14/T15/T24/T25/T26/T35, resto de T11–T39 en B2. Sin resoluciones, lector efectivo equivale al original; B1 no activa escrituras de expedientes. Fase actual Implementación, PR A.
 - 2026-11-12 · Spec 034 · El usuario aprobó el plan y C1–C5 tal como están; fase Plan cerrada, fase actual Tareas. Sin aprobación implícita de tareas ni implementación.
 - 2026-11-12 · Spec 034 · El usuario aprobó expresamente la spec completa; fase Spec cerrada y fase actual Plan. La aprobación no se extiende al plan técnico ni autoriza implementación.

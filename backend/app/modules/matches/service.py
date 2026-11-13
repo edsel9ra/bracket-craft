@@ -56,6 +56,7 @@ from app.modules.rules_engine.substitutions import (
     validate_roster_minutes,
     validate_substitution,
 )
+from app.modules.sanction_appeals.repository import load_effective_sanctions
 
 
 # Structural request limits (RF-043): they are form limits, never a sporting
@@ -666,6 +667,7 @@ async def load_report_payload_snapshot(
     known = await service._load_event_team_scope(context, payload, match)
     suspended = await service._has_suspended_players(
         context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
+        match_id=match["id"],
         exclude_origin_match_id=exclude_suspensions_from_match_id,
         created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
     )
@@ -1535,39 +1537,17 @@ class CloseMatchReportService:
 
     async def _has_suspended_players(
         self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID],
-        *, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
+        *, match_id: UUID, exclude_origin_match_id: UUID | None = None, created_before: datetime | None = None,
     ) -> bool:
         if not player_ids:
             return False
-        result = await self.db.execute(
-            text("""
-                SELECT ps.player_id
-                FROM player_suspensions ps
-                LEFT JOIN player_suspension_serves pss
-                  ON pss.suspension_id = ps.id
-                 AND pss.is_voided = FALSE
-                WHERE ps.organization_id = :organization_id
-                  AND ps.player_id = ANY(CAST(:player_ids AS uuid[]))
-                  AND ps.status = 'active'
-                  AND (CAST(:created_before AS timestamptz) IS NULL OR ps.created_at <= :created_before)
-                  AND (CAST(:exclude_origin_match_id AS uuid) IS NULL
-                       OR ps.origin_match_id IS DISTINCT FROM CAST(:exclude_origin_match_id AS uuid))
-                  AND (ps.scope_type = 'organization' OR ps.source_tournament_id = :tournament_id)
-                GROUP BY ps.id, ps.player_id, ps.matches_suspended
-                HAVING COUNT(pss.id) < ps.matches_suspended
-            """),
-            {
-                "organization_id": str(context.organization_id),
-                "player_ids": player_ids,
-                "tournament_id": str(tournament_id),
-                "exclude_origin_match_id": exclude_origin_match_id,
-                "created_before": created_before,
-            },
-        )
-        return result.first() is not None
+        facts = await load_effective_sanctions(self.db, match_id, as_of=datetime.now(timezone.utc))
+        return any(f.player_id in player_ids and f.projection.blocking
+            and f.origin_match_id != (exclude_origin_match_id or match_id)
+            and (created_before is None or f.created_at <= created_before) for f in facts)
 
-    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID]) -> None:
-        if await self._has_suspended_players(context, tournament_id, player_ids):
+    async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID], *, match_id: UUID) -> None:
+        if await self._has_suspended_players(context, tournament_id, player_ids, match_id=match_id):
             raise ValueError("La planilla contiene un jugador suspendido")
 
     @staticmethod

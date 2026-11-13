@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database import set_rls_context
 from app.core.tenancy import AuthContext
+from app.modules.matches.service import CloseMatchReportService
+from app.modules.sanction_appeals.application import record_opening
 from app.modules.sanction_appeals.repository import load_effective_sanctions
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from migration_helpers import throwaway_database
@@ -24,7 +26,7 @@ FUTURE = "31000000-0000-4000-8000-000000000053"
 @pytest.fixture
 async def readers(database_admin_url, request):
     options = request.param if isinstance(getattr(request, "param", None), dict) else {}
-    async with throwaway_database(database_admin_url, last=options.get("last", 41)) as admin:
+    async with throwaway_database(database_admin_url, last=options.get("last", 42)) as admin:
         seed = SEED_SQL.replace("1, '{}'::jsonb, '{}'::jsonb,", f"1, '{json.dumps(DEFAULT_RULES_CONFIG)}'::jsonb, '{{}}'::jsonb,")
         seed = seed.replace("UPDATE public.tournament_versions", f"""
             INSERT INTO matches(id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
@@ -47,12 +49,14 @@ async def readers(database_admin_url, request):
         context = AuthContext(UUID(USER), UUID(ORG), UUID(MEMBER))
 
         @asynccontextmanager
-        async def session(org=ORG):
+        async def session(org=ORG, user=USER, authorization=None):
             async with engine.connect() as connection:
                 await connection.execute(text("SET ROLE bracket_app"))
                 await connection.commit()
                 async with AsyncSession(bind=connection) as db, db.begin():
-                    await set_rls_context(db, UUID(org), UUID(USER))
+                    await set_rls_context(db, UUID(org), UUID(str(user)))
+                    if authorization is not None:
+                        await db.execute(text("SELECT set_config('app.rectification_authorization_id',:id,true)"), {"id": str(authorization)})
                     yield db
 
         try:
@@ -103,3 +107,74 @@ async def test_repository_pending_preview_empty_and_applied_resolution(readers):
     await readers.admin.execute("DELETE FROM rosters")
     async with readers.session() as db:
         assert await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc)) == []
+
+
+@pytest.mark.parametrize("permission", ["REQUEST_MATCH_REPORT_RECTIFICATION", None])
+async def test_reader_minimum_permissions_and_other_organization(readers, permission):
+    await readers.admin.execute(SEED_SQL.replace("31000000-", "41000000-").replace("migration-031", "migration-other"))
+    await readers.admin.execute("UPDATE roles SET permissions=$1::jsonb", json.dumps([permission] if permission else []))
+    if permission:
+        async with readers.session() as db:
+            assert len(await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc))) == 1
+    else:
+        with pytest.raises(DBAPIError, match="SANCTION_OPERATION_DENIED"):
+            async with readers.session() as db:
+                await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc))
+    with pytest.raises(DBAPIError, match="SANCTION_OPERATION_DENIED"):
+        async with readers.session() as db:
+            await load_effective_sanctions(db, UUID(MATCH.replace("31000000-", "41000000-")), as_of=datetime.now(timezone.utc))
+
+
+@pytest.mark.parametrize("scope", ["none", "other", "matching", "revoked"])
+async def test_reader_platform_requires_exact_live_033_match_authorization(readers, scope):
+    admin = readers.admin
+    actor = await admin.fetchval("INSERT INTO users(email,full_name) VALUES ('platform@test.invalid','Platform') RETURNING id")
+    await admin.execute("INSERT INTO platform_admins(user_id,role_code) VALUES ($1,'platform_admin')", actor)
+    role = await admin.fetchval("""INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+        SELECT $1,id,'Owner','[]' FROM role_definitions WHERE code='owner' RETURNING id""", ORG)
+    await admin.execute("INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES ($1,$2,$3)", ORG, MEMBER, role)
+    authorization = None
+    if scope != "none":
+        request = await admin.fetchval("""INSERT INTO match_report_rectification_requests
+            (organization_id,match_id,base_version_number,proposed_report,reason,requested_by_user_id,requested_by_member_id)
+            VALUES ($1,$2,1,'{}','Review',$3,$4) RETURNING id""", ORG, readers.future if scope == "other" else UUID(MATCH), USER, MEMBER)
+        authorization = await admin.fetchval("""INSERT INTO match_report_platform_authorizations
+            (organization_id,request_id,platform_admin_user_id,granted_by_member_id,reason)
+            VALUES ($1,$2,$3,$4,'Review') RETURNING id""", ORG, request, actor, MEMBER)
+        if scope == "revoked":
+            await admin.execute("UPDATE match_report_platform_authorizations SET revoked_at=now() WHERE id=$1", authorization)
+    if scope == "matching":
+        async with readers.session(user=actor, authorization=authorization) as db:
+            assert len(await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc))) == 1
+    else:
+        with pytest.raises(DBAPIError, match="SANCTION_OPERATION_DENIED"):
+            async with readers.session(user=actor, authorization=authorization) as db:
+                await load_effective_sanctions(db, UUID(MATCH), as_of=datetime.now(timezone.utc))
+    assert await admin.fetchval("SELECT count(*) FROM organization_users WHERE user_id=$1", actor) == 0
+
+
+@pytest.mark.parametrize("status", ["active", "served", "cancelled", "appealed"])
+async def test_blocking_without_resolutions_exactly_matches_original_query(readers, status):
+    await readers.admin.execute("UPDATE player_suspensions SET status=$1", status)
+    async with readers.session() as db:
+        expected = (await db.execute(text("""SELECT EXISTS (SELECT 1 FROM player_suspensions ps
+            WHERE organization_id=:org AND player_id=:player AND status='active'
+            AND (scope_type='organization' OR source_tournament_id=:tournament)
+            AND (SELECT count(*) FROM player_suspension_serves s WHERE s.suspension_id=ps.id AND NOT is_voided)<matches_suspended)"""),
+            {"org": UUID(ORG), "player": UUID(PLAYER_HOME_FIRST), "tournament": UUID(TOURNAMENT)})).scalar_one()
+        actual = await CloseMatchReportService(db)._has_suspended_players(readers.context, UUID(TOURNAMENT),
+            [UUID(PLAYER_HOME_FIRST)], match_id=UUID(MATCH))
+        assert actual == expected
+
+
+async def test_blocking_retains_started_match_after_later_annulment(readers):
+    case = await insert_case(readers.admin, readers.suspension)
+    await insert_decision(readers.admin, case, action="annul")
+    async with readers.session() as db:
+        segment = (await db.execute(text("""INSERT INTO match_segments(organization_id,match_id,segment_number,minute_start,created_at)
+            VALUES (:org,:match,1,0,:now) RETURNING id"""),
+            {"org": UUID(ORG), "match": readers.future, "now": datetime.now(timezone.utc)})).scalar_one()
+        await record_opening(db, readers.future, segment)
+        service = CloseMatchReportService(db)
+        assert await service._has_suspended_players(readers.context, UUID(TOURNAMENT), [UUID(PLAYER_HOME_FIRST)], match_id=UUID(MATCH))
+        assert not await service._has_suspended_players(readers.context, UUID(TOURNAMENT), [UUID(PLAYER_HOME_FIRST)], match_id=readers.future)
