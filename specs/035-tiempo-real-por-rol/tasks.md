@@ -252,42 +252,44 @@ Depende de B fusionado y verde. No introduce una arquitectura distinta ni pospon
 - Tests primero: S2/D2 con comprobación caída para un lote/proceso, otro operativo, errores repetidos, control fallido, sesión/membresía retirada durante suspensión y proceso reiniciado.
 - Hecho cuando: reautoriza a cada afectado, coalesce RESYNC y descarta marca al cambiar generación; público/otros autorizados no heredan suspensión ajena, reinicio recupera por JOIN/HTTP y nunca replay. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k partial_recovery` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k recovery`.
 
-- [ ] **T41. Completar regresión E2E de identidades y ciclo de transporte.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-007, RF-008, RF-009, RF-010, RF-015, RF-017, RF-018
+- [x] **T41. Completar regresión E2E de identidades y ciclo de transporte.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-007, RF-008, RF-009, RF-010, RF-015, RF-017, RF-018
 - Dependencias: T33, T34, T38, T40; PR C.
 - Tests primero: E1/E2 amplían sesiones/pestañas, permisos restantes, expiración, cambio de organización/identidad durante GET, duplicados, reconexión, stream trim/reset y acción ocupada.
 - Hecho cuando: se comprueban ausencia en transporte, reconstrucción HTTP y no duplicación, sin gracia artificial ni sleeps que sustituyan barreras de commit. Pasa `cd frontend && pnpm run e2e:test` sin omisiones; artefactos saneados no contienen cookies/tokens/payloads privados.
 
-- [ ] **T42. Auditar matriz pública y exclusiones F1/F9/sonda.** RF-012, RF-013, RF-016, RF-019, RF-020
+- [x] **T42. Auditar matriz pública y exclusiones F1/F9/sonda.** RF-012, RF-013, RF-016, RF-019, RF-020
 - Dependencias: T22, T37, T41; PR C.
 - Tests primero: S3/E2 compara respuestas HTTP anónimas y los tres eventos/rooms públicos, variantes privadas con nombre compartido y tipos excluidos inyectados en stream.
 - Hecho cuando: ni expedientes/evidencias/avisos F9 ni documentos/nacimiento/edad sensible/motivos/auditoría aparecen; sonda procesada en Redis pero cero Socket.IO, F1 sin catálogo aprobado sigue denegado. Pasan `cd backend && pytest -q tests/test_realtime_policy.py tests/test_outbox_worker.py tests/test_outbox_probe.py` y `cd frontend && pnpm exec playwright test e2e/realtime-public.spec.ts --project public`; evidencia de matriz 020 sin campos/actores nuevos.
 
-- [ ] **T43. Ejecutar backend completo y migraciones de cierre.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008, RF-009, RF-011, RF-012, RF-014, RF-019, RF-020
+- [x] **T43. Ejecutar backend completo y migraciones de cierre.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008, RF-009, RF-011, RF-012, RF-014, RF-019, RF-020
 - Dependencias: T38, T39, T40, T42; PR C.
 - Tests primero: regresión unitaria/DB completa tras el último cambio, sin saltar tests antiguos por introducir el filtro.
 - Hecho cuando: pasan `cd backend && pytest -q`, `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `cd backend && python -m compileall -q app`, `cd backend && ruff check .` y `sh -n infra/postgres/migrate.sh`; repetir migración limpia/054→055 y runner MIGRATION_TARGET con entorno de T15. Registrar skips y sus condiciones, sin llamar completos a tests DB omitidos.
 
-- [ ] **T44. Ejecutar frontend y runner E2E completos de cierre.** RF-010, RF-013, RF-015, RF-016, RF-017, RF-018
+- [x] **T44. Ejecutar frontend y runner E2E completos de cierre.** RF-010, RF-013, RF-015, RF-016, RF-017, RF-018
 - Dependencias: T41, T42; PR C.
 - Tests primero: regresiones de dispatcher/reload/composables, planilla clásica/táctica y pantallas existentes; no añadir conexiones ni mensajes de estados incompatibles.
 - Hecho cuando: pasan `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck`, `cd frontend && pnpm run lint`, `cd frontend && pnpm run build`, `cd frontend && pnpm run typecheck:e2e` y `cd frontend && pnpm run e2e:test`. Evidencia del runner 0, sin reemplazarlo por casos dirigidos; documentar inspección visual si cambió una superficie visible, o su no aplicación.
 
-- [ ] **T45. Ejecutar gates de seguridad, infraestructura y privacidad de logs.** RF-001, RF-002, RF-006, RF-012, RF-014, RF-016, RF-020
+- [x] **T45. Ejecutar gates de seguridad, infraestructura y privacidad de logs.** RF-001, RF-002, RF-006, RF-012, RF-014, RF-016, RF-020
 - Dependencias: T39, T40, T42, T43, T44; PR C.
 - Tests primero: mantener los self-tests/contratos actuales; revisar que los escenarios de fallo no registran tokens, negocio, evidencia ni identidades innecesarias y no crean historial de recepción.
 - Hecho cuando: pasan `cd backend && bandit -r app -ll`, `pip-audit -r backend/requirements.txt`, `docker compose config -q`, `python3 infra/scripts/check_env_contract.py --self-test` y `python3 infra/scripts/verify_version_sources.py --exclude-constitution`; ejecutar también perfil producción con secretos externos de prueba, contratos, auditoría pnpm con filtro constitucional, Trivy fijado y Gitleaks sobre árbol comprometido según AGENTS/CI. Sin exclusiones nuevas ni defaults de desarrollo productivos; registrar salidas de cada gate.
 
-- [ ] **T46. Consolidar documentación observable y evidencias por RF/RNF.** RF-001, RF-004, RF-005, RF-007, RF-008, RF-011, RF-013, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
+- [x] **T46. Consolidar documentación observable y evidencias por RF/RNF.** RF-001, RF-004, RF-005, RF-007, RF-008, RF-011, RF-013, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
 - Dependencias: T36, T39, T40, T41, T42, T43, T44, T45; PR C.
 - Tests primero: confrontar las afirmaciones documentales con las salidas/escenarios ya ejecutados, sin inventar un rojo ni rehacer auditorías históricas.
 - Hecho cuando: README/AGENTS/manual describen catálogo, corte real, pérdida/recuperación HTTP, compatibilidad, despliegue y rollback; corregir la descripción vigente de la sonda como evento de socket. `verificacion.md` enlaza todos los RF/RNF, tests, SHA/artefactos y límites. Pasa `git diff --check`; MEMORY refleja validación real, sin marcar implementado ni cerrar R32f/F8 antes de aceptación T49.
 
 - [ ] **T47. Vigilar CI y revisión del PR C y su push.** RF-001, RF-002, RF-011, RF-014, RF-016, RF-017, RF-018, RF-020
+- [x] Parte local: gates T43–T46 y workflow revisados; E2E se exige en pull_request, no en push de feature. Pendiente PR que abrirá el usuario y comprobar CI/revisión del SHA final.
 - Dependencias: T43, T44, T45, T46; PR C.
 - Tests primero: comprobar el SHA publicado y los jobs de `.github/workflows/ci.yml`; ante un fallo causado por el cambio, reproducirlo con el test adecuado antes del fix y volver a comprobar el nuevo SHA.
 - Hecho cuando: `git_pr_checks(wait_mode="all")` está verde y `gh run view <run_id> --json event,headSha,status,conclusion,jobs` acredita también push del mismo SHA; backend/frontend/infrastructure/security verdes y E2E verde en PR (omitido en push de feature conforme al workflow). Revisión independiente y hallazgos resueltos o decisión humana explícita, sin declarar verde un check pendiente ni crear excepciones silenciosas.
 
 - [ ] **T48. Auditar el cierre técnico completo contra spec, plan y constitución.** RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008, RF-009, RF-010, RF-011, RF-012, RF-013, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
+- [x] Parte local: RF/RNF y criterios constitucionales cruzados con evidencia P/D/S/F/E/L en verificacion.md; no sustituye CI/revisión independiente pendiente de T47.
 - Dependencias: T1–T47; PR C.
 - Tests primero: cruzar la tabla siguiente y plan §9 con evidencia ejecutada P/D/S/F/E/L y cada criterio constitucional, incluidos normal/vacío/error, cortes y ausencia de recepción.
 - Hecho cuando: `verificacion.md` no deja ningún RF sin prueba ni confunde tests puros/mocks con RLS/procesos reales; estados documentales no afirman aceptación todavía. Pasan `git diff --check` y `git status --short` como revisión de alcance; citar comandos/artefactos por RF y CI del SHA validado. Si falta evidencia, mantener la tarea abierta y no pedir aceptación como si estuviera terminada.

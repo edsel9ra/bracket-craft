@@ -6,10 +6,11 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR C. PR A #76 y PR B #77 fusionados; merge de B `ca136b2c` comprobado por API el 2026-11-13. T1–T37 verificadas; T38–T48 por ejecutar y T49 reservada a aceptación humana. C1–C4 intactas; F8 pendiente de aceptación y R32f abierto.
+- specs/035-tiempo-real-por-rol — PR C: T1–T46 verificadas localmente; T47/T48 abiertas por CI PR/push y revisión independiente, T49 reservada a aceptación humana. A #76 y B #77 fusionados (`ca136b2c`). C1–C4 intactas; F8 **pendiente de aceptación**, R32f **abierto**. Spec no marcada implementada.
 
 ## Pendiente
-- Spec 035 PR C: usuario confirma T38a–c/T39a–c y continuar T38–T48 sin presupuesto temporal por tarea; mismo alcance y un solo PR C. T47 necesita el PR que abrirá el usuario y T48 su CI/revisión. No abrir PR ni cerrar T49; F1/F9 intactos.
+- Spec 035 C: dos procesos API/Redis/DB/WebSocket reales, barreras de commit, 1.000 sockets/100 principales, borde 257 y recuperación parcial. T41 `53544a61`: JWT real y cierre ASGI 1012 test-only; T42 `f3b7b9b0`: público anónimo, exclusiones y sonda sin Socket.IO. Sin código productivo, permisos HTTP ni migraciones nuevos.
+- Gates C: backend PostgreSQL 3629 pass sin skips; sin DB 2680 pass/949 skip. Frontend 978 pass/1 skip condicional de fuente; fuente compilada 2 pass/0 skip aparte. Types/lint/build/E2E types OK; runner completo 66 pass. Infra dev/prod, 055 limpia/054→055/idempotencia/MIGRATION_TARGET, Bandit, auditorías pip/pnpm, Trivy fijado y Gitleaks OK. Salidas, límites y matriz RF/RNF en verificacion.md. No abrir PR: lo abre el usuario, después vigilar CI/revisión; sin aceptación T49 ni despliegue acreditados.
 - B fusionado incluye los fixes de rollback `57cf9f51` y del historial `7018d361`. CI final `5daa6d5c`: PR 43499246334 y push 43499235618 success; backend 3613 pass/4 skip, frontend 978 pass/1 skip, E2E 60 pass y Review sin hallazgos. Evidencia en verificacion.md.
 
 ## Decisiones tomadas

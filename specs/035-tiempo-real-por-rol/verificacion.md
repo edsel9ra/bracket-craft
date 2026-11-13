@@ -1,4 +1,12 @@
-# Verificación 035 — PR A inerte
+# Verificación 035 — registro A/B y validación local C
+
+**Estado actual, 2026-11-13:** A #76 y B #77 fusionados; T1–T46 verificadas
+localmente. T47/T48 abiertas por CI/revisión independiente de C; no se ha abierto
+el PR. T49 sin aceptación: **F8 pendiente de aceptación, R32f abierto**. No hay
+despliegue productivo acreditado ni estado «implementada». Las secciones A/B
+siguientes son evidencia histórica; el cierre local C está al final.
+
+## Registro histórico — PR A inerte
 
 T1–T16 implementadas y verificadas; T17 con gates local/CI/revisión automatizada
 verificados, fusión pendiente.
@@ -805,3 +813,213 @@ Socket.IO y lectura HTTP, sin el ID perdido. No se debilitó la aserción ni se
 introdujo un mock. Solo se registra el número de engine_sid, nunca sus valores.
 Los fallos previos fueron de preparación del arnés; no se presentan como rojos
 de producto. T41 no se cierra documentalmente hasta el runner completo T44.
+
+## T42 — matriz pública y exclusiones (C)
+
+Código `f3b7b9b0`; T41 `53544a61`. El helper IPC/HTTP se comparte sin duplicar
+productores ni introducir endpoints productivos. Dos tenants reales, dos vistas
+anónimas y una privada autenticada; la rectificación se publica por HTTP para
+crear una versión real antes de probar las variantes privadas. Se comparan
+listado/detalle/partidos/clasificación HTTP anónimos antes y después, y cookies
+anónimas vacías. Los tres nombres públicos conservan payload/room; las variantes
+privadas con nombre compartido no llegan a esos transportes públicos.
+
+F1 desconocido, avisos F9 internos/correo, decisión por correo, sonda y control
+inyectados en Redis no generan Socket.IO. Se inyectan valores test-only de
+documento/nacimiento/edad/motivo/auditoría: ausentes en las vistas públicas. La
+sonda pasa por el worker, queda `processed` y aparece en Redis pero en cero
+frames. La matriz pública 020 y sus tests siguen comprobando campos mínimos.
+Al terminar se archivan las fixtures F8 para no contaminar el descubrimiento
+demo de otras suites. Sin nuevos actores ni campos públicos.
+
+```text
+pytest -q tests/test_realtime_policy.py tests/test_outbox_worker.py tests/test_outbox_probe.py
+139 passed in 0.35s
+Playwright, escenario 035 public matrix dirigido:
+1 passed (12.0s)
+```
+
+Los dos escenarios de `realtime-public.spec.ts` también pasan dentro del runner
+completo siguiente. Fallos de preparación (`NoResultFound` sin versión y selector
+inexistente) se corrigieron en las pruebas; no se presentan como rojo de producto.
+
+## T43–T45 — gates locales completos de C
+
+Python 3.14/PostgreSQL 17, Node 24/pnpm 12.12.1, Docker local. Backend en
+`bc-t1-python`, frontend/Chromium en `bc-t18-node`, repo montado, mismas
+dependencias y comandos de CI. No se usa el intérprete del host como sustituto.
+El job backend añade **solo Redis 8 como servicio CI** para los tests de dos
+procesos; no cambia servicios/configuración productivos.
+
+### Backend y migraciones
+
+```text
+pytest -q
+2680 passed, 949 skipped in 8.02s
+RUN_DATABASE_TESTS=1 pytest -q
+3629 passed in 885.58s (0:14:45)
+ruff check .
+All checks passed!
+python -m compileall -q app: exit 0
+sh -n infra/postgres/migrate.sh: exit 0
+OK: 055 clean + reejecución idempotente; 55 checksums registrados
+OK: 055 incremental + reejecución idempotente; 55 checksums registrados
+OK: todas las pruebas de MIGRATION_TARGET pasaron
+```
+
+949 omitidos **solo en el comando sin BD**; la ejecución con PostgreSQL no
+omite ninguno e incluye procesos, sockets, carga y regresiones anteriores.
+Log `/home/ubuntu/f8-c-backend-{unit,db}.log`. Migraciones en cluster aislado
+`bc-f8-c-migrations` (5540); se restaura el rol de aplicación mediante el init
+oficial antes del runner de targets, sin afectar otras bases. Comprobaciones
+de `/home/ubuntu/f8-a-migrations.sh`/`verify.sh` y
+`infra/scripts/test_migrate_target.sh`; salida `/home/ubuntu/f8-c-migrations.log`.
+Ninguna migración añadida/editada en C, ni 056, ni cambio de permisos HTTP.
+
+### Frontend y E2E
+
+```text
+pnpm test
+ℹ tests 979
+ℹ pass 978
+ℹ fail 0
+ℹ skipped 1
+pnpm run typecheck
+◆ Types generated in .nuxt.
+pnpm run lint
+◆ Types generated in .nuxt.
+pnpm run build
+◆ ✨ Build complete in 11.0s!
+pnpm run typecheck:e2e
+$ tsc -p e2e/tsconfig.json
+pnpm run e2e:test
+66 passed (8.2m)
+RESULTADO: VERDE (0)
+```
+
+El único skip unitario es el control opt-in de la fuente compilada, igual que
+el comando CI. Tras el build se verifica explícitamente con
+`VERIFY_FONT_BUILD=1 node --test --experimental-strip-types tests/fonts.test.ts`:
+`Archivo emitted: 90104 bytes`, `2 pass`, `0 fail`, `0 skip`.
+Logs `/home/ubuntu/f8-c-{frontend-unit,typecheck,lint,build,font-build}.log`,
+`f8-c-typecheck-e2e-final.log` y `f8-c-e2e-verified.log`.
+El runner incluye todos los proyectos y los 11 escenarios private-realtime;
+T41 queda verificada por este gate, sin omisiones E2E ni reemplazo por grep.
+
+Preparación E2E: base aislada init+001–055 y seed real, URLs inyectadas sin
+imprimirlas. Una corrida se interrumpió al añadir limpieza de fixtures; otra
+se invalidó por el entorno: el build compartía `.nuxt` con un dev server vivo,
+que empezó a emitir `[NUXT_E1001]`. Se reinició únicamente el web local tras
+el build y se ejecutó de nuevo el runner completo, verde. Ningún parche de
+producto ni reintento ciego de aserciones. El contenedor Playwright no trae
+Docker CLI; el runner lo declara. API/worker recogidos desde el host en
+`f8-c-e2e-server.log`; no se presenta ese server.log ausente como evidencia.
+Sin UI nueva ni inspección visual manual; las regresiones de tema, idioma,
+teclado y axe permanecen en el runner, no equivalen a aceptación visual nueva.
+
+### Seguridad e infraestructura
+
+```text
+Bandit -r app -ll: Low 12; Medium 0; High 0; Files skipped (0)
+pip-audit (requirements de aplicación y desarrollo): No known vulnerabilities found
+pnpm audit + infra/scripts/audit_frontend.py: Dependencias auditadas: 524; Resultado: OK
+OK: infraestructura CI desarrollo + producción, contratos, versiones y shell
+Gitleaks, árbol comprometido: no leaks found
+Trivy 0.70.0: requirements.txt 0 vulnerabilidades; pnpm-lock.yaml 0; exit 0
+Privacy scan: 42 logs/JSON reviewed; 0 prohibited-pattern matches
+```
+
+Bandit tiene 12 low previos, sin nuevas exclusiones. Pnpm muestra cinco avisos
+no accionables (node-forge: tres moderate y uno low; y uno deepmerge low
+sin corrección), sin ocultarlos ni cambiar el filtro constitucional.
+Trivy usa la imagen inmutable `aquasec/trivy@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e`,
+la versión 0.70.0 por defecto de la acción CI v0.36.0 fijada. Mismos umbral y
+opciones que CI; análisis de vulnerabilidades y secretos activo, sin hallazgos.
+El aviso de licencias sin Python/site-packages es del contenedor de escaneo
+de un árbol git sin dependencias instaladas, no un fallo del entorno backend
+ni de detección de vulnerabilidades; no se anuncia una auditoría de licencias.
+Gitleaks v8.30.1 fijado por el digest de CI, `git archive HEAD`, config existente
+y redacción, sin excepciones nuevas. Se comprueba también el commit documental.
+
+Infraestructura ejecuta compose dev/prod (secretos externos ficticios), asserts,
+contrato/self-test, versiones y shell mediante `/home/ubuntu/f8-a-infrastructure.sh`.
+`pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt`, también
+ejecutado como comando combinado CI: `No known vulnerabilities found`
+(`f8-c-pip-audit-ci.log`).
+Logs `f8-c-{bandit,pip-audit,pip-audit-dev,pnpm-audit,infrastructure,trivy,gitleaks}.log`
+en `/home/ubuntu`. Estos artefactos locales no se suben al repo ni son jobs remotos.
+Revisión de logs: avisos estáticos de autorización/032 y conteos, nunca frames,
+cookies, JWT, evidencia ni parámetros SQL privados; escaneo de patrones en
+API/worker/runner y JSON de reporte. IPC/storageState quedan ignorados fuera
+del reporte; imágenes públicas usan datos ficticios, sin trace/video privado.
+
+Tras editar README/AGENTS/manual, regresión documental afectada
+`pytest -q tests/test_version_sources.py tests/test_migration_030.py`:
+`25 passed, 7 skipped in 0.08s` (solo checks estáticos; los siete casos SQL ya
+están cubiertos sin omisiones por el gate DB anterior). Versiones de referencia
+comprobadas de nuevo al cambiar sus documentos fuente: `OK: Python 3.14, Node 24
+y pnpm 12.12.1 coinciden en las fuentes verificadas`.
+
+## T46 y parte local de T47/T48 — trazabilidad final de C
+
+README/AGENTS/manual/runbook distinguen autorización de recepción y validez de
+conexión, corte de evaluación, catálogo, HTTP/edición, compatibilidad y rollback
+fail-closed. La descripción de la sonda como broadcast inocuo queda corregida.
+Los informes históricos 008/009/010 no se reescriben para ocultar R32f.
+
+La tabla usa nombres de tests buscables. P = `test_realtime_policy.py`,
+D = `test_realtime_delivery_db.py`, S = `test_realtime_delivery.py`,
+E = `private-realtime.spec.ts`, E2 = `realtime-public.spec.ts`.
+P/S son puros o usan emisores simulados; **no** acreditan transporte real por sí
+solos. D usa PostgreSQL/RLS invocador; sus casos multiprocess/load usan además
+dos procesos OS, Redis y WebSocket reales. E/E2 usan navegador y arnés real.
+
+| Requisito | Evidencia ejecutada |
+|---|---|
+| RF-001, RF-002 | D `http_baseline`, `parity`, `multiprocess_committed_cutoff_real_transport`; E dos tenants y pestañas. |
+| RF-003, RF-004, RF-005 | P catálogo/permissions; D `resources`, `parity`, `cutoff`: lectura real con roles restantes; permiso de escritura/oficial irrelevante no inventa denegación (DA-1). |
+| RF-006 | D `identity`, S registry/handshake, E sesiones reales y JWT firmado. |
+| RF-007, RF-008 | D `cutoff`, `multiprocess_committed_cutoff_real_transport`; E commit/evaluation roles/membership/session y expiración real. |
+| RF-009 | D `parity`, `multiprocess_preapproved_transit_reconnect_other_api_no_replay`; E recuperación/concesión sin replay. |
+| RF-010 | E GET retenido durante cambio de organización/identidad; `realtime-private-context.test.ts` y guards de historial heredados de B; D/S generación cambiada. |
+| RF-011 | D cutoff anterior/posterior, tránsito preaprobado y evento pendiente en ambos procesos. Barreras reales, no esperas por tiempo. |
+| RF-012 | P sobre/referencias/catálogo, S exclusiones y E2 tipos excluidos en Redis; D recursos ajenos/inexistentes. |
+| RF-013 | S `delivery_all_catalog_rules_minimal_wire_with_historical_timestamp`; D/E frames de tres IDs; E2 privados sin fuga al público. |
+| RF-014 | D `load_two_processes_real_sockets_batches_failures_memory`, recuperación parcial; E fallo exclusivo de autorización y público independiente. |
+| RF-015 | E publicación, marcador e historial versión 2, borrador conservado y HTTP vigente; composables/rectification-components con useApi. |
+| RF-016 | E2 tres rooms/eventos y HTTP anónimo idéntico; suites públicas 020 y public-polish completas. |
+| RF-017 | D/S partial_recovery/error/vacío/032, E RESYNC sin evento nuevo, trim/reset, reconexión y JWT; sin replay privado. |
+| RF-018 | E duplicado real en Redis y una recarga trailing con acción ocupada; S batching/coalescing y deduplicación cliente. |
+| RF-019, RF-020 | P/S catálogo cerrado y exclusiones F1/F9; outbox worker/probe; E2 ausencia en transporte y público. |
+| RNF-001, RNF-002 | D HTTP/RLS/invocador/migración/parity, P catálogo y E/E2 captura anterior al dispatcher. |
+| RNF-003 | D barreras de commit en ambos procesos; E barreras de evaluación y corte. No se usa la revalidación periódica como prueba de revocación. |
+| RNF-004 | E reconexión, reintento, duplicado, acción ocupada; E2 y runner previo completo. Mejor esfuerzo, sin promesa exactamente una vez. |
+| RNF-005 | D multiprocess/load y cambio de API, sockets reales con dos tenants; no son dos objetos mock en el mismo loop. |
+| RNF-006 | S `suspension_rollout_advances_cursor_without_backlog_and_logs_no_payload`, revisión de logs/JSON y escaneos de secretos; métricas agregadas L1. |
+| RNF-007 | Sin mensaje visible nuevo en C; runner teclado/axe/ES-EN/temas existente, sin inspección visual manual nueva. |
+
+L1 reproducible con `RUN_DATABASE_TESTS=1 pytest -q -s tests/test_realtime_delivery_db.py -k load`:
+artefacto `f8-c-load.log` y sección T39, código `6e500d49`, 1.000 sockets/100
+principales/2 procesos. p50 0.434 s, p95 0.743 s, lag máximo 0.748 s; cada API
+hace una llamada y 100 bloques por categoría (sesión/membresía/recurso), no una
+consulta por pestaña. 257 principales del mismo usuario: dos llamadas y dos
+bloques de cada categoría. RSS en KiB de cuatro episodios: 181132/180100,
+181504/180456, 181768/180744, 182016/180884. Memoria y estado estructural acotados,
+sin afirmar RSS constante ni SLA; métricas Linux locales, no producción. La
+suite DB completa final vuelve a incluir esta prueba sin omitirla.
+
+Constitución §2: RLS real y rol no privilegiado; admin solo prepara fixtures y
+ejecuta migraciones. Publicaciones/inmutabilidad y administración separada sin
+cambios. Sin migración nueva ni edición aplicada, secretos/defaults productivos
+ni campos públicos nuevos. Guards de desarrollo siguen cubiertos. §4: backend,
+frontend, infraestructura, seguridad y documentación locales verificados;
+dependencias sin cambios. `git diff --check` y revisión de alcance final: solo
+tests/arnés, Redis CI y documentación; ningún cambio en backend/app, frontend/app
+o migraciones. CI remota y revisión humana/independiente **pendientes**: no se
+declara cumplimiento final de §6 ni T48 completa sin ellas.
+
+T47: no abrir PR por instrucción del usuario; publicar rama y esperar que lo
+abra para `git_pr_checks(wait_mode="all")`, comprobar evento push y Review del
+mismo SHA. El workflow omite E2E en push de feature: exigirlo en pull_request,
+no atribuirlo al push. T48 solo auditada localmente; T47/T48 siguen abiertas.
+T49 no se marca ni se solicita aceptación como si la CI/revisión ya existieran.
