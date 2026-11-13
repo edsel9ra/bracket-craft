@@ -71,7 +71,6 @@ export function useMatchLineup(state: MatchOperationState, dependencies: {
     if (!eventForm.team_id) {
       eventForm.team_id = value.match.home_team_id || value.match.away_team_id || '';
     }
-    lineupRoles.value = Object.fromEntries(value.lineup.map((entry) => [entry.roster_id, entry.role])) as Record<string, LineupRole>;
     syncTacticalEditor();
   }
 
@@ -81,6 +80,9 @@ export function useMatchLineup(state: MatchOperationState, dependencies: {
     const positions: Record<string, string> = {};
     const roles: Record<string, LineupRole | ''> = {};
     const persistedTeams = new Set(rows.map((row) => row.team_id));
+    for (const entry of operation.value?.lineup || []) {
+      if (!persistedTeams.has(entry.team_id)) roles[entry.roster_id] = entry.role;
+    }
     for (const row of rows) {
       formations[row.team_id] = row.formation_code;
       if (row.player_id && row.position_slot) {

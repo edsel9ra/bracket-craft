@@ -1332,16 +1332,20 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
         name: labelText(E2E_LABELS.saveLineup),
         exact: true,
       });
-      const [response] = await Promise.all([
+      const [response, operationResponse] = await Promise.all([
         page.waitForResponse(
           (candidate) =>
             candidate.url().includes('/lineup') && candidate.request().method() === 'PUT',
         ),
+        page.waitForResponse(candidate => candidate.url().endsWith('/operation') && candidate.request().method() === 'GET'),
         saveLineup.click(),
       ]);
       if (!response.ok()) {
         throw new Error(`la planilla respondió ${response.status()}`);
       }
+      const entries = await response.json();
+      expect(entries).toHaveLength(flowPlayers.length);
+      expect(response.request().postDataJSON().team_lineups).toEqual([]);
       // La respuesta llega antes que el refresco de la operación: se espera a
       // que la planilla guardada ya ofrezca al jugador en el alta de eventos.
       await expect(
@@ -1351,17 +1355,21 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
           .locator('option')
           .filter({ hasText: flowPlayers[0].last }),
       ).toHaveCount(1, { timeout: MAX_MS.initialConnected });
-      // El refresco reconstruye la planilla local desde las formaciones (que
-      // este escenario no configura); se vuelve a marcar un titular por equipo
-      // para que el cierre encuentre la planilla completa que el servidor ya
-      // tiene guardada.
       for (const player of flowPlayers) {
-        await page
-          .getByRole('combobox', {
-            name: `${labelText(E2E_LABELS.lineupRole)} ${player.first} ${player.last}`,
-            exact: true,
-          })
-          .selectOption('starter');
+        await expect(page.getByRole('combobox', {
+          name: `${labelText(E2E_LABELS.lineupRole)} ${player.first} ${player.last}`,
+          exact: true,
+        })).toHaveValue('starter');
+      }
+      const savedOperation = await operationResponse.json();
+      expect(savedOperation.lineup).toHaveLength(flowPlayers.length);
+      expect(savedOperation.tactical_lineups).toEqual([]);
+      await openSettled(page, operationUrl);
+      for (const player of flowPlayers) {
+        await expect(page.getByRole('combobox', {
+          name: `${labelText(E2E_LABELS.lineupRole)} ${player.first} ${player.last}`,
+          exact: true,
+        })).toHaveValue('starter');
       }
     });
     record('lineup-saved');
