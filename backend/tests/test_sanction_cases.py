@@ -343,7 +343,7 @@ async def test_stale_rectification_closes_without_decision_or_resolution(cases):
 
 
 @pytest.mark.parametrize("terminal", ["resolved", "withdrawn"])
-async def test_stale_terminal_cannot_reopen_resolved_but_can_link_withdrawal(cases, terminal):
+async def test_stale_terminal_cannot_reopen_resolved_but_can_resubmit_after_withdrawal(cases, terminal):
     f = cases
     await permissions(f, "SUBMIT_SANCTION_APPEALS")
     async with f.service() as service:
@@ -360,5 +360,5 @@ async def test_stale_terminal_cannot_reopen_resolved_but_can_link_withdrawal(cas
         async with f.service() as service:
             await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro"))
         async with f.service() as service:
-            successor = await service.submit_appeal(f.context, appeal(f, prior_case_id=receipt["id"]))
+            successor = await service.submit_appeal(f.context, appeal(f))
         assert successor["id"] != receipt["id"]
