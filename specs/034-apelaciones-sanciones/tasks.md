@@ -70,7 +70,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 - [x] **T26. Cumplimientos y paso a served con duración efectiva.** RF-010, RF-012, RF-014
 - Hecho cuando: INSERT y actualización de `_serve_suspensions` usan los mismos datos efectivos, IDs bloqueados y deduplicación, conservan filas y no reviven una anulada tras cerrar un partido anterior. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py -k serves`.
 
-- [ ] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
+- [x] **T35. Lectura privada de aviso al preparar alineación.** RF-014, RF-015, RF-017, RF-031
 - Hecho cuando: permiso operativo del partido da aviso mínimo por jugador sin expediente/motivo/evidencia; guardar/publicar no bloquean ni modifican alineación y cierre sigue revalidando. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_warnings.py`.
 
 ## PR B2 — Expedientes y efectos coordinados

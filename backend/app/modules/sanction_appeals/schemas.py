@@ -68,6 +68,13 @@ class WithdrawalRequest(ReasonRequest):
     pass
 
 
+class SuspensionWarning(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: UUID
+    remaining: int = Field(gt=0)
+
+
 class CaseFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

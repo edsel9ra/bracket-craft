@@ -63,6 +63,8 @@ from app.modules.rules_engine.substitutions import (
     team_usage,
 )
 from app.modules.sanction_appeals.application import record_opening
+from app.modules.sanction_appeals.repository import load_effective_sanctions
+from app.modules.sanction_appeals.schemas import SuspensionWarning
 from app.modules.tournaments.roster_status import (
     RosterSizeOutOfRange,
     count_active_roster_players_by_team,
@@ -483,6 +485,23 @@ async def close_match(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="El acta no cumple las reglas de integridad del partido") from exc
+
+
+@router.get("/{match_id}/suspension-warnings", response_model=list[SuspensionWarning])
+async def get_suspension_warnings(
+    match_id: UUID,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+):
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _load_operation_match(db, context, match_id, lock=False)
+        facts = await load_effective_sanctions(db, match_id, as_of=datetime.now(timezone.utc), preview=True)
+        remaining = {}
+        for fact in facts:
+            if fact.projection.blocking and fact.origin_match_id != match_id:
+                remaining[fact.player_id] = max(remaining.get(fact.player_id, 0), fact.projection.remaining)
+        return [SuspensionWarning(player_id=player, remaining=remaining[player]) for player in sorted(remaining, key=str)]
 
 
 @router.get("/{match_id}/operation", response_model=MatchOperationResponse)
