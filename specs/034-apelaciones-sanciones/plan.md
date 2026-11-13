@@ -1,6 +1,6 @@
 # Plan 034 — Apelaciones y resoluciones de sanciones
 
-Fecha: 2026-11-12. Estado: **aprobado** por el usuario el 2026-11-12, incluidas C1–C5 tal como están. Desarrolla la spec 034 aprobada el 2026-11-12 y la constitución 2.0.0, especialmente §3.6. Fase Plan cerrada; fase actual Tareas. La aprobación permite redactar tareas, no las da por aprobadas ni declara implementado F9.
+Fecha: 2026-11-12. Estado: **aprobado e implementado técnicamente en A–D**, incluidas C1–C5 tal como las aprobó el usuario el 2026-11-12. Desarrolla la spec 034 y la constitución 2.0.0, especialmente §3.6. Plan y tareas aprobados; gates locales y trazabilidad RF en [verificacion.md](verificacion.md). Cierre formal pendiente de CI remota y aceptación humana (T55), no de más código de producto.
 
 ## 1. Idea central y comprobación contra el código
 

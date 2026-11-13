@@ -1,6 +1,6 @@
 # Tareas 034 — Apelaciones y resoluciones de sanciones
 
-Estado: **aprobado** por el usuario el 2026-11-12, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. Fase Tareas cerrada; fase actual Implementación, PR A. T1–T10 realizadas; T11–T55 pendientes.
+Estado: **aprobado e implementado técnicamente en A–D**, con PR B dividido en B1/B2. Spec y plan aprobados, incluidas C1–C5. T1–T54 completas localmente; documentación T55 preparada, cierre formal pendiente de CI remota y aceptación humana. Evidencia por RF y capturas en [verificacion.md](verificacion.md); no confundir checks locales con jobs remotos.
 
 Son **55 tareas**, estimadas en **20–30 min de trabajo por tarea**, en orden de dependencia. **Propuesta: no dividir la spec**, aunque supera diez tareas: la duración efectiva, el bloqueo/cumplimiento y la coordinación 033 forman una garantía indivisible; separarlos en specs permitiría activar resoluciones con lectores antiguos. Por decisión del usuario, la entrega pasa a cinco PRs secuenciales A → B1 → B2 → C → D. Cada PR se verifica y fusiona antes de empezar el siguiente; B1 solo activa lectores equivalentes sin resoluciones y B2 no se fusiona parcialmente. Si una tarea excede el límite al ejecutarla, descomponerla antes de seguir, sin ampliar alcance ni marcarla parcialmente hecha.
 
@@ -178,23 +178,25 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 
 Depende de C. Orden T50 → … → T55; no declarar implementada la spec hasta verificar todos sus RF y obtener revisión humana. La aprobación de estas tareas no sustituye la aceptación de implementación.
 
-- [ ] **T50. Composable y pantalla admin de decisión excepcional.** RF-006, RF-015, RF-021, RF-023, RF-024
+- [x] **T50. Composable y pantalla admin de decisión excepcional.** RF-006, RF-015, RF-021, RF-023, RF-024
 - Hecho cuando: `/admin/sanction-cases` lista solo scopes F9, muestra preview/detalle y decide con useApi/useConfirm singleFlight, ES/EN; no permite presentar/proponer ni ve otro expediente. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T51. Regresión E2E admin y pública.** RF-007, RF-008, RF-015, RF-016, RF-017, RF-021, RF-023, RF-024
+- [x] **T51. Regresión E2E admin y pública.** RF-007, RF-008, RF-015, RF-016, RF-017, RF-021, RF-023, RF-024
 - Hecho cuando: autorización revocada/consumida/ajena y auto-decisión no ejecutan, auditorías coinciden y público no expone sanciones/motivos/evidencia. Pasan `cd frontend && pnpm run typecheck:e2e`, `cd frontend && pnpm exec playwright test e2e/sanction-platform.spec.ts` con pila de prueba, y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_public_field_allowlist.py tests/test_public_access_matrix.py tests/test_sanction_platform.py`.
 
-- [ ] **T52. Gate backend completo con PostgreSQL y regresión 033.** RF-001, RF-005, RF-009, RF-010, RF-011, RF-012, RF-016, RF-025, RF-030, RF-033
+- [x] **T52. Gate backend completo con PostgreSQL y regresión 033.** RF-001, RF-005, RF-009, RF-010, RF-011, RF-012, RF-016, RF-025, RF-030, RF-033
 - Hecho cuando: suite completa con rol real, concurrencia/rollback y legado pasa sin modificar expectativas ajenas; evidencia registra resultados e inventario de lectores actualizado. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `cd backend && python -m compileall -q app`.
 
-- [ ] **T53. Gate frontend y comprobación visual acotada.** RF-006, RF-015, RF-017, RF-023, RF-029, RF-030, RF-031, RF-032, RF-034
+- [x] **T53. Gate frontend y comprobación visual acotada.** RF-006, RF-015, RF-017, RF-023, RF-029, RF-030, RF-031, RF-032, RF-034
 - Hecho cuando: bandeja/detalle/formularios/admin y aviso no bloqueante se verifican en escritorio/móvil con capturas de los estados cambiados, ES/EN y foco, sin datos reales. Pasan `cd frontend && pnpm test && pnpm run typecheck && pnpm run lint && pnpm run build` y `cd frontend && pnpm run e2e`; guardar rutas de evidencia y límites visuales.
 
-- [ ] **T54. Gate de migraciones, infraestructura y seguridad existente.** RF-005, RF-007, RF-016, RF-017, RF-019, RF-023, RF-025
+- [x] **T54. Gate de migraciones, infraestructura y seguridad existente.** RF-005, RF-007, RF-016, RF-017, RF-019, RF-023, RF-025
 - Hecho cuando: limpio/migrado, checksums, grants y protecciones originales siguen correctos, Compose dev/merge prod con dummy y jobs de seguridad pasan sin exclusiones ni versiones nuevas. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py`, `sh -n infra/postgres/migrate.sh`, runner PostgreSQL de T8, `docker compose config -q`, `python3 infra/scripts/check_env_contract.py --self-test` y auditorías/validación de producción con los comandos exactos de AGENTS.md; revisar los jobs backend/infrastructure/security del PR, no inferirlos de checks locales.
+- Gate local completo, incluido `test_migration_040.py` dentro de T52 (no se repite sin cambios). Por indicación de entregar sin abrir PR, la revisión de jobs remotos queda explícitamente pendiente del cierre T55; no se certifica CI a partir de estos checks.
 
 - [ ] **T55. Documentación observable y cierre por RF con revisión humana.** RF-001, RF-006, RF-007, RF-010, RF-013, RF-017, RF-019, RF-023, RF-025, RF-029, RF-030, RF-031, RF-032, RF-033, RF-034
 - Hecho cuando: README/AGENTS/manual explican flujo privado, separación de personas, efecto diferido y ausencia de segunda instancia; `verificacion.md` relaciona cada RF-001–RF-034 con test/evidencia y límites, MEMORY refleja fase real. Pasan `git diff --check`, `cd backend && python -m compileall -q app` y `cd frontend && pnpm run typecheck`; CI completa backend/frontend/infrastructure/security/e2e en verde y aceptación humana antes de marcar implementada.
+- Documentación y gates locales completados en D. La casilla permanece abierta únicamente por los requisitos de CI remota y aceptación humana: se entrega por push sin crear PR, como se solicitó. No se declara aceptada la implementación ni se inventan resultados de CI.
 
 ## Cobertura comprobable y condiciones de ejecución
 

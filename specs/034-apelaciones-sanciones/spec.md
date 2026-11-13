@@ -1,8 +1,8 @@
 # Spec 034 — Apelaciones y resoluciones de sanciones
 
-Estado: aprobada
+Estado: aprobada — implementación técnica A–D completada; cierre formal pendiente de validación y aceptación humana.
 
-Aprobada expresamente por el usuario el 2026-11-12. Fase Spec cerrada; siguiente fase: Plan.
+Aprobada expresamente por el usuario el 2026-11-12, al igual que su plan C1–C5 y tareas. Implementación A–C fusionada y D preparada para entrega sin abrir PR. Evidencia por RF y límites en [verificacion.md](verificacion.md); la aceptación de implementación no se presume de la autorización para desarrollar.
 
 Fecha: 2026-11-12. Desarrolla F9 y la §3.6 de la constitución 2.0.0. Complementa la spec 033; no la sustituye ni amplía la excepción de inmutabilidad de las actas. Conserva la matriz pública de la spec 020.
 
@@ -16,7 +16,7 @@ La constitución 2.0.0, §3.6, establece literalmente:
 
 **Objetivo:** permitir tramitar recursos y conocer la sanción que rige como consecuencia de una resolución identificable y motivada, manteniendo la trazabilidad, los cumplimientos históricos, el aislamiento organizativo y la inmutabilidad de lo ya disputado.
 
-DA-1–DA-18 están cerradas por el usuario y recogidas en los requisitos; DA-6 se revisó por su indicación para exigir propuesta y decisión por personas distintas. La spec completa está aprobada expresamente desde el 2026-11-12 y pasa a fase Plan; esto no declara implementado F9 ni aprueba su diseño técnico.
+DA-1–DA-18 están cerradas por el usuario y recogidas en los requisitos; DA-6 se revisó por su indicación para exigir propuesta y decisión por personas distintas. Spec, plan y tareas aprobados expresamente; la implementación técnica se verifica en A–D sin modificar estas decisiones ni la matriz pública.
 
 ### Estado actual comprobado (2026-11-12)
 
@@ -246,4 +246,4 @@ DA-1–DA-18 están cerradas e incorporadas a la spec aprobada, incluida la revi
 
 ### Pendientes
 
-Ninguna duda abierta. Spec aprobada expresamente por el usuario el 2026-11-12; el plan técnico requiere su propia revisión y aprobación antes de avanzar a tareas e implementación.
+Ninguna duda funcional abierta. Implementación técnica y gates locales terminados; quedan la revisión de CI remota y la aceptación humana de la entrega para declarar el cierre formal según T55 y la skill SDD. No se acredita un despliegue productivo.

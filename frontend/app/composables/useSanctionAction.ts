@@ -1,7 +1,7 @@
 import type { ConfirmOptions } from '~/utils/confirmQueue';
 import { sanctionErrorKey } from '~/utils/sanctions';
 
-export function useSanctionAction() {
+export function useSanctionAction(context: { platform?: boolean } = {}) {
   const { organizationId } = useApi();
   const auth = useAuthStore();
   const { confirm, cancelAll } = useConfirm({ singleFlight: true });
@@ -11,7 +11,7 @@ export function useSanctionAction() {
   watch(() => [organizationId.value, auth.userId, auth.access?.permissions.join(','), auth.access?.role_code], reset, { flush: 'sync' });
   onBeforeUnmount(reset);
   async function run<T>(options: ConfirmOptions, operation: () => Promise<T>): Promise<T | undefined> {
-    if (busy.value || !organizationId.value || !auth.userId) return;
+    if (busy.value || (!context.platform && !organizationId.value) || !auth.userId) return;
     const token = generation;
     busy.value = true; error.value = '';
     try {
