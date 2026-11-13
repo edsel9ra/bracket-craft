@@ -1,4 +1,5 @@
 from uuid import uuid4
+import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -76,3 +77,19 @@ async def test_platform_http_scope_preview_decision_and_support_denial(cases, cl
 async def test_anonymous_requires_session(client):
     api.dependency_overrides.pop(get_auth_context)
     assert (await client.get("/api/v1/sanction-cases")).status_code == 401
+
+
+async def test_withdrawal_evidence_is_optional_private_and_idempotent(cases, client):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        case = await service.submit_appeal(f.context, appeal(f))
+    path = f"/api/v1/sanction-cases/{case['id']}/withdraw"
+    payload = {"reason": "Retiro", "evidence_text": "PRIVATE_WITHDRAWAL", "evidence_links": ["https://example.test/evidence"]}
+    assert (await client.post(path, json=payload)).status_code == 200
+    assert (await client.post(path, json=payload)).status_code == 200
+    assert (await client.post(path, json={**payload,"evidence_text":"Otro"})).status_code == 409
+    event = await f.admin.fetchrow("SELECT * FROM sanction_case_events WHERE event_type='withdrawn'")
+    assert event["evidence_text"] == "PRIVATE_WITHDRAWAL"
+    assert json.loads(event["evidence_links"]) == payload["evidence_links"]
+    assert "PRIVATE_WITHDRAWAL" not in str(await f.admin.fetch("SELECT payload FROM outbox_events"))

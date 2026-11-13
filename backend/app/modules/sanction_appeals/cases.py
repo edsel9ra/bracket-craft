@@ -131,8 +131,9 @@ class SanctionCaseService:
 
     async def withdraw(self, context, case_id, payload):
         async with self.transaction(context):
-            result = (await self.db.execute(text("SELECT withdraw_sanction_case(:id,:reason)"),
-                {"id": case_id, "reason": payload.reason})).scalar_one()
+            result = (await self.db.execute(text("SELECT withdraw_sanction_case(:id,:reason,CAST(:evidence AS jsonb))"),
+                {"id": case_id, "reason": payload.reason,
+                 "evidence": payload.model_dump_json(exclude={"reason"})})).scalar_one()
             return {"id": case_id, "status": result["status"]}
 
     async def decide(self, context, case_id, payload):

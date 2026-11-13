@@ -26,7 +26,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.sanction_lock_case(UUID) FROM PUBLIC;
 
-CREATE FUNCTION public.withdraw_sanction_case(target_case UUID, withdrawal_reason TEXT)
+CREATE FUNCTION public.withdraw_sanction_case(target_case UUID, withdrawal_reason TEXT, evidence JSONB DEFAULT '{}'::JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE target public.sanction_cases; actor UUID := NULLIF(current_setting('app.current_user_id', true), '')::UUID;
 BEGIN
@@ -46,17 +46,20 @@ BEGIN
         RAISE EXCEPTION 'SANCTION_REASON_REQUIRED' USING ERRCODE='23514';
     END IF;
     IF target.status='withdrawn' AND EXISTS (SELECT 1 FROM public.sanction_case_events WHERE case_id=target.id
-        AND organization_id=target.organization_id AND event_type='withdrawn' AND reason=withdrawal_reason AND actor_user_id=actor) THEN
+        AND organization_id=target.organization_id AND event_type='withdrawn' AND reason=withdrawal_reason AND actor_user_id=actor
+        AND evidence_text IS NOT DISTINCT FROM evidence->>'evidence_text'
+        AND evidence_links=COALESCE(evidence->'evidence_links','[]'::JSONB)) THEN
         RETURN jsonb_build_object('id',target.id,'status',target.status);
     END IF;
     IF target.status <> 'pending' THEN RAISE EXCEPTION 'SANCTION_CASE_NOT_PENDING' USING ERRCODE='23514'; END IF;
-    INSERT INTO public.sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
-        VALUES (target.organization_id,target.id,'withdrawn',actor,withdrawal_reason);
+    INSERT INTO public.sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason,evidence_text,evidence_links)
+        VALUES (target.organization_id,target.id,'withdrawn',actor,withdrawal_reason,evidence->>'evidence_text',
+            COALESCE(evidence->'evidence_links','[]'::JSONB));
     PERFORM public.sanction_finalize_case(target.id);
     RETURN jsonb_build_object('id',target.id,'status','withdrawn');
 END;
 $$;
-REVOKE ALL ON FUNCTION public.withdraw_sanction_case(UUID,TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.withdraw_sanction_case(UUID,TEXT) TO bracket_app;
+REVOKE ALL ON FUNCTION public.withdraw_sanction_case(UUID,TEXT,JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.withdraw_sanction_case(UUID,TEXT,JSONB) TO bracket_app;
 
 COMMIT;

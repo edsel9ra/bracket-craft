@@ -77,7 +77,7 @@ class DecisionRequest(EvidenceRequest):
         return self
 
 
-class WithdrawalRequest(ReasonRequest):
+class WithdrawalRequest(EvidenceRequest):
     pass
 
 
