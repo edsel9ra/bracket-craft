@@ -92,7 +92,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T19. Preview de decisión sin escritura.** RF-004, RF-010, RF-014, RF-020, RF-030
 - Hecho cuando: consulta+resolver obtiene base esperada y efectos previstos, no aplicados; cero cambios a ledger, status, auditoría o outbox, también con motivo/evidencia vacíos de prueba. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k preview`.
 
-- [ ] **T20. Retirada auditada solo por autor pendiente.** RF-009, RF-015, RF-029, RF-034
+- [x] **T20. Retirada auditada solo por autor pendiente.** RF-009, RF-015, RF-029, RF-034
 - Hecho cuando: autor con legitimación vigente retira con motivo obligatorio, sin alterar sanción; ajeno, terminal y motivo vacío se rechazan; transición/evento atómicos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k withdraw`.
 
 - [ ] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034

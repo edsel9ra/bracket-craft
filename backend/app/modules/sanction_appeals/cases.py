@@ -38,6 +38,10 @@ class SanctionCaseService:
                     await require_permission(self.db, context, permission)
                 yield
         except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "P0002":
+                raise LookupError("Expediente no encontrado") from exc
+            if getattr(exc.orig, "sqlstate", None) == "42501":
+                raise PermissionError("Operación no autorizada") from exc
             if getattr(exc.orig, "sqlstate", None) == "23505":
                 raise SanctionConflict("SANCTION_CASE_CONFLICT") from exc
             if getattr(exc.orig, "sqlstate", None) == "23514":
@@ -117,6 +121,12 @@ class SanctionCaseService:
             if payload.proposed_action == "reduce" and payload.proposed_duration >= source["matches_suspended"]:
                 raise ValueError("La propuesta debe reducir la duración")
             return await self._submit(context, payload, source, "administrative_proposal")
+
+    async def withdraw(self, context, case_id, payload):
+        async with self.transaction(context):
+            result = (await self.db.execute(text("SELECT withdraw_sanction_case(:id,:reason)"),
+                {"id": case_id, "reason": payload.reason})).scalar_one()
+            return {"id": case_id, "status": result["status"]}
 
     async def list_cases(self, context, filters):
         async with self.transaction(context, "VIEW_SANCTION_CASES"):

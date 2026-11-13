@@ -1,19 +1,22 @@
 import json
 from contextlib import asynccontextmanager
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tenancy import AuthContext
 from app.modules.sanction_appeals.cases import SanctionCaseService
-from app.modules.sanction_appeals.schemas import AppealRequest, CaseFilters, ProposalRequest, SanctionFilters
+from app.modules.sanction_appeals.schemas import AppealRequest, CaseFilters, ProposalRequest, SanctionFilters, WithdrawalRequest
+from migration_helpers import apply_migration
 from test_migration_031 import MATCH, ORG, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_HOME, VERSION
 from test_sanction_readers import readers as readers
 
 
 @pytest.fixture
 async def cases(readers):
+    await apply_migration(readers.admin, 44)
     @asynccontextmanager
     async def session():
         async with readers.engine.connect() as connection:
@@ -179,3 +182,39 @@ async def test_preview_requires_view_and_resolve_and_never_writes(cases):
     assert await f.admin.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
     assert await f.admin.fetchval("SELECT count(*) FROM outbox_events") == 0
     assert await f.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 0
+
+
+async def second_member(f, *values):
+    user, member, role = uuid4(), uuid4(), uuid4()
+    await f.admin.execute("INSERT INTO users(id,email,full_name) VALUES ($1,$2,'Reviewer')", user, f"{user}@example.test")
+    await f.admin.execute("INSERT INTO organization_users(id,organization_id,user_id) VALUES ($1,$2,$3)", member, ORG, user)
+    await f.admin.execute("""INSERT INTO roles(id,organization_id,role_definition_id,name,permissions)
+        SELECT $1,$2,id,$3,$4::jsonb FROM role_definitions WHERE code='operator'""", role, ORG, str(role), json.dumps(values))
+    await f.admin.execute("INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES ($1,$2,$3)", ORG, member, role)
+    return AuthContext(user, UUID(ORG), member)
+
+
+@pytest.mark.parametrize("kind", ["appeal", "proposal"])
+async def test_withdraw_only_author_with_current_permission_and_no_view(cases, kind):
+    f = cases
+    permission = "SUBMIT_SANCTION_APPEALS" if kind == "appeal" else "RESOLVE_SANCTION_CASES"
+    await permissions(f, permission)
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f)) if kind == "appeal" else await service.submit_proposal(
+            f.context, ProposalRequest(suspension_id=f.suspension, proposed_action="annul", reason="Revisar"))
+    other = await second_member(f, permission)
+    async with f.service() as service:
+        with pytest.raises(PermissionError):
+            await service.withdraw(other, receipt["id"], WithdrawalRequest(reason="Retiro"))
+    await f.admin.execute("UPDATE roles SET permissions='[]' WHERE name='F9 writer'")
+    async with f.service() as service:
+        with pytest.raises(PermissionError):
+            await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro"))
+    await f.admin.execute("UPDATE roles SET permissions=$1::jsonb WHERE name='F9 writer'", json.dumps([permission]))
+    async with f.service() as service:
+        result = await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro"))
+    assert result == {"id": receipt["id"], "status": "withdrawn"}
+    assert await f.admin.fetchval("SELECT status FROM player_suspensions WHERE id=$1", f.suspension) == "active"
+    async with f.service() as service:
+        assert await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro")) == result
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_events WHERE event_type='withdrawn'") == 1
