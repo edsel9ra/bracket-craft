@@ -122,7 +122,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
 - Hecho cuando: decisión/retirada/cierre generan ambos canales y destinatarios deduplicados autorizados; payload solo acto/motivo e identificadores técnicos mínimos, nunca evidencia ni jugadores por esa condición. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k enqueue`.
 
-- [ ] **T33. Handler interno y lectura privada con revalidación C5.** RF-015, RF-016, RF-032, RF-033
+- [x] **T33. Handler interno y lectura privada con revalidación C5.** RF-015, RF-016, RF-032, RF-033
 - Hecho cuando: entrega idempotente por evento/aviso, bandeja solo destinatario; pérdida de permiso retiene sin exposición, recuperación permite reintento según outbox, sin conceder consulta F9. Handler explícito no cae al stream Redis ni a rooms organizativos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k internal`.
 
 - [ ] **T34. Handler de correo F9 con reintentos.** RF-032, RF-033
