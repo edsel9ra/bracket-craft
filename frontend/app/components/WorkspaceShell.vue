@@ -43,6 +43,7 @@ const platformAccess = useState<'unknown' | 'allowed' | 'denied'>('workspace-pla
 const isAdminRoute = computed(() => route.path === '/admin' || route.path.startsWith('/admin/'));
 const showAdminLink = computed(() => isAdminRoute.value || platformAccess.value === 'allowed');
 const canManageMembers = computed(() => auth.hasPermission('MANAGE_MEMBERS'));
+const canUseSanctions = computed(() => ['VIEW_SANCTION_CASES', 'SUBMIT_SANCTION_APPEALS', 'RESOLVE_SANCTION_CASES'].some((permission) => auth.hasPermission(permission)) || auth.access?.role_code === 'owner');
 const activeSection = computed<TournamentSection>(() => tournamentSectionForPath(route.path, route.hash));
 const matchId = computed(() => matchIdFromPath(route.path));
 const organizationName = computed(() => {
@@ -57,6 +58,8 @@ const tournamentLabel = computed(() => {
 });
 
 const primaryLinks = computed(() => [
+  { key: 'sanction-notifications', label: t('sanction.notifications'), to: '/workspace/sanction-notifications', current: route.path === '/workspace/sanction-notifications' },
+  ...(canUseSanctions.value ? [{ key: 'sanctions', label: t('sanction.inbox'), to: '/workspace/sanctions', current: route.path === '/workspace/sanctions' }] : []),
   { key: 'rectifications', label: t('rectification.inbox'), to: '/workspace/rectifications', current: route.path === '/workspace/rectifications' },
   {
     key: 'tournaments',

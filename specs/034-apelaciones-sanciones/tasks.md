@@ -144,34 +144,34 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 
 Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan por `useApi.ts`, los tests usan contratos estrictos y ES/EN; no se comparte payload privado con componentes públicos.
 
-- [ ] **T40. Composable tipado de expedientes y permisos.** RF-006, RF-015, RF-019, RF-029
+- [x] **T40. Composable tipado de expedientes y permisos.** RF-006, RF-015, RF-019, RF-029
 - Hecho cuando: `useSanctionCases.ts` transporta sesión/organización mediante useApi, pagina/refresca sin mezclar tenants y tipa errores/recibos; sin acceso implícito por presentar. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T41. Bandeja Workspace y filtros privados.** RF-006, RF-015, RF-017, RF-027, RF-028
+- [x] **T41. Bandeja Workspace y filtros privados.** RF-006, RF-015, RF-017, RF-027, RF-028
 - Hecho cuando: página muestra sanciones/expedientes autorizados, vacío/carga/error, ambos tipos y archivo, con navegación guardada por permiso; ninguna consulta pública. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T42. Detalle con historial y efecto pendiente.** RF-004, RF-006, RF-009, RF-010, RF-011, RF-013, RF-030
+- [x] **T42. Detalle con historial y efecto pendiente.** RF-004, RF-006, RF-009, RF-010, RF-011, RF-013, RF-030
 - Hecho cuando: original/efectiva/cumplimientos, procedencia, constancias y cierre rectificativo se distinguen; evidencia solo en detalle autorizado, sin presentar como aplicado un efecto pendiente. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T43. Formulario de apelación con representación.** RF-002, RF-003, RF-018, RF-026, RF-028, RF-034
+- [x] **T43. Formulario de apelación con representación.** RF-002, RF-003, RF-018, RF-026, RF-028, RF-034
 - Hecho cuando: miembro autorizado registra representación y motivo; evidencia opcional/enlaces seguros, sin input de archivos; errores y ausencia de caducidad no cambian sanción ni conceden acceso al representado. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T44. Proponer y decidir con confirmación singleFlight.** RF-004, RF-020, RF-021, RF-022, RF-029, RF-030, RF-034
+- [x] **T44. Proponer y decidir con confirmación singleFlight.** RF-004, RF-020, RF-021, RF-022, RF-029, RF-030, RF-034
 - Hecho cuando: catálogo y preview correctos, autor no decide, propuesta sin efecto, retirada solo autor; useConfirm ES/EN singleFlight evita doble envío y conflicto refresca estado sin segunda instancia. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T45. Gestión owner de autorizaciones F9.** RF-015, RF-023, RF-024
+- [x] **T45. Gestión owner de autorizaciones F9.** RF-015, RF-023, RF-024
 - Hecho cuando: owner concede/revoca scope puntual desde detalle con confirmación, estados inválidos/consumidos visibles y ninguna reutilización de autorizaciones 033. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T46. Bandeja interna privada sin ampliar consulta.** RF-015, RF-017, RF-032, RF-033
+- [x] **T46. Bandeja interna privada sin ampliar consulta.** RF-015, RF-017, RF-032, RF-033
 - Hecho cuando: lectura HTTP paginada muestra solo acto/motivo al destinatario vigente, vacío/error/reintento, sin evidencia ni broadcast; enlace no elude permiso de detalle. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T47. Aviso disciplinario en preparación de alineación.** RF-014, RF-017, RF-031
+- [x] **T47. Aviso disciplinario en preparación de alineación.** RF-014, RF-017, RF-031
 - Hecho cuando: MatchLineupSection/useMatchLineup muestran aviso privado mínimo, accesible y no bloqueante; guardar/publicar y formaciones no se alteran; PublicLineupModal no recibe datos F9. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
+- [x] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
 - Hecho cuando: claves ES/EN completas, foco/teclado y tokens existentes, errores 403/404/409/422 sin filtrar expediente y reapertura manual solo cuando procede; no dialogs nativos. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T49. E2E Workspace con dos personas y tenants.** RF-003, RF-006, RF-018, RF-021, RF-022, RF-025, RF-029, RF-030, RF-031, RF-034
+- [x] **T49. E2E Workspace con dos personas y tenants.** RF-003, RF-006, RF-018, RF-021, RF-022, RF-025, RF-029, RF-030, RF-031, RF-034
 - Hecho cuando: presentar/proponer/decidir, retirada/cierre rectificativo, pendiente/aplicado y aviso no bloqueante se prueban con fixture local sin ampliar seeds productivos. Pasan `cd frontend && pnpm run typecheck:e2e` y, con pila local de prueba preparada, `cd frontend && pnpm exec playwright test e2e/sanction-workspace.spec.ts`.
 
 ## PR D — Admin y cierre verificado (T50–T55)

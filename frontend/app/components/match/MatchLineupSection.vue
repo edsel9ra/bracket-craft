@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { FORMATION_OPTIONS } from '~/constants/formations';
 import Button from '~/components/ui/Button.vue';
+import SanctionLineupWarning from '~/components/sanction/SanctionLineupWarning.vue';
 import { positionLabel } from '~/utils/positions';
 
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
@@ -21,6 +22,7 @@ const toggleLineupPublication = (teamId: string) => emit('toggleLineupPublicatio
 <section class="panel panel-wide" id="seccion-planilla" tabindex="-1">
                <div class="panel-heading"><div><p class="eyebrow">03 · {{ t('match.roster') }}</p><h2>{{ t('match.definePlayers') }}</h2></div><Button v-if="canOperateMatch" type="button" :disabled="Boolean(busyAction) || isTerminal || !selectedSegmentIsActive" @click="saveLineup">{{ busyAction === 'lineup' ? t('match.savingLineup') : t('match.saveLineup') }}</Button></div>
               <p class="panel-description">{{ t('match.selectRoles', { segment: selectedSegment?.segment_number || t('match.activeSegment') }) }}</p>
+              <SanctionLineupWarning :match-id="context.matchId" :enabled="canOperateMatch && !isTerminal" :refresh-key="selectedSegment?.id || ''" :players="teamRosters.flatMap((team) => team.players).map((player) => ({ id: player.player_id, label: playerName(player) }))" />
               <p v-if="!selectedSegmentIsActive" class="segment-warning">{{ t('match.noActiveSegment') }}</p>
              <div class="formation-config-grid">
                <div v-for="team in teamRosters" :key="`${team.key}-formation`" class="formation-config">
