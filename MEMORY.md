@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Tareas (Fase 4) — spec y plan aprobados el 2026-11-13, C1–C4 confirmadas. `tasks.md` en borrador; sin implementación ni código funcional.
+- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR A — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A inerte: núcleo y autorización sin conectar al relay; R32f sigue abierto.
 
 ## Pendiente
-- Spec 035: revisar y aprobar `tasks.md` antes de Implementación. C4 mantiene PR A → B → C; no se habilitan F1 ni Socket.IO para F9.
+- Spec 035: implementar y verificar T1–T17 (PR A) antes de PR B → C; no se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 035 · Usuario: «Apruebo las tareas.»; #75 fusionado. Inicio de Implementación, PR A inerte, sin activar el filtro ni cerrar R32f.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo el plan.»; C1–C4 confirmadas como se recomendaron: batch invocador sin caché, invalidaciones de tres IDs, RESYNC compatible y tres PR coordinados. Plan aprobado y paso a Tareas autorizado; tareas borrador pendientes de aprobación expresa.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo la spec.»; clarificación cerrada y paso a Plan autorizado. Spec aprobada, plan borrador; sin autorización para Tareas ni Implementación.
 - 2026-11-13 · Spec 035 · Usuario acepta las recomendaciones: DA-1 C, lectura HTTP y recurso concreto sin roles por torneo ni endurecer HTTP; DA-2 B, denegar evaluaciones iniciadas desde la retirada confirmada sin retirar lo ya enviado o aprobado en tránsito; DA-3 B, invalidaciones mínimas con identificadores autorizados y detalle HTTP, sin decidir F1; DA-4 B, suspender entregas no verificables sin gracia ni desconexión masiva, reautorizar y resincronizar por HTTP sin replay privado. RF concretados; decisiones cerradas, spec aún borrador en clarificación.

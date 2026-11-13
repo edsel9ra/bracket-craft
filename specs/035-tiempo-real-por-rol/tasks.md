@@ -1,6 +1,6 @@
 # Tareas 035 — Tiempo real privado según permisos de lectura
 
-Estado: **borrador**. Fecha: 2026-11-13. Spec y plan aprobados por el usuario el 2026-11-13, incluidas C1–C4 tal como estaban recomendadas. La aprobación del plan no aprueba este documento ni autoriza implementar. Todas las casillas permanecen abiertas hasta realizar y comprobar el trabajo correspondiente.
+Estado: **aprobado** por el usuario el 2026-11-13 («Apruebo las tareas.»). Spec y plan aprobados por el usuario el 2026-11-13, incluidas C1–C4 tal como estaban recomendadas. Implementación autorizada en orden PR A → B → C. Las casillas permanecen abiertas hasta realizar y comprobar el trabajo correspondiente.
 
 Son **49 tareas**, estimadas en **20–30 min de trabajo activo por tarea**, más esperas de CI. Orden de entrega aprobado: **PR A → PR B → PR C**. A: **17 tareas** (T1–T17); B: **20 tareas** (T18–T37); C: **12 tareas** (T38–T49). Cada PR se verifica y fusiona antes de empezar el siguiente. Las dependencias indicadas son necesarias; no autorizan paralelismo de implementación: una tarea cada vez, conforme a SDD.
 
