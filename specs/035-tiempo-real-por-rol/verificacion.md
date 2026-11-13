@@ -757,3 +757,24 @@ incremento observado (~0,9/0,8 MiB) y no se inventa umbral/SLA. La aceptación
 estructural verifica estados acotados por conexiones, ausencia de decisiones o
 eventos perdidos en cola, lotes <=256 y nueva evaluación por evento. Los samples
 del propio arnés usan deques de 256 y contadores de etiquetas fijas.
+
+### T40 — recuperación parcial real
+
+Dos casos multiproceso (retirada de sesión/membresía) y tres casos de la máquina
+de control (normal parcial/vacío/error):
+```text
+5 passed, 125 deselected in 15.95s
+All checks passed!
+```
+Fallo SQL privado solo en API 1; API 2 sigue entregando a otro principal del
+mismo tenant. Dos recuperaciones 032 fallidas mantienen suspensión; retirada
+durante suspensión desconecta al afectado sin RESYNC; fallo de emisión de
+control conserva solo la marca correspondiente y reintentar envía exactamente
+un RESYNC exitoso. Se mata/reinicia de verdad el proceso OS, cambia PID y el
+cliente nuevo autentica/lee por HTTP y recibe JOIN, nunca el evento perdido.
+La prueba unitaria también verifica coalescencia y descarte por generación.
+
+No hubo rojo de producto: el coordinador ya satisface estos casos. Los fallos
+de preparación detectaron que el cliente crudo debe procesar el paquete 41 de
+desconexión de namespace y que el productor debe seguir siendo miembro activo;
+se corrigió únicamente el arnés, sin endurecer ni eludir RLS.

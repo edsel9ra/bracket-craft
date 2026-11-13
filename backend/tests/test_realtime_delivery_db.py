@@ -182,6 +182,48 @@ async def test_load_two_processes_real_sockets_batches_failures_memory(flow):
                                  'edge_257_sql': [probe['counts'] for probe in edges]}, sort_keys=True))
 
 
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+@pytest.mark.parametrize('withdrawal', ['session', 'membership'])
+async def test_multiprocess_partial_recovery_control_failure_and_restart(flow, withdrawal):
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        victim, healthy = await cluster.identities(2)
+        withdrawn = await cluster.connect(0, victim)
+        affected = await cluster.connect(0, healthy)
+        independent = await cluster.connect(1, healthy)
+        await cluster.rpc(0, 'mode', values={'fail': True, 'control_fail': True})
+        lost = await cluster.publish()
+        await cluster.settle(lost)
+        assert withdrawn.payload(lost) is None and affected.payload(lost) is None
+        assert independent.payload(lost) is not None
+        await cluster.withdraw(withdrawal, victim)
+        for _ in range(2):
+            await cluster.rpc(0, 'recover')
+            assert (await cluster.rpc(0, 'probe'))['suspended'] == 2
+        await cluster.rpc(0, 'mode', values={'fail': False, 'control_fail': False, 'emit_fail': True})
+        await cluster.rpc(0, 'recover')
+        assert (await cluster.rpc(0, 'probe'))['suspended'] == 1
+        await cluster.rpc(0, 'mode', values={'emit_fail': False})
+        await cluster.rpc(0, 'recover')
+        await cluster.fence()
+        assert (await cluster.rpc(0, 'probe'))['suspended'] == 0
+        assert not any(name == 'RESYNC' and value['reason'] == 'RELAY_START' for name, value in withdrawn.frames)
+        assert sum(name == 'RESYNC' and value['reason'] == 'RELAY_START' for name, value in affected.frames) == 1
+        assert sum(name == 'RESYNC' and value['reason'] == 'RELAY_START' for name, value in independent.frames) == 0
+        assert affected.payload(lost) is None
+        previous = (await cluster.rpc(0, 'probe'))['pid']
+        await cluster.restart(0)
+        assert (await cluster.rpc(0, 'probe'))['pid'] != previous
+        reconnected = await cluster.connect(0, healthy)
+        assert await cluster.http(0, healthy) == 200
+        await cluster.fence()
+        assert reconnected.payload(lost) is None
+        fresh = await cluster.publish(user=healthy['user'])
+        await cluster.settle(fresh)
+        assert reconnected.payload(fresh) is not None and independent.payload(fresh) is not None
+
+
 async def candidate(f, user=USER):
     session = uuid4()
     await f.admin.execute('INSERT INTO user_sessions (id,user_id,expires_at) VALUES ($1,$2,$3)',

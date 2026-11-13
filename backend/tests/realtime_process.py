@@ -209,6 +209,7 @@ class Wire:
         self.times = deque(maxlen=256)
         self.condition = asyncio.Condition()
         self.task = None
+        self.connected = False
 
     async def packet(self, packet):
         if packet == '2':
@@ -218,10 +219,19 @@ class Wire:
             self.times.append(perf_counter())
             async with self.condition:
                 self.condition.notify_all()
+        elif packet.startswith('40') or packet == '41':
+            self.connected = packet != '41'
+            async with self.condition:
+                self.condition.notify_all()
 
     async def read(self):
-        async for packet in self.websocket:
-            await self.packet(packet)
+        try:
+            async for packet in self.websocket:
+                await self.packet(packet)
+        finally:
+            self.connected = False
+            async with self.condition:
+                self.condition.notify_all()
 
     def payload(self, event_id):
         return next((payload for _, payload in self.frames if payload.get('event_id') == event_id), None)
@@ -231,7 +241,7 @@ class Wire:
 
     async def wait(self, event_id):
         async with self.condition:
-            await asyncio.wait_for(self.condition.wait_for(lambda: self.payload(event_id) is not None), 30)
+            await asyncio.wait_for(self.condition.wait_for(lambda: self.payload(event_id) is not None or not self.connected), 30)
 
     async def close(self):
         await self.websocket.close()
@@ -311,6 +321,26 @@ class ProcessCluster:
         assert 'error' not in response, response.get('error')
         return response['result']
 
+    async def restart(self, index):
+        process, pipe, _ = self.children[index]
+        process.terminate()
+        await asyncio.to_thread(process.join, 10)
+        assert not process.is_alive()
+        pipe.close()
+        listener = socket.socket()
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(2048)
+        parent, child = multiprocessing.get_context('spawn').Pipe()
+        environment = {'APP_ENV': 'development', 'DATABASE_URL': self.url,
+                       'REDIS_URL': get_settings().redis_url}
+        replacement = multiprocessing.get_context('spawn').Process(
+            target=run_api, args=(child, listener, environment, self.stream))
+        replacement.start()
+        self.children[index] = (replacement, parent, listener.getsockname()[1])
+        child.close()
+        listener.close()
+        await self.rpc(index, 'ready')
+
     async def identity(self, user=USER):
         from app.core.security import create_access_token
 
@@ -366,12 +396,12 @@ class ProcessCluster:
                                                  'X-Organization-ID': organization})
             return response.status_code
 
-    async def enqueue(self, organization=ORG, event_type='MATCH_UPDATED', payload=None):
+    async def enqueue(self, organization=ORG, event_type='MATCH_UPDATED', payload=None, user=None):
         from app.core.outbox import enqueue_outbox
 
         async with async_sessionmaker(self.engine)() as db, db.begin():
             await db.execute(text("SELECT set_config('app.current_organization_id',:org,true)"), {'org': organization})
-            identity = USER if organization == ORG else USER.replace('31000000', '32000000')
+            identity = user or (USER if organization == ORG else USER.replace('31000000', '32000000'))
             await db.execute(text("SELECT set_config('app.current_user_id',:user,true)"), {'user': identity})
             event_id = await enqueue_outbox(db, organization, event_type,
                                            payload if payload is not None else {'match_id': MATCH, 'tournament_id': TOURNAMENT})

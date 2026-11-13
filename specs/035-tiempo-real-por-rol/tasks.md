@@ -247,7 +247,7 @@ Depende de B fusionado y verde. No introduce una arquitectura distinta ni pospon
 - [x] T39b: ráfagas, cero destinatarios, DB lenta/caída y suspensión/recuperación repetidas en ambos procesos.
 - [x] T39c: artefacto reproducible de p50/p95, retraso, memoria y dataset; aceptación estructural sin SLA inventado.
 
-- [ ] **T40. Ampliar fallos y recuperación parcial por conexión/proceso.** RF-006, RF-009, RF-010, RF-014, RF-016, RF-017, RF-018
+- [x] **T40. Ampliar fallos y recuperación parcial por conexión/proceso.** RF-006, RF-009, RF-010, RF-014, RF-016, RF-017, RF-018
 - Dependencias: T38; PR C.
 - Tests primero: S2/D2 con comprobación caída para un lote/proceso, otro operativo, errores repetidos, control fallido, sesión/membresía retirada durante suspensión y proceso reiniciado.
 - Hecho cuando: reautoriza a cada afectado, coalesce RESYNC y descarta marca al cambiar generación; público/otros autorizados no heredan suspensión ajena, reinicio recupera por JOIN/HTTP y nunca replay. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k partial_recovery` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k recovery`.
