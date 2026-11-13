@@ -8,7 +8,6 @@ from httpx import ASGITransport, AsyncClient
 from app.core import locking
 from app.main import api
 from app.modules.rectifications import advancement, impacts, service
-from app.modules.standings import service as standings_service
 from test_migration_031 import MATCH, ORG, SEGMENT_FIRST, TEAM_AWAY
 from test_rectification_effects import TARGET, pending, reversed_report
 from test_rectification_flow import UNCONFIRMED, proposal
@@ -43,9 +42,9 @@ async def test_concurrent_rectifications_do_not_deadlock(flow, monkeypatch, othe
     assert second.status_code == 201, second.text
     first = await pending(flow, reversed_report())
     second_id = second.json()["id"]
-    second_at_stage, first_at_target = asyncio.Event(), asyncio.Event()
+    second_at_coordinator, first_at_target = asyncio.Event(), asyncio.Event()
     load_match = service.RectificationService._match
-    lock_stage = locking.lock_stage_and_version
+    lock_discipline = locking.lock_discipline
     lock_matches = locking.lock_matches
 
     async def identify(instance, context, match_id, **kwargs):
@@ -53,11 +52,11 @@ async def test_concurrent_rectifications_do_not_deadlock(flow, monkeypatch, othe
             instance.db.info["rectification_match"] = str(match_id)
         return await load_match(instance, context, match_id, **kwargs)
 
-    async def stage_gate(db, *args, **kwargs):
+    async def coordinator_gate(db, *args, **kwargs):
         if db.info.get("rectification_match") == other_match:
-            second_at_stage.set()
+            second_at_coordinator.set()
             await asyncio.wait_for(first_at_target.wait(), timeout=10)
-        return await lock_stage(db, *args, **kwargs)
+        return await lock_discipline(db, *args, **kwargs)
 
     async def target_gate(db, organization_id, match_ids):
         ids = list(match_ids)
@@ -66,8 +65,7 @@ async def test_concurrent_rectifications_do_not_deadlock(flow, monkeypatch, othe
         return await lock_matches(db, organization_id, ids)
 
     monkeypatch.setattr(service.RectificationService, "_match", identify)
-    monkeypatch.setattr(service, "lock_stage_and_version", stage_gate, raising=False)
-    monkeypatch.setattr(standings_service, "lock_stage_and_version", stage_gate)
+    monkeypatch.setattr(service, "lock_discipline", coordinator_gate)
     monkeypatch.setattr(lock_module, "lock_matches", target_gate)
 
     async with AsyncClient(transport=ASGITransport(app=api, raise_app_exceptions=False),
@@ -81,7 +79,7 @@ async def test_concurrent_rectifications_do_not_deadlock(flow, monkeypatch, othe
 
         second_task = asyncio.create_task(perform(second_id, second_operation))
         try:
-            await asyncio.wait_for(second_at_stage.wait(), timeout=10)
+            await asyncio.wait_for(second_at_coordinator.wait(), timeout=10)
             first_task = asyncio.create_task(perform(first, first_operation))
             responses = await asyncio.wait_for(asyncio.gather(first_task, second_task), timeout=20)
         finally:

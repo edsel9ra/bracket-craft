@@ -22,8 +22,7 @@ class EvidenceRequest(ReasonRequest):
     evidence_links: list[HttpUrl] = Field(default_factory=list)
 
 
-class AppealRequest(EvidenceRequest):
-    suspension_id: UUID
+class AppealBody(EvidenceRequest):
     represented_player_id: UUID | None = None
     represented_team_id: UUID | None = None
     prior_case_id: UUID | None = None
@@ -35,8 +34,11 @@ class AppealRequest(EvidenceRequest):
         return self
 
 
-class ProposalRequest(EvidenceRequest):
+class AppealRequest(AppealBody):
     suspension_id: UUID
+
+
+class ProposalBody(EvidenceRequest):
     proposed_action: Literal["annul", "reduce"]
     proposed_duration: int | None = Field(default=None, ge=0, strict=True)
     prior_case_id: UUID | None = None
@@ -48,13 +50,24 @@ class ProposalRequest(EvidenceRequest):
         return self
 
 
+class ProposalRequest(ProposalBody):
+    suspension_id: UUID
+
+
+class PrejudiceRequest(ReasonRequest):
+    match_id: UUID
+
+
 class DecisionRequest(EvidenceRequest):
     decision: Literal["maintain", "annul", "reduce", "approve", "reject"]
     expected_base_duration: int = Field(gt=0, strict=True)
     after_duration: int | None = Field(default=None, ge=0, strict=True)
+    prejudice_records: list[PrejudiceRequest] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def measure(self):
+        if len({item.match_id for item in self.prejudice_records}) != len(self.prejudice_records):
+            raise ValueError("Partidos acreditados duplicados")
         if self.decision == "reduce" and self.after_duration is None:
             raise ValueError("La reducción exige duración")
         if self.decision not in {"reduce", "approve"} and self.after_duration is not None:
@@ -64,8 +77,12 @@ class DecisionRequest(EvidenceRequest):
         return self
 
 
-class WithdrawalRequest(ReasonRequest):
+class WithdrawalRequest(EvidenceRequest):
     pass
+
+
+class AuthorizationRequest(ReasonRequest):
+    platform_admin_email: str = Field(min_length=1)
 
 
 class SuspensionWarning(BaseModel):
@@ -80,5 +97,16 @@ class CaseFilters(BaseModel):
 
     status: Literal["pending", "resolved", "withdrawn", "closed_by_rectification"] | None = None
     case_type: Literal["appeal", "administrative_proposal"] | None = None
+    limit: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class SanctionFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["active", "served", "cancelled", "appealed"] | None = None
+    scope_type: Literal["tournament", "organization"] | None = None
+    player_id: UUID | None = None
+    source_tournament_id: UUID | None = None
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)

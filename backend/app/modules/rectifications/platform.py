@@ -137,9 +137,10 @@ class RectificationPlatformService(RectificationService):
         if scope is None:
             raise LookupError("Solicitud no encontrada")
         actor = await self._scope(platform, scope)
-        request = await self._request(actor, request_id, lock=lock)
+        request = await self._request(actor, request_id)
         match = await self._match(actor, request["match_id"], lock=lock)
         if lock:
+            request = await self._request(actor, request_id, lock=True)
             authorization = (await self.db.execute(text("""
                 SELECT * FROM match_report_platform_authorizations
                 WHERE id = :id AND request_id = :request AND organization_id = :org FOR UPDATE
@@ -167,7 +168,7 @@ class RectificationPlatformService(RectificationService):
             try:
                 actor, request, match, _ = await self._authorized_request(platform, request_id, lock=True)
                 self._require_pending(request)
-                result = await self._publish(actor, request, match, datetime.now(timezone.utc))
+                result = await self._publish(actor, request, match, datetime.now(timezone.utc), preview=True)
                 return {**{key: result[key] for key in ("version", "effects")},
                     "expected_base_version": match["version_number"]}
             finally:

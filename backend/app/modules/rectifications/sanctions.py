@@ -30,7 +30,7 @@ def reconcile_sanctions(existing: list[dict], desired: list[dict]) -> tuple[list
     def identity(row):
         return row["logical_event_id"], str(row["player_id"]), row["reason"]
 
-    current = {identity(row): row for row in existing if row["status"] != "cancelled"}
+    current = {identity(row): row for row in existing if row["status"] != "cancelled" or row.get("f9_annulled", False)}
     proposed = {identity(row): row for row in desired}
     return ([row for key, row in proposed.items() if key not in current],
         [row for key, row in current.items() if key not in proposed])
@@ -160,9 +160,18 @@ async def recalculate_sanctions(
         FOR UPDATE OF ps
     """), {"organization_id": context.organization_id, "match_id": match_id,
         "player_ids": sorted(changed_players, key=str)})).mappings().all()]
+    if any(row["status"] == "cancelled" for row in existing):
+        facts = (await db.execute(text("SELECT suspension_id,resolutions,applications FROM sanction_operational_facts(:match)"),
+            {"match": match_id})).mappings().all()
+        annulled_by_f9 = {fact["suspension_id"] for fact in facts if any(
+            resolution["action"] == "annul" and not resolution["excluded"] and
+            (resolution["is_declarative"] or any(str(application["resolution_id"]) == str(resolution["id"])
+                for application in fact["applications"])) for resolution in fact["resolutions"])}
+        existing = [{**row, "f9_annulled": row["id"] in annulled_by_f9} for row in existing]
     created, annulled = reconcile_sanctions(existing, desired)
     effects = []
     for sanction in annulled:
+        sanction = {key: value for key, value in sanction.items() if key != "f9_annulled"}
         params = {"organization_id": context.organization_id, "suspension_id": sanction["id"],
             "version_id": version["id"], "now": now, "reason": "Sanción no derivada del acta rectificada"}
         await db.execute(text("""UPDATE player_suspensions SET status = 'cancelled'

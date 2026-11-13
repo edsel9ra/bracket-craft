@@ -77,68 +77,68 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 
 Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T22 → T23 → T27 → T28 → T29 → T30 → T31 → T32 → T33 → T34 → T36 → T37 → T38 → T39. Mantener las rutas de escritura sin registrar hasta T36; T39 verifica el núcleo completo con los lectores ya fusionados en B1. Incluye API, decisiones, coordinación 033, plataforma, avisos y concurrencia. No fusionar fragmentos inseguros de B2.
 
-- [ ] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
+- [x] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
 - Hecho cuando: no se bloquea solicitud antes de fase; publicación usa coordinador y mantiene el orden global de la 033, sin cambios a resultados ni permisos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_concurrency.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k rectification_lock`.
 
-- [ ] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034
+- [x] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034
 - Hecho cuando: solo miembro con facultad presenta en nombre de equipo/jugador; tres orígenes y dos ámbitos, archivo y sanción cumplida no añaden caducidad; motivo obligatorio/evidencia opcional, sin cambiar sanción/cumplimientos ni crear acceso del representado. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k appeal`.
 
-- [ ] **T17. Presentar propuesta administrativa inmutable.** RF-003, RF-019, RF-020, RF-022, RF-028, RF-034
+- [x] **T17. Presentar propuesta administrativa inmutable.** RF-003, RF-019, RF-020, RF-022, RF-028, RF-034
 - Hecho cuando: miembro con resolver propone solo anular/reducir con motivo y medida auditados; no apelación ficticia ni efecto suspensivo y plataforma no propone. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k proposal`.
 
-- [ ] **T18. Bandeja, sanciones y detalle privados.** RF-006, RF-009, RF-015, RF-016, RF-017
+- [x] **T18. Bandeja, sanciones y detalle privados.** RF-006, RF-009, RF-015, RF-016, RF-017
 - Hecho cuando: consulta separada, paginación/filtros y detalle muestran historia, procedencia, duración original/efectiva y efecto pendiente sin mezclar tenants; recibo de presentar no abre consulta completa. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k read`.
 
-- [ ] **T19. Preview de decisión sin escritura.** RF-004, RF-010, RF-014, RF-020, RF-030
+- [x] **T19. Preview de decisión sin escritura.** RF-004, RF-010, RF-014, RF-020, RF-030
 - Hecho cuando: consulta+resolver obtiene base esperada y efectos previstos, no aplicados; cero cambios a ledger, status, auditoría o outbox, también con motivo/evidencia vacíos de prueba. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k preview`.
 
-- [ ] **T20. Retirada auditada solo por autor pendiente.** RF-009, RF-015, RF-029, RF-034
+- [x] **T20. Retirada auditada solo por autor pendiente.** RF-009, RF-015, RF-029, RF-034
 - Hecho cuando: autor con legitimación vigente retira con motivo obligatorio, sin alterar sanción; ajeno, terminal y motivo vacío se rechazan; transición/evento atómicos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k withdraw`.
 
-- [ ] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034
+- [x] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034
 - Hecho cuando: actor distinto y facultad vigente, también aunque autor acumule roles; mantener solo apelación, rechazar solo propuesta, decisión auditada sin cambio de elegibilidad. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k decide_no_effect`.
 
-- [ ] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030
+- [x] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030
 - Hecho cuando: resolución conserva valores originales/anteriores/resultantes; efecto queda pendiente si cambia elegibilidad, cumplida admite declaración sin partido ficticio, no aumento/ámbito/crédito ni UPDATE de duración. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k resolution`.
 
-- [ ] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
+- [x] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
 - Hecho cuando: misma base resuelta no admite otro recurso; retirada permite nueva presentación y cierre rectificativo exige presentación manual vinculada. Base cambiada cierra sin decisión ni consumo; respuesta no revierte el cierre. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k stale`.
 
-- [ ] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
+- [x] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
 - Hecho cuando: cancelación/recreación/cambio disciplinario cierra expedientes con referencia/motivo; marcador sin cambio no cierra; fallo del puente revierte publicación y outbox completos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k closure`.
 
-- [ ] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017
+- [x] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017
 - Hecho cuando: duración derivada original no neutraliza reducción; recreación no copia efecto/autorización y deja constancia; resolución pendiente afectada queda excluida explícitamente. Deduplicación de rojas y dependencias de regeneración conservan existencia histórica. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k reconcile` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py`, incluido el inventario de lectores.
 
-- [ ] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013
+- [x] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013
 - Hecho cuando: guarda autor/fecha/motivo y partidos acreditados en expediente, sin inferir por ausencia, compensar, repetir partidos ni tocar resultados/actas/avance o abrir trámite de impacto 033. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k prejudice`.
 
-- [ ] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
+- [x] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
 - Hecho cuando: dueño/admin/organización activos y scope exacto, autorización no reutilizable, rol retirado invalida; grants/revocaciones siguen coordinador y auditoría, sin platform_support. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k authorization`.
 
-- [ ] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
+- [x] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
 - Hecho cuando: plataforma solo lista/lee/decide su scope con contexto local propio, autor no decide aunque tenga autorización; doble auditoría y consumo junto con decisión, sin privilegio persistente ni membresía. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k decision`.
 
-- [ ] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
+- [x] **T32. Registrar y encolar avisos mínimos con cada acto.** RF-032, RF-033, RF-034
 - Hecho cuando: decisión/retirada/cierre generan ambos canales y destinatarios deduplicados autorizados; payload solo acto/motivo e identificadores técnicos mínimos, nunca evidencia ni jugadores por esa condición. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k enqueue`.
 
-- [ ] **T33. Handler interno y lectura privada con revalidación C5.** RF-015, RF-016, RF-032, RF-033
+- [x] **T33. Handler interno y lectura privada con revalidación C5.** RF-015, RF-016, RF-032, RF-033
 - Hecho cuando: entrega idempotente por evento/aviso, bandeja solo destinatario; pérdida de permiso retiene sin exposición, recuperación permite reintento según outbox, sin conceder consulta F9. Handler explícito no cae al stream Redis ni a rooms organizativos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k internal`.
 
-- [ ] **T34. Handler de correo F9 con reintentos.** RF-032, RF-033
+- [x] **T34. Handler de correo F9 con reintentos.** RF-032, RF-033
 - Hecho cuando: usa SMTP existente, revalida destinatario, fallo conserva aviso sin revertir acto; posible repetición del correo nunca duplica decisión, sin evidencia ni publicación Redis por fallback. Pasan `cd backend && pytest -q tests/test_sanction_email.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_notifications.py -k email`.
 
-- [ ] **T36. Registrar router completo y probar contratos HTTP.** RF-002, RF-006, RF-015, RF-018, RF-020, RF-023, RF-029, RF-034
+- [x] **T36. Registrar router completo y probar contratos HTTP.** RF-002, RF-006, RF-015, RF-018, RF-020, RF-023, RF-029, RF-034
 - Hecho cuando: rutas organización y `/api/v1/platform` registradas en `main.py`, sin presentar/proponer desde plataforma; 401/403/404 indistinguible/409/422 y recibos mínimos siguen plan, preview no escribe. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_api.py` y `cd backend && python -m compileall -q app`.
 
-- [ ] **T37. Carreras reales de casos, autorizaciones y comienzo.** RF-021, RF-023, RF-025, RF-029, RF-030
+- [x] **T37. Carreras reales de casos, autorizaciones y comienzo.** RF-021, RF-023, RF-025, RF-029, RF-030
 - Hecho cuando: dos sesiones prueban apelación/propuesta, doble decisión, retirada/decisión, revocar/decidir, 033/decisión y apertura/cierre entre torneos; un único resultado y sin deadlock ni efecto retroactivo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py`.
 
-- [ ] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
+- [x] **T38. Rollback e aislamiento de la operación completa.** RF-004, RF-005, RF-009, RF-016, RF-024, RF-025, RF-033
 - Hecho cuando: fallos tras decisión/efecto/auditoría/outbox revierten todo y consumo; fallo posterior de entrega no revierte acto; FK cruzadas, scope vencido y contexto del pool no filtran tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rollback.py tests/test_sanction_security.py`.
 
-- [ ] **T39. Gate B: RBAC, lectores y público sin regresión.** RF-003, RF-007, RF-008, RF-014, RF-015, RF-016, RF-017, RF-019
-- Hecho cuando: todos los escritores/lectores B están integrados y las regresiones de cierre/033/matriz pública pasan; ninguna escritura F9 se fusiona antes. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_*.py tests/test_rectification_*.py tests/test_close_match*.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py` y `cd backend && python -m compileall -q app`.
+- [x] **T39. Gate B: RBAC, lectores y público sin regresión.** RF-003, RF-007, RF-008, RF-014, RF-015, RF-016, RF-017, RF-019
+- Hecho cuando: todos los escritores/lectores B están integrados y las regresiones de cierre/033/matriz pública pasan; ninguna escritura F9 se fusiona antes. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_*.py tests/test_rectification_*.py tests/test_close*.py tests/test_public_field_allowlist.py tests/test_public_access_matrix.py` y `cd backend && python -m compileall -q app`.
 
 ## PR C — Workspace y aviso preparatorio (T40–T49)
 
