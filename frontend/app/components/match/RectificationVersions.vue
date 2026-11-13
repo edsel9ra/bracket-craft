@@ -5,8 +5,9 @@ import RectificationReport from './RectificationReport.vue';
 import RectificationEditor from './RectificationEditor.vue';
 import RectificationDiff from './RectificationDiff.vue';
 import { compareReports, rectificationErrorKey, type ReportVersion } from '~/utils/rectifications';
+import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 
-const props = defineProps<{ matchId: string; canRequest?: boolean }>();
+const props = defineProps<{ matchId: string; canRequest?: boolean; refreshKey?: object }>();
 const api = useMatchRectifications();
 const { t, formatDateTime } = useI18n();
 const versions = ref<ReportVersion[]>([]);
@@ -15,23 +16,44 @@ const editing = ref(false);
 const loading = ref(false);
 const error = ref('');
 let generation = 0;
+let pendingReload = false;
 const current = computed(() => versions.value.at(-1));
 const visible = computed(() => versions.value.find((row) => row.version_number === selected.value));
 const comparison = computed(() => current.value && visible.value && current.value !== visible.value ? compareReports(visible.value.report, current.value.report) : null);
 async function load() {
   const token = ++generation;
+  pendingReload = false;
   loading.value = true; error.value = ''; editing.value = false;
   try {
     const result = await api.versions(props.matchId);
     if (token !== generation) return;
     versions.value = result.sort((a, b) => a.version_number - b.version_number);
     selected.value = current.value?.version_number || 1;
-  } catch (cause) { if (token === generation) error.value = t(rectificationErrorKey(cause)); }
+  } catch (cause) {
+    if (token === generation) {
+      if (isUnauthorized(cause) || isForbidden(cause) || isNotFound(cause)) versions.value = [];
+      error.value = t(rectificationErrorKey(cause));
+    }
+  }
   finally { if (token === generation) loading.value = false; }
 }
 onMounted(load);
-watch(() => props.matchId, load);
-onBeforeUnmount(() => { generation++; });
+watch(() => props.matchId, () => { versions.value = []; void load(); }, { flush: 'sync' });
+watch(() => props.refreshKey, () => {
+  generation++;
+  if (editing.value) {
+    pendingReload = true;
+    loading.value = false;
+  } else void load();
+}, { flush: 'sync' });
+watch(editing, (active) => {
+  if (active && loading.value) {
+    generation++;
+    loading.value = false;
+    pendingReload = true;
+  } else if (!active && pendingReload) void load();
+}, { flush: 'sync' });
+onBeforeUnmount(() => { generation++; pendingReload = false; });
 </script>
 
 <template>

@@ -67,5 +67,10 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { storageState },
     },
+    {
+      name: 'private-realtime',
+      testMatch: /private-realtime\.spec\.ts/,
+      dependencies: ['setup'],
+    },
   ],
 });

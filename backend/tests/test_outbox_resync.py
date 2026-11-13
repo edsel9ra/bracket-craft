@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -91,7 +93,6 @@ def test_resync_rooms_derives_and_deduplicates_rooms():
     }
 
     assert resync_rooms(sessions) == [
-        "organization:org-1",
         "tournament:tournament-1",
         "tournament:tournament-2",
     ]
@@ -115,19 +116,17 @@ async def test_emit_gap_resync_emits_once_per_room_with_the_minimal_payload(
     await emit_gap_resync("STREAM_TRIMMED", sessions)
 
     assert [call["room"] for call in calls] == [
-        "organization:org-1",
         "tournament:tournament-1",
     ]
-    assert [call["event"] for call in calls] == [RESYNC, RESYNC]
+    assert [call["event"] for call in calls] == [RESYNC]
     payloads = [call["payload"] for call in calls]
-    assert payloads[0] == payloads[1]
     assert set(payloads[0]) == {"event_id", "reason"}
     assert payloads[0]["event_id"].startswith("resync:")
     assert payloads[0]["reason"] == "STREAM_TRIMMED"
 
 
 async def test_each_gap_emission_uses_a_new_event_id(monkeypatch):
-    sessions = {"s1": {"scope": "organization", "organization_id": "org-1"}}
+    sessions = {"s1": {"scope": "public", "tournament_id": "tournament-1"}}
     calls = []
 
     async def fake_emit(event, payload, room=None, **kwargs):
@@ -170,21 +169,21 @@ async def test_emit_gap_resync_logs_a_failure_and_continues_with_other_rooms(
     monkeypatch,
 ):
     sessions = {
-        "s1": {"scope": "organization", "organization_id": "org-1"},
+        "s1": {"scope": "public", "tournament_id": "tournament-0"},
         "s2": {"scope": "public", "tournament_id": "tournament-1"},
     }
     calls = []
 
     async def flaky_emit(event, payload, room=None, **kwargs):
         calls.append(room)
-        if room == "organization:org-1":
+        if room == "tournament:tournament-0":
             raise RuntimeError("socket failure")
 
     monkeypatch.setattr(sio, "emit", flaky_emit)
 
     await emit_gap_resync("REDIS_RESET", sessions)
 
-    assert calls == ["organization:org-1", "tournament:tournament-1"]
+    assert calls == ["tournament:tournament-0", "tournament:tournament-1"]
 
 
 @pytest.mark.parametrize(
@@ -198,6 +197,10 @@ async def test_emit_join_resync_targets_only_the_joining_socket(
     monkeypatch, sid, metadata
 ):
     calls = []
+    if metadata['scope'] == 'organization':
+        metadata = {**metadata, 'generation': 'generation',
+                    'jwt_expires_at': datetime.now(timezone.utc) + timedelta(hours=1)}
+        monkeypatch.setattr(main_module.private_delivery, 'validate_context', AsyncMock(return_value={sid: True}))
 
     async def fake_emit(event, payload, room=None, to=None, **kwargs):
         calls.append({"event": event, "payload": payload, "to": to, "room": room})
@@ -225,7 +228,7 @@ async def test_emit_join_resync_uses_a_new_event_id_per_emission(monkeypatch):
     monkeypatch.setattr(
         main_module,
         "connected_socket_sessions",
-        {"sid-org": {"scope": "organization", "organization_id": "org-1"}},
+        {"sid-org": {"scope": "public", "tournament_id": "tournament-1"}},
     )
     monkeypatch.setattr(sio, "emit", fake_emit)
 
@@ -319,11 +322,9 @@ async def test_a_gap_emits_one_resync_per_connected_room_and_advances(monkeypatc
     await relay_cycle(redis, state, emit, emit_gap_resync, current_run_id="run-1")
 
     assert [call["room"] for call in calls] == [
-        "organization:org-1",
         "tournament:tournament-1",
     ]
-    assert [call["event"] for call in calls] == [RESYNC, RESYNC]
-    assert calls[0]["payload"] == calls[1]["payload"]
+    assert [call["event"] for call in calls] == [RESYNC]
     assert calls[0]["payload"]["reason"] == "STREAM_TRIMMED"
     assert set(calls[0]["payload"]) == {"event_id", "reason"}
     assert state.position == "9-0"
@@ -354,6 +355,6 @@ async def test_a_failing_resync_emit_does_not_interrupt_the_relay(monkeypatch):
 
     await relay_cycle(redis, state, emit, emit_gap_resync, current_run_id="run-1")
 
-    assert calls == ["organization:org-1", "tournament:tournament-1"]
+    assert calls == ["tournament:tournament-1"]
     assert state.position == "9-0"
     assert redis.xread_calls == []

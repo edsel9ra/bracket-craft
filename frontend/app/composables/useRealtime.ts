@@ -43,11 +43,23 @@ export function useRealtime() {
   let requestedPublicTournamentId: string | null = null;
   let activeHandlers: RealtimeHandlers = {};
   let manuallyDisconnected = false;
+  let socketGeneration = 0;
+  let contextGeneration = 0;
+  const contextKey = computed(() => `${auth.userId || ''}:${organizationId.value || ''}:${auth.sessionVersion}`);
+
+  function captureContext() {
+    const generation = contextGeneration;
+    const key = contextKey.value;
+    return () => generation === contextGeneration && key === contextKey.value;
+  }
   // Una ventana por socket lógico; solo se vacía al abrir otro socket o
   // desconectar, nunca en el auto-reconnect de Socket.IO.
   const dedupe = createEventDeduplicator();
   let dispatch = createRealtimeDispatcher({ dedupe, handlers: activeHandlers });
-  const scheduleGrace = (callback: () => void, delayMs: number) => setTimeout(callback, delayMs);
+  const scheduleGrace = (callback: () => void, delayMs: number) => {
+    const generation = socketGeneration;
+    return setTimeout(() => { if (generation === socketGeneration) callback(); }, delayMs);
+  };
   const cancelGrace = (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>);
   const initialization = createInitializationWindow(scheduleGrace, cancelGrace);
   const reconnectJoin = createReconnectJoinController(
@@ -91,7 +103,7 @@ export function useRealtime() {
     }
     const scopeKey = usePublicScope
       ? `public:${validPublicTournamentId}`
-      : `organization:${validOrganizationId}`;
+      : `organization:${validOrganizationId}:${auth.userId}`;
 
     if (
       !needsNewSocketSession({
@@ -123,6 +135,11 @@ export function useRealtime() {
       reconnectionAttempts: Infinity,
       timeout: 10_000,
     });
+    const connection = socket;
+    const generation = socketGeneration;
+    const key = contextKey.value;
+    const isCurrent = () => socket === connection && generation === socketGeneration
+      && (usePublicScope || key === contextKey.value);
 
     // La ventana de inicialización empieza con el intento de conexión: si el
     // socket no conecta o el JOIN no llega, la gracia la cierra con la carga
@@ -130,6 +147,7 @@ export function useRealtime() {
     initialization.start();
 
     socket.on('connect', () => {
+      if (!isCurrent()) return;
       const reconnected = isReconnection({
         hasConnectedOnce,
         previousStatus: sawConnectionLoss ? 'reconnecting' : status.value,
@@ -141,24 +159,26 @@ export function useRealtime() {
       if (reconnected) reconnectJoin.scheduleFallback();
     });
     socket.on('disconnect', (reason) => {
-      if (manuallyDisconnected) return;
+      if (!isCurrent() || manuallyDisconnected) return;
       noteConnectionLoss();
       setStatus('reconnecting', reason || null);
     });
     socket.on('connect_error', (cause) => {
+      if (!isCurrent()) return;
       noteConnectionLoss();
       const message = cause instanceof Error ? cause.message : String(cause);
       setStatus('error', message);
       activeHandlers.onError?.(cause);
     });
-    socket.io.on('reconnect_attempt', () => setStatus('reconnecting'));
-    socket.io.on('reconnect', () => setStatus('connected'));
-    socket.io.on('reconnect_failed', () => setStatus('error', 'reconnect_failed'));
+    socket.io.on('reconnect_attempt', () => { if (isCurrent()) setStatus('reconnecting'); });
+    socket.io.on('reconnect', () => { if (isCurrent()) setStatus('connected'); });
+    socket.io.on('reconnect_failed', () => { if (isCurrent()) setStatus('error', 'reconnect_failed'); });
 
     // Único punto de despacho: deduplica antes de invocar cualquier handler y
     // separa RESYNC de los eventos de dominio. El JOIN cancelado por el
     // respaldo de reconexión no vuelve a disparar la recarga del consumidor.
     socket.onAny((event: string, payload: unknown) => {
+      if (!isCurrent()) return;
       const resync = event === RESYNC_EVENT ? parseResyncPayload(payload) : null;
       if (resync?.reason === 'JOIN') {
         const outcome = reconnectJoin.acceptJoin();
@@ -177,6 +197,8 @@ export function useRealtime() {
   }
 
   function disconnect(clearRequestedScope = true) {
+    socketGeneration += 1;
+    if (clearRequestedScope) contextGeneration += 1;
     manuallyDisconnected = true;
     dedupe.reset();
     reconnectJoin.reset();
@@ -214,12 +236,13 @@ export function useRealtime() {
 
   const stopSessionWatch = watch(
     [() => organizationId.value, () => auth.userId, () => auth.sessionVersion],
-    () => connect(activeHandlers),
+    () => { contextGeneration += 1; connect(activeHandlers); },
+    { flush: 'sync' },
   );
   onScopeDispose(() => {
     stopSessionWatch();
     disconnect();
   });
 
-  return { connect, disconnect, retry, status, error, initialization };
+  return { connect, disconnect, retry, status, error, initialization, captureContext, contextKey };
 }

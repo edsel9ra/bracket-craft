@@ -76,7 +76,7 @@ async def test_rectification_realtime_never_reaches_public_rooms(monkeypatch, ev
     monkeypatch.setattr(main.sio, "emit", emit)
     await main.emit_domain_event(main.ParsedEvent("event", ORG, event_type,
         {"match_id": "match", "tournament_id": "tournament", "scope": "organization"}))
-    assert calls == [f"organization:{ORG}"]
+    assert calls == []
 
 
 @pytest.mark.parametrize("failure", ["smtp", "unconfigured"])

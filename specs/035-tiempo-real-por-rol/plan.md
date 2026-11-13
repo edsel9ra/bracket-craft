@@ -186,6 +186,17 @@ Reutilizar el ciclo de mantenimiento de 30 s para **intentar** recuperar marcas,
 
 En cada intento, nueva evaluación agrupada de sesión/JWT/usuario/organización/membresía real con rol. Para el control genérico no se exige un recurso de negocio ni se incluye su ID. Si falla la comprobación, continuar suspendido; si ya no hay sesión/membresía, no emitir. La revalidación 032 puede desconectar una sesión realmente inválida; no se introduce desconexión masiva por error de autorización. Un nuevo socket pasa por JOIN y HTTP de nuevo.
 
+Precisión de implementación de C3, confirmada por el usuario el 2026-11-13,
+sin cambiar la decisión: reutilizar `revalidate_socket_sessions` de la migración
+032, `SECURITY INVOKER`, con una llamada fresca por lote de hasta 256 sockets
+suspendidos. Comprueba sesión, usuario, membresía y huella vigente; los válidos
+reciben `RESYNC RELAY_START` dirigido, los inválidos siguen el tratamiento de
+desconexión existente de 032. Si la función falla u omite una fila, conservar la
+suspensión y reintentar. Comprobar también expiración JWT y generación antes de
+emitir. El control no incluye negocio ni concede acceso: las recargas HTTP se
+autorizan por separado y cada evento siguiente sigue pasando por 055. No añadir
+056 ni modificar 032/055 para esta recuperación.
+
 Con contexto recuperado: enviar al sid `RESYNC {event_id_nuevo, reason:'RELAY_START'}` y habilitar nuevas evaluaciones. Representa reactivación del tramo privado del relay, no asegura reinicio del proceso. Una nueva actualización todavía pasa por la regla de su recurso. Sin recurso pendiente autorizado no se envía evento de negocio. Coalescer fallos repetidos en una recuperación; no enviar un RESYNC por cada evento perdido. Si el envío falla, conservar marca; si la recarga HTTP falla, el cliente muestra/reintenta su error habitual, nunca obtiene datos de eventos perdidos.
 
 El cursor avanza, no se acumulan privados para entregarlos al recuperarse, no se reabre un consumer group de replay ni se reintenta outbox por una denegación de socket. Los mecanismos existentes de recorte/reset/reconexión de Redis mantienen sus RESYNC; cualquier control dirigido a conexiones organizativas debe pasar el gate de contexto vigente antes de emitirse. Los clientes públicos conservan su camino actual.

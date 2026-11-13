@@ -13,7 +13,7 @@ async def record_notification(db, context, request_id, version_id, channel, even
 
 async def enqueue_publication(db, context, version, now):
     payload = {"match_id": str(version["match_id"]), "tournament_id": str(version["tournament_id"]),
-        "version_id": str(version["id"]), "rectified_at": now.isoformat(), "scope": "organization"}
+        "version_id": str(version["id"]), "scope": "organization"}
     effects = []
     for event_type in ("MATCH_UPDATED", "STANDINGS_UPDATED", "MATCH_REPORT_RECTIFIED"):
         event_id = await enqueue_outbox(db, context.organization_id, event_type, payload)

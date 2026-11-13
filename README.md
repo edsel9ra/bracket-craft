@@ -898,6 +898,12 @@ La regla vigente se muestra en la interfaz junto a toda cifra que la use, en esp
 
 ## Tiempo real y outbox
 
+El filtro privado de la spec 035 entrega por destinatario con autorización fresca,
+invalidaciones mínimas y recuperación mediante 032/HTTP, sin broadcast organizativo
+ni replay privado. Antes de desplegar B, seguir el [procedimiento coordinado y
+rollback fail-closed](docs/despliegue-tiempo-real-por-rol.md): aplicar 055 y retirar
+todos los procesos API antiguos. No activa borradores F1 ni conecta F9 a Socket.IO.
+
 El cierre de actas y los efectos de dominio se registran en `outbox_events`. Un worker publica cada evento en el stream de Redis `bracket_craft.events` y el relay de la API lo reenvía por Socket.IO a la sala de la organización y, para los eventos públicos, a la del torneo. El stream es un **transporte vivo de mejor esfuerzo**, no un registro duradero ni la fuente de verdad.
 
 - **Tope fijo:** cada escritura usa `MAXLEN` aproximado de 10 000 entradas (`OUTBOX_STREAM_MAXLEN`). Es una constante del backend, sin variable de entorno; el recorte mantiene el orden de magnitud, no un número exacto. El criterio de dimensionamiento es P-1: un cierre de partido produce unos 3 eventos, así que 10 000 entradas cubren varios días de operación normal con unos pocos MB.

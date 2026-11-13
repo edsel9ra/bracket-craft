@@ -22,16 +22,17 @@ const context = useMatchOperation();
 const { action, actionDisabled, activateAction } = useMatchOperationView(context);
 const { auth, t, matchId, operation, loading, error, actionError, openingBlocked, busyAction, match, isTerminal, canOperateMatch, workspaceBreadcrumbs, tournamentContext, operationChecklist, loadPersistedDraft, failureMessage, redirectOnSessionFailure, applyOperation, fetchOperation, retryOperation, createSegment, teamRosterLink, restoreSelectedSegment } = context;
 
+const initialContextIsCurrent = context.realtime.captureContext();
 const { data: initialOperation, error: initialOperationError } = await useAsyncData<MatchOperation>(
   `workspace-match-${matchId}-${auth.userId || 'none'}-${auth.organizationId || 'none'}-${auth.sessionVersion}`,
   fetchOperation,
 );
 
-if (initialOperationError.value) {
+if (initialContextIsCurrent() && initialOperationError.value) {
   if (!(await redirectOnSessionFailure(initialOperationError.value))) {
     error.value = failureMessage(initialOperationError.value, t('match.noLoad'));
   }
-} else if (initialOperation.value) {
+} else if (initialContextIsCurrent() && initialOperation.value) {
   // Primer prerrelleno del formulario de segmento: es el único refresco que
   // escribe el minuto propuesto además de crear o interrumpir.
   applyOperation(initialOperation.value, 'mount');
@@ -63,7 +64,7 @@ onBeforeUnmount(context.unmountOperation);
       <div v-if="loading" class="empty-state loading-state" role="status"><span class="loading-orb" aria-hidden="true" /> {{ t('match.loadingOperation') }}</div>
        <div v-else-if="error" class="form-error" role="alert"><span>{{ error }}</span><button class="button-secondary" type="button" @click="retryOperation">{{ t('common.retry') }}</button></div>
       <template v-else-if="operation && match">
-        <RectificationVersions v-if="match.result_confirmed" :key="match.id" :match-id="match.id" :can-request="auth.hasPermission('REQUEST_MATCH_REPORT_RECTIFICATION')" />
+        <RectificationVersions v-if="match.result_confirmed" :key="match.id" :match-id="match.id" :refresh-key="operation" :can-request="auth.hasPermission('REQUEST_MATCH_REPORT_RECTIFICATION')" />
         <CompetitiveImpacts :key="`${match.tournament_id}-${auth.access?.organization_id}`" :tournament-id="match.tournament_id" :can-approve="auth.hasPermission('APPROVE_MATCH_REPORT_RECTIFICATION')" />
         <div class="checklist" :aria-label="t('match.matchReport')">
           <div v-for="item in operationChecklist" :key="item.label" class="check-item" :class="{ valid: item.valid, neutral: item.neutral }">

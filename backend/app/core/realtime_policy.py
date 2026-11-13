@@ -1,4 +1,4 @@
-"""Inert organization-delivery policy; no transport or database dependencies."""
+"""Organization-delivery policy; no transport or database dependencies."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace

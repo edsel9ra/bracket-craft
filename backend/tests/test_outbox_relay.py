@@ -338,6 +338,8 @@ def test_parse_envelope_preserves_the_domain_fields():
         organization_id=ORGANIZATION_ID,
         event_type="MATCH_CLOSED",
         payload=payload,
+        envelope={"organization_id": ORGANIZATION_ID, "event_type": "MATCH_CLOSED",
+                  "payload": payload, "event_id": "evt-1"},
     )
 
 
@@ -439,7 +441,7 @@ def test_build_realtime_payload_drops_a_domain_event_id():
     assert build_realtime_payload(payload, None) == {"match_id": "match-1"}
 
 
-async def test_emit_domain_event_uses_the_same_event_id_in_organization_and_tournament(
+async def test_emit_domain_event_preserves_public_contract_without_organization_broadcast(
     monkeypatch,
 ):
     calls = []
@@ -458,11 +460,10 @@ async def test_emit_domain_event_uses_the_same_event_id_in_organization_and_tour
     await emit_domain_event(event)
 
     assert [call["room"] for call in calls] == [
-        f"organization:{ORGANIZATION_ID}",
         "tournament:tournament-1",
     ]
-    assert [call["event"] for call in calls] == ["MATCH_UPDATED", "MATCH_UPDATED"]
-    assert calls[0]["payload"] == calls[1]["payload"] == {
+    assert [call["event"] for call in calls] == ["MATCH_UPDATED"]
+    assert calls[0]["payload"] == {
         "match_id": "match-1",
         "tournament_id": "tournament-1",
         "event_id": "evt-1",
@@ -476,7 +477,7 @@ async def test_emit_domain_event_uses_the_same_event_id_in_organization_and_tour
         ("SEASON_CLOSED", {"tournament_id": "tournament-1"}),
     ],
 )
-async def test_emit_domain_event_only_targets_the_organization_when_not_public(
+async def test_emit_domain_event_non_public_never_falls_back_to_organization_broadcast(
     monkeypatch, event_type, payload
 ):
     calls = []
@@ -494,7 +495,7 @@ async def test_emit_domain_event_only_targets_the_organization_when_not_public(
 
     await emit_domain_event(event)
 
-    assert [call["room"] for call in calls] == [f"organization:{ORGANIZATION_ID}"]
+    assert calls == []
 
 
 async def test_emit_domain_event_without_identifier_keeps_the_domain_payload(

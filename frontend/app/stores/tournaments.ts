@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
 
 export interface TournamentSummary {
   id: string;
@@ -20,6 +21,7 @@ export const useTournamentsStore = defineStore('tournaments', () => {
   const hasMore = ref(false);
   const publicHasMore = ref(false);
   const { request, organizationId } = useApi();
+  const auth = useAuthStore();
   const { t, errorMessage } = useI18n();
   let loadGeneration = 0;
 
@@ -27,21 +29,27 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     const append = options.append === true;
     const generation = ++loadGeneration;
     const requestOrganizationId = organizationId.value;
+    const requestUserId = auth.userId;
+    const requestSessionVersion = auth.sessionVersion;
+    const isCurrent = () => generation === loadGeneration && requestOrganizationId === organizationId.value
+      && requestUserId === auth.userId && requestSessionVersion === auth.sessionVersion;
     const offset = append ? tournaments.value.length : 0;
     loading.value = true;
     if (!append) error.value = null;
     try {
       const result = await request<TournamentSummary[]>(`/tournaments?limit=${PAGE_SIZE}&offset=${offset}`);
-      if (generation === loadGeneration && requestOrganizationId === organizationId.value) {
+      if (isCurrent()) {
         tournaments.value = append ? [...tournaments.value, ...result] : result;
         hasMore.value = result.length === PAGE_SIZE;
       }
     } catch (cause) {
-      if (generation === loadGeneration && requestOrganizationId === organizationId.value) {
-        error.value = errorMessage(cause, t('workspace.noLoad'));
+      if (!isCurrent()) return;
+      error.value = errorMessage(cause, t('workspace.noLoad'));
+      if (isUnauthorized(cause) || isForbidden(cause) || isNotFound(cause)) {
+        tournaments.value = [];
+        hasMore.value = false;
+        throw cause;
       }
-      const failure = cause as { status?: number; statusCode?: number };
-      if ((failure.status || failure.statusCode || 0) === 401 || (failure.status || failure.statusCode || 0) === 403) throw cause;
     } finally {
       if (generation === loadGeneration) loading.value = false;
     }
@@ -85,6 +93,8 @@ export const useTournamentsStore = defineStore('tournaments', () => {
     error.value = null;
     hasMore.value = false;
   }
+
+  watch([() => organizationId.value, () => auth.userId, () => auth.sessionVersion], clear, { flush: 'sync' });
 
   return {
     tournaments,

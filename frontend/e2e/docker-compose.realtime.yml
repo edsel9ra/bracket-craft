@@ -1,0 +1,5 @@
+services:
+  api:
+    command: python -m uvicorn tests.realtime_e2e_server:app --host 0.0.0.0 --port 8000 --no-access-log
+    volumes:
+      - ./frontend/.auth/realtime:/harness

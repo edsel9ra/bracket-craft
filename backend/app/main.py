@@ -4,6 +4,7 @@ import logging
 import tomllib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -34,6 +35,9 @@ from app.core.database import (
 )
 from app.core.outbox import OUTBOX_STREAM
 from app.core.rate_limit import enforce_identity_rate_limit
+from app.core.realtime_authorization import RealtimeAuthorizer
+from app.core.realtime_delivery import PrivateDelivery
+from app.core.realtime_registry import SocketRegistry
 from app.core.security import decode_access_token_claims
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.modules.crests.errors import CrestError
@@ -96,7 +100,7 @@ sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins=allowed_origins,
 )
-connected_socket_sessions: dict[str, dict[str, str]] = {}
+connected_socket_sessions = SocketRegistry()
 
 
 async def _load_role_fingerprint(db, organization_id: UUID, user_id: UUID) -> str | None:
@@ -156,6 +160,7 @@ async def connect(sid, environ, auth):
             user_id = UUID(claims["sub"])
             session_id = UUID(claims["jti"])
             organization_id = UUID(str(organization_value))
+            jwt_expires_at = datetime.fromtimestamp(claims['exp'], timezone.utc)
         except Exception:
             return False
 
@@ -193,6 +198,8 @@ async def connect(sid, environ, auth):
             "session_id": str(session_id),
             "organization_id": str(organization_id),
             "role_fingerprint": role_fingerprint,
+            "generation": str(uuid4()),
+            "jwt_expires_at": jwt_expires_at,
         }
         await sio.save_session(sid, session_metadata)
         await sio.enter_room(sid, f"organization:{organization_id}")
@@ -237,6 +244,7 @@ async def connect(sid, environ, auth):
 @sio.event
 async def disconnect(sid):
     connected_socket_sessions.pop(sid, None)
+    private_delivery.forget(sid)
 
 
 @dataclass(frozen=True)
@@ -245,6 +253,7 @@ class ParsedEvent:
     organization_id: str
     event_type: str
     payload: dict
+    envelope: dict | None = None
 
 
 @dataclass
@@ -313,6 +322,7 @@ def parse_envelope(fields) -> ParsedEvent | None:
         organization_id=organization_id,
         event_type=event_type,
         payload=payload,
+        envelope=event,
     )
 
 
@@ -329,11 +339,6 @@ def build_realtime_payload(payload: dict, event_id: str | None) -> dict:
 
 async def emit_domain_event(event: ParsedEvent) -> None:
     payload = build_realtime_payload(event.payload, event.event_id)
-    await sio.emit(
-        event.event_type,
-        payload,
-        room=f"organization:{event.organization_id}",
-    )
     tournament_id = event.payload.get("tournament_id")
     if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS and event.payload.get("scope") != "organization":
         await sio.emit(
@@ -341,6 +346,10 @@ async def emit_domain_event(event: ParsedEvent) -> None:
             payload,
             room=f"tournament:{tournament_id}",
         )
+    await private_delivery.deliver(event.envelope if event.envelope is not None else {
+        'event_id': event.event_id, 'organization_id': event.organization_id,
+        'event_type': event.event_type, 'payload': event.payload,
+    })
 
 
 def new_resync_event_id() -> str:
@@ -356,10 +365,7 @@ def resync_rooms(sessions: dict[str, dict]) -> list[str]:
         if not isinstance(metadata, dict):
             continue
         scope = metadata.get("scope")
-        if scope == "organization":
-            scope_id = metadata.get("organization_id")
-            room = f"organization:{scope_id}" if scope_id else None
-        elif scope == "public":
+        if scope == "public":
             scope_id = metadata.get("tournament_id")
             room = f"tournament:{scope_id}" if scope_id else None
         else:
@@ -375,7 +381,10 @@ async def emit_gap_resync(reason: str, sessions: dict[str, dict] | None = None) 
 
     current_sessions = connected_socket_sessions if sessions is None else sessions
     rooms = resync_rooms(current_sessions)
-    if not rooms:
+    private_sessions = {sid: dict(metadata) for sid, metadata in current_sessions.items()
+                        if metadata.get('scope') == 'organization'
+                        and metadata.get('generation') and metadata.get('jwt_expires_at')}
+    if not rooms and not private_sessions:
         return
     payload = {"event_id": new_resync_event_id(), "reason": reason}
     for room in rooms:
@@ -383,12 +392,17 @@ async def emit_gap_resync(reason: str, sessions: dict[str, dict] | None = None) 
             await sio.emit(RESYNC, payload, room=room)
         except Exception:
             logger.exception("No se pudo emitir RESYNC %s en %s", reason, room)
+    await private_delivery.control(private_sessions, reason)
 
 
 async def emit_join_resync(sid: str) -> None:
     """Emite ``RESYNC`` ``JOIN`` solo al socket que acaba de entrar en su sala."""
 
     if sid not in connected_socket_sessions:
+        return
+    metadata = connected_socket_sessions[sid]
+    if metadata.get('scope') == 'organization':
+        await private_delivery.control({sid: dict(metadata)}, 'JOIN')
         return
     payload = {"event_id": new_resync_event_id(), "reason": "JOIN"}
     try:
@@ -543,30 +557,65 @@ async def relay_loop(redis_factory=Redis.from_url, stop: asyncio.Event | None = 
                 await redis.aclose()
 
 
-async def revalidate_socket_sessions_cycle():
-    sessions = dict(connected_socket_sessions)
-    if not sessions:
-        return
-    try:
+async def revalidate_socket_contexts(sessions):
+    validations = {}
+    items = list(sessions.items())
+    for start in range(0, len(items), 256):
+        batch = items[start:start + 256]
         async with SessionFactory() as db:
             async with db.begin():
                 result = await db.execute(
                     text("SELECT sid, is_valid FROM public.revalidate_socket_sessions(CAST(:sockets AS JSONB))"),
-                    {"sockets": json.dumps([dict(metadata, sid=sid) for sid, metadata in sessions.items()])},
+                    {"sockets": json.dumps([dict(metadata, sid=sid) for sid, metadata in batch],
+                                           default=lambda value: value.isoformat())},
                 )
-                validations = result.mappings().all()
+                for row in result.mappings().all():
+                    sid, valid = row['sid'], row['is_valid']
+                    if sid not in dict(batch):
+                        continue
+                    if sid not in validations:
+                        validations[sid] = valid
+                    elif validations[sid] is not valid:
+                        validations[sid] = None
+    return validations
+
+
+async def revalidate_socket_sessions_cycle():
+    sessions = dict(connected_socket_sessions)
+    if not sessions:
+        return
+    suspended = {sid for sid, state in private_delivery.states.items()
+                 if sid in sessions and sessions[sid].get('generation') == state.generation}
+    sessions = {sid: dict(metadata) for sid, metadata in sessions.items() if sid not in suspended}
+    try:
+        validations = await revalidate_socket_contexts(sessions)
     except Exception:
         # A transient database outage must not disconnect every client.
-        logger.exception("No se pudo revalidar %s sockets", len(sessions))
+        logger.warning("No se pudo revalidar %s sockets", len(sessions))
         return
-    for validation in validations:
-        sid = validation["sid"]
-        if not validation["is_valid"] and connected_socket_sessions.get(sid) == sessions.get(sid):
+    for sid, valid in validations.items():
+        if valid is False and connected_socket_sessions.get(sid) == sessions.get(sid):
             try:
                 await sio.disconnect(sid)
             except Exception:
                 logger.warning("No se pudo desconectar un socket invalidado")
                 continue
+    await private_delivery.recover()
+
+
+async def _emit_private(event, payload, *, to):
+    await sio.emit(event, payload, to=to)
+
+
+async def _disconnect_private(sid):
+    await sio.disconnect(sid)
+
+
+private_delivery = PrivateDelivery(
+    lambda: connected_socket_sessions,
+    RealtimeAuthorizer(lambda: SessionFactory(), lambda: datetime.now(timezone.utc)),
+    revalidate_socket_contexts, _emit_private, _disconnect_private, lambda: datetime.now(timezone.utc),
+)
 
 
 async def _revalidate_socket_sessions():
