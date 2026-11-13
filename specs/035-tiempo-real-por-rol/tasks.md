@@ -234,6 +234,8 @@ Depende de B fusionado y verde. No introduce una arquitectura distinta ni pospon
 - Tests primero: D2/E1 ejecuta procesos distintos con sockets de la misma persona y de dos tenants, evento pendiente, commit de retirada y evaluación posterior en cada proceso; reconexión al otro proceso.
 - Hecho cuando: ningún proceso reutiliza permisos antiguos o se beneficia de no recibir una invalidación Redis; registrar la topología de prueba real. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k multiprocess`; extender las fixtures sin añadir servicios/configuración productiva ni confundir mocks con procesos reales.
 
+**Pausa por tamaño, 2026-11-13:** el arnés de B controla un único proceso y las pruebas DB actuales no crean procesos API. T38 requiere topología e IPC independientes, barreras coordinadas y receptores/reconexión reales; estimación 60–90 min activos. Se propone desglose interno T38a–c y T39a–c en `verificacion.md`, todavía sin incorporar ni ejecutar. T38–T49 permanecen abiertas; C4 y el alcance aprobado no cambian.
+
 - [ ] **T39. Ampliar L1 con ráfagas, DB lenta y memoria acotada.** RF-001, RF-011, RF-014, RF-016, RF-018
 - Dependencias: T16, T37, T38; PR C.
 - Tests primero: L1 reproduce dos procesos, muchos sockets/principales, cero destinatarios, error/latencia DB y episodios repetidos de suspensión/recuperación.

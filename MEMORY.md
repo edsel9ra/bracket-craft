@@ -9,7 +9,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR C. PR A #76 y PR B #77 fusionados; merge de B `ca136b2c` comprobado por API el 2026-11-13. T1–T37 verificadas; T38–T48 por ejecutar y T49 reservada a aceptación humana. C1–C4 intactas; F8 pendiente de aceptación y R32f abierto.
 
 ## Pendiente
-- Spec 035 PR C: ejecutar T38–T48 en orden, comenzando por dos procesos API reales. T47 requiere el PR que abrirá el usuario; T48 depende de esa CI/revisión, por lo que no se acreditan antes. No abrir el PR ni cerrar T49. Sin despliegue ni aceptación humana; F1/F9 mantienen sus restricciones.
+- Spec 035 PR C: pausa antes de implementar T38 por presupuesto (estimación 60–90 min; falta arnés de dos API, IPC/barreras independientes y reconexión real). Propuesto desglose interno T38a–c/T39a–c en verificacion.md, no incorporado ni ejecutado. T47 necesita el PR que abrirá el usuario y T48 su CI/revisión. No abrir PR ni cerrar T49; F1/F9 intactos.
 - B fusionado incluye los fixes de rollback `57cf9f51` y del historial `7018d361`. CI final `5daa6d5c`: PR 43499246334 y push 43499235618 success; backend 3613 pass/4 skip, frontend 978 pass/1 skip, E2E 60 pass y Review sin hallazgos. Evidencia en verificacion.md.
 
 ## Decisiones tomadas

@@ -647,3 +647,44 @@ Estas salidas corresponden a B, no son ejecución nueva ni evidencia de C.
 T37 verificada por fusión más gates anteriores; T38–T48 pendientes y T49 abierta.
 F8 **pendiente de aceptación**, R32f **abierto**; no se habilita F1 ni Socket.IO F9.
 No se exige ni introduce migración nueva para este cierre documental.
+
+### Revisión del presupuesto de T38/T39 antes de implementar
+
+Se detiene la ejecución de C conforme a la regla de 20–30 min por tarea y al
+brief del usuario; no se escribió código ni tests nuevos, no se alteró el alcance.
+La dificultad no es una decisión de permisos ni una necesidad de esquema:
+
+- `frontend/e2e/docker-compose.realtime.yml:1–5` solo arranca un API en 8000.
+- `backend/tests/realtime_e2e_server.py:23–33,196–200,205–208` usa un único
+  directorio IPC y estado de barrera por proceso. Arrancar dos copias sobre el
+  mismo directorio permitiría que cualquiera consumiera un comando; no acredita
+  que ambos procesos hayan quedado detenidos antes de la evaluación.
+- `backend/tests/test_realtime_delivery_db.py:247–264,301–309` usa PostgreSQL
+  real, pero emisores AsyncMock o barreras asyncio del mismo proceso, no dos API
+  con sockets. No se presenta esa evidencia existente como multiproceso.
+- L1 actual (`test_realtime_delivery_db.py:379–426`) ya mide trabajo SQL interno
+  por usuario en una base desechable y 100/257 principales. No mide dos procesos,
+  ráfagas con DB lenta, p50/p95, retraso o memoria de episodios repetidos.
+
+Estimación T38: 60–90 min activos, separables en tres unidades de 20–30 min.
+T39 necesita ampliar la instrumentación sobre esa topología y también se estima
+en tres unidades. Propuesta interna, **sin aprobación ni incorporación todavía**:
+
+| Tarea | Desglose propuesto | Comprobación |
+|---|---|---|
+| T38a | Dos API reales test-only, DB/Redis compartidos, controles IPC independientes e identificación de procesos. | Demostrar dos PID/puertos y que ambos consumen el mismo evento. |
+| T38b | Barreras por proceso para evento pendiente, commit de retirada y evaluación posterior, reutilizando el arnés de B. | PostgreSQL/RLS reales; ningún receptor retirado recibe tras el corte; dos tenants. |
+| T38c | Misma persona/sesiones en ambos API y reconexión al otro proceso, con captura antes del dispatcher. | Recepción/ausencia en transporte y HTTP autorizado, sin convertir mocks en prueba de sockets. |
+| T39a | Dataset 1.000 sockets/100 principales y borde 256/257, con trabajo SQL interno y llamadas de red. | Lotes máximos 256; coste por principal/lote, no por pestaña. |
+| T39b | Ráfagas acotadas, cero destinatarios y DB lenta/caída, repetidos en ambos procesos. | Suspensión aislada y recuperación por 032, sin replay/backlog. |
+| T39c | Artefacto reproducible con p50/p95, retraso, memoria y episodios repetidos. | Registrar entorno/dataset y aceptación estructural, sin inventar SLA. |
+
+Todo seguiría dentro del único PR C, sin arquitectura productiva nueva, migración,
+permisos HTTP ni cambios de C4. Comandos objetivo siguen siendo los de T38/T39 y
+el runner E2E completo; no se ejecutaron selectores vacíos para fingir un rojo.
+T40–T46 dependen de estas tareas. Además, T47 exige el PR que abrirá el usuario;
+T48 no puede cerrarse sin esa CI/revisión. T49 y aceptación F8 siguen pendientes.
+
+Solo se verifican aquí el diff documental, cierre de T37 y permanencia de
+T38–T49 abiertas. No se ejecutaron los gates locales completos ni carga de C;
+los resultados anteriores son los de B y no se reutilizan como validación de C.
