@@ -362,3 +362,41 @@ async def test_stale_terminal_cannot_reopen_resolved_but_can_resubmit_after_with
         async with f.service() as service:
             successor = await service.submit_appeal(f.context, appeal(f))
         assert successor["id"] != receipt["id"]
+
+
+async def test_prejudice_is_explicit_private_and_has_no_competitive_effect(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    await f.admin.execute("""UPDATE matches SET status='finished',result_confirmed=TRUE,
+        resolution_type='regular',home_score_regular=0,away_score_regular=0,home_score=0,away_score=0 WHERE id=$1""", f.future)
+    before = dict(await f.admin.fetchrow("SELECT * FROM matches WHERE id=$1", f.future))
+    async with f.service() as service:
+        case = await service.submit_appeal(f.context, appeal(f))
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+    payload = DecisionRequest(decision="maintain", expected_base_duration=3, reason="Decidir",
+        prejudice_records=[{"match_id": f.future, "reason": "Perjuicio acreditado documentalmente"}])
+    async with f.service() as service:
+        await service.decide(reviewer, case["id"], payload)
+    record = await f.admin.fetchrow("SELECT * FROM sanction_prejudice_records")
+    assert record["recorded_by_user_id"] == reviewer.user_id
+    assert record["match_id"] == f.future and record["reason"]
+    assert dict(await f.admin.fetchrow("SELECT * FROM matches WHERE id=$1", f.future)) == before
+    assert await f.admin.fetchval("SELECT count(*) FROM player_suspension_serves") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM match_report_versions") == 0
+    async with f.service() as service:
+        await service.decide(reviewer, case["id"], payload)
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_prejudice_records") == 1
+
+
+async def test_prejudice_rejects_unplayed_match_and_rolls_back_decision(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    async with f.service() as service:
+        case = await service.submit_appeal(f.context, appeal(f))
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        with pytest.raises(ValueError, match="SANCTION_INVALID_PREJUDICE"):
+            await service.decide(reviewer, case["id"], DecisionRequest(decision="maintain", expected_base_duration=3,
+                reason="Revisar", prejudice_records=[{"match_id": f.future, "reason": "Todavía no jugado"}]))
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_prejudice_records") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 0

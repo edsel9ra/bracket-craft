@@ -48,13 +48,20 @@ class ProposalRequest(EvidenceRequest):
         return self
 
 
+class PrejudiceRequest(ReasonRequest):
+    match_id: UUID
+
+
 class DecisionRequest(EvidenceRequest):
     decision: Literal["maintain", "annul", "reduce", "approve", "reject"]
     expected_base_duration: int = Field(gt=0, strict=True)
     after_duration: int | None = Field(default=None, ge=0, strict=True)
+    prejudice_records: list[PrejudiceRequest] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def measure(self):
+        if len({item.match_id for item in self.prejudice_records}) != len(self.prejudice_records):
+            raise ValueError("Partidos acreditados duplicados")
         if self.decision == "reduce" and self.after_duration is None:
             raise ValueError("La reducción exige duración")
         if self.decision not in {"reduce", "approve"} and self.after_duration is not None:

@@ -110,7 +110,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017
 - Hecho cuando: duración derivada original no neutraliza reducción; recreación no copia efecto/autorización y deja constancia; resolución pendiente afectada queda excluida explícitamente. Deduplicación de rojas y dependencias de regeneración conservan existencia histórica. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k reconcile` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_readers.py`, incluido el inventario de lectores.
 
-- [ ] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013
+- [x] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013
 - Hecho cuando: guarda autor/fecha/motivo y partidos acreditados en expediente, sin inferir por ausencia, compensar, repetir partidos ni tocar resultados/actas/avance o abrir trámite de impacto 033. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k prejudice`.
 
 - [ ] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
