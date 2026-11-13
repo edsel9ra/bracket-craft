@@ -147,7 +147,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 - [x] **T40. Composable tipado de expedientes y permisos.** RF-006, RF-015, RF-019, RF-029
 - Hecho cuando: `useSanctionCases.ts` transporta sesión/organización mediante useApi, pagina/refresca sin mezclar tenants y tipa errores/recibos; sin acceso implícito por presentar. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T41. Bandeja Workspace y filtros privados.** RF-006, RF-015, RF-017, RF-027, RF-028
+- [x] **T41. Bandeja Workspace y filtros privados.** RF-006, RF-015, RF-017, RF-027, RF-028
 - Hecho cuando: página muestra sanciones/expedientes autorizados, vacío/carga/error, ambos tipos y archivo, con navegación guardada por permiso; ninguna consulta pública. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
 - [ ] **T42. Detalle con historial y efecto pendiente.** RF-004, RF-006, RF-009, RF-010, RF-011, RF-013, RF-030
