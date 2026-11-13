@@ -171,7 +171,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 - [x] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
 - Hecho cuando: claves ES/EN completas, foco/teclado y tokens existentes, errores 403/404/409/422 sin filtrar expediente y reapertura manual solo cuando procede; no dialogs nativos. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T49. E2E Workspace con dos personas y tenants.** RF-003, RF-006, RF-018, RF-021, RF-022, RF-025, RF-029, RF-030, RF-031, RF-034
+- [x] **T49. E2E Workspace con dos personas y tenants.** RF-003, RF-006, RF-018, RF-021, RF-022, RF-025, RF-029, RF-030, RF-031, RF-034
 - Hecho cuando: presentar/proponer/decidir, retirada/cierre rectificativo, pendiente/aplicado y aviso no bloqueante se prueban con fixture local sin ampliar seeds productivos. Pasan `cd frontend && pnpm run typecheck:e2e` y, con pila local de prueba preparada, `cd frontend && pnpm exec playwright test e2e/sanction-workspace.spec.ts`.
 
 ## PR D — Admin y cierre verificado (T50–T55)

@@ -15,7 +15,12 @@ const canSubmit = computed(() => auth.hasPermission('SUBMIT_SANCTION_APPEALS') &
 const canResolve = computed(() => auth.hasPermission('RESOLVE_SANCTION_CASES') && organizationId.value === auth.access?.organization_id);
 const ownerOnly = computed(() => auth.access?.role_code === 'owner' && !auth.hasPermission('VIEW_SANCTION_CASES') && organizationId.value === auth.access?.organization_id);
 const inbox = ref<InstanceType<typeof SanctionInbox> | null>(null);
+const casePanel = ref<InstanceType<typeof SanctionCasePanel> | null>(null);
 const selected = ref('');
+async function selectCase(id: string) {
+  if (selected.value === id) await casePanel.value?.reload();
+  else selected.value = id;
+}
 const prior = ref('');
 const route = useRoute();
 watch(() => [route.query.case, auth.hasPermission('VIEW_SANCTION_CASES')], () => { selected.value = auth.hasPermission('VIEW_SANCTION_CASES') && typeof route.query.case === 'string' ? normalizeUuid(route.query.case) || '' : ''; }, { immediate: true });
@@ -24,7 +29,7 @@ watch(organizationId, () => { selected.value = ''; prior.value = ''; }, { flush:
 
 <template>
   <WorkspaceShell :breadcrumbs="[{ label: t('shell.tournaments'), to: '/workspace' }, { label: t('sanction.inbox') }]">
-    <main id="main-content" class="container sanctions"><PageHeader :title="t('sanction.inbox')" :description="t('sanction.separation')" /><SanctionInbox ref="inbox" @select="selected = $event" /><SanctionCasePanel v-if="selected" :case-id="selected" @changed="inbox?.reload()" @new-presentation="prior = $event" /><SanctionAppealForm v-if="canSubmit" :key="`appeal:${organizationId}:${auth.userId}:${prior}`" :allowed="canSubmit" :prior-case-id="prior" @created="inbox?.reload()" /><SanctionProposalForm v-if="canResolve" :key="`proposal:${organizationId}:${auth.userId}:${prior}`" :allowed="canResolve" :prior-case-id="prior" @created="inbox?.reload()" /><SanctionOwnerAccess v-if="ownerOnly" :key="`owner:${organizationId}:${auth.userId}`" :owner="ownerOnly" /></main>
+    <main id="main-content" class="container sanctions"><PageHeader :title="t('sanction.inbox')" :description="t('sanction.separation')" /><SanctionInbox ref="inbox" @select="selectCase" /><SanctionCasePanel v-if="selected" ref="casePanel" :case-id="selected" @changed="inbox?.reload()" @new-presentation="prior = $event" /><SanctionAppealForm v-if="canSubmit" :key="`appeal:${organizationId}:${auth.userId}:${prior}`" :allowed="canSubmit" :prior-case-id="prior" @created="inbox?.reload()" /><SanctionProposalForm v-if="canResolve" :key="`proposal:${organizationId}:${auth.userId}:${prior}`" :allowed="canResolve" :prior-case-id="prior" @created="inbox?.reload()" /><SanctionOwnerAccess v-if="ownerOnly" :key="`owner:${organizationId}:${auth.userId}`" :owner="ownerOnly" /></main>
   </WorkspaceShell>
 </template>
 

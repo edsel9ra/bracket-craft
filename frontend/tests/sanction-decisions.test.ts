@@ -38,3 +38,14 @@ test('withdrawal and decision controls require the appropriate current permissio
     assert.equal(html.includes('sanction.withdraw'), visible);
   }
 });
+
+test('number inputs coerce duration to numbers for proposals and decisions', () => {
+  const input = { sanctionId: source, action: 'reduce' as const, duration: 1, reason: 'Review', evidence: '', links: '', priorCaseId: '' };
+  assert.equal(helpers.proposalSubmission(input)?.body.proposed_duration, 1);
+  const decision = { decision: 'reduce' as const, duration: 0, reason: 'Review', evidence: '', links: '', prejudice: [] };
+  assert.equal(helpers.decisionSubmission(preview, decision)?.after_duration, 0);
+  for (const duration of [NaN, Infinity, -1, 1.5]) {
+    assert.equal(helpers.proposalSubmission({ ...input, duration }), null);
+    assert.equal(helpers.decisionSubmission(preview, { ...decision, duration }), null);
+  }
+});

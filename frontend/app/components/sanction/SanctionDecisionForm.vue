@@ -9,7 +9,7 @@ const { busy, error, run } = useSanctionAction();
 const errorTarget = useSanctionErrorFocus(error);
 const allowed = computed(() => canDecideSanction(props.case.submitted_by_user_id, props.userId, props.canResolve, props.case.status));
 const preview = ref<SanctionPreview | null>(null); const previewBusy = ref(false);
-const decision = ref<SanctionDecision>('maintain'); const duration = ref(''); const reason = ref(''); const evidence = ref(''); const links = ref('');
+const decision = ref<SanctionDecision>('maintain'); const duration = ref<string | number>(''); const reason = ref(''); const evidence = ref(''); const links = ref('');
 const prejudice = ref<{ match_id: string; reason: string }[]>([]);
 let generation = 0;
 watch(() => props.case, () => { generation++; preview.value = null; }, { flush: 'sync' });

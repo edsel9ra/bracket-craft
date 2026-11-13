@@ -8,7 +8,7 @@ const emit = defineEmits<{ created: [receipt: SanctionReceipt] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
 const errorTarget = useSanctionErrorFocus(error);
-const source = ref(''); const action = ref<'annul' | 'reduce'>('annul'); const duration = ref('');
+const source = ref(''); const action = ref<'annul' | 'reduce'>('annul'); const duration = ref<string | number>('');
 const reason = ref(''); const evidence = ref(''); const links = ref(''); const prior = ref(props.priorCaseId || '');
 const receipt = ref<SanctionReceipt | null>(null);
 async function submit() {

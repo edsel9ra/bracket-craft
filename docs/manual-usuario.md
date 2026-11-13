@@ -122,6 +122,16 @@ Los procedimientos de impacto se consultan en `GET /api/v1/tournaments/{id}/comp
 
 Al aprobar o rechazar una rectificación, el solicitante recibe un correo con la decisión y su motivo, sin evidencia, también cuando decide plataforma. Se encola dentro de la transacción; un fallo de SMTP no deshace la decisión, sino que deja el correo en reintento con los límites habituales del worker. Publicar también encola los avisos de partido, clasificación y rectificación exclusivamente para la organización. Cada aviso y correo se registra, y la vista previa no conserva ninguna notificación ni evento. No se añaden datos al canal público.
 
+### Apelar o resolver una sanción (spec 034, Workspace)
+
+- «Expedientes de sanciones» abre la bandeja privada. Consultar exige la facultad de ver expedientes: los filtros muestran pendientes o archivo por estado y tipo; el detalle separa duración original/efectiva, cumplimientos, procedencia, resoluciones y su aplicación pendiente o acreditada.
+- Con facultad de presentar puedes registrar una apelación indicando el identificador de sanción, representación de jugador/equipo y su identificador, y motivo. Evidencia opcional de texto/enlaces HTTP(S), sin archivos ni caducidad. El recibo no concede acceso al expediente al presentante ni al representado. La apelación no suspende ni modifica la sanción.
+- Con facultad de resolver puedes proponer anular/reducir. Otra persona debe decidir, también si actúa como plataforma. Previsualiza el expediente, elige una decisión y confirma con motivo; una propuesta pendiente no tiene efecto. Una resolución no declarativa permanece pendiente hasta una apertura posterior acreditada; no cambia partidos ya comenzados.
+- Solo el autor con permiso vigente puede retirar un expediente pendiente, con motivo y evidencia opcional. Un cierre por rectificación permite preparar una nueva presentación vinculada, que debes completar y enviar manualmente sobre una sanción vigente; nunca reabre el expediente anterior.
+- El dueño puede conceder/revocar autorización F9 puntual a un administrador de plataforma activo, indicando correo y motivo. Si no puede consultar expedientes, introduce un identificador conocido para gestionar únicamente esa autorización. No reutiliza autorizaciones de rectificación 033.
+- «Avisos disciplinarios» contiene avisos internos de acto/motivo/decisión, sin evidencia. Ser destinatario no concede consulta: el enlace al expediente solo aparece con facultad de lectura. Los avisos se obtienen por HTTP, no por Socket.IO.
+- Preparando una alineación, el aviso privado muestra jugador y partidos pendientes. Es informativo incluso si falla su consulta: guardar y publicar siguen disponibles y la alineación nunca se modifica automáticamente. El cierre conserva la revalidación disciplinaria.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
