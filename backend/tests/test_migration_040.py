@@ -85,6 +85,26 @@ async def test_cases_rls_pending_and_history(f9_db):
     assert await db.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", suspension) == 3
 
 
+@pytest.mark.parametrize("kind,permission", [("appeal", "SUBMIT_SANCTION_APPEALS"), ("administrative_proposal", "RESOLVE_SANCTION_CASES")])
+@pytest.mark.parametrize("revoke_before_event", [True, False])
+async def test_withdrawal_requires_current_permission_at_event_and_finalization(f9_db, kind, permission, revoke_before_event):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension, kind=kind)
+    with pytest.raises(asyncpg.InsufficientPrivilegeError, match="SANCTION_EVENT_DENIED"):
+        async with db.transaction():
+            if not revoke_before_event:
+                await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
+                    VALUES ($1,$2,'withdrawn',$3,'Withdraw')""", ORG, case_id, USER)
+            await db.execute("UPDATE roles SET permissions=permissions-$1 WHERE organization_id=$2 AND name='F9 writer'", permission, ORG)
+            await app_context(db)
+            if revoke_before_event:
+                await db.execute("""INSERT INTO sanction_case_events(organization_id,case_id,event_type,actor_user_id,reason)
+                    VALUES ($1,$2,'withdrawn',$3,'Withdraw')""", ORG, case_id, USER)
+            else:
+                await db.execute("SELECT sanction_finalize_case($1)", case_id)
+    assert await db.fetchval("SELECT status FROM sanction_cases WHERE id=$1", case_id) == "pending"
+
+
 async def test_auxiliary_private_authorizations_prejudice_notifications(f9_db):
     db, suspension = f9_db
     case_id = await insert_case(db, suspension)

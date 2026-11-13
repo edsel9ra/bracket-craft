@@ -383,6 +383,8 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalo
             JOIN public.organizations o ON o.id = ou.organization_id AND o.is_active
             WHERE c.id = target_case AND c.organization_id = target_org AND c.status = 'pending'
                 AND c.submitted_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+                AND public.sanction_member_has_permission(c.organization_id,
+                    CASE WHEN c.case_type = 'appeal' THEN 'SUBMIT_SANCTION_APPEALS' ELSE 'RESOLVE_SANCTION_CASES' END)
         ), FALSE);
 $$;
 REVOKE ALL ON FUNCTION public.sanction_event_allowed(UUID, UUID, TEXT) FROM PUBLIC;
@@ -517,6 +519,9 @@ BEGIN
         END IF;
         UPDATE public.sanction_cases SET status = 'resolved' WHERE id = target.id;
     ELSIF event.id IS NOT NULL AND event.actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID THEN
+        IF event.event_type = 'withdrawn' AND NOT public.sanction_event_allowed(target.organization_id, target.id, 'withdrawn') THEN
+            RAISE EXCEPTION 'SANCTION_EVENT_DENIED' USING ERRCODE = '42501';
+        END IF;
         UPDATE public.sanction_cases SET status = event.event_type WHERE id = target.id;
     ELSE
         RAISE EXCEPTION 'SANCTION_MISSING_ACT' USING ERRCODE = '23514';
