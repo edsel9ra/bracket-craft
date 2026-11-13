@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — PR C: T1–T46 verificadas localmente; T47/T48 abiertas por CI PR/push y revisión independiente, T49 reservada a aceptación humana. A #76 y B #77 fusionados (`ca136b2c`). C1–C4 intactas; F8 **pendiente de aceptación**, R32f **abierto**. Spec no marcada implementada.
+- specs/035-tiempo-real-por-rol — fase Validación cerrada — estado: implementada. A #76, B #77 y C #78 fusionados; T1–T49 verificadas. F8 aceptada expresamente el 2026-11-13 y R32f cerrado. No habilita borradores F1 ni acredita despliegue productivo.
 
 ## Pendiente
-- Spec 035 C: dos procesos API/Redis/DB/WebSocket reales, barreras de commit, 1.000 sockets/100 principales, borde 257 y recuperación parcial. T41 `53544a61`: JWT real y cierre ASGI 1012 test-only; T42 `f3b7b9b0`: público anónimo, exclusiones y sonda sin Socket.IO. Sin código productivo, permisos HTTP ni migraciones nuevos.
-- Gates C: backend PostgreSQL 3629 pass sin skips; sin DB 2680 pass/949 skip. Frontend 978 pass/1 skip condicional de fuente; fuente compilada 2 pass/0 skip aparte. Types/lint/build/E2E types OK; runner completo 66 pass. Infra dev/prod, 055 limpia/054→055/idempotencia/MIGRATION_TARGET, Bandit, auditorías pip/pnpm, Trivy fijado y Gitleaks OK. Salidas, límites y matriz RF/RNF en verificacion.md. No abrir PR: lo abre el usuario, después vigilar CI/revisión; sin aceptación T49 ni despliegue acreditados.
-- B fusionado incluye los fixes de rollback `57cf9f51` y del historial `7018d361`. CI final `5daa6d5c`: PR 43499246334 y push 43499235618 success; backend 3613 pass/4 skip, frontend 978 pass/1 skip, E2E 60 pass y Review sin hallazgos. Evidencia en verificacion.md.
+- Iniciar la spec 036 de F1 en fase Spec y estado borrador; sin aprobación de plan/tareas/implementación. F9 permanece fuera de Socket.IO.
+
+## Historial de fases
+- 2026-11-13 · Spec 035 · Implementación y Validación cerradas con aprobación expresa del usuario: «Opción A» («Acepto F8; ciérrala y empieza la spec de F1»). T47–T49 verificadas; F8 aceptada y R32f cerrado. #78 fusionado en `4b13d55d`, árbol idéntico al SHA validado `1edcb5bb`. CI PR `43512284375` y push `43511994626` success: backend 3625 pass/4 skip, frontend 978 pass/1 skip, E2E PR 66 pass; Review sin hallazgos (`end_triage` no disponible). Gates locales, carga real de 1.000 sockets/100 principales y límites en verificacion.md; no acredita producción.
 
 ## Decisiones tomadas
 - 2026-11-13 · Spec 035 · Usuario descarta 056: C3 reutiliza 032 SECURITY INVOKER por lotes de hasta 256 sockets suspendidos; válidos reciben RESYNC RELAY_START dirigido, inválidos tratamiento 032, error/fila ausente conserva suspensión y reintenta. Sin recursos ni replay; HTTP autoriza cada reconstrucción. Precisión en plan sin cambiar C3.

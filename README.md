@@ -900,8 +900,8 @@ La regla vigente se muestra en la interfaz junto a toda cifra que la use, en esp
 
 El filtro privado de la spec 035 entrega por destinatario con autorización fresca,
 invalidaciones mínimas y recuperación mediante 032/HTTP, sin broadcast organizativo
-ni replay privado. F8 está **pendiente de aceptación**; R32f sigue abierto hasta
-T49. Antes de desplegar, seguir el [procedimiento coordinado y
+ni replay privado. F8 está **implementada y aceptada** por el usuario el
+2026-11-13; **R32f cerrado** tras #78 y T49. Antes de desplegar, seguir el [procedimiento coordinado y
 rollback fail-closed](docs/despliegue-tiempo-real-por-rol.md): aplicar 055 y retirar
 todos los procesos API antiguos. No activa borradores F1 ni conecta F9 a Socket.IO.
 
@@ -913,7 +913,7 @@ El cierre de actas y los efectos de dominio se registran en `outbox_events`. El 
 - **`RESYNC`:** control `{event_id, reason}` con `reason` entre `JOIN`, `RELAY_START`, `STREAM_TRIMMED` y `REDIS_RESET`. Sin datos de negocio ni persistencia en el stream. Los privados se dirigen por socket después de revalidar sesión, usuario, membresía y huella de roles mediante 032; los inválidos reciben el tratamiento de esa revalidación y un error conserva la suspensión. Los públicos mantienen sus salas. Sin clientes no se emite nada.
 - **Cliente:** deduplica por `event_id` en una ventana FIFO de 200 entregas y separa `RESYNC` de los eventos de dominio. El Workspace y la operación de partido recargan al reconectar; la página pública mantiene su polling de 30 s mientras el socket no está conectado y, ante un `RESYNC` de hueco, recarga y reinicia la paginación.
 - **Estado visible del reintento manual:** además de `connecting`, `connected`, `reconnecting`, `error` e `idle`, el estado de conexión tiene un valor propio `retrying` («Reintentando…» / «Retrying…»), anunciado con `role="status"` y con color de aviso compartido con `reconnecting`/`error` (no depende solo del color). **Solo** aparece al pulsar «Reintentar» con el estado en error y **solo si esa pulsación inicia un intento de conexión nuevo**: un clic sin efecto no muestra nada y nunca aparece por reconexión automática ni sin pulsación. Desaparece al conectar o al volver a error; no altera la lógica de reconexión, las recargas ni el sondeo, y no añade instrumentación de pruebas al producto.
-- **Autorización de recepción (035; R32f abierto hasta aceptación):** antes de cada lote privado se comprueba la lectura HTTP del recurso con RBAC y asignaciones de oficiales según esa lectura, bajo RLS. El corte es el inicio de evaluación: una retirada confirmada impide evaluaciones posteriores, sin prometer retirar lo ya aprobado/enviado. Un error suspende las entregas afectadas sin gracia, caché permisiva ni fallback; al recuperarse, 032 y `RESYNC RELAY_START` dirigido reconstruyen por HTTP, sin reproducir lo perdido. La comprobación periódica mantiene la conexión, no sustituye esta autorización. La operación y «Versiones del acta» recargan mediante `useApi`; durante una edición se aplaza el historial. Los antecedentes de 008/009/010 son históricos, no la garantía vigente.
+- **Autorización de recepción (035; R32f cerrado, F8 aceptada el 2026-11-13):** antes de cada lote privado se comprueba la lectura HTTP del recurso con RBAC y asignaciones de oficiales según esa lectura, bajo RLS. El corte es el inicio de evaluación: una retirada confirmada impide evaluaciones posteriores, sin prometer retirar lo ya aprobado/enviado. Un error suspende las entregas afectadas sin gracia, caché permisiva ni fallback; al recuperarse, 032 y `RESYNC RELAY_START` dirigido reconstruyen por HTTP, sin reproducir lo perdido. La comprobación periódica mantiene la conexión, no sustituye esta autorización. La operación y «Versiones del acta» recargan mediante `useApi`; durante una edición se aplaza el historial. Los antecedentes de 008/009/010 son históricos, no la garantía vigente.
 
 | Tramo | Garantía | Consecuencia |
 |---|---|---|

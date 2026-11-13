@@ -1,8 +1,10 @@
 # Spec 035 — Tiempo real privado según permisos de lectura
 
-Estado: aprobada
+Estado: implementada
 
 Aprobada por el usuario: 2026-11-13 («Apruebo la spec.»).
+
+Implementación aceptada por el usuario el 2026-11-13: «Opción A» («Acepto F8; ciérrala y empieza la spec de F1»). PR C #78 fusionado; T1–T49 verificadas. CI y límites en `verificacion.md`. F8 y R32f cerrados; no habilita borradores F1 ni acredita despliegue productivo.
 
 ## Contexto y objetivo
 

@@ -94,7 +94,7 @@ no una lista de eventos perdidos. Si no se puede verificar la autorización se
 suspenden las actualizaciones afectadas, sin convertirlas en públicas ni usar
 permisos antiguos. Se mantienen los estados y el botón «Reintentar» existentes.
 
-F8 sigue **pendiente de aceptación**; esto no habilita borradores privados F1.
+F8 está **implementada y aceptada** desde el 2026-11-13; R32f cerrado tras #78/T49. Esto no habilita borradores privados F1.
 Los avisos de sanciones F9 permanecen en su bandeja/correo, fuera de Socket.IO.
 
 El catálogo actual cubre cierre, actualización de partido, clasificación y sus

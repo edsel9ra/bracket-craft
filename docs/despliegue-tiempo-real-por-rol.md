@@ -1,8 +1,8 @@
 # Despliegue del filtro privado (035, PR B/C)
 
-Este procedimiento no acredita un despliegue ni la aceptación de F8/R32f.
-Requiere los gates y revisión de B/C antes de declarar completada la validación.
-F8 sigue pendiente de aceptación y R32f abierto hasta T49. F1 sigue sin emitir
+Este procedimiento no acredita un despliegue productivo.
+F8 está implementada y aceptada por el usuario el 2026-11-13 tras la CI/revisión
+de #78 y T49; R32f cerrado. Evidencia en la verificación 035. F1 sigue sin emitir
 borradores y F9 conserva sus handlers HTTP/correo fuera de Socket.IO.
 
 ## Orden obligatorio
