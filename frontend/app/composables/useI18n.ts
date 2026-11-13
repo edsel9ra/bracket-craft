@@ -13,6 +13,13 @@ type TranslationValues = Record<string, string | number>;
 
 const messages: Record<Locale, Record<string, string>> = {
   es: {
+    'sanction.notifications': 'Avisos disciplinarios',
+    'sanction.notificationsHint': 'Avisos internos privados para destinatarios actualmente autorizados. Recibir un aviso no concede acceso al expediente.',
+    'sanction.noNotifications': 'No tienes avisos disciplinarios disponibles.',
+    'sanction.noticeNoAccess': 'Este aviso no incluye permiso de consulta del expediente.',
+    'sanction.notice.decision': 'Decisión disciplinaria registrada',
+    'sanction.notice.withdrawn': 'Expediente retirado',
+    'sanction.notice.closed_by_rectification': 'Expediente cerrado por rectificación',
     'sanction.authorizations': 'Autorizaciones de plataforma F9',
     'sanction.authorizationHint': 'Autorización puntual para este expediente: revocable y consumida al decidir. No hereda ninguna autorización de rectificación 033. No permite presentar ni proponer.',
     'sanction.ownerHint': 'Como dueño puedes gestionar la autorización F9 de un expediente conocido, sin obtener permiso para consultar su contenido.',
@@ -1383,6 +1390,13 @@ const messages: Record<Locale, Record<string, string>> = {
     'forbidden.copy': 'Tu sesión sigue activa, pero esta organización o recurso no autoriza esta operación. Puedes volver, cambiar de cuenta o cerrar sesión explícitamente.',
   },
   en: {
+    'sanction.notifications': 'Disciplinary notices',
+    'sanction.notificationsHint': 'Private internal notices for currently authorized recipients. Receiving a notice does not grant access to the case.',
+    'sanction.noNotifications': 'You have no available disciplinary notices.',
+    'sanction.noticeNoAccess': 'This notice does not grant permission to consult the case.',
+    'sanction.notice.decision': 'Disciplinary decision recorded',
+    'sanction.notice.withdrawn': 'Case withdrawn',
+    'sanction.notice.closed_by_rectification': 'Case closed by rectification',
     'sanction.authorizations': 'F9 platform authorizations',
     'sanction.authorizationHint': 'One-case authorization: revocable and consumed on decision. It does not inherit any 033 rectification authorization. It does not permit submission or proposals.',
     'sanction.ownerHint': 'As owner you can manage F9 authorization for a known case without gaining permission to consult its contents.',

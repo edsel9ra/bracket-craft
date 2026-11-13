@@ -5,6 +5,7 @@ import SanctionCasePanel from '~/components/sanction/SanctionCasePanel.vue';
 import SanctionAppealForm from '~/components/sanction/SanctionAppealForm.vue';
 import SanctionProposalForm from '~/components/sanction/SanctionProposalForm.vue';
 import SanctionOwnerAccess from '~/components/sanction/SanctionOwnerAccess.vue';
+import { normalizeUuid } from '~/utils/validation';
 definePageMeta({ middleware: 'auth' });
 const { t } = useI18n();
 useHead({ title: computed(() => t('sanction.inbox')) });
@@ -16,6 +17,8 @@ const ownerOnly = computed(() => auth.access?.role_code === 'owner' && !auth.has
 const inbox = ref<InstanceType<typeof SanctionInbox> | null>(null);
 const selected = ref('');
 const prior = ref('');
+const route = useRoute();
+watch(() => [route.query.case, auth.hasPermission('VIEW_SANCTION_CASES')], () => { selected.value = auth.hasPermission('VIEW_SANCTION_CASES') && typeof route.query.case === 'string' ? normalizeUuid(route.query.case) || '' : ''; }, { immediate: true });
 watch(organizationId, () => { selected.value = ''; prior.value = ''; }, { flush: 'sync' });
 </script>
 

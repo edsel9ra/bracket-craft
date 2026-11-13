@@ -58,6 +58,7 @@ const tournamentLabel = computed(() => {
 });
 
 const primaryLinks = computed(() => [
+  { key: 'sanction-notifications', label: t('sanction.notifications'), to: '/workspace/sanction-notifications', current: route.path === '/workspace/sanction-notifications' },
   ...(canUseSanctions.value ? [{ key: 'sanctions', label: t('sanction.inbox'), to: '/workspace/sanctions', current: route.path === '/workspace/sanctions' }] : []),
   { key: 'rectifications', label: t('rectification.inbox'), to: '/workspace/rectifications', current: route.path === '/workspace/rectifications' },
   {
