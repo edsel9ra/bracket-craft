@@ -95,7 +95,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T20. Retirada auditada solo por autor pendiente.** RF-009, RF-015, RF-029, RF-034
 - Hecho cuando: autor con legitimación vigente retira con motivo obligatorio, sin alterar sanción; ajeno, terminal y motivo vacío se rechazan; transición/evento atómicos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k withdraw`.
 
-- [ ] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034
+- [x] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034
 - Hecho cuando: actor distinto y facultad vigente, también aunque autor acumule roles; mantener solo apelación, rechazar solo propuesta, decisión auditada sin cambio de elegibilidad. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k decide_no_effect`.
 
 - [ ] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030

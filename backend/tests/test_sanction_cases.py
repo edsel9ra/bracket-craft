@@ -8,15 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import AuthContext
 from app.modules.sanction_appeals.cases import SanctionCaseService
-from app.modules.sanction_appeals.schemas import AppealRequest, CaseFilters, ProposalRequest, SanctionFilters, WithdrawalRequest
-from migration_helpers import apply_migration
+from app.modules.sanction_appeals.schemas import AppealRequest, CaseFilters, DecisionRequest, ProposalRequest, SanctionFilters, WithdrawalRequest
+from migration_helpers import apply_migrations
 from test_migration_031 import MATCH, ORG, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_HOME, VERSION
 from test_sanction_readers import readers as readers
 
 
 @pytest.fixture
 async def cases(readers):
-    await apply_migration(readers.admin, 44)
+    await apply_migrations(readers.admin, first=44)
     @asynccontextmanager
     async def session():
         async with readers.engine.connect() as connection:
@@ -218,3 +218,27 @@ async def test_withdraw_only_author_with_current_permission_and_no_view(cases, k
     async with f.service() as service:
         assert await service.withdraw(f.context, receipt["id"], WithdrawalRequest(reason="Retiro")) == result
     assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_events WHERE event_type='withdrawn'") == 1
+
+
+@pytest.mark.parametrize("kind,decision", [("appeal", "maintain"), ("proposal", "reject")])
+async def test_decide_no_effect_requires_another_person_and_only_resolve(cases, kind, decision):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS", "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f)) if kind == "appeal" else await service.submit_proposal(
+            f.context, ProposalRequest(suspension_id=f.suspension, proposed_action="annul", reason="Revisar"))
+    payload = DecisionRequest(decision=decision, expected_base_duration=3, reason="Revisión independiente")
+    async with f.service() as service:
+        with pytest.raises(ValueError):
+            await service.decide(f.context, receipt["id"], payload)
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        result = await service.decide(reviewer, receipt["id"], payload)
+    assert result == {"id": receipt["id"], "status": "resolved"}
+    assert await f.admin.fetchval("SELECT decision FROM sanction_case_decisions") == decision
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
+    assert await f.admin.fetchval("SELECT status FROM player_suspensions WHERE id=$1", f.suspension) == "active"
+    assert await f.admin.fetchval("SELECT count(*) FROM administrative_audit_logs WHERE action='DECIDE_SANCTION_CASE'") == 1
+    async with f.service() as service:
+        assert await service.decide(reviewer, receipt["id"], payload) == result
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 1

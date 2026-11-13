@@ -45,7 +45,14 @@ class SanctionCaseService:
             if getattr(exc.orig, "sqlstate", None) == "23505":
                 raise SanctionConflict("SANCTION_CASE_CONFLICT") from exc
             if getattr(exc.orig, "sqlstate", None) == "23514":
-                raise SanctionConflict("SANCTION_INVALID_STATE") from exc
+                error, code = exc.orig, "SANCTION_INVALID_STATE"
+                while error is not None:
+                    message = getattr(error, "message", "")
+                    if message.startswith("SANCTION_") and message.replace("_", "").isalnum():
+                        code = message
+                        break
+                    error = error.__cause__
+                raise SanctionConflict(code) from exc
             raise
 
     async def source(self, context, suspension_id, *, lock=False):
@@ -126,6 +133,12 @@ class SanctionCaseService:
         async with self.transaction(context):
             result = (await self.db.execute(text("SELECT withdraw_sanction_case(:id,:reason)"),
                 {"id": case_id, "reason": payload.reason})).scalar_one()
+            return {"id": case_id, "status": result["status"]}
+
+    async def decide(self, context, case_id, payload):
+        async with self.transaction(context, "RESOLVE_SANCTION_CASES"):
+            result = (await self.db.execute(text("SELECT decide_sanction_case(:id,CAST(:payload AS jsonb))"),
+                {"id": case_id, "payload": payload.model_dump_json()})).scalar_one()
             return {"id": case_id, "status": result["status"]}
 
     async def list_cases(self, context, filters):
