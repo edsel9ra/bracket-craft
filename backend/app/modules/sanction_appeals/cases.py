@@ -107,3 +107,10 @@ class SanctionCaseService:
             (organization_id,case_id,event_type,actor_user_id,reason)
             VALUES (:org,:id,'submitted',:user,:reason)"""), values)
         return {"id": case_id, "status": "pending"}
+
+    async def submit_proposal(self, context, payload):
+        async with self.transaction(context, "RESOLVE_SANCTION_CASES"):
+            source = await self.source(context, payload.suspension_id, lock=True)
+            if payload.proposed_action == "reduce" and payload.proposed_duration >= source["matches_suspended"]:
+                raise ValueError("La propuesta debe reducir la duración")
+            return await self._submit(context, payload, source, "administrative_proposal")

@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.sanction_appeals.cases import SanctionCaseService
-from app.modules.sanction_appeals.schemas import AppealRequest
+from app.modules.sanction_appeals.schemas import AppealRequest, ProposalRequest
 from test_migration_031 import MATCH, ORG, PLAYER_HOME_FIRST, SEGMENT_FIRST, TEAM_HOME, VERSION
 from test_sanction_readers import readers as readers
 
@@ -93,3 +93,35 @@ async def test_appeal_match_origin_in_archived_tournament_has_no_deadline(cases)
     await f.admin.execute("UPDATE tournament_versions SET status='archived' WHERE id=$1", VERSION)
     async with f.service() as service:
         assert (await service.submit_appeal(f.context, appeal(f)))["status"] == "pending"
+
+
+@pytest.mark.parametrize("action,duration", [("annul", None), ("reduce", 1)])
+async def test_proposal_only_resolve_permission_is_audited_without_effect(cases, action, duration):
+    f = cases
+    await permissions(f, "RESOLVE_SANCTION_CASES")
+    payload = ProposalRequest(suspension_id=f.suspension, proposed_action=action,
+        proposed_duration=duration, reason="Revisión administrativa")
+    async with f.service() as service:
+        receipt = await service.submit_proposal(f.context, payload)
+    assert receipt["status"] == "pending" and set(receipt) == {"id", "status"}
+    row = await f.admin.fetchrow("SELECT * FROM sanction_cases WHERE id=$1", receipt["id"])
+    assert row["case_type"] == "administrative_proposal" and row["proposed_action"] == action
+    assert row["proposed_duration"] == duration and row["submitted_by_user_id"] == f.context.user_id
+    assert await f.admin.fetchval("SELECT status FROM player_suspensions WHERE id=$1", f.suspension) == "active"
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
+    async with f.session() as db:
+        assert not (await db.execute(text("SELECT * FROM sanction_cases"))).all()
+
+
+async def test_proposal_requires_resolve_and_reduction_cannot_increase(cases):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS")
+    payload = ProposalRequest(suspension_id=f.suspension, proposed_action="reduce", proposed_duration=3, reason="Revisar")
+    async with f.service() as service:
+        with pytest.raises(PermissionError):
+            await service.submit_proposal(f.context, payload)
+    await permissions(f, "RESOLVE_SANCTION_CASES")
+    async with f.service() as service:
+        with pytest.raises(ValueError):
+            await service.submit_proposal(f.context, payload)
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_cases") == 0
