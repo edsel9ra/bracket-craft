@@ -430,6 +430,8 @@ class CloseSession(RecordingSession):
         return self.handle(sql, dict(params or {}))
 
     def handle(self, sql: str, params: dict) -> Result:
+        if "'discipline:'" in sql:
+            return Result()
         if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code" in sql:

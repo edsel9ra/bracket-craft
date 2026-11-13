@@ -317,6 +317,11 @@ class RecordingSession:
         sql = " ".join(str(statement).split())
         self.statements.append(sql)
         self.calls.append((sql, dict(params or {})))
+        if any(fragment in sql for fragment in (
+            "pg_advisory_xact_lock", "record_sanction_opening", "sanction_operational_facts",
+            "min(created_at)", "refresh_served_sanctions",
+        )):
+            return Result()
         return self.handle(sql, dict(params or {}))
 
     @property

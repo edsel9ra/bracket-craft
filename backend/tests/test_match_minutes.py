@@ -426,6 +426,8 @@ class RecordingSession:
         sql = " ".join(str(statement).split())
         self.statements.append(sql)
         self.calls.append((sql, dict(params or {})))
+        if "pg_advisory_xact_lock" in sql or "record_sanction_opening" in sql:
+            return Result()
         return self.handle(sql, dict(params or {}))
 
     @property
@@ -1099,6 +1101,9 @@ class _RouteSession:
         return Transaction()
 
     async def execute(self, statement, params=None):
+        if "pg_advisory_xact_lock" in str(statement):
+            assert params == {"organization_id": str(ORGANIZATION_ID)}
+            return Result()
         assert str(statement) == "SELECT assert_no_open_competitive_impact(:id,:org)"
         assert params == {"id": MATCH_ID, "org": ORGANIZATION_ID}
         return Result()

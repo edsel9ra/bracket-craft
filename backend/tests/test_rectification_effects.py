@@ -523,10 +523,16 @@ async def test_preview_and_publication_recalculate_and_record_invalidated_draw(f
     assert await flow.admin.fetchval("SELECT count(*) FROM match_events") == 0
     assert await flow.admin.fetch("SELECT * FROM standings WHERE organization_id <> $1 ORDER BY team_id", ORG) == foreign
     after = await database_snapshot(flow.admin)
+    provenance_before = {row["id"]: row for row in json.loads(before["sanction_transaction_provenance"])}
+    provenance_after = {row["id"]: row for row in json.loads(after["sanction_transaction_provenance"])}
+    assert all(provenance_after[key] == row for key, row in provenance_before.items())
+    added = list(provenance_after.keys() - provenance_before.keys())
+    assert len(added) == 1
+    assert provenance_after[added[0]]["version_id"] == response.json()["resulting_version_id"]
     for name in before.keys() - {"standings", "match_report_versions", "match_report_version_events",
             "match_report_rectification_effects", "match_report_rectification_requests",
             "match_report_rectification_decisions", "administrative_audit_logs", "outbox_events",
-            "match_report_rectification_notifications"}:
+            "match_report_rectification_notifications", "sanction_transaction_provenance"}:
         assert after[name] == before[name], name
 
 

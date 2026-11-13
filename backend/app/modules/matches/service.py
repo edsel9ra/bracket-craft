@@ -1543,7 +1543,7 @@ class CloseMatchReportService:
             return False
         facts = await load_effective_sanctions(self.db, match_id, as_of=datetime.now(timezone.utc))
         return any(f.player_id in player_ids and f.projection.blocking
-            and f.origin_match_id != (exclude_origin_match_id or match_id)
+            and (exclude_origin_match_id is None or f.origin_match_id != exclude_origin_match_id)
             and (created_before is None or f.created_at <= created_before) for f in facts)
 
     async def _validate_suspensions(self, context: AuthContext, tournament_id: UUID, player_ids: list[UUID], *, match_id: UUID) -> None:

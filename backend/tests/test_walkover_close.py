@@ -356,6 +356,8 @@ class WalkoverSession:
         return self.handle(sql, dict(params or {}))
 
     def handle(self, sql: str, params: dict) -> Result:
+        if "'discipline:'" in sql:
+            return Result()
         if "set_config" in sql or sql == "SELECT assert_no_open_competitive_impact(:id,:org)":
             return Result()
         if "SELECT id, tournament_id, tournament_version_id, stage_id, bracket_code" in sql:
@@ -504,7 +506,9 @@ async def test_a_walkover_needs_no_segment_and_no_roster(monkeypatch):
     assert (response["home_score"], response["away_score"]) == (3, 1)
     assert response["winner_team_id"] == str(HOME)
 
-    joined = " ".join(session.statements)
+    coordinator = [sql for sql in session.statements if "'discipline:'" in sql]
+    assert len(coordinator) == 1
+    joined = " ".join(sql for sql in session.statements if sql not in coordinator)
     for forbidden in (
         "match_rosters",
         "FROM rosters",
