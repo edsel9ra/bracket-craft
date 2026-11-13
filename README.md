@@ -765,7 +765,7 @@ Las autorizaciones F9 son puntuales y revocables, separadas de la 033. Se revali
 
 Los avisos internos y por correo se registran junto al acto y se entregan desde outbox con revalidación C5. Solo incluyen acto y motivo, nunca evidencia. El payload de cola contiene únicamente `notification_id`; sus dos handlers explícitos no publican en Redis ni Socket.IO. La pérdida de permiso retiene la entrega y activa los reintentos existentes; recuperar permiso permite reintentar. SMTP fallido no revierte la resolución; el correo conserva semántica de al menos una entrega y puede repetirse sin duplicar el acto.
 
-Despliegue: aplicar **044–053**, después actualizar API y worker juntos. No hay cambios en 040–043 ni en hardening; las migraciones no tienen `down`. Los diez archivos conservan unidades de dominio y evolución verificable de funciones; no se añaden catorce migraciones. El frontend de expedientes queda para los PR C/D de la spec; B2 no cierra la spec ni añade campos públicos.
+Despliegue: aplicar **044–054**, después actualizar API y worker juntos. No hay cambios en 040–043 ni en hardening; las migraciones no tienen `down`. Los once archivos conservan unidades de dominio y evolución verificable de funciones; 054 registra las fechas F9 con reloj real después de validar y adquirir locks, manteniendo la fecha de resolución igual a la decisión y la aplicación efectiva en la apertura acreditada. El frontend de expedientes queda para los PR C/D de la spec; B2 no cierra la spec ni añade campos públicos.
 
 ## Cierre de actas y segmentos
 
