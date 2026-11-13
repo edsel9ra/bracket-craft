@@ -181,7 +181,7 @@ Depende de C. Orden T50 → … → T55; no declarar implementada la spec hasta 
 - [x] **T50. Composable y pantalla admin de decisión excepcional.** RF-006, RF-015, RF-021, RF-023, RF-024
 - Hecho cuando: `/admin/sanction-cases` lista solo scopes F9, muestra preview/detalle y decide con useApi/useConfirm singleFlight, ES/EN; no permite presentar/proponer ni ve otro expediente. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
-- [ ] **T51. Regresión E2E admin y pública.** RF-007, RF-008, RF-015, RF-016, RF-017, RF-021, RF-023, RF-024
+- [x] **T51. Regresión E2E admin y pública.** RF-007, RF-008, RF-015, RF-016, RF-017, RF-021, RF-023, RF-024
 - Hecho cuando: autorización revocada/consumida/ajena y auto-decisión no ejecutan, auditorías coinciden y público no expone sanciones/motivos/evidencia. Pasan `cd frontend && pnpm run typecheck:e2e`, `cd frontend && pnpm exec playwright test e2e/sanction-platform.spec.ts` con pila de prueba, y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_public_field_allowlist.py tests/test_public_access_matrix.py tests/test_sanction_platform.py`.
 
 - [ ] **T52. Gate backend completo con PostgreSQL y regresión 033.** RF-001, RF-005, RF-009, RF-010, RF-011, RF-012, RF-016, RF-025, RF-030, RF-033

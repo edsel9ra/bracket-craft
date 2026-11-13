@@ -9,6 +9,9 @@ const { busy, error, run } = useSanctionAction({ platform: props.platform });
 const errorTarget = useSanctionErrorFocus(error);
 const allowed = computed(() => canDecideSanction(props.case.submitted_by_user_id, props.userId, props.canResolve, props.case.status));
 const preview = ref<SanctionPreview | null>(null); const previewBusy = ref(false);
+watch(error, (key) => {
+  if (props.platform && ['sanction.error.forbidden', 'sanction.error.notFound'].includes(key)) { preview.value = null; emit('changed', key); }
+});
 const decision = ref<SanctionDecision>('maintain'); const duration = ref<string | number>(''); const reason = ref(''); const evidence = ref(''); const links = ref('');
 const prejudice = ref<{ match_id: string; reason: string }[]>([]);
 let generation = 0;
