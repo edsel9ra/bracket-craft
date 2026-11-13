@@ -2,8 +2,8 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 
 ## Spec activa
-- specs/034-apelaciones-sanciones — fase actual: Implementación, PR B1 — spec, plan y tareas aprobados por el usuario el 2026-11-12.
-- PR A fusionado. B1 T11/T12/T14/T15/T24/T25/T26/T35 implementadas, commits por tarea, sin escrituras de expedientes; backend PostgreSQL 17/Python 3.14: 3293 passed, 4 skipped; ruff/bandit/compileall e infraestructura correctos. B2, C y D pendientes; C1–C5 confirmadas, 34 RF cubiertos; no es cierre de la spec.
+- specs/034-apelaciones-sanciones — fase actual: Implementación, PR B2 — spec, plan y tareas aprobados por el usuario el 2026-11-12.
+- PR A y B1 fusionados. B2 T13 implementada: coordinador anterior a fase/versión/partidos/solicitud en organización y plataforma 033; 38 tests PostgreSQL pasan, incluidos permisos REQUEST/APPROVE aislados y scope de plataforma. Resto de B2, C y D pendientes; C1–C5 confirmadas; no es cierre de la spec.
 
 ## Decisiones tomadas
 - 2026-11-13 · Spec 034 B1 · Migraciones nuevas 041–043: primera apertura acreditada por XID raíz/snapshot, lectura operativa y served efectivo sin mutar duración original. Aviso privado GET /matches/{id}/suspension-warnings (solo player_id/remaining); no toca guardado/publicación de alineaciones ni público. Regresión 033 compara 039/043; origen se excluye solo si el consumidor lo pide, como antes. Walkover mantiene su rama sin lecturas disciplinarias, con el coordinador C3 previo al cierre.

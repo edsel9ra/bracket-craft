@@ -77,7 +77,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 
 Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T22 → T23 → T27 → T28 → T29 → T30 → T31 → T32 → T33 → T34 → T36 → T37 → T38 → T39. Mantener las rutas de escritura sin registrar hasta T36; T39 verifica el núcleo completo con los lectores ya fusionados en B1. Incluye API, decisiones, coordinación 033, plataforma, avisos y concurrencia. No fusionar fragmentos inseguros de B2.
 
-- [ ] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
+- [x] **T13. Adoptar protocolo en publicación 033 de organización/plataforma.** RF-007, RF-011, RF-025
 - Hecho cuando: no se bloquea solicitud antes de fase; publicación usa coordinador y mantiene el orden global de la 033, sin cambios a resultados ni permisos. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_concurrency.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k rectification_lock`.
 
 - [ ] **T16. Presentar apelación sin caducidad.** RF-001, RF-002, RF-003, RF-018, RF-026, RF-027, RF-028, RF-034

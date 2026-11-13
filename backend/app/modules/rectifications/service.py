@@ -10,7 +10,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
-from app.core.locking import lock_matches, lock_stage_and_version
+from app.core.locking import lock_discipline, lock_matches, lock_stage_and_version
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
 from app.modules.matches.audit import record_match_audit
@@ -112,6 +112,8 @@ class RectificationService:
         self.db = db
 
     async def _match(self, context: AuthContext, match_id: UUID, *, lock: bool = False) -> dict:
+        if lock:
+            await lock_discipline(self.db, context.organization_id)
         query = """
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id,
                 m.home_team_id, m.away_team_id, m.match_date, m.matchday, m.bracket_code,
@@ -272,8 +274,7 @@ class RectificationService:
             await set_rls_context(self.db, context.organization_id, context.user_id)
             savepoint = await self.db.begin_nested()
             try:
-                request = await self._request(context, request_id, lock=True)
-                match = await self._match(context, request["match_id"], lock=True)
+                request, match = await self._locked_request_and_match(context, request_id)
                 self._require_pending(request)
                 await self._approval_permission(context, request)
                 result = await self._publish(context, request, match, datetime.now(timezone.utc))
@@ -291,13 +292,18 @@ class RectificationService:
         try:
             async with self.db.begin():
                 await set_rls_context(self.db, context.organization_id, context.user_id)
-                request = await self._request(context, request_id, lock=True)
-                match = await self._match(context, request["match_id"], lock=True)
+                request, match = await self._locked_request_and_match(context, request_id)
                 return await self._decide_locked(context, request, match, payload)
         except DBAPIError as exc:
             if _self_approval_violation(exc):
                 raise RectificationSelfApproval() from exc
             raise
+
+    async def _locked_request_and_match(self, context, request_id):
+        request = await self._request(context, request_id)
+        match = await self._match(context, request["match_id"], lock=True)
+        request = await self._request(context, request_id, lock=True)
+        return request, match
 
     async def _decide_locked(self, context, request, match, payload, authorization=None):
         self._require_pending(request)
