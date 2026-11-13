@@ -7,7 +7,8 @@ Implementación A–D. Evidencia de desarrollo con datos ficticios; no certifica
 | Camino | Lectura/control vigente |
 |---|---|
 | Apertura de partido | `record_sanction_opening`, solo CLOSE_MATCH_REPORT; snapshot y aplicación tras coordinador. |
-| Cierre regular/walkover | Lectura operacional acotada al partido/organización; CLOSE_MATCH_REPORT, incluidos oficiales asignados. |
+| Cierre regular | Lectura operacional acotada al partido/organización; CLOSE_MATCH_REPORT, incluidos oficiales asignados. |
+| Walkover | Exige CLOSE_MATCH_REPORT y toma el coordinador C3, pero `_execute_walkover` omite validación/lectura y cómputo de suspensiones. No se amplía apertura ni se introduce una lectura nueva. |
 | Cierre administrativo | Owner/administrador activo con RESOLVE_MATCH_ADMINISTRATIVELY; no amplía apertura. |
 | Solicitud/publicación 033 | Lectura mínima con REQUEST_MATCH_REPORT_RECTIFICATION o autorización 033 vigente para el partido; sin expedientes ni evidencia. |
 | Workspace | VIEW_SANCTION_CASES para listado/detalle; presentar, proponer y retirar no implican lectura. |
