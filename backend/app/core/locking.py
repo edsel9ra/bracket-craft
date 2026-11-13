@@ -2,8 +2,9 @@
 
 The only valid order is::
 
-    fase (stages) -> versión (tournament_versions) -> partido(s) (matches)
-    -> segmentos -> jugadores
+    coordinador disciplinario por organización -> fase (stages)
+    -> versión (tournament_versions) -> partido(s) (matches)
+    -> segmentos -> jugadores -> sanciones -> expediente -> autorización
 
 Every route that needs more than one level acquires them in that order. The
 helpers below never set the RLS context: the caller does it inside its own
@@ -28,6 +29,13 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def lock_discipline(db: AsyncSession, organization_id: UUID) -> None:
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended('discipline:' || CAST(:organization_id AS text), 0))"),
+        {"organization_id": str(organization_id)},
+    )
 
 
 async def lock_stage_and_version(

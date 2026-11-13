@@ -52,7 +52,7 @@ Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35
 - [x] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
 - Hecho cuando: DTOs con extra forbid, UUID, enums, representación, duración y paginación acotadas; motivo vacío, campos extra/archivos y alcance nuevo rechazados; evidencia ausente válida. Pasa `cd backend && pytest -q tests/test_sanction_schemas.py`.
 
-- [ ] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
+- [x] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
 - Hecho cuando: helper transaccional por organización precede fase/versiones/partidos/segmentos/jugadores/sanciones/expediente/autorización, con IDs estables; no comparte locks entre tenants. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_concurrency.py -k coordinator`.
 
 - [ ] **T14. Adoptar protocolo en apertura y cierre de partido.** RF-012, RF-014, RF-030
