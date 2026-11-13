@@ -13,6 +13,7 @@ const { organizationId } = useApi();
 const api = useSanctionCases();
 const detail = ref<Detail | null>(null); const error = ref(''); const loading = ref(false);
 const notice = ref('');
+const panel = ref<HTMLElement | null>(null);
 const canPresent = computed(() => auth.hasPermission('SUBMIT_SANCTION_APPEALS') || auth.hasPermission('RESOLVE_SANCTION_CASES'));
 let generation = 0;
 async function load() {
@@ -22,7 +23,7 @@ async function load() {
   loading.value = true;
   try { const value = await api.detail(props.caseId); if (token === generation) detail.value = value; }
   catch (cause) { if (token === generation) error.value = sanctionErrorKey(cause); }
-  finally { if (token === generation) loading.value = false; }
+  finally { if (token === generation) { loading.value = false; await nextTick(); if (token === generation) panel.value?.focus(); } }
 }
 watch(() => [props.caseId, organizationId.value, auth.userId, auth.access?.organization_id, auth.access?.permissions.join(',')], load, { flush: 'sync' });
 onMounted(load);
@@ -32,7 +33,7 @@ async function changed(message = 'sanction.stateUpdated') { notice.value = messa
 </script>
 
 <template>
-  <section tabindex="-1" :aria-label="t('sanction.review')">
+  <section ref="panel" tabindex="-1" :aria-label="t('sanction.review')">
     <p v-if="notice" role="status">{{ t(notice) }}</p>
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>
     <p v-else-if="error" role="alert">{{ t(error) }} <Button variant="secondary" @click="load">{{ t('common.retry') }}</Button></p>

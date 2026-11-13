@@ -6,6 +6,7 @@ const props = defineProps<{ case: Pick<SanctionCase, 'id' | 'status' | 'submitte
 const emit = defineEmits<{ changed: [notice?: string] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
+const errorTarget = useSanctionErrorFocus(error);
 const allowed = computed(() => canDecideSanction(props.case.submitted_by_user_id, props.userId, props.canResolve, props.case.status));
 const preview = ref<SanctionPreview | null>(null); const previewBusy = ref(false);
 const decision = ref<SanctionDecision>('maintain'); const duration = ref(''); const reason = ref(''); const evidence = ref(''); const links = ref('');
@@ -36,7 +37,7 @@ async function submit() {
 <template>
   <section v-if="allowed">
     <h3>{{ t('sanction.decide') }}</h3><p>{{ t('sanction.decisionHint') }}</p>
-    <p v-if="error" role="alert">{{ t(error) }}</p>
+    <p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <Button variant="secondary" :busy="previewBusy" :disabled="busy" @click="loadPreview">{{ t('sanction.preview') }}</Button>
     <form v-if="preview && preview.can_decide" @submit.prevent="submit"><fieldset :disabled="busy || previewBusy">
       <p role="status">{{ t('sanction.baseDuration') }}: {{ preview.expected_base_duration }} · {{ t('sanction.effective') }}: {{ preview.projection.effective_duration }} · {{ t('sanction.served') }}: {{ preview.projection.served_count }}</p>

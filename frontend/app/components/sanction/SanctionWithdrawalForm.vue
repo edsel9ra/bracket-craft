@@ -6,6 +6,7 @@ const props = defineProps<{ case: Pick<SanctionCase, 'id' | 'status' | 'case_typ
 const emit = defineEmits<{ changed: [notice?: string] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
+const errorTarget = useSanctionErrorFocus(error);
 const allowed = computed(() => canWithdrawSanction(props.case, props.userId, props.submitPermission, props.resolvePermission));
 const reason = ref(''); const evidence = ref(''); const links = ref('');
 async function submit() {
@@ -20,7 +21,7 @@ async function submit() {
 </script>
 
 <template>
-  <section v-if="allowed"><h3>{{ t('sanction.withdraw') }}</h3><p>{{ t('sanction.withdrawHint') }}</p><p v-if="error" role="alert">{{ t(error) }}</p>
+  <section v-if="allowed"><h3>{{ t('sanction.withdraw') }}</h3><p>{{ t('sanction.withdrawHint') }}</p><p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <form @submit.prevent="submit"><fieldset :disabled="busy">
       <FormField :for-id="`${prefix}-reason`" :label="t('sanction.reason')"><textarea :id="`${prefix}-reason`" v-model="reason" required /></FormField>
       <FormField :for-id="`${prefix}-evidence`" :label="t('sanction.evidenceOptional')"><textarea :id="`${prefix}-evidence`" v-model="evidence" /></FormField>

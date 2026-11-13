@@ -8,6 +8,7 @@ const emit = defineEmits<{ created: [receipt: SanctionReceipt] }>();
 const { t } = useI18n();
 const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
+const errorTarget = useSanctionErrorFocus(error);
 const prefix = useId();
 const source = ref(props.sanctionId || ''); const represented = ref(props.playerId || '');
 const representation = ref<'player' | 'team'>('player');
@@ -27,7 +28,7 @@ async function submit() {
   <Surface v-if="allowed" as="section">
     <h2>{{ t('sanction.appeal') }}</h2><p>{{ t('sanction.noExpiry') }}</p><p>{{ t('sanction.representationHint') }}</p>
     <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }} · {{ t(`sanction.status.${receipt.status}`) }}</p>
-    <p v-if="error" role="alert">{{ t(error) }}</p>
+    <p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <form @submit.prevent="submit"><fieldset :disabled="busy">
       <FormField :for-id="`${prefix}-source`" :label="t('sanction.sanctionId')"><input :id="`${prefix}-source`" v-model="source" required></FormField>
       <FormField :for-id="`${prefix}-representation`" :label="t('sanction.representation')"><select :id="`${prefix}-representation`" v-model="representation"><option value="player">{{ t('sanction.player') }}</option><option value="team">{{ t('sanction.team') }}</option></select></FormField>

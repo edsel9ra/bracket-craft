@@ -16,6 +16,7 @@ export function sanctionComponent(name: string, globals: Record<string, unknown>
     useI18n: () => ({ t: (key: string) => key, formatDateTime: (value: string) => value }),
     useId: () => 'sanction', useConfirm: () => ({ confirm: async () => true }),
     useSanctionCases: () => ({}), useAuthStore: () => ({ access: null }), ...globals,
+    useSanctionErrorFocus: () => vue.ref(null),
   });
   return exports.default!;
 }

@@ -168,7 +168,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 - [x] **T47. Aviso disciplinario en preparación de alineación.** RF-014, RF-017, RF-031
 - Hecho cuando: MatchLineupSection/useMatchLineup muestran aviso privado mínimo, accesible y no bloqueante; guardar/publicar y formaciones no se alteran; PublicLineupModal no recibe datos F9. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
-- [ ] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
+- [x] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
 - Hecho cuando: claves ES/EN completas, foco/teclado y tokens existentes, errores 403/404/409/422 sin filtrar expediente y reapertura manual solo cuando procede; no dialogs nativos. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck && pnpm run lint`.
 
 - [ ] **T49. E2E Workspace con dos personas y tenants.** RF-003, RF-006, RF-018, RF-021, RF-022, RF-025, RF-029, RF-030, RF-031, RF-034

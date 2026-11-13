@@ -5,6 +5,7 @@ import { authorizationState, sanctionErrorKey, type SanctionAuthorization } from
 const props = withDefaults(defineProps<{ owner: boolean; caseId: string; pending?: boolean }>(), { pending: true });
 const { t, formatDateTime } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
+const errorTarget = useSanctionErrorFocus(error);
 const rows = ref<SanctionAuthorization[]>([]); const loading = ref(false); const email = ref(''); const reason = ref('');
 let generation = 0;
 async function load() {
@@ -34,7 +35,7 @@ async function revoke(scope: SanctionAuthorization) {
 
 <template>
   <section v-if="owner"><h3>{{ t('sanction.authorizations') }}</h3><p>{{ t('sanction.authorizationHint') }}</p>
-    <p v-if="loading" role="status">{{ t('common.loading') }}</p><p v-if="error" role="alert">{{ t(error) }} <Button variant="secondary" :disabled="busy || loading" @click="load">{{ t('common.retry') }}</Button></p>
+    <p v-if="loading" role="status">{{ t('common.loading') }}</p><p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }} <Button variant="secondary" :disabled="busy || loading" @click="load">{{ t('common.retry') }}</Button></p>
     <p v-if="!loading && !error && !rows.length">{{ t('sanction.noAuthorizations') }}</p>
     <ul><li v-for="scope in rows" :key="scope.id">{{ scope.platform_admin_user_id }} · {{ scope.reason }} · {{ formatDateTime(scope.granted_at) }} · {{ t(authorizationState(scope)) }} <Button v-if="pending && !scope.revoked_at && !scope.consumed_at" variant="danger" :busy="busy" @click="revoke(scope)">{{ t('sanction.revoke') }}</Button></li></ul>
     <form v-if="pending" @submit.prevent="grant"><fieldset :disabled="busy || loading">

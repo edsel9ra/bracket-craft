@@ -7,6 +7,7 @@ const props = defineProps<{ allowed: boolean; priorCaseId?: string }>();
 const emit = defineEmits<{ created: [receipt: SanctionReceipt] }>();
 const { t } = useI18n(); const prefix = useId(); const api = useSanctionCases();
 const { busy, error, run } = useSanctionAction();
+const errorTarget = useSanctionErrorFocus(error);
 const source = ref(''); const action = ref<'annul' | 'reduce'>('annul'); const duration = ref('');
 const reason = ref(''); const evidence = ref(''); const links = ref(''); const prior = ref(props.priorCaseId || '');
 const receipt = ref<SanctionReceipt | null>(null);
@@ -21,7 +22,7 @@ async function submit() {
 
 <template>
   <Surface v-if="allowed" as="section"><h2>{{ t('sanction.propose') }}</h2><p>{{ t('sanction.proposalHint') }}</p>
-    <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }}</p><p v-if="error" role="alert">{{ t(error) }}</p>
+    <p v-if="receipt" role="status">{{ t('sanction.receipt') }}: {{ receipt.id }}</p><p v-if="error" ref="errorTarget" tabindex="-1" role="alert">{{ t(error) }}</p>
     <form @submit.prevent="submit"><fieldset :disabled="busy">
       <FormField :for-id="`${prefix}-source`" :label="t('sanction.sanctionId')"><input :id="`${prefix}-source`" v-model="source" required></FormField>
       <FormField :for-id="`${prefix}-action`" :label="t('sanction.proposedAction')"><select :id="`${prefix}-action`" v-model="action"><option value="annul">{{ t('sanction.decision.annul') }}</option><option value="reduce">{{ t('sanction.decision.reduce') }}</option></select></FormField>
