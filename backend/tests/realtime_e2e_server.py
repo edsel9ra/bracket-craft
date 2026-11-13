@@ -198,8 +198,11 @@ async def command(data):
                 async with main.Redis.from_url(main.settings.redis_url, decode_responses=True) as redis:
                     await publish_stream_event(redis, {'id': event_id, 'organization_id': fixture['organization_id'],
                         'event_type': data.get('event_type', 'MATCH_UPDATED'),
-                        'payload': {'match_id': fixture['match_id'], 'tournament_id': fixture['tournament_id']}})
+                        'payload': data.get('payload', {'match_id': fixture['match_id'], 'tournament_id': fixture['tournament_id']})})
                 return {'event_id': event_id}
+            if action == 'outbox_status':
+                return (await db.execute(text('SELECT status FROM outbox_events WHERE id=:id'),
+                    {'id': data['event_id']})).scalar_one()
             if action == 'link_owner':
                 other = tenants[data['other_organization_id']]
                 member = (await db.execute(text('''INSERT INTO organization_users (organization_id,user_id)
