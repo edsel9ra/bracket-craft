@@ -604,5 +604,29 @@ Pila local con arnés test-only y base nueva `bc_f8_history_e2e`, init real,
 migraciones 001–055 y seed. No se modificó .env ni el runner/configuración. El
 contenedor Playwright no tiene Docker CLI (limitación ya conocida); logs de API y
 worker recogidos desde el host en `/home/ubuntu/f8-history-e2e-server.log`.
-Sin inspección visual manual. CI del nuevo SHA pendiente de publicar/comprobar;
-los resultados remotos anteriores corresponden a sus SHAs, no a este fix.
+Sin inspección visual manual. Fix funcional publicado como
+`7018d361684dd05ac121d0d60fafed461ddf46d6`.
+
+CI del fix, comprobada por SHA y evento después de esperar `git_pr_checks(all)`:
+
+| Evento | Run | Estado |
+|---|---|---|
+| pull_request | 43496923078 | success |
+| push | 43496914192 | success; E2E omitido según condición existente |
+
+```text
+Summary: 7 passed, 0 failed, 0 pending, 0 skipped
+Frontend: tests 979; pass 978; fail 0; skipped 1
+Build complete in 9.52s!
+Backend PR: 3613 passed, 4 skipped in 717.72s (0:11:57)
+E2E PR: 60 passed (5.9m)
+RESULTADO: VERDE (0)
+```
+
+Las seis pruebas private-realtime pasan, incluida publicación con borrador abierto
+y reconstrucción del historial tras RESYNC. GitHub Review actualizada:
+«Devin Review: No Issues Found», sin nuevos hallazgos que corregir ni falsos
+positivos que descartar; cero comentarios inline. Estado del SHA: success,
+«No findings left on this commit». El push aún estaba ejecutándose al terminar
+el check del PR; se esperó su run específico y se comprobó success por la API.
+T37 conserva fusión pendiente; no se fusionó el PR ni se declaró aceptación F8.
