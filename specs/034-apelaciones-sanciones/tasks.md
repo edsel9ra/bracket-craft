@@ -39,7 +39,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - Hecho cuando: funciones de cierre consecuente comprueban publicación/cambio acreditado y funciones de entrega atan el aviso al evento reclamado, sin UPDATE genérico ni suplantación de miembro. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py`, verificando la migración real sobre BD limpia y 039→040, con checksums previos intactos. Pasan además `sh -n infra/postgres/migrate.sh` y el runner de abajo, que prueba el mecanismo MIGRATION_TARGET con migraciones sintéticas, no sustituye los tests reales de la 040.
 - Comando del runner desde raíz, con PGHOST/PGPORT/PGUSER/PGPASSWORD exportadas para PostgreSQL local de prueba: `docker run --rm --network host -v "$PWD/infra:/infra:ro" -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17-alpine sh /infra/scripts/test_migrate_target.sh`.
 
-- [ ] **T9. Proyección pura de duración efectiva y cumplimientos.** RF-003, RF-010, RF-014
+- [x] **T9. Proyección pura de duración efectiva y cumplimientos.** RF-003, RF-010, RF-014
 - Hecho cuando: sin resolución equivale al comportamiento base; reducción mayor/igual/menor que cumplido, anulación y declaración conservan historial, saldo nunca negativo ni crédito y `appealed` no crea recurso. Pasa `cd backend && pytest -q tests/test_sanction_effective.py -k duration`.
 
 - [ ] **T10. Funciones temporales puras y compatibilidad de legado (C4).** RF-011, RF-012, RF-027, RF-030
