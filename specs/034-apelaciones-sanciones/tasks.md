@@ -17,7 +17,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 - [x] **T1. Nueva 040: expedientes, eventos y unicidad de pendiente.** RF-001, RF-009, RF-016, RF-029
 - Hecho cuando: tablas de expediente/eventos nacen con RLS/FORCE, FK tenant, motivo y autor, índice parcial compartido por apelación/propuesta y grants mínimos; no se importan filas `appealed`. Pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k cases` y `sh -n infra/postgres/migrate.sh`.
 
-- [ ] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
+- [x] **T2. Nueva 040: decisiones y resoluciones inmutables.** RF-004, RF-005, RF-009, RF-020, RF-034
 - Hecho cuando: decisiones/resoluciones registran base original/efectiva, responsable y motivo, evidencia opcional sin archivos y FK tenant; UPDATE/DELETE rechazados, sin tocar `matches_suspended`. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_040.py -k decisions`.
 
 - [ ] **T3. Nueva 040: aplicaciones y snapshots por partido.** RF-010, RF-014, RF-030

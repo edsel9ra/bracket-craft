@@ -72,3 +72,34 @@ async def test_cases_rls_pending_and_history(f9_db):
         assert await db.fetchval("SELECT count(*) FROM sanction_cases") == 0
     assert await db.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", suspension) == 3
     assert not await db.fetchval("SELECT rolbypassrls FROM pg_roles WHERE rolname='bracket_app'")
+
+
+async def insert_decision(db, case_id, actor=None, action="reduce"):
+    actor = actor or await db.fetchval("INSERT INTO users(email,full_name) VALUES ('f9-decider@test.invalid','Decider') RETURNING id")
+    return await db.fetchval("""INSERT INTO sanction_case_decisions
+        (organization_id,case_id,decided_by_user_id,decided_as,decision,reason,before_duration,after_duration)
+        VALUES ($1,$2,$3,'member',$4,'Verified',3,$5) RETURNING id""", ORG, case_id, actor, action,
+        1 if action == "reduce" else None)
+
+
+async def test_decisions_append_only_and_duration_original(f9_db):
+    db, suspension = f9_db
+    case_id = await insert_case(db, suspension)
+    decision = await insert_decision(db, case_id)
+    resolution = await db.fetchval("""INSERT INTO sanction_resolutions
+        (organization_id,case_id,decision_id,suspension_id,action,original_duration,
+         before_duration,new_duration,served_count,is_declarative)
+        VALUES ($1,$2,$3,$4,'reduce',3,3,1,0,FALSE) RETURNING id""", ORG, case_id, decision, suspension)
+    assert resolution
+    for table in ("sanction_case_decisions", "sanction_resolutions"):
+        assert await db.fetchval("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid=$1::regclass", table)
+        with pytest.raises(asyncpg.CheckViolationError):
+            await db.execute(f"UPDATE {table} SET created_at=created_at + interval '1 second'")
+        with pytest.raises(asyncpg.CheckViolationError):
+            await db.execute(f"DELETE FROM {table}")
+    with pytest.raises(asyncpg.UndefinedColumnError):
+        await db.execute("UPDATE sanction_case_decisions SET attachments='[]'")
+    async with db.transaction():
+        await app_context(db)
+        assert await db.fetchval("SELECT count(*) FROM sanction_resolutions") == 0
+    assert await db.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", suspension) == 3
