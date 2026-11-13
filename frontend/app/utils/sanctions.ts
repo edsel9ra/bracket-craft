@@ -48,3 +48,10 @@ export function sanctionErrorKey(cause: unknown): string {
   const status = failure?.statusCode || failure?.status;
   return `sanction.error.${status === 403 ? 'forbidden' : status === 404 ? 'notFound' : status === 409 ? 'conflict' : status === 422 ? 'validation' : 'generic'}`;
 }
+
+export function safeEvidenceLink(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
