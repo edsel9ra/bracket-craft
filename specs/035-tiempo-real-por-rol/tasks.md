@@ -217,10 +217,10 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 - Tests primero: S1/S2 ensayan función ausente/error de migración y contingencia sin emisiones organizativas, manteniendo HTTP/público. Revisar el procedimiento para no dejar procesos API antiguos haciendo broadcast.
 - Hecho cuando: README/AGENTS documentan migración previa, sustitución/drenaje de todos los API, compatibilidad de filas históricas y rollback que **no** restaura rooms vulnerables ni borra migración/outbox. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k rollout` y `git diff --check`; no se ejecuta despliegue productivo como parte de la prueba.
 
-- [ ] **T37. Gate indivisible de PR B.** RF-001, RF-002, RF-006, RF-011, RF-012, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
+- [x] **T37. Gate indivisible de PR B.** RF-001, RF-002, RF-006, RF-011, RF-012, RF-014, RF-015, RF-016, RF-017, RF-018, RF-019, RF-020
 - [x] Gate local completo (2026-11-13): backend PostgreSQL 3617 pass; frontend 968 pass/1 skip; E2E Compose 59 pass; infraestructura, migraciones 055/runner y escaneos. Evidencia y límites en `verificacion.md`.
 - [x] CI de PR/push y revisión automatizada de B: PR #77, fix `57cf9f51`, ambos runs verdes y E2E 59 pass (2026-11-13). Hallazgo comunicado de Devin Review reproducido en rojo y corregido; check de revisión verde, cero comentarios inline en GitHub. Detalles y límites en `verificacion.md`.
-- [ ] Fusión de B: pendiente; no iniciar C ni declarar F8/R32f aceptados.
+- [x] Fusión de B: #77 fusionado en `ca136b2c1ebd1a2b0d613eafc575d32e055ddfa8`, comprobado por API el 2026-11-13. CI final de `5daa6d5c`: PR 43499246334 y push 43499235618 success; frontend 978 pass/1 skip, E2E PR 60 pass, Devin Review sin hallazgos. Autoriza iniciar C; F8 pendiente de aceptación y R32f abierto hasta T49.
 - Dependencias: T18–T36; PR B.
 - Tests primero: regresión completa y E1/E2 mínimos, incluida no recepción antes de UI, sin posponer estos controles a C.
 - Hecho cuando: pasan `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `cd backend && python -m compileall -q app`, `cd frontend && pnpm run e2e:test` y `git diff --check`, junto con frontend T35 e infrastructure/security de CI. CI PR/push verdes y revisión de B; no hay fallback a broadcast ni implantación parcial. Fusionar B antes de C, sin declarar aún cierre R32f/F8 aceptado.

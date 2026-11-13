@@ -630,3 +630,20 @@ positivos que descartar; cero comentarios inline. Estado del SHA: success,
 «No findings left on this commit». El push aún estaba ejecutándose al terminar
 el check del PR; se esperó su run específico y se comprobó success por la API.
 T37 conserva fusión pendiente; no se fusionó el PR ni se declaró aceptación F8.
+
+## Inicio de PR C y cierre de T37 — 2026-11-13
+
+El usuario comunica la fusión de #77 y autoriza C. Comprobación autoritativa:
+```json
+{"merge_commit_sha":"ca136b2c1ebd1a2b0d613eafc575d32e055ddfa8","merged":true,"state":"closed"}
+```
+
+`main` actualizado por fast-forward hasta ese merge; C parte de él. El HEAD final
+de B fue `5daa6d5c586179aaf56ad6caf2933679d9c1af6e`, con CI final comprobada:
+PR 43499246334 y push 43499235618 success, frontend 978 pass/1 skip,
+backend PostgreSQL 3613 pass/4 skip, E2E PR 60 pass (5.8m) y Review sin hallazgos.
+Estas salidas corresponden a B, no son ejecución nueva ni evidencia de C.
+
+T37 verificada por fusión más gates anteriores; T38–T48 pendientes y T49 abierta.
+F8 **pendiente de aceptación**, R32f **abierto**; no se habilita F1 ni Socket.IO F9.
+No se exige ni introduce migración nueva para este cierre documental.

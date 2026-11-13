@@ -6,11 +6,11 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B #77 — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T36 verificadas, gate local/CI PR+push/revisión automatizada T37 cumplidos. Fix `57cf9f51` recupera el partido tras rollback de organización sin aceptar GET antiguos. Fusión de B pendiente; R32f sigue abierto y F8 no está aceptado.
+- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR C. PR A #76 y PR B #77 fusionados; merge de B `ca136b2c` comprobado por API el 2026-11-13. T1–T37 verificadas; T38–T48 por ejecutar y T49 reservada a aceptación humana. C1–C4 intactas; F8 pendiente de aceptación y R32f abierto.
 
 ## Pendiente
-- Fix del historial de actas #77 `7018d361`: operación aceptada → `api.versions`/`useApi`, sin listener/payload nuevos ni remontaje; recarga aplazada mientras se edita, generaciones y limpieza 401/403/404. Rojo: 6 unitarios y publicación/RESYNC (2 esperado, 1 recibido); verde local: frontend 978 pass/1 skip, E2E 60 pass. CI funcional PR 43496923078 y push 43496914192 success; E2E CI 60 pass; Review «No Issues Found». Fusión pendiente.
-- Spec 035: fusionar PR B #77 tras decisión humana; después C. CI funcional `57cf9f51`: PR 43486317643 y push 43486306264 verdes; backend 3613 pass/4 skip; frontend 970 pass/1 skip; E2E PR 59 pass, incluido el nuevo proyecto privado; Devin Review check verde y hallazgo comunicado corregido con rojo/verde. Evidencia en verificacion.md. Sin despliegue ni aceptación humana; F1/F9 mantienen sus restricciones.
+- Spec 035 PR C: ejecutar T38–T48 en orden, comenzando por dos procesos API reales. T47 requiere el PR que abrirá el usuario; T48 depende de esa CI/revisión, por lo que no se acreditan antes. No abrir el PR ni cerrar T49. Sin despliegue ni aceptación humana; F1/F9 mantienen sus restricciones.
+- B fusionado incluye los fixes de rollback `57cf9f51` y del historial `7018d361`. CI final `5daa6d5c`: PR 43499246334 y push 43499235618 success; backend 3613 pass/4 skip, frontend 978 pass/1 skip, E2E 60 pass y Review sin hallazgos. Evidencia en verificacion.md.
 
 ## Decisiones tomadas
 - 2026-11-13 · Spec 035 · Usuario descarta 056: C3 reutiliza 032 SECURITY INVOKER por lotes de hasta 256 sockets suspendidos; válidos reciben RESYNC RELAY_START dirigido, inválidos tratamiento 032, error/fila ausente conserva suspensión y reintenta. Sin recursos ni replay; HTTP autoriza cada reconstrucción. Precisión en plan sin cambiar C3.
