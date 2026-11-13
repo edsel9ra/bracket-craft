@@ -1,3 +1,5 @@
+import { normalizeUuid } from './validation.ts';
+
 export type CaseStatus = 'pending' | 'resolved' | 'withdrawn' | 'closed_by_rectification';
 export type CaseType = 'appeal' | 'administrative_proposal';
 export type SanctionDecision = 'maintain' | 'annul' | 'reduce' | 'approve' | 'reject';
@@ -54,4 +56,19 @@ export function safeEvidenceLink(value: string): string | null {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
   } catch { return null; }
+}
+
+export function evidencePayload(reason: string, evidence: string, links: string): Evidence | null {
+  const values = links.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  if (!reason.trim() || values.some((value) => !safeEvidenceLink(value))) return null;
+  return { reason: reason.trim(), evidence_text: evidence.trim() || null, evidence_links: values.map((value) => safeEvidenceLink(value)!) };
+}
+
+export interface AppealInput { sanctionId: string; representation: 'player' | 'team'; representedId: string; reason: string; evidence: string; links: string; priorCaseId: string }
+export function appealSubmission(input: AppealInput): { id: string; body: AppealBody } | null {
+  const id = normalizeUuid(input.sanctionId); const represented = normalizeUuid(input.representedId);
+  const prior = input.priorCaseId.trim() ? normalizeUuid(input.priorCaseId) : undefined;
+  const evidence = evidencePayload(input.reason, input.evidence, input.links);
+  if (!id || !represented || !evidence || prior === null || !['player', 'team'].includes(input.representation)) return null;
+  return { id, body: { ...evidence, ...(input.representation === 'player' ? { represented_player_id: represented } : { represented_team_id: represented }), ...(prior ? { prior_case_id: prior } : {}) } };
 }
