@@ -688,3 +688,31 @@ T48 no puede cerrarse sin esa CI/revisión. T49 y aceptación F8 siguen pendient
 Solo se verifican aquí el diff documental, cierre de T37 y permanencia de
 T38–T49 abiertas. No se ejecutaron los gates locales completos ni carga de C;
 los resultados anteriores son los de B y no se reutilizan como validación de C.
+
+### T38 — dos API reales, 2026-11-13
+
+Usuario confirma T38a–c/T39a–c, mismo alcance/un único PR C y sin presupuesto
+temporal. Se retoma la implementación; la pausa anterior queda como antecedente.
+
+`realtime_process.py` inicia dos procesos OS mediante spawn, cada uno con Uvicorn,
+pool bracket_app, registro y relay propios, sobre DB desechable 001–055 y stream
+Redis único. IPC por pipes independientes; clientes WebSocket capturan paquetes
+Socket.IO antes de cualquier dispatcher. Outbox real mediante process_once y
+publicación Redis real; ninguna entrega mock. Barreras antes/después de evaluar
+y fence de transporte acreditan ausencia sin sleeps de commit. Retiradas usan
+transacciones PostgreSQL confirmadas; reconexión autentica contra el otro API.
+
+Rojo previo (arnés ausente, no supuesto bug de producto):
+```text
+ModuleNotFoundError: No module named 'realtime_process'
+1 failed, 52 deselected in 1.50s
+```
+Verde:
+```text
+6 passed, 52 deselected in 27.56s
+```
+Incluye sesión, membresía y rol retirados; permiso de escritura/asignación
+irrelevantes conservan lectura HTTP y socket (DA-1); dos tenants, tránsito
+preaprobado permitido, reconexión sin replay y RESYNC JOIN. CI backend necesita
+Redis real: se añade únicamente un service Redis de pruebas al job existente,
+sin modificar Compose productivo ni entorno/configuración de la aplicación.

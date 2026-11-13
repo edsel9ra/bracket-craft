@@ -33,6 +33,69 @@ from test_realtime_policy import envelope, socket_metadata
 EVALUATION_TIME = datetime(2026, 11, 13, 12, tzinfo=timezone.utc)
 
 
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+@pytest.mark.parametrize('withdrawal', ['session', 'membership', 'roles', 'irrelevant_permission', 'irrelevant_official'])
+async def test_multiprocess_committed_cutoff_real_transport(flow, withdrawal):
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        other = await cluster.identity(USER.replace('31000000', '32000000'))
+        left = await cluster.connect(0, identity)
+        right = await cluster.connect(1, identity)
+        outsider = await cluster.connect(1, other, ORG.replace('31000000', '32000000'))
+        assert (await cluster.rpc(0, 'probe'))['pid'] != (await cluster.rpc(1, 'probe'))['pid']
+        assert await cluster.http(0, identity) == 200
+        event = await cluster.publish()
+        await cluster.settle(event)
+        for wire in [left, right]:
+            assert wire.payload(event) == {'event_id': event, 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+        assert outsider.payload(event) is None
+
+        pending_event = await cluster.enqueue()
+        await cluster.gate(pending_event)
+        await cluster.flush()
+        await cluster.paused()
+        await cluster.withdraw(withdrawal, identity)
+        remains_allowed = withdrawal.startswith('irrelevant_')
+        status = await cluster.http(1, identity)
+        assert status == 200 if remains_allowed else status in {401, 403, 404}
+        await cluster.release()
+        await cluster.settle(pending_event)
+        assert (left.payload(pending_event) is not None) == remains_allowed
+        assert (right.payload(pending_event) is not None) == remains_allowed
+        assert outsider.payload(pending_event) is None
+
+
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+async def test_multiprocess_preapproved_transit_reconnect_other_api_no_replay(flow):
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        left = await cluster.connect(0, identity)
+        event = await cluster.enqueue()
+        await cluster.gate(event, phase='after')
+        await cluster.flush()
+        await cluster.paused(indices=[0])
+        await cluster.withdraw('session', identity)
+        await cluster.release()
+        await cluster.settle(event)
+        assert left.payload(event) is not None
+        await left.close()
+        with pytest.raises(PermissionError):
+            await cluster.connect(1, identity)
+        fresh = await cluster.identity(USER)
+        right = await cluster.connect(1, fresh)
+        await cluster.fence()
+        assert right.payload(event) is None
+        assert any(name == 'RESYNC' and value['reason'] == 'JOIN' for name, value in right.frames)
+        assert await cluster.http(1, fresh) == 200
+        new = await cluster.publish()
+        await cluster.settle(new)
+        assert right.payload(new) is not None
+
+
 async def candidate(f, user=USER):
     session = uuid4()
     await f.admin.execute('INSERT INTO user_sessions (id,user_id,expires_at) VALUES ($1,$2,$3)',

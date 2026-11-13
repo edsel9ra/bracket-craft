@@ -229,17 +229,23 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 
 Depende de B fusionado y verde. No introduce una arquitectura distinta ni pospone arreglos de seguridad observados en B. **T49 es la aceptación expresa del usuario**, no la aprobación de estas tareas.
 
-- [ ] **T38. Ampliar revocación y aislamiento a dos procesos API.** RF-001, RF-002, RF-006, RF-007, RF-008, RF-009, RF-010, RF-011
+- [x] **T38. Ampliar revocación y aislamiento a dos procesos API.** RF-001, RF-002, RF-006, RF-007, RF-008, RF-009, RF-010, RF-011
 - Dependencias: T37; PR C.
 - Tests primero: D2/E1 ejecuta procesos distintos con sockets de la misma persona y de dos tenants, evento pendiente, commit de retirada y evaluación posterior en cada proceso; reconexión al otro proceso.
 - Hecho cuando: ningún proceso reutiliza permisos antiguos o se beneficia de no recibir una invalidación Redis; registrar la topología de prueba real. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k multiprocess`; extender las fixtures sin añadir servicios/configuración productiva ni confundir mocks con procesos reales.
 
-**Pausa por tamaño, 2026-11-13:** el arnés de B controla un único proceso y las pruebas DB actuales no crean procesos API. T38 requiere topología e IPC independientes, barreras coordinadas y receptores/reconexión reales; estimación 60–90 min activos. Se propone desglose interno T38a–c y T39a–c en `verificacion.md`, todavía sin incorporar ni ejecutar. T38–T49 permanecen abiertas; C4 y el alcance aprobado no cambian.
+**Desglose interno sin cambio de alcance, 2026-11-13**, confirmado por el usuario; sin presupuesto de tiempo por tarea. C4 y un único PR C se mantienen.
+- [x] T38a: dos API reales test-only, DB/Redis compartidos, IPC independiente y PID/puertos distintos.
+- [x] T38b: barreras por proceso, evento pendiente y retirada con commit antes de evaluación; RLS y dos tenants reales.
+- [x] T38c: sesiones/pestañas en ambos procesos, captura del transporte y reconexión al otro API sin replay.
 
 - [ ] **T39. Ampliar L1 con ráfagas, DB lenta y memoria acotada.** RF-001, RF-011, RF-014, RF-016, RF-018
 - Dependencias: T16, T37, T38; PR C.
 - Tests primero: L1 reproduce dos procesos, muchos sockets/principales, cero destinatarios, error/latencia DB y episodios repetidos de suspensión/recuperación.
 - Hecho cuando: se registran dataset, llamadas de red/trabajo SQL, p50/p95, retraso y memoria, sin crecimiento por pérdidas ni decisiones autorizadas acumuladas; lotes máximos 256, sin caché. No inventar SLA ni usar la llamada exterior para ocultar trabajo interno. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k load` y se adjunta evidencia de L1 en `verificacion.md`.
+- [ ] T39a: 1.000 sockets/100 principales y borde 256/257; llamadas y trabajo SQL interno.
+- [ ] T39b: ráfagas, cero destinatarios, DB lenta/caída y suspensión/recuperación repetidas en ambos procesos.
+- [ ] T39c: artefacto reproducible de p50/p95, retraso, memoria y dataset; aceptación estructural sin SLA inventado.
 
 - [ ] **T40. Ampliar fallos y recuperación parcial por conexión/proceso.** RF-006, RF-009, RF-010, RF-014, RF-016, RF-017, RF-018
 - Dependencias: T38; PR C.
