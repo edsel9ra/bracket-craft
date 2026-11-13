@@ -49,7 +49,7 @@ Sin rutas de escritura ni UI activadas. Las piezas BD de T1–T8 se verifican ju
 
 Depende de A. Orden: T11 → T12 → T14 → T15 → T24 → T25 → T26 → T35. No expone ninguna ruta de escritura de expedientes: los contratos de T11 son inertes; T35 solo registra su lectura privada. Fusionable porque, sin resoluciones, la duración efectiva equivale a la original. Antes de fusionar pasan las pruebas de lectores, apertura, cumplimientos y avisos de estas tareas y `cd backend && RUN_DATABASE_TESTS=1 pytest -q`; no se activa ninguna creación/decisión de expediente.
 
-- [ ] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
+- [x] **T11. Contratos estrictos del módulo F9.** RF-018, RF-020, RF-028, RF-034
 - Hecho cuando: DTOs con extra forbid, UUID, enums, representación, duración y paginación acotadas; motivo vacío, campos extra/archivos y alcance nuevo rechazados; evidencia ausente válida. Pasa `cd backend && pytest -q tests/test_sanction_schemas.py`.
 
 - [ ] **T12. Coordinador disciplinario y orden de bloqueos (C3).** RF-016, RF-025, RF-029, RF-030
