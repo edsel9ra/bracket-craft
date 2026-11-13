@@ -118,42 +118,42 @@ Depende de A fusionado y verde. Contiene juntos gate, invalidaciones, control co
 - Tests primero: S1 para alta/baja, varios sid de una sesión, JWT verificado/expiración, sesión ausente, otro tenant y generación nueva.
 - Hecho cuando: `main.py` mantiene índice local organización→principal→sid coherente, con expiración procedente del token validado y limpieza al desconectar; sin nuevo permiso del cliente ni sockets duplicados. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k registry`.
 
-- [ ] **T19. Activar el gate en el momento de entregar a cada sid.** RF-001, RF-002, RF-003, RF-005, RF-007, RF-008, RF-009, RF-011, RF-012, RF-013
+- [x] **T19. Activar el gate en el momento de entregar a cada sid.** RF-001, RF-002, RF-003, RF-005, RF-007, RF-008, RF-009, RF-011, RF-012, RF-013
 - Dependencias: T17, T18; PR B.
 - Tests primero: S1 con autorizado/denegado, lector general sin oficial, evento pendiente, resultado ausente y catálogo desconocido, observando `sio.emit` antes de cualquier UI.
 - Hecho cuando: el relay usa evaluación fresca y proyección mínima por sid; nunca emite dominio al room organizativo ni envía un payload vacío al denegado. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k delivery`.
 
-- [ ] **T20. Separar el carril público de errores privados.** RF-014, RF-016, RF-018
+- [x] **T20. Separar el carril público de errores privados.** RF-014, RF-016, RF-018
 - Dependencias: T19; PR B.
 - Tests primero: S1 con los tres nombres/campos públicos, mismo room/criterio actual, nombres compartidos `scope=organization` y excepción de autorización privada.
 - Hecho cuando: el fallo privado no impide la emisión pública elegible ni convierte la variante privada en pública; sin campos/eventos nuevos. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k public` y `cd backend && pytest -q tests/test_outbox_relay.py tests/test_outbox_resync.py`.
 
-- [ ] **T21. Reducir nuevas filas privadas de rectificación conservando compatibilidad.** RF-011, RF-012, RF-013, RF-015, RF-016, RF-018
+- [x] **T21. Reducir nuevas filas privadas de rectificación conservando compatibilidad.** RF-011, RF-012, RF-013, RF-015, RF-016, RF-018
 - Dependencias: T5, T19, T20; PR B.
 - Tests primero: S3 para productor transaccional, tres entradas/IDs propios, payload nuevo sin timestamp, fila histórica con timestamp y referencias de versión verificadas.
 - Hecho cuando: `rectifications/notifications.py` conserva `scope/version_id` internos y nombres/cantidad; wire solo tres IDs, sin reescribir outbox ni cambiar auditoría/publicación/correo. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py -k rectification`; añadir estos casos de productor a la suite DB futura.
 
-- [ ] **T22. Probar la sonda, F9 y correo fuera del canal de producto.** RF-012, RF-019, RF-020
+- [x] **T22. Probar la sonda, F9 y correo fuera del canal de producto.** RF-012, RF-019, RF-020
 - Dependencias: T2, T19, T21; PR B.
 - Tests primero: S3 observa worker/Redis/socket: sonda procesada y visible en Redis, cero emisiones Socket.IO; handlers F9/correo no publican Redis y una inyección errónea de esos tipos en stream no se difunde.
 - Hecho cuando: no se rompe la utilidad operativa ni se habilita F1 por compartir outbox. Pasan `cd backend && pytest -q tests/test_outbox_probe.py tests/test_outbox_worker.py` y `cd backend && pytest -q tests/test_realtime_delivery.py -k exclusions`.
 
-- [ ] **T23. Suspender solo entregas privadas no verificables y avanzar cursor.** RF-011, RF-014, RF-016, RF-017
+- [x] **T23. Suspender solo entregas privadas no verificables y avanzar cursor.** RF-011, RF-014, RF-016, RF-017
 - Dependencias: T9, T19, T20; PR B.
 - Tests primero: S2 con excepción/timeout de lote o principal, salida faltante, varios tenants, nuevos eventos y error repetido; comprobar mensajes y logs.
 - Hecho cuando: ninguna autorización antigua ni desconexión masiva, marca por afectados, cursor avanza y no guarda backlog/IDs privados; diagnósticos sin payload/tokens/evidencia. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k suspension`.
 
-- [ ] **T24. Recuperar antes de la siguiente entrega con RESYNC compatible.** RF-006, RF-009, RF-014, RF-017, RF-018
+- [x] **T24. Recuperar antes de la siguiente entrega con RESYNC compatible.** RF-006, RF-009, RF-014, RF-017, RF-018
 - Dependencias: T9, T23; PR B.
 - Tests primero: S2 para recuperación válida/parcial/denegada, varios errores coalescidos y fallo al enviar control, incluidos token o membresía ya retirados.
 - Hecho cuando: reautoriza contexto, emite al sid un `RESYNC {event_id,reason:'RELAY_START'}` sin recursos y comprueba regla del siguiente evento; mantiene marca si falla envío. No replay ni control por cada pérdida. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k recovery_event`.
 
-- [ ] **T25. Recuperar sin evento nuevo y reautorizar controles organizativos.** RF-006, RF-007, RF-009, RF-014, RF-016, RF-017
+- [x] **T25. Recuperar sin evento nuevo y reautorizar controles organizativos.** RF-006, RF-007, RF-009, RF-014, RF-016, RF-017
 - Dependencias: T24; PR B.
 - Tests primero: S2 usa reloj/programador inyectado para ciclo de 30 s, sin nuevo evento; reintento fallido, desconexión real, JOIN/RELAY_START/trim/reset organizativos y público intacto.
 - Hecho cuando: mantenimiento intenta recuperar solo marcas vigentes con evaluación nueva, sin TTL de permiso; controles organizativos pasan gate de contexto y el fallo no desconecta masivamente. Pasan `cd backend && pytest -q tests/test_realtime_delivery.py -k recovery_cycle` y `cd backend && pytest -q tests/test_socket_revalidation.py tests/test_outbox_resync.py`.
 
-- [ ] **T26. Descartar autorizaciones de una generación de conexión anterior.** RF-002, RF-010, RF-011, RF-018
+- [x] **T26. Descartar autorizaciones de una generación de conexión anterior.** RF-002, RF-010, RF-011, RF-018
 - Dependencias: T18, T24, T25; PR B.
 - Tests primero: S1 pausa entre consulta/control/emit y cambia o desconecta el contexto, incluidas sesiones diferentes del mismo usuario y sid nuevo.
 - Hecho cuando: antes de emitir se comprueba generación/contexto, sin aplicar la autorización de A a B ni confundir el caso con la entrega aprobada en tránsito de DA-2. Pasa `cd backend && pytest -q tests/test_realtime_delivery.py -k generation`.

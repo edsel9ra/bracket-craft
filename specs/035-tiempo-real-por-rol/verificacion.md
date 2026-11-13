@@ -323,7 +323,7 @@ privadas. No basta con invocarla sin evento para recuperar un contexto. La 032
 compara la huella guardada con la vigente; no sustituye a un gate de contexto
 que compruebe la membresía/roles actuales sin usar esa huella como permiso.
 
-Propuesta pendiente de confirmación: migración 056 append-only con función de
+Propuesta histórica, descartada por el usuario el 2026-11-13: migración 056 append-only con función de
 contexto batch `SECURITY INVOKER`, snapshot fresco, límite 256, contexto RLS por
 usuario y sin recurso. Sin editar 055, BYPASSRLS, caché, tablas nuevas ni cambios
 en permisos HTTP. Implica comprobar migración limpia y 055→056 y ejecutar E2E
@@ -334,3 +334,62 @@ T19–T37 siguen pendientes: sin gate conectado, cambio de emisiones, frontend,
 arnés de fallos ni nuevos endpoints. No se ejecutaron PostgreSQL, frontend,
 E2E ni gates completos de infraestructura en este avance parcial. No equivale
 a PR B terminado, activación de F8 ni cierre R32f.
+
+## PR B — T19–T26, recuperación con 032 (2026-11-13)
+
+La precisión de C3 reutiliza 032; no se añade 056 ni se modifica ninguna
+migración. La interpretación anterior queda sustituida: el control no concede
+acceso a negocio y la huella vigente de 032 basta para ese control. La lectura
+HTTP y cada entrega posterior siguen autorizándose por separado.
+
+`PrivateDelivery` conecta el adaptador 055 al relay: clasificación cerrada,
+evaluación fresca por lote de principales, wire de tres IDs y envío solo a sid.
+El carril público se ejecuta antes de comprobar privados y conserva contrato y
+rooms. Desconocidos, sonda, F1, F9 y correo no tienen intención de entrega.
+El cursor avanza en fallos privados, sin guardar IDs/eventos; la marca solo
+contiene generación y estado de control. Se revalida contexto con 032 antes de
+un nuevo evento permitido o en el mantenimiento de 30 s, sin evento adicional.
+Filas ausentes/errores de 032 y errores de envío conservan la suspensión.
+Sesión/JWT, membresía o huella retiradas no reciben RESYNC. JOIN, arranque,
+recorte y reset privados pasan la misma comprobación dirigida; público intacto.
+
+Se conservan las tres filas/IDs de rectificación y `scope/version_id` internos,
+sin timestamp nuevo. Filas históricas con timestamp siguen siendo clasificables;
+el wire omite timestamp/versión. Snapshots de metadatos y comprobación de contexto
+y generación justo antes de emitir descartan resultados de conexiones antiguas.
+
+Rojo observado antes de implementación:
+
+```text
+13 failed, 17 deselected in 0.19s
+ModuleNotFoundError: No module named 'app.core.realtime_delivery'
+1 failed, 46 deselected in 1.56s
+Extra items in the left set: 'rectified_at'
+```
+
+Resultados finales de este tramo:
+
+```text
+Unitarios dirigidos relay/control/sonda/worker: 177 passed in 0.92s
+Unitarios finales con nuevas matrices de control: 100 passed, 7 skipped in 0.83s
+Backend completo sin PostgreSQL: 2673 passed, 940 skipped in 8.66s
+PostgreSQL test_realtime_delivery_db.py: 52 passed in 43.73s
+PostgreSQL rectification_notifications + rectification_effects: 66 passed in 51.54s
+Ruff: All checks passed!
+compileall app: exit 0
+Bandit -ll: No issues identified. Low: 12; Medium: 0; High: 0
+```
+
+Una preparación inicial de los nuevos tests DB omitía fijar RLS antes de cargar
+la huella: 032 denegó correctamente el contexto vacío. Corregida la fixture
+para obtener la huella como el handshake real; los cinco casos finales pasan.
+Las regresiones que esperaban broadcast organizativo se ajustaron al contrato
+aprobado (sin fallback); ninguna lectura HTTP ni autorización se endureció.
+
+PostgreSQL dirigido usa el cluster local aislado `bc-f9-postgres` (5540) y el
+rol real `bracket_app` mediante SET ROLE, sin ejecutar MIGRATION_TARGET ni
+alterar contraseñas de aplicación. No hay inyección de fallo productiva.
+
+T27–T37 siguen pendientes: frontend, E2E real T32/T34, gates PostgreSQL completo,
+frontend/infra/security finales, despliegue documentado y CI/revisión. Este estado
+intermedio no se despliega ni acredita PR B completo, aceptación F8 o cierre R32f.

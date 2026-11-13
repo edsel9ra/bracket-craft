@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from uuid import UUID, uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import text
@@ -14,7 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from migration_helpers import apply_migration, throwaway_database
 
 from app.core.security import get_current_user_id
+from app.core.database import set_rls_context
 from app.core.realtime_authorization import RealtimeAuthorizer
+from app.core.realtime_delivery import PrivateDelivery
+from app.core.realtime_registry import SocketRegistry
 from app.core import realtime_policy as policy
 from app.core.tenancy import get_auth_context
 from app.main import api
@@ -143,6 +147,22 @@ async def test_resources_rectification_requires_readable_concrete_version(flow, 
 
 
 @pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+async def test_rectification_producer_keeps_three_independent_internal_references_without_timestamp(flow):
+    request = await pending(flow)
+    assert (await decide(flow, request)).status_code == 200
+    rows = await flow.admin.fetch("""SELECT e.id,e.event_type,e.payload,n.version_id,n.outbox_event_id
+        FROM outbox_events e JOIN match_report_rectification_notifications n ON n.outbox_event_id=e.id
+        WHERE n.channel='realtime' ORDER BY e.event_type""")
+    assert len(rows) == 3 and len({row['id'] for row in rows}) == 3
+    assert {row['event_type'] for row in rows} == {'MATCH_UPDATED', 'STANDINGS_UPDATED', 'MATCH_REPORT_RECTIFIED'}
+    for row in rows:
+        payload = json.loads(row['payload'])
+        assert set(payload) == {'match_id', 'tournament_id', 'version_id', 'scope'}
+        assert payload['version_id'] == str(row['version_id']) and payload['scope'] == 'organization'
+        assert row['id'] == row['outbox_event_id']
+
+
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
 @pytest.mark.parametrize('name,private', [
     ('MATCH_CLOSED', False), ('MATCH_UPDATED', False), ('STANDINGS_UPDATED', False),
     ('MATCH_UPDATED', True), ('STANDINGS_UPDATED', True), ('MATCH_REPORT_RECTIFIED', True),
@@ -220,6 +240,60 @@ async def delivery_inputs(f):
     event = policy.classify_organization_event(data)
     metadata = socket_metadata(ORG, USER, principal['session_id'], jwt_expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
     return event, policy.group_recipients({'sid': metadata}, UUID(ORG))[0]
+
+
+@pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)
+@pytest.mark.parametrize('withdrawal', [None, 'session', 'roles', 'membership', '032_failure'])
+async def test_recovery_cycle_032_fresh_without_new_event_and_revoked_session_gets_no_resync(flow, monkeypatch, withdrawal):
+    from app import main
+
+    event, principals = await delivery_inputs(flow)
+    adapter = real_authorizer(flow)
+    principal = principals[0]
+    metadata = socket_metadata(ORG, USER, principal.session_id,
+                               generation=principal.sockets[0].generation,
+                               jwt_expires_at=principal.sockets[0].jwt_expires_at)
+    async with adapter.session_factory() as db:
+        await set_rls_context(db, UUID(ORG), UUID(USER))
+        metadata['role_fingerprint'] = await main._load_role_fingerprint(db, UUID(ORG), UUID(USER))
+        assert metadata['role_fingerprint'] is not None
+    sessions = SocketRegistry()
+    sessions['sid'] = metadata
+    emit, disconnect = AsyncMock(), AsyncMock()
+    delivery = PrivateDelivery(lambda: sessions, adapter, main.revalidate_socket_contexts,
+                               emit, disconnect, lambda: datetime.now(timezone.utc))
+    monkeypatch.setattr(main, 'SessionFactory', adapter.session_factory)
+    monkeypatch.setattr(main, 'connected_socket_sessions', sessions)
+    monkeypatch.setattr(main, 'private_delivery', delivery)
+    with monkeypatch.context() as temporary:
+        temporary.setattr(adapter, 'evaluate_batch', AsyncMock(side_effect=RuntimeError('test-only authorization failure')))
+        await delivery.deliver(event.envelope)
+    emit.assert_not_awaited()
+    assert 'sid' in delivery.states
+    if withdrawal == 'session':
+        await flow.admin.execute('UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE id=$1', principal.session_id)
+    elif withdrawal == 'roles':
+        await flow.admin.execute("UPDATE roles SET permissions='[]'::jsonb WHERE organization_id=$1", ORG)
+    elif withdrawal == 'membership':
+        await flow.admin.execute('UPDATE organization_users SET is_active=FALSE WHERE id=$1', MEMBER)
+    elif withdrawal == '032_failure':
+        delivery.validate_context = AsyncMock(side_effect=RuntimeError('test-only 032 failure'))
+        await main.revalidate_socket_sessions_cycle()
+        assert 'sid' in delivery.states
+        emit.assert_not_awaited()
+        disconnect.assert_not_awaited()
+        delivery.validate_context = main.revalidate_socket_contexts
+    await main.revalidate_socket_sessions_cycle()
+    if withdrawal in {'session', 'roles', 'membership'}:
+        emit.assert_not_awaited()
+        disconnect.assert_awaited_once_with('sid')
+    else:
+        disconnect.assert_not_awaited()
+        emit.assert_awaited_once()
+        args, kwargs = emit.await_args
+        assert args[0] == 'RESYNC' and set(args[1]) == {'event_id', 'reason'}
+        assert args[1]['reason'] == 'RELAY_START' and kwargs == {'to': 'sid'}
+    assert not delivery.states
 
 
 @pytest.mark.parametrize('flow', [{'schema': 55}], indirect=True)

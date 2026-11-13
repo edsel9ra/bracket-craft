@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T18 cerradas. Índice local de conexiones con generación/expiración JWT; adaptador aún sin conectar al relay. T19–T37 pendientes; R32f sigue abierto y F8 no está activado.
+- specs/035-tiempo-real-por-rol — fase actual: Implementación (Fase 5), PR B — spec, plan y tareas aprobados el 2026-11-13, C1–C4 confirmadas. PR A #76 fusionado; T1–T26 verificadas. Gate privado conectado en código, por sid y sin broadcast; recuperación con 032. PR B incompleto, no desplegar: T27–T37 pendientes; R32f sigue abierto y F8 no está aceptado.
 
 ## Pendiente
-- Spec 035: T19–T37 pendientes; autorización de contexto sin recurso para C3 no está en 055/adaptador de A. Propuesta pendiente: migración 056 con primitiva batch SECURITY INVOKER solo de contexto; no editar 055 ni reutilizar huella antigua de 032 como permiso. Relay sin activar. No se habilitan F1 ni Socket.IO para F9.
+- Spec 035: seguir T27–T37 (frontend, E2E real, despliegue y gates completos) antes de publicar B como terminado. T19–T26: unitarios sin DB 2673 pass/940 skip; DB dirigidos 52+66 pass. Falta PostgreSQL completo, frontend/E2E, infra/security final y CI/revisión. No se habilitan F1 ni Socket.IO para F9.
 
 ## Decisiones tomadas
+- 2026-11-13 · Spec 035 · Usuario descarta 056: C3 reutiliza 032 SECURITY INVOKER por lotes de hasta 256 sockets suspendidos; válidos reciben RESYNC RELAY_START dirigido, inválidos tratamiento 032, error/fila ausente conserva suspensión y reintenta. Sin recursos ni replay; HTTP autoriza cada reconstrucción. Precisión en plan sin cambiar C3.
 - 2026-11-13 · Spec 035 · Usuario confirma T32a–c y T34a–c como desglose interno sin cambio de alcance; C4 y PR B único intactos. Inyección de fallos solo en pruebas, sin ruta productiva ni configuración de producción.
 - 2026-11-13 · Spec 035 · Usuario comunica fusión de PR A #76 y autoriza PR B T18–T37; T17 cerrada. No equivale a aceptación de F8 ni cierre de R32f.
 - 2026-11-13 · Spec 035 · Usuario: «Apruebo las tareas.»; #75 fusionado. Inicio de Implementación, PR A inerte, sin activar el filtro ni cerrar R32f.

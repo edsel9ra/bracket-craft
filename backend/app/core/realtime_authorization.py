@@ -1,4 +1,4 @@
-"""Inert fresh-snapshot adapter; deliberately not imported by the relay."""
+"""Fresh-snapshot authorization adapter for organization deliveries."""
 
 import json
 from dataclasses import dataclass

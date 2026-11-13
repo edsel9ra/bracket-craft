@@ -487,7 +487,7 @@ async def test_outbox_relay_skips_malformed_stream_entries(monkeypatch):
     await relay_cycle(FakeRedis(), state, emit_domain_event)
 
     assert state.position == "2-0"
-    assert len(emitted) == 2
+    assert len(emitted) == 1
 
 
 def test_storage_hardens_an_endpoint_bucket_only_once(monkeypatch):
