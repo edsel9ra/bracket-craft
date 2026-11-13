@@ -3,6 +3,7 @@ import Button from '~/components/ui/Button.vue';
 import SanctionDetail from './SanctionDetail.vue';
 import SanctionDecisionForm from './SanctionDecisionForm.vue';
 import SanctionWithdrawalForm from './SanctionWithdrawalForm.vue';
+import SanctionAuthorizations from './SanctionAuthorizations.vue';
 import { sanctionErrorKey, type SanctionDetail as Detail } from '~/utils/sanctions';
 const props = defineProps<{ caseId: string }>();
 const emit = defineEmits<{ changed: []; newPresentation: [priorCaseId: string] }>();
@@ -38,6 +39,7 @@ async function changed(message = 'sanction.stateUpdated') { notice.value = messa
     <SanctionDetail v-else-if="detail" :detail="detail">
       <SanctionDecisionForm :case="detail.case" :user-id="auth.userId" :can-resolve="auth.hasPermission('RESOLVE_SANCTION_CASES')" @changed="changed" />
       <SanctionWithdrawalForm :case="detail.case" :user-id="auth.userId" :submit-permission="auth.hasPermission('SUBMIT_SANCTION_APPEALS')" :resolve-permission="auth.hasPermission('RESOLVE_SANCTION_CASES')" @changed="changed" />
+      <SanctionAuthorizations v-if="auth.access?.role_code === 'owner'" :key="detail.case.id" :owner="true" :case-id="detail.case.id" :pending="detail.case.status === 'pending'" />
       <Button v-if="canPresent && (detail.case.status === 'closed_by_rectification' || detail.events.some((event) => event.event_type === 'affected_by_rectification'))" variant="secondary" @click="$emit('newPresentation', detail.case.id)">{{ t('sanction.newPresentation') }}</Button>
     </SanctionDetail>
   </section>

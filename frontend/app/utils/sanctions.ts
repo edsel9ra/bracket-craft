@@ -98,3 +98,7 @@ export function decisionSubmission(preview: SanctionPreview, input: { decision: 
 export function isSanctionConflictKey(key: string): boolean {
   return key === 'sanction.error.conflict' || key.startsWith('sanction.error.SANCTION_');
 }
+
+export function authorizationState(scope: Pick<SanctionAuthorization, 'revoked_at' | 'consumed_at'>): string {
+  return `sanction.authorization.${scope.consumed_at ? 'consumed' : scope.revoked_at ? 'revoked' : 'active'}`;
+}
