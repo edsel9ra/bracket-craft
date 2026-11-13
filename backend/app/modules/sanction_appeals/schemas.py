@@ -75,6 +75,10 @@ class WithdrawalRequest(ReasonRequest):
     pass
 
 
+class AuthorizationRequest(ReasonRequest):
+    platform_admin_email: str = Field(min_length=1)
+
+
 class SuspensionWarning(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -113,7 +113,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T29. Constancia mínima de perjuicio acreditado.** RF-008, RF-009, RF-013
 - Hecho cuando: guarda autor/fecha/motivo y partidos acreditados en expediente, sin inferir por ausencia, compensar, repetir partidos ni tocar resultados/actas/avance o abrir trámite de impacto 033. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k prejudice`.
 
-- [ ] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
+- [x] **T30. Concesión y revocación de autorización F9 por dueño.** RF-015, RF-023, RF-024
 - Hecho cuando: dueño/admin/organización activos y scope exacto, autorización no reutilizable, rol retirado invalida; grants/revocaciones siguen coordinador y auditoría, sin platform_support. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_platform.py -k authorization`.
 
 - [ ] **T31. Decisión excepcional y consumo transaccional F9.** RF-004, RF-021, RF-023, RF-024
