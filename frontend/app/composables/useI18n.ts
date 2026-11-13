@@ -13,6 +13,9 @@ type TranslationValues = Record<string, string | number>;
 
 const messages: Record<Locale, Record<string, string>> = {
   es: {
+    'sanction.warning': 'Aviso privado de sanciones',
+    'sanction.warningHint': 'Aviso orientativo de sanciones vigentes. No bloquea guardar ni publicar y no modifica la formación. El cierre del acta vuelve a validar la elegibilidad.',
+    'sanction.warningUnavailable': 'No se pudo consultar el aviso. Puedes guardar y publicar la alineación; la elegibilidad se validará al cerrar.',
     'sanction.notifications': 'Avisos disciplinarios',
     'sanction.notificationsHint': 'Avisos internos privados para destinatarios actualmente autorizados. Recibir un aviso no concede acceso al expediente.',
     'sanction.noNotifications': 'No tienes avisos disciplinarios disponibles.',
@@ -1390,6 +1393,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'forbidden.copy': 'Tu sesión sigue activa, pero esta organización o recurso no autoriza esta operación. Puedes volver, cambiar de cuenta o cerrar sesión explícitamente.',
   },
   en: {
+    'sanction.warning': 'Private sanction warning',
+    'sanction.warningHint': 'Informational warning about current sanctions. It does not block saving or publishing and does not modify the formation. Report closing revalidates eligibility.',
+    'sanction.warningUnavailable': 'The warning could not be loaded. You can save and publish the lineup; eligibility will be validated at closing.',
     'sanction.notifications': 'Disciplinary notices',
     'sanction.notificationsHint': 'Private internal notices for currently authorized recipients. Receiving a notice does not grant access to the case.',
     'sanction.noNotifications': 'You have no available disciplinary notices.',

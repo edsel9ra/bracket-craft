@@ -165,7 +165,7 @@ Depende de B2 ya fusionado. Orden T40 → … → T49. Todas las llamadas pasan 
 - [x] **T46. Bandeja interna privada sin ampliar consulta.** RF-015, RF-017, RF-032, RF-033
 - Hecho cuando: lectura HTTP paginada muestra solo acto/motivo al destinatario vigente, vacío/error/reintento, sin evidencia ni broadcast; enlace no elude permiso de detalle. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run typecheck`.
 
-- [ ] **T47. Aviso disciplinario en preparación de alineación.** RF-014, RF-017, RF-031
+- [x] **T47. Aviso disciplinario en preparación de alineación.** RF-014, RF-017, RF-031
 - Hecho cuando: MatchLineupSection/useMatchLineup muestran aviso privado mínimo, accesible y no bloqueante; guardar/publicar y formaciones no se alteran; PublicLineupModal no recibe datos F9. Pasan `cd frontend && pnpm test` y `cd frontend && pnpm run lint`.
 
 - [ ] **T48. Integración i18n, navegación y errores accesibles.** RF-006, RF-015, RF-017, RF-029, RF-034
