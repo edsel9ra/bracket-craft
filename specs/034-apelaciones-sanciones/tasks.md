@@ -98,7 +98,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T21. Decidir mantener/rechazar con separación de personas.** RF-004, RF-005, RF-020, RF-021, RF-022, RF-034
 - Hecho cuando: actor distinto y facultad vigente, también aunque autor acumule roles; mantener solo apelación, rechazar solo propuesta, decisión auditada sin cambio de elegibilidad. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k decide_no_effect`.
 
-- [ ] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030
+- [x] **T22. Registrar anulación/reducción y declaraciones sin mutar original.** RF-004, RF-005, RF-010, RF-020, RF-022, RF-027, RF-030
 - Hecho cuando: resolución conserva valores originales/anteriores/resultantes; efecto queda pendiente si cambia elegibilidad, cumplida admite declaración sin partido ficticio, no aumento/ámbito/crédito ni UPDATE de duración. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k resolution`.
 
 - [ ] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029

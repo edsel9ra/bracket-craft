@@ -242,3 +242,38 @@ async def test_decide_no_effect_requires_another_person_and_only_resolve(cases, 
     async with f.service() as service:
         assert await service.decide(reviewer, receipt["id"], payload) == result
     assert await f.admin.fetchval("SELECT count(*) FROM sanction_case_decisions") == 1
+
+
+@pytest.mark.parametrize("kind,action,served", [
+    ("appeal", "annul", False), ("appeal", "reduce", False),
+    ("appeal", "annul", True), ("appeal", "reduce", True),
+    ("proposal", "annul", False), ("proposal", "reduce", False),
+])
+async def test_resolution_preserves_original_and_waits_for_real_opening(cases, kind, action, served):
+    f = cases
+    await permissions(f, "SUBMIT_SANCTION_APPEALS", "RESOLVE_SANCTION_CASES")
+    if served:
+        await f.admin.execute("UPDATE player_suspensions SET status='served' WHERE id=$1", f.suspension)
+    async with f.service() as service:
+        receipt = await service.submit_appeal(f.context, appeal(f)) if kind == "appeal" else await service.submit_proposal(
+            f.context, ProposalRequest(suspension_id=f.suspension, proposed_action=action,
+                proposed_duration=1 if action == "reduce" else None, reason="Revisión administrativa"))
+    reviewer = await second_member(f, "RESOLVE_SANCTION_CASES", "VIEW_SANCTION_CASES")
+    async with f.service() as service:
+        result = await service.decide(reviewer, receipt["id"], DecisionRequest(
+            decision=action if kind == "appeal" else "approve", expected_base_duration=3,
+            after_duration=1 if action == "reduce" and kind == "appeal" else None,
+            reason="Corregir duración", evidence_text="Prueba privada"))
+    assert result["status"] == "resolved"
+    resolution = await f.admin.fetchrow("SELECT * FROM sanction_resolutions")
+    assert resolution["action"] == action
+    assert resolution["original_duration"] == resolution["before_duration"] == 3
+    assert resolution["is_declarative"] is served
+    assert await f.admin.fetchval("SELECT matches_suspended FROM player_suspensions WHERE id=$1", f.suspension) == 3
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_effect_applications") == 0
+    assert await f.admin.fetchval("SELECT count(*) FROM sanction_match_eligibility") == 0
+    async with f.service() as service:
+        detail = await service.detail(reviewer, receipt["id"])
+    assert detail["projection"]["effective_duration"] == ((0 if action == "annul" else 1) if served else 3)
+    assert detail["projection"]["pending_effect"] is (not served)
+    assert detail["projection"]["remaining"] >= 0
