@@ -104,7 +104,7 @@ Depende de B1. Orden: T13 → T16 → T17 → T18 → T19 → T20 → T21 → T2
 - [x] **T23. Terminales, segunda instancia y revalidación de base.** RF-011, RF-025, RF-029
 - Hecho cuando: misma base resuelta no admite otro recurso; retirada permite nueva presentación y cierre rectificativo exige presentación manual vinculada. Base cambiada cierra sin decisión ni consumo; respuesta no revierte el cierre. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_cases.py -k stale`.
 
-- [ ] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
+- [x] **T27. Publicación 033 cierra pendientes afectados en su transacción.** RF-007, RF-009, RF-011, RF-012, RF-025
 - Hecho cuando: cancelación/recreación/cambio disciplinario cierra expedientes con referencia/motivo; marcador sin cambio no cierra; fallo del puente revierte publicación y outbox completos. Pasa `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_sanction_rectification.py -k closure`.
 
 - [ ] **T28. Recálculo 033 respeta historia F9 e inventario de lectores.** RF-007, RF-008, RF-011, RF-012, RF-017

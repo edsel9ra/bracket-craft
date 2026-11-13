@@ -21,6 +21,9 @@ from test_rectification_flow import flow as flow
 @pytest.mark.parametrize("flow", [{"schema": 39}, {"schema": 43}], indirect=True)
 async def test_recalculation_without_resolutions_matches_039_baseline(flow, monkeypatch):
     if not await flow.admin.fetchval("SELECT to_regclass('public.sanction_resolutions') IS NOT NULL"):
+        async def no_cases_before_040(db, version_id):
+            return None
+        monkeypatch.setattr("app.modules.rectifications.effects.close_for_rectification", no_cases_before_040)
         async def original_blocking(self, context, tournament_id, player_ids, **kwargs):
             result = await self.db.execute(text("""SELECT 1 FROM player_suspensions ps
                 WHERE ps.organization_id=:org AND ps.status='active' AND ps.player_id=ANY(CAST(:players AS uuid[]))

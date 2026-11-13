@@ -10,6 +10,7 @@ from app.modules.rectifications.advancement import AdvancementImpactCandidate, a
 from app.modules.rectifications.impacts import open_impacts
 from app.modules.rectifications.notifications import enqueue_publication
 from app.modules.rectifications.sanctions import AccumulationImpactCandidate, recalculate_sanctions
+from app.modules.sanction_appeals.coordination import close_for_rectification
 from app.modules.standings.service import StandingsService
 
 
@@ -55,6 +56,7 @@ async def apply_effects(db: AsyncSession, context: AuthContext, version: Mapping
     effects.extend({**entity, "effect_type": "tiebreak_draw_invalidated", "payload": payload}
         for payload in invalidated_draws(before["draw_groups"], draw_groups))
     sanctions = await recalculate_sanctions(db, context, version, now)
+    await close_for_rectification(db, version["id"])
     effects.extend(sanctions.effects)
     advancements, advancement_candidates = await advancement_changes(db, context, version, rows)
     effects.extend(advancements)
