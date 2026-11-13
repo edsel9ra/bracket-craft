@@ -3,9 +3,11 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import jwt
 from sqlalchemy import text
 
 from app.core.config import DEVELOPMENT_ENVS, get_settings
@@ -17,15 +19,20 @@ if get_settings().app_env.lower().strip() not in DEVELOPMENT_ENVS:
 from app import main  # noqa: E402
 from app.core.database import SessionFactory, set_rls_context  # noqa: E402
 from app.core.outbox import enqueue_outbox  # noqa: E402
+from app.core.security import create_access_token, decode_access_token_claims  # noqa: E402
 from scripts import seed_demo as seed  # noqa: E402
 
 
 DIRECTORY = Path('/harness')
 tenants = {}
+tenant_states = {}
 mode = {'authorization_failure': False, 'revalidation_failure': False, 'pause_maintenance': False}
 barrier = None
 paused = None
 release = asyncio.Event()
+allow_connect = asyncio.Event()
+allow_connect.set()
+connect_socket = main.connect
 authorizer = main.private_delivery.authorizer
 validate_context = main.private_delivery.validate_context
 maintenance = main.revalidate_socket_sessions_cycle
@@ -68,6 +75,11 @@ async def cycle():
         await maintenance()
 
 
+async def connect_socket_after_barrier(sid, environ, auth):
+    await allow_connect.wait()
+    return await connect_socket(sid, environ, auth)
+
+
 async def create_tenant():
     identity = uuid4().hex
     email = f'f8-owner-{identity}@bracketcraft.dev'
@@ -101,6 +113,7 @@ async def create_tenant():
                'owner_id': str(owner), 'reader_id': str(reader), 'member_id': str(member), 'role_id': str(role),
                'owner_email': email, 'reader_email': reader_email, 'password': seed.DEMO_USER_PASSWORD}
     tenants[str(org)] = fixture
+    tenant_states[str(org)] = state
     return fixture
 
 
@@ -116,11 +129,38 @@ async def command(data):
         return dict(mode)
     if action == 'release':
         release.set()
+        allow_connect.set()
         barrier = None
         return {}
+    if action == 'release_connect':
+        allow_connect.set()
+        return {}
+    if action == 'wait_expiry':
+        await asyncio.sleep(max(0, data['deadline'] - datetime.now(timezone.utc).timestamp() + 0.05))
+        return {}
+    if action == 'drop_transport':
+        allow_connect.clear()
+        engine_sids = [main.sio.manager.eio_sid_from_sid(sid, '/') for sid in main.connected_socket_sessions]
+        engine_sids = [sid for sid in engine_sids if sid]
+        print(f'test-only drop_transport engine_sid count: {len(engine_sids)}', flush=True)
+        for engine_sid in engine_sids:
+            await main.sio.environ[engine_sid]['asgi.send']({'type': 'websocket.close', 'code': 1012})
+        return {'engine_sids': len(engine_sids)}
     if action == 'probe':
         return {'paused': paused, 'delivered': list(delivered), 'connections': len(main.connected_socket_sessions),
                 'suspended': len(main.private_delivery.states)}
+    if action == 'stream_gap':
+        event_id = str(uuid4())
+        async with main.Redis.from_url(main.settings.redis_url, decode_responses=True) as redis:
+            if data['kind'] == 'trim':
+                await redis.xadd(main.OUTBOX_STREAM, {'event': json.dumps({'event_id': event_id,
+                    'organization_id': str(uuid4()), 'event_type': 'UNKNOWN', 'payload': {}})})
+                await redis.xtrim(main.OUTBOX_STREAM, maxlen=1, approximate=False)
+            elif data['kind'] == 'reset':
+                await redis.delete(main.OUTBOX_STREAM)
+            else:
+                raise ValueError('unknown stream gap')
+        return {'event_id': event_id}
     if action == 'archive':
         async with SessionFactory() as db:
             async with db.begin():
@@ -139,6 +179,30 @@ async def command(data):
             await set_rls_context(db, UUID(fixture['organization_id']), UUID(fixture['owner_id']))
             values = {'org': fixture['organization_id'], 'user': fixture['reader_id'],
                       'member': fixture['member_id'], 'role': fixture['role_id']}
+            if action == 'short_token':
+                await set_rls_context(db, UUID(fixture['organization_id']), UUID(fixture['reader_id']))
+                session_id = (await db.execute(text('''SELECT id FROM user_sessions
+                    WHERE user_id=:user AND revoked_at IS NULL'''), values)).scalar_one()
+                claims = decode_access_token_claims(create_access_token(UUID(fixture['reader_id']), session_id))
+                claims['exp'] = int(datetime.now(timezone.utc).timestamp()) + 15
+                settings = get_settings()
+                return {'token': jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm),
+                        'deadline': claims['exp']}
+            if action == 'prepare_open':
+                await seed._prepare_quarterfinal(db, tenant_states[fixture['organization_id']], seed.MATCH_SPECS[1])
+                return {}
+            if action == 'inject':
+                from app.workers.outbox import publish_stream_event
+
+                event_id = data.get('event_id', str(uuid4()))
+                async with main.Redis.from_url(main.settings.redis_url, decode_responses=True) as redis:
+                    await publish_stream_event(redis, {'id': event_id, 'organization_id': fixture['organization_id'],
+                        'event_type': data.get('event_type', 'MATCH_UPDATED'),
+                        'payload': data.get('payload', {'match_id': fixture['match_id'], 'tournament_id': fixture['tournament_id']})})
+                return {'event_id': event_id}
+            if action == 'outbox_status':
+                return (await db.execute(text('SELECT status FROM outbox_events WHERE id=:id'),
+                    {'id': data['event_id']})).scalar_one()
             if action == 'link_owner':
                 other = tenants[data['other_organization_id']]
                 member = (await db.execute(text('''INSERT INTO organization_users (organization_id,user_id)
@@ -187,7 +251,8 @@ async def command(data):
                     raise ValueError('unknown withdrawal')
                 return {'committed': True}
             if action == 'publish':
-                payload = {'match_id': fixture['match_id'], 'tournament_id': fixture['tournament_id']}
+                payload = {'match_id': fixture['open_match_id'] if data.get('open') else fixture['match_id'],
+                           'tournament_id': fixture['tournament_id']}
                 if data.get('private'):
                     version = (await db.execute(text('''SELECT id FROM match_report_versions
                         WHERE match_id=:match ORDER BY version_number DESC LIMIT 1'''),
@@ -228,6 +293,7 @@ async def lifespan(app):
     main.private_delivery.validate_context = revalidate
     main.revalidate_socket_sessions_cycle = cycle
     main.emit_domain_event = deliver
+    main.sio.on('connect', connect_socket_after_barrier)
     main.SOCKET_REVALIDATION_SECONDS = 2
     main.settings.auth_login_rate_limit = 1000
     async with original_lifespan(app):

@@ -78,6 +78,32 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 
 ## 7. Operación de partido y actas
 
+### Actualizaciones y recuperación del Workspace
+
+Las actualizaciones privadas solo invalidan recursos cuya lectura esté autorizada
+en ese momento; el detalle se vuelve a consultar por HTTP. La comprobación de
+sesión periódica no concede permiso de lectura. Cambiar de organización o usuario
+invalida las respuestas pendientes del contexto anterior. Una retirada confirmada
+afecta a las evaluaciones posteriores, no retira lo ya recibido.
+
+Tras publicar una rectificación, la operación y «Versiones del acta» se actualizan
+sin pulsar «Actualizar». Con el editor abierto se conserva el borrador y se aplaza
+la recarga del historial hasta terminar o cancelar. La conexión es de mejor
+esfuerzo: al reconectar o resincronizar se reconstruye por HTTP el estado vigente,
+no una lista de eventos perdidos. Si no se puede verificar la autorización se
+suspenden las actualizaciones afectadas, sin convertirlas en públicas ni usar
+permisos antiguos. Se mantienen los estados y el botón «Reintentar» existentes.
+
+F8 sigue **pendiente de aceptación**; esto no habilita borradores privados F1.
+Los avisos de sanciones F9 permanecen en su bandeja/correo, fuera de Socket.IO.
+
+El catálogo actual cubre cierre, actualización de partido, clasificación y sus
+publicaciones rectificativas; no concede nuevas lecturas ni permisos de escritura.
+Compatibilidad, despliegue coordinado y contingencia sin restaurar el broadcast:
+[runbook de tiempo real](despliegue-tiempo-real-por-rol.md).
+
+### Operación y cierre
+
 - `/workspace/matches/{id}`: segmentos, planilla, oficiales, eventos y cierre.
 - Segmentos: ventanas de tiempo con número consecutivo, `minute_start`, `minute_end` opcional y estado `active`/`completed`/`interrupted`. Crear con otro activo cierra el activo en su minuto. `GET …/operation` devuelve `next_segment` (propuesta calculada por el servidor).
 - Planilla: publicar/despublicar formación táctica. Solo las publicadas son visibles públicamente.

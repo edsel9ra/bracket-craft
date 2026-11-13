@@ -1,91 +1,11 @@
-import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { demoApiBase } from './demo.ts';
 import { waitForHydration } from './workspaceSession.ts';
+import { control, http, login, rectify, type Tenant } from './realtimeHarness.ts';
 
-const directory = fileURLToPath(new URL('../.auth/realtime/', import.meta.url));
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-interface Tenant {
-  organization_id: string; tournament_id: string; match_id: string; open_match_id: string;
-  owner_email: string; reader_email: string; password: string;
-}
 interface Probe { paused: string | null; delivered: string[]; connections: number; suspended: number }
 interface Wire { event: string; payload: Record<string, unknown> }
-
-async function control<T>(body: Record<string, unknown>): Promise<T> {
-  await mkdir(directory, { recursive: true });
-  await chmod(directory, 0o777);
-  const id = randomUUID();
-  const temporary = `${directory}pending-${id}`;
-  const response = `${directory}response-${id}.json`;
-  await writeFile(temporary, JSON.stringify(body));
-  await rename(temporary, `${directory}request-${id}.json`);
-  let result: { result?: T; error?: string } | undefined;
-  await expect.poll(async () => {
-    try { result = JSON.parse(await readFile(response, 'utf8')) as typeof result; return true; }
-    catch (cause) { if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return false; throw cause; }
-  }, { timeout: 90_000, message: `test-only control ${body.action}` }).toBe(true);
-  await unlink(response);
-  expect(result?.error, 'fixture command must succeed').toBeUndefined();
-  return result!.result!;
-}
-
-async function login(browser: Browser, tenant: Tenant, reader = false) {
-  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-  await context.request.get(`${demoApiBase()}/auth/csrf`);
-  const csrf = (await context.cookies()).find(row => row.name === 'bc_csrf_token');
-  expect(csrf).toBeDefined();
-  const response = await context.request.post(`${demoApiBase()}/auth/login`, {
-    headers: { 'X-CSRF-Token': decodeURIComponent(csrf!.value), Origin: baseURL },
-    data: { email: reader ? tenant.reader_email : tenant.owner_email, password: tenant.password },
-  });
-  expect(response.status(), 'real session login').toBe(200);
-  const identity = await response.json() as { user_id: string };
-  await context.addCookies([
-    { name: 'bc_organization_id', value: tenant.organization_id, url: baseURL },
-    { name: 'bc_user_id', value: identity.user_id, url: baseURL },
-  ]);
-  await context.addInitScript(organizationId => localStorage.setItem('bc_last_organization_id', organizationId), tenant.organization_id);
-  return context;
-}
-
-async function http<T>(context: BrowserContext, tenant: Tenant, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'X-Organization-ID': tenant.organization_id };
-  if (body !== undefined) {
-    await context.request.get(`${demoApiBase()}/auth/csrf`);
-    const cookie = (await context.cookies()).find(row => row.name === 'bc_csrf_token');
-    expect(cookie).toBeDefined();
-    headers['X-CSRF-Token'] = decodeURIComponent(cookie!.value);
-    headers.Origin = baseURL;
-  }
-  const response = body === undefined
-    ? await context.request.get(`${demoApiBase()}${path}`, { headers })
-    : await context.request.post(`${demoApiBase()}${path}`, { headers, data: body });
-  expect(response.ok(), `${path}: HTTP ${response.status()}`).toBe(true);
-  return await response.json() as T;
-}
-
-async function rectify(owner: BrowserContext, reviewer: BrowserContext, tenant: Tenant) {
-  const versions = await http<Array<{ version_number: number; report: Record<string, unknown> }>>(owner, tenant, `/matches/${tenant.match_id}/report-versions`);
-  const current = versions.reduce((a, b) => a.version_number > b.version_number ? a : b);
-  const report = current.report;
-  const events = (report.events as Array<Record<string, unknown>>).filter(row => !row.is_voided);
-  const goal = events.find(row => row.event_type === 'goal');
-  expect(goal).toBeDefined();
-  const eventKeys = ['client_event_id', 'event_type', 'team_id', 'beneficiary_team_id', 'player_id', 'minute', 'added_minute', 'segment_id', 'assist_player_id', 'player_out_id', 'player_in_id', 'metadata'];
-  const proposed = { ...Object.fromEntries(['resolution_type', 'winner_team_id', 'home_penalties', 'away_penalties', 'away_score_regular', 'away_score'].map(key => [key, report[key] ?? null])),
-    home_score_regular: Number(report.home_score_regular) + 1, home_score: Number(report.home_score) + 1,
-    events: [...events, { ...goal!, client_event_id: randomUUID() }].map(row => Object.fromEntries(eventKeys.map(key => [key, row[key] ?? (key === 'metadata' ? {} : null)]))) };
-  const request = await http<{ id: string; base_version_number: number }>(owner, tenant, `/matches/${tenant.match_id}/rectifications`, {
-    proposed_report: proposed, reason: `F8 ${randomUUID()}`, evidence: 'Isolated realtime fixture',
-  });
-  await http(reviewer, tenant, `/rectifications/${request.id}/preview`);
-  await http(reviewer, tenant, `/rectifications/${request.id}/decision`, {
-    decision: 'approve', reason: 'F8 fixture approval', expected_base_version: request.base_version_number,
-  });
-}
 
 async function receiver(context: BrowserContext, tenant: Tenant, publicScope = false, transportOnly = false) {
   const page = await context.newPage();
@@ -137,6 +57,155 @@ async function flush(pages: Page[]) {
 function versionsPanel(page: Page) {
   return page.getByRole('heading', { name: 'Versiones del acta', exact: true }).locator('..');
 }
+
+function signal() {
+  let release!: () => void;
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release: () => release() };
+}
+
+for (const change of ['organization', 'identity'] as const) {
+  test(`in-flight accepted HTTP cannot restore a previous ${change} context`, async ({ browser }) => {
+    const [tenant, other] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+    await control({ action: 'link_owner', organization_id: other.organization_id, other_organization_id: tenant.organization_id });
+    const owner = await login(browser, tenant);
+    const held = signal();
+    const reached = signal();
+    try {
+      const view = await receiver(owner, tenant);
+      await expect(view.page.locator('.operation-shell')).toBeVisible();
+      await view.page.route(`**/matches/${tenant.match_id}/operation`, async route => {
+        const response = await route.fetch();
+        reached.release();
+        await held.promise;
+        if (change === 'identity') await route.fulfill({ status: 403, json: { detail: 'Forbidden' } });
+        else await route.fulfill({ response });
+      });
+      await publish(tenant);
+      await reached.promise;
+      if (change === 'organization') {
+        await view.page.locator('.workspace-organization-select').selectOption(other.organization_id);
+        await expect(view.page).toHaveURL(/\/workspace$/);
+      } else {
+        await view.page.locator('.workspace-account-button').click();
+        await view.page.getByRole('menuitem', { name: 'Salir', exact: true }).click();
+        await expect(view.page).toHaveURL(baseURL + '/');
+      }
+      held.release();
+      await flush([view.page]);
+      await expect(view.page.locator('.operation-shell')).toHaveCount(0);
+      if (change === 'organization') await expect(view.page.locator('.workspace-organization-select')).toHaveValue(other.organization_id);
+      else await expect(view.page).toHaveURL(baseURL + '/');
+    } finally { held.release(); await owner.close(); }
+  });
+}
+
+test('busy action consolidates invalidations into one trailing reload without losing the action', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  await control({ action: 'prepare_open', organization_id: tenant.organization_id });
+  const owner = await login(browser, tenant);
+  const held = signal();
+  const reached = signal();
+  try {
+    const view = await receiver(owner, { ...tenant, match_id: tenant.open_match_id });
+    await expect(view.page.locator('.operation-shell')).toBeVisible();
+    let reads = 0;
+    view.page.on('request', request => { if (request.url().endsWith(`/matches/${tenant.open_match_id}/operation`)) reads++; });
+    await view.page.route(`**/matches/${tenant.open_match_id}/segments/*/interrupt`, async route => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      reached.release();
+      await held.promise;
+      await route.fulfill({ response });
+    });
+    await view.page.locator('#interrupt-minute').fill('5');
+    await view.page.getByRole('button', { name: 'Registrar interrupción', exact: true }).click();
+    await reached.promise;
+    const before = reads;
+    for (let n = 0; n < 3; n++) {
+      const event = await publish(tenant, { open: true });
+      await expect.poll(() => view.ids().includes(event.event_id)).toBe(true);
+    }
+    await flush([view.page]);
+    expect(reads).toBe(before);
+    held.release();
+    await expect(view.page.getByText('Interrupción registrada', { exact: true })).toBeVisible();
+    await expect.poll(() => reads).toBe(before + 2); // action refresh plus one consolidated trailing read
+    await flush([view.page]);
+    expect(reads).toBe(before + 2);
+  } finally { held.release(); await owner.close(); }
+});
+
+test('duplicates, actual stream trim/reset and reconnect reconstruct HTTP without replay', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  const owner = await login(browser, tenant);
+  try {
+    const view = await receiver(owner, tenant);
+    await expect(view.page.locator('.operation-shell')).toBeVisible();
+    let reads = 0;
+    view.page.on('request', request => { if (request.url().endsWith(`/matches/${tenant.match_id}/operation`)) reads++; });
+    const first = await publish(tenant);
+    await expect.poll(() => reads).toBe(1);
+    await control({ action: 'inject', organization_id: tenant.organization_id, event_id: first.event_id });
+    const marker = await control<{ event_id: string }>({ action: 'inject', organization_id: tenant.organization_id, event_type: 'UNKNOWN' });
+    await delivered(marker.event_id);
+    await flush([view.page]);
+    expect(view.ids().filter(id => id === first.event_id)).toHaveLength(2);
+    expect(reads).toBe(1);
+    for (const kind of ['trim', 'reset']) {
+      const baseline = view.wire.length;
+      const pending = await publish(tenant, { barrier: 'before' });
+      await expect.poll(async () => (await control<Probe>({ action: 'probe' })).paused).toBe(pending.event_id);
+      const lost = await control<{ event_id: string }>({ action: 'stream_gap', kind });
+      const before = reads;
+      await control({ action: 'release' });
+      const reason = kind === 'trim' ? 'STREAM_TRIMMED' : 'REDIS_RESET';
+      await expect.poll(() => view.wire.slice(baseline).some(row => row.event === 'RESYNC' && row.payload.reason === reason)).toBe(true);
+      await expect.poll(() => reads).toBeGreaterThan(before);
+      expect(view.ids()).not.toContain(lost.event_id);
+      await expect(view.page.locator('.operation-shell')).toBeVisible();
+    }
+    const previous = view.opened();
+    const dropped = await control<{ engine_sids: number }>({ action: 'drop_transport' });
+    console.log(`drop_transport engine_sid count: ${dropped.engine_sids}`);
+    expect(dropped.engine_sids).toBeGreaterThan(0);
+    await expect.poll(() => view.closed()).toBeGreaterThan(0);
+    const lost = await publish(tenant);
+    await delivered(lost.event_id);
+    const before = reads;
+    await control({ action: 'release_connect' });
+    await expect.poll(() => view.opened()).toBeGreaterThan(previous);
+    await expect.poll(() => reads).toBeGreaterThan(before);
+    expect(view.ids()).not.toContain(lost.event_id);
+  } finally { await owner.close(); }
+});
+
+test('real JWT expiry cuts off an open socket and HTTP without expiring other sessions', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  const reader = await login(browser, tenant, true);
+  const owner = await login(browser, tenant);
+  try {
+    await control({ action: 'mode', pause_maintenance: true });
+    const credential = await control<{ token: string; deadline: number }>({ action: 'short_token', organization_id: tenant.organization_id });
+    await reader.addCookies([{ name: 'bc_access_token', value: credential.token, url: baseURL }]);
+    const [expired, healthy] = await Promise.all([receiver(reader, tenant, false, true), receiver(owner, tenant, false, true)]);
+    const first = await publish(tenant);
+    await expect.poll(() => expired.ids().includes(first.event_id)).toBe(true);
+    const pending = await publish(tenant, { barrier: 'before' });
+    await expect.poll(async () => (await control<Probe>({ action: 'probe' })).paused).toBe(pending.event_id);
+    await control({ action: 'wait_expiry', deadline: credential.deadline });
+    const response = await reader.request.get(`${demoApiBase()}/matches/${tenant.match_id}/operation`,
+      { headers: { 'X-Organization-ID': tenant.organization_id } });
+    expect(response.status()).toBe(401);
+    await control({ action: 'release' });
+    await delivered(pending.event_id);
+    await expect.poll(() => healthy.ids().includes(pending.event_id)).toBe(true);
+    await flush([expired.page, healthy.page]);
+    expect(expired.ids()).not.toContain(pending.event_id);
+    expect(expired.closed()).toBe(0);
+    expect(expired.opened()).toBe(1);
+  } finally { await reader.close(); await owner.close(); }
+});
 
 test('published rectification refreshes history without manual refresh and preserves an open editor', async ({ browser }) => {
   const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });

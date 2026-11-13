@@ -234,6 +234,27 @@ def delivery_harness():
     return delivery, event, sessions, behavior, calls, disconnections, context_calls
 
 
+@pytest.mark.parametrize('scenario', ['empty', 'partial', 'error'])
+async def test_partial_recovery_isolated_connection_generation_and_empty(scenario):
+    delivery, _, sessions, behavior, calls, _, contexts = delivery_harness()
+    if scenario != 'empty':
+        for sid, metadata in sessions.items():
+            delivery.suspend(sid, metadata)
+    behavior['context'] = None if scenario == 'error' else {'allowed': True, 'denied': None}
+    await asyncio.gather(delivery.recover(), delivery.recover())
+    if scenario == 'empty':
+        assert not contexts and not calls and not delivery.states
+    elif scenario == 'error':
+        assert not calls and set(delivery.states) == {'allowed', 'denied'}
+    else:
+        assert [sid for _, _, sid in calls] == ['allowed']
+        assert set(delivery.states) == {'denied'}
+        sessions['denied'] = {**sessions['denied'], 'generation': str(uuid4())}
+        await delivery.recover()
+        assert not delivery.states and len(calls) == 1
+    assert not delivery.controls
+
+
 async def test_delivery_allowed_only_minimal_wire_denied_absent_no_room():
     delivery, event, _, _, calls, _, _ = delivery_harness()
     await delivery.deliver(event.envelope)
