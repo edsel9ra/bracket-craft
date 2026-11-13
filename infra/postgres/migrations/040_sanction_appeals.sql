@@ -3,7 +3,7 @@ BEGIN;
 CREATE FUNCTION public.sanction_member_has_permission(target_org UUID, permission TEXT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER
 SET search_path = pg_catalog, public AS $$
-    SELECT target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    SELECT COALESCE(target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
         AND EXISTS (
             SELECT 1 FROM public.organization_users ou
             JOIN public.users u ON u.id = ou.user_id AND u.is_active
@@ -14,7 +14,7 @@ SET search_path = pg_catalog, public AS $$
             WHERE ou.organization_id = target_org AND ou.is_active
               AND ou.user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
               AND r.permissions @> jsonb_build_array(permission)
-        );
+        ), FALSE);
 $$;
 REVOKE ALL ON FUNCTION public.sanction_member_has_permission(UUID, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.sanction_member_has_permission(UUID, TEXT) TO bracket_app;
@@ -328,5 +328,220 @@ BEGIN
     END LOOP;
 END;
 $auxiliary$;
+
+CREATE FUNCTION public.sanction_platform_scope(target_case UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT FALSE;
+$$;
+REVOKE ALL ON FUNCTION public.sanction_platform_scope(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_platform_scope(UUID) TO bracket_app;
+
+CREATE FUNCTION public.sanction_validate_case()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE source public.player_suspensions; previous public.sanction_cases;
+BEGIN
+    IF NEW.submitted_by_user_id IS DISTINCT FROM NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        OR NOT public.sanction_member_has_permission(NEW.organization_id,
+            CASE WHEN NEW.case_type = 'appeal' THEN 'SUBMIT_SANCTION_APPEALS' ELSE 'RESOLVE_SANCTION_CASES' END)
+        OR NOT EXISTS (SELECT 1 FROM public.organization_users WHERE id = NEW.submitted_by_member_id
+            AND organization_id = NEW.organization_id AND user_id = NEW.submitted_by_user_id AND is_active) THEN
+        RAISE EXCEPTION 'SANCTION_MEMBER_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO source FROM public.player_suspensions
+        WHERE id = NEW.suspension_id AND organization_id = NEW.organization_id;
+    IF source.id IS NULL THEN RETURN NEW; END IF;
+    IF source.status = 'cancelled' OR NEW.status <> 'pending' OR NEW.base_duration <> source.matches_suspended
+        OR NEW.submitted_at <> CURRENT_TIMESTAMP THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_BASE' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.sanction_cases WHERE suspension_id = NEW.suspension_id AND status = 'resolved') THEN
+        RAISE EXCEPTION 'SANCTION_FINAL_CASE' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.prior_case_id IS NOT NULL THEN
+        SELECT * INTO previous FROM public.sanction_cases WHERE id = NEW.prior_case_id AND organization_id = NEW.organization_id;
+        IF previous.id IS NULL OR previous.status <> 'closed_by_rectification' THEN
+            RAISE EXCEPTION 'SANCTION_INVALID_ANTECEDENT' USING ERRCODE = '23514';
+        END IF;
+    END IF;
+    IF NEW.proposed_action = 'reduce' AND (NEW.proposed_duration IS NULL OR NEW.proposed_duration >= NEW.base_duration) THEN
+        RAISE EXCEPTION 'SANCTION_DECISION_CATALOG' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_case BEFORE INSERT ON public.sanction_cases
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_case();
+
+CREATE FUNCTION public.sanction_event_allowed(target_org UUID, target_case UUID, kind TEXT)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+    SELECT COALESCE(target_org = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+        AND kind IN ('submitted', 'withdrawn') AND EXISTS (
+            SELECT 1 FROM public.sanction_cases c
+            JOIN public.organization_users ou ON ou.id = c.submitted_by_member_id
+                AND ou.organization_id = c.organization_id AND ou.user_id = c.submitted_by_user_id AND ou.is_active
+            JOIN public.users u ON u.id = ou.user_id AND u.is_active
+            JOIN public.organizations o ON o.id = ou.organization_id AND o.is_active
+            WHERE c.id = target_case AND c.organization_id = target_org AND c.status = 'pending'
+                AND c.submitted_by_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        ), FALSE);
+$$;
+REVOKE ALL ON FUNCTION public.sanction_event_allowed(UUID, UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sanction_event_allowed(UUID, UUID, TEXT) TO bracket_app;
+
+CREATE UNIQUE INDEX uq_sanction_single_case_event ON public.sanction_case_events(case_id, event_type)
+    WHERE event_type IN ('submitted', 'withdrawn', 'closed_by_rectification');
+
+CREATE FUNCTION public.sanction_validate_event()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE target public.sanction_cases;
+BEGIN
+    SELECT * INTO target FROM public.sanction_cases WHERE id = NEW.case_id AND organization_id = NEW.organization_id FOR UPDATE;
+    IF NEW.actor_user_id IS DISTINCT FROM NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        OR NEW.created_at <> CURRENT_TIMESTAMP THEN
+        RAISE EXCEPTION 'SANCTION_ACTOR_MISMATCH' USING ERRCODE = '42501';
+    END IF;
+    IF NEW.event_type IN ('submitted', 'withdrawn') THEN
+        IF NOT public.sanction_event_allowed(NEW.organization_id, NEW.case_id, NEW.event_type) THEN
+            RAISE EXCEPTION 'SANCTION_EVENT_DENIED' USING ERRCODE = '42501';
+        END IF;
+    ELSIF target.id IS NULL THEN
+        RAISE EXCEPTION 'SANCTION_EVENT_DENIED' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_event BEFORE INSERT ON public.sanction_case_events
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_event();
+
+CREATE FUNCTION public.sanction_validate_decision()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE target public.sanction_cases;
+BEGIN
+    SELECT * INTO target FROM public.sanction_cases WHERE id = NEW.case_id AND organization_id = NEW.organization_id FOR UPDATE;
+    IF target.submitted_by_user_id = NEW.decided_by_user_id THEN
+        RAISE EXCEPTION 'SANCTION_SELF_DECISION' USING ERRCODE = '23514';
+    END IF;
+    IF target.id IS NULL OR target.status <> 'pending' THEN
+        RAISE EXCEPTION 'SANCTION_CASE_NOT_PENDING' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.decided_by_user_id IS DISTINCT FROM NULLIF(current_setting('app.current_user_id', true), '')::UUID
+        OR NOT ((NEW.decided_as = 'member' AND NEW.authorization_id IS NULL
+                AND public.sanction_member_has_permission(NEW.organization_id, 'RESOLVE_SANCTION_CASES')
+                AND EXISTS (SELECT 1 FROM public.organization_users WHERE id = NEW.decided_by_member_id
+                    AND organization_id = NEW.organization_id AND user_id = NEW.decided_by_user_id AND is_active))
+            OR (NEW.decided_as = 'platform_admin' AND NEW.decided_by_member_id IS NULL
+                AND NEW.authorization_id = NULLIF(current_setting('app.sanction_authorization_id', true), '')::UUID
+                AND public.sanction_platform_scope(NEW.case_id))) THEN
+        RAISE EXCEPTION 'SANCTION_DECISION_DENIED' USING ERRCODE = '42501';
+    END IF;
+    IF NEW.created_at <> CURRENT_TIMESTAMP OR NEW.before_duration <> target.base_duration
+        OR (target.case_type = 'appeal' AND NEW.decision NOT IN ('maintain', 'annul', 'reduce'))
+        OR (target.case_type = 'administrative_proposal' AND (NEW.decision NOT IN ('approve', 'reject')
+            OR (NEW.decision = 'approve' AND NEW.after_duration IS DISTINCT FROM target.proposed_duration))) THEN
+        RAISE EXCEPTION 'SANCTION_DECISION_CATALOG' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.player_suspensions WHERE id = target.suspension_id
+        AND status = 'cancelled') THEN
+        RAISE EXCEPTION 'SANCTION_CHANGED_BASE' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_decision BEFORE INSERT ON public.sanction_case_decisions
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_decision();
+
+CREATE FUNCTION public.sanction_validate_resolution()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE target public.sanction_cases; decided public.sanction_case_decisions;
+    source public.player_suspensions; served INTEGER; expected_action TEXT;
+BEGIN
+    SELECT * INTO target FROM public.sanction_cases WHERE id = NEW.case_id AND organization_id = NEW.organization_id;
+    SELECT * INTO decided FROM public.sanction_case_decisions WHERE id = NEW.decision_id AND case_id = target.id;
+    SELECT * INTO source FROM public.player_suspensions WHERE id = NEW.suspension_id AND organization_id = NEW.organization_id;
+    SELECT count(*) INTO served FROM public.player_suspension_serves WHERE suspension_id = source.id;
+    expected_action := CASE WHEN decided.decision = 'approve' THEN target.proposed_action ELSE decided.decision END;
+    IF NEW.created_at <> CURRENT_TIMESTAMP OR decided.id IS NULL OR source.id IS NULL OR source.id <> target.suspension_id
+        OR expected_action NOT IN ('annul', 'reduce') OR NEW.action <> expected_action
+        OR NEW.new_duration IS DISTINCT FROM decided.after_duration
+        OR NEW.original_duration <> source.matches_suspended OR NEW.before_duration <> target.base_duration
+        OR NEW.served_count <> served OR NEW.is_declarative IS DISTINCT FROM
+            (source.status = 'served' OR served >= target.base_duration)
+        OR decided.decided_by_user_id IS DISTINCT FROM NULLIF(current_setting('app.current_user_id', true), '')::UUID THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_RESOLUTION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_validate_resolution BEFORE INSERT ON public.sanction_resolutions
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_validate_resolution();
+
+CREATE OR REPLACE FUNCTION public.protect_sanction_case_transition()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'SANCTION_HISTORY_IMMUTABLE' USING ERRCODE = '23514';
+    END IF;
+    IF (to_jsonb(NEW) - 'status') IS DISTINCT FROM (to_jsonb(OLD) - 'status')
+        OR OLD.status <> 'pending' OR NEW.status NOT IN ('resolved', 'withdrawn', 'closed_by_rectification') THEN
+        RAISE EXCEPTION 'SANCTION_INVALID_TRANSITION' USING ERRCODE = '23514';
+    END IF;
+    IF (NEW.status = 'resolved' AND NOT EXISTS (SELECT 1 FROM public.sanction_case_decisions WHERE case_id = NEW.id))
+        OR (NEW.status IN ('withdrawn', 'closed_by_rectification') AND NOT EXISTS (
+            SELECT 1 FROM public.sanction_case_events WHERE case_id = NEW.id AND event_type = NEW.status)) THEN
+        RAISE EXCEPTION 'SANCTION_MISSING_ACT' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION public.sanction_apply_case_act()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'sanction_case_decisions' THEN
+        UPDATE public.sanction_cases SET status = 'resolved' WHERE id = NEW.case_id;
+    ELSIF NEW.event_type IN ('withdrawn', 'closed_by_rectification') THEN
+        UPDATE public.sanction_cases SET status = NEW.event_type WHERE id = NEW.case_id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_sanction_decision_act AFTER INSERT ON public.sanction_case_decisions
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_apply_case_act();
+CREATE TRIGGER trg_sanction_event_act AFTER INSERT ON public.sanction_case_events
+    FOR EACH ROW EXECUTE FUNCTION public.sanction_apply_case_act();
+
+CREATE FUNCTION public.sanction_assert_complete()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE target_id UUID; target public.sanction_cases; decided public.sanction_case_decisions;
+BEGIN
+    IF TG_TABLE_NAME = 'sanction_cases' THEN target_id := NEW.id; ELSE target_id := NEW.case_id; END IF;
+    SELECT * INTO target FROM public.sanction_cases WHERE id = target_id;
+    SELECT * INTO decided FROM public.sanction_case_decisions WHERE case_id = target_id;
+    IF NOT EXISTS (SELECT 1 FROM public.sanction_case_events WHERE case_id = target_id AND event_type = 'submitted')
+        OR (target.status = 'resolved') IS DISTINCT FROM (decided.id IS NOT NULL)
+        OR (target.status IN ('withdrawn', 'closed_by_rectification') AND NOT EXISTS (
+            SELECT 1 FROM public.sanction_case_events WHERE case_id = target_id AND event_type = target.status)) THEN
+        RAISE EXCEPTION 'SANCTION_MISSING_ACT' USING ERRCODE = '23514';
+    END IF;
+    IF decided.id IS NOT NULL AND (decided.decision IN ('annul', 'reduce', 'approve')) IS DISTINCT FROM
+        (EXISTS (SELECT 1 FROM public.sanction_resolutions WHERE decision_id = decided.id)) THEN
+        RAISE EXCEPTION 'SANCTION_MISSING_RESOLUTION' USING ERRCODE = '23514';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+CREATE CONSTRAINT TRIGGER trg_sanction_case_complete AFTER INSERT OR UPDATE ON public.sanction_cases
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.sanction_assert_complete();
+CREATE CONSTRAINT TRIGGER trg_sanction_decision_complete AFTER INSERT ON public.sanction_case_decisions
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.sanction_assert_complete();
+
+CREATE POLICY f9_event_insert ON public.sanction_case_events FOR INSERT TO bracket_app WITH CHECK (
+    actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+    AND public.sanction_event_allowed(organization_id, case_id, event_type));
+CREATE POLICY f9_decision_insert ON public.sanction_case_decisions FOR INSERT TO bracket_app WITH CHECK (
+    public.sanction_member_has_permission(organization_id, 'RESOLVE_SANCTION_CASES') OR public.sanction_platform_scope(case_id));
+CREATE POLICY f9_resolution_insert ON public.sanction_resolutions FOR INSERT TO bracket_app WITH CHECK (
+    public.sanction_member_has_permission(organization_id, 'RESOLVE_SANCTION_CASES') OR public.sanction_platform_scope(case_id));
+GRANT INSERT ON public.sanction_case_events, public.sanction_case_decisions, public.sanction_resolutions TO bracket_app;
 
 COMMIT;
