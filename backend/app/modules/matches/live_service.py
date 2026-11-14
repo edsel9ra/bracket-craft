@@ -581,7 +581,7 @@ class LiveMatchService:
             ):
                 await self._require(context, match_id, "VIEW_MATCH_LIVE_DRAFT")
                 await self._require(context, match_id, "CLOSE_MATCH_REPORT")
-                if request.result.resolution_type in {"walkover", "administrative"}:
+                if request.result.resolution_type == "administrative":
                     await require_administrative_resolution(self.db, context, match_id)
                 state = await self._state(context, match_id)
                 if (
