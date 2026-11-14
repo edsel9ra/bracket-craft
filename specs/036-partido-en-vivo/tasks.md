@@ -1,12 +1,12 @@
 # Tareas 036 — Partido en vivo
 
-Estado: **borrador, pendiente de aprobación expresa de las tareas**. Spec y Plan aprobados por el usuario el 2026-11-13 («Apruebo la spec.» y «Apruebo el plan.»), con DA-1–DA-7 y C1–C5 confirmadas. No se autoriza implementación por redactar este documento. Todas las casillas están abiertas; los comandos y archivos nuevos son entregables futuros, no resultados ejecutados.
+Estado: **aprobado** por el usuario el 2026-11-13: «Apruebo las tareas, en siete PRs (A1–C2)». Spec y Plan previamente aprobados («Apruebo la spec.» y «Apruebo el plan.»), con DA-1–DA-7 y C1–C5 confirmadas. Se autoriza la fase Implementación en el orden oficial A1–C2, empezando por PR A1 (T1–T10). Todas las casillas siguen abiertas; los comandos y archivos nuevos son entregables futuros, no resultados ejecutados. Esta aprobación no equivale a aceptación de la implementación F1.
 
-Son **84 tareas**, cada una estimada en **20–30 minutos de trabajo activo**; esperas de CI, suites completas, carga y aceptación humana se contabilizan aparte. El orden aprobado del Plan es **A → B → C**: **A, 24 tareas (T1–T24)**; **B, 36 (T25–T60)**; **C, 24 (T61–T84)**. El tamaño se consigue separando piezas de dominio, tablas, endpoints, integración y gates; no se oculta todo el backend en una tarea. Si un bloque excede el tamaño al ejecutarlo, se propone descomposición antes de continuar, sin ampliar el alcance ni activar piezas incompletas.
+Son **84 tareas**, cada una estimada en **20–30 minutos de trabajo activo**; esperas de CI, suites completas, carga y aceptación humana se contabilizan aparte. El orden oficial aprobado es **A1 → A2 → B1 → B2 → B3 → C1 → C2**, con los rangos y cantidades de la tabla siguiente. Esta aprobación posterior concreta la división histórica A/B/C del Plan en siete PRs, sin cambiar sus garantías de seguridad ni las demás decisiones C1–C5. El tamaño se consigue separando piezas de dominio, tablas, endpoints, integración y gates; no se oculta todo el backend en una tarea. Si un bloque excede el tamaño al ejecutarlo, se propone descomposición antes de continuar, sin ampliar el alcance ni activar piezas incompletas.
 
 ## Dependencias, ejecución y tests primero
 
-- Se ejecuta una sola tarea cada vez. Además de las dependencias explícitas, cada tarea depende de las anteriores del mismo PR; el siguiente PR espera a la fusión y gates del anterior. Una tarea no autoriza comenzar sin aprobación del listado.
+- Se ejecuta una sola tarea cada vez. Además de las dependencias explícitas, cada tarea depende de las anteriores del mismo PR; el siguiente PR espera a la fusión y gates del anterior. La aprobación del listado permite comenzar por A1; no permite saltar tareas, gates ni decisiones de fusión del usuario.
 - En cada tarea funcional: escribir primero normal/vacío/error pertinentes, ejecutar el comando indicado y registrar **rojo por conducta ausente**, implementar lo mínimo y registrar verde antes de marcar. No contar imports rotos, entorno ausente o selección sin tests como rojo funcional. Las caracterizaciones y gates registran baseline/resultados; documentación y aceptación no inventan un rojo.
 - Comandos independientes desde raíz. Python/pnpm se ejecutan en `backend/`/`frontend/` con runtimes de AGENTS o contenedores equivalentes; no hay gestor de paquetes raíz. Exportar `DATABASE_URL` aplicativo y `DATABASE_ADMIN_URL` exclusivamente para preparar/migrar bases de prueba, como CI; PostgreSQL/Redis reales, nunca producción ni BYPASSRLS. Con `RUN_DATABASE_TESTS=1` no sustituir RLS, commits, sockets o dos procesos por mocks.
 - Nuevos tests propuestos: `test_match_live_policy.py`, `test_match_live_contracts.py`, `test_match_live_db.py`, `test_match_live_close_db.py`, `test_match_live_public.py`, `test_match_live_realtime.py`, `test_migration_056.py` en backend; `match-live-*.test.ts` en frontend. Los selectores de cada tarea deben recoger casos reales; no basta un exit 0 sin tests.
@@ -25,11 +25,11 @@ Estas recetas son requisitos futuros. Los «Hecho cuando» siguientes citan el c
 - **G-SEC:** `pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt`; `cd backend && bandit -r app -ll`; ejecutar desde raíz el bloque constitucional exacto `pnpm --dir frontend audit --prod --json --audit-level low` → `infra/scripts/audit_frontend.py --input ... --pnpm-status ...` con archivo temporal eliminado por trap, además de Gitleaks sobre `git archive HEAD` y Trivy con versión/umbral fijados en CI. Reproducir los comandos completos del workflow, no reemplazar filtros ni añadir exclusiones.
 - **G-REMOTE:** commits/push solo cuando el brief de ejecución lo autorice; verificar el SHA con `git rev-parse HEAD`. Para el PR que corresponda, `git_pr_checks(repo="github.com/edsel9ra/bracket-craft", pull_number=<PR>, wait_mode="all")`; comprobar también su run `push` por separado con `gh run view <run> --json headSha,event,conclusion,jobs`. Revisar Devin Review/comentarios para ese SHA, corregir hallazgos reales con test. E2E de push de feature se declara omitido según workflow, no ejecutado. No abrir ni fusionar un PR sin indicación del usuario.
 
-## Propuesta de partición para revisión — pendiente de aprobación
+## División oficial aprobada — siete PRs
 
-Se supera ampliamente el umbral de diez tareas de SDD: no conviene revisar A/B/C como tres diffs grandes. Se propone dividir **su entrega**, manteniendo una única spec para no fragmentar autorización, integridad y recuperación de F1. **No se cambia tácitamente C5:** el listado sigue agrupado en los tres PRs aprobados; adoptar estos siete PRs requiere confirmación del usuario antes de implementarlos.
+El usuario aprobó expresamente esta división al aprobar las tareas («Apruebo las tareas, en siete PRs (A1–C2)», 2026-11-13). Se divide **la entrega**, manteniendo una única spec para no fragmentar autorización, integridad y recuperación de F1. Los siete PRs sustituyen la propuesta inicial de tres PRs de C5 con los mismos límites de seguridad. La fecha de aprobación es la comunicada por el usuario, aunque su registro documental sea posterior.
 
-| Parte propuesta | Rango / cantidad | Por qué es segura sola |
+| PR oficial | Rango / cantidad | Por qué es seguro solo |
 |---|---|---|
 | A1 — Dominio y contratos inertes | T1–T10 / 10 | Solo funciones puras, contratos y pruebas; nada registrado en HTTP ni productor. |
 | A2 — Migración completa | T11–T24 / 14 | Incluye **toda** 056, RLS, permisos, función invocadora y vistas acotadas no consumidas. Ninguna tabla se entrega sin su RLS. No partir 056 en dos PRs ni editarla tras fusionar A2. |
@@ -39,11 +39,11 @@ Se supera ampliamente el umbral de diez tareas de SDD: no conviene revisar A/B/C
 | C1 — Interfaz operativa | T61–T72 / 12 | Backend B3 ya es completo y seguro; añade la UX del recorrido sin dejar controles esenciales para después. |
 | C2 — Verificación ampliada y aceptación | T73–T84 / 12 | Amplía evidencia/regresión/carga/documentación; no pospone autorizaciones o integridad hasta esta parte. No declarar implementación aceptada antes de T84. |
 
-Gates G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE al cierre de **cada parte adoptada**, además de los gates del PR lógico. No fusionar commits de tests rojos ni exponer rutas incompletas. En el esquema de tres PRs, los límites internos son checkpoints sin fusión independiente; en el de siete, A2 no comienza hasta fusionar A1, etc.
+Gates G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE al cierre de **cada uno de los siete PRs**. No fusionar commits de tests rojos ni exponer rutas incompletas. A2 no comienza hasta verificar la fusión autorizada de A1 y sus gates, y así sucesivamente hasta C2.
 
-## PR A — Fundación inerte (T1–T24)
+## PR A1 — Dominio y contratos inertes (T1–T10)
 
-Sin cambios observables del flujo clásico ni productores nuevos. Dependencia externa: aprobación de estas tareas y de la partición, si se adopta.
+Sin cambios observables del flujo clásico ni productores nuevos. Dependencia externa: tareas y división aprobadas por el usuario; siguiente paso de Implementación, todavía sin tareas ejecutadas.
 
 - [ ] **T1. Caracterizar operación, cierre clásico y permisos con fixtures reutilizables.** RF-003, RF-012, RF-021, RF-022, RF-031; RNF-001, RNF-006
   - Tests primero: baseline con dos tenants, operación sin permiso de cierre, oficial asignado/no asignado y acta confirmada; reutilizar fixtures existentes.
@@ -83,7 +83,11 @@ Sin cambios observables del flujo clásico ni productores nuevos. Dependencia ex
 
 - [ ] **T10. Verificar checkpoint de dominio/contratos inertes y su alcance.** RF-003, RF-007, RF-012, RF-019, RF-024; RNF-003, RNF-006
   - Dependencias: T1–T9. Caracterización/gate, sin rojo artificial.
-  - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py tests/test_match_live_contracts.py` y `git diff --check` pasan; ningún router/productor/carril público se ha activado. Si A1 se adopta como PR, además pasan los seis gates y su revisión remota antes de fusionar.
+  - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py tests/test_match_live_contracts.py` y `git diff --check` pasan; ningún router/productor/carril público se ha activado. Además pasan los seis gates y su revisión remota antes de la fusión autorizada de A1.
+
+## PR A2 — Migración completa (T11–T24)
+
+Dependencia externa: A1 fusionado y sus gates verdes. Entregar 056 completa con RLS, sin consumidores ni productores nuevos activos.
 
 - [ ] **T11. Preparar pruebas de migración limpia/incremental sobre bases desechables.** RF-008, RF-012, RF-023, RF-031; RNF-001
   - Tests primero: caracterizar cadena hasta 055 y construir fixture reutilizable de dos tenants/roles; añadir aserciones de 056 todavía en rojo por ausencia de su esquema, no por fallo del entorno.
@@ -137,13 +141,13 @@ Sin cambios observables del flujo clásico ni productores nuevos. Dependencia ex
   - Caracterización: inspeccionar diff y artefactos; no hace falta rojo artificial.
   - Hecho cuando: `git diff --check` y `cd backend && ruff check .` pasan; SQL/tests prueban invocador/GRANT/REVOKE sin PUBLIC ni credenciales y se registra que no existen rutas productoras F1, cambios de estadísticas ni nuevos campos públicos activos.
 
-- [ ] **T24. Cerrar gates locales/remotos y fusión autorizada de A.** RF-003, RF-008, RF-012, RF-013, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-006
+- [ ] **T24. Cerrar gates locales/remotos y fusión autorizada de A2.** RF-003, RF-008, RF-012, RF-013, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-006
   - Dependencias: T1–T23. Preparación de evidencias, esperas de suites/CI aparte del trabajo activo.
-  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `git diff --check`, más G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE pasan; verificación de 056 y rama limpia por SHA registradas. No se da por fusionado A hasta comprobar la fusión decidida por el usuario. Si A2 es separado, es su gate equivalente.
+  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `git diff --check`, más G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE pasan; verificación de 056 y rama limpia por SHA registradas. No se da por fusionado A2 hasta comprobar la fusión decidida por el usuario.
 
-## PR B — Backend completo y consumidores compatibles (T25–T60)
+## PR B1 — Servicios privados internos (T25–T36)
 
-Dependencia externa: A fusionado y sus gates verdes. No habilitar productores hasta T55 y sus precondiciones; si se adopta partición, B1/B2 permanecen sin nuevo router productivo.
+Dependencia externa: A2 fusionado y sus gates verdes. No habilitar productores hasta T55 y sus precondiciones; B1/B2 permanecen sin nuevo router productivo.
 
 - [ ] **T25. Implementar lectura de capacidades sin revelar borrador.** RF-012, RF-016, RF-031; RNF-001, RNF-006
   - Tests primero: booleans efectivos, contexto ajeno, observador y actor sin VIEW; usar fixture HTTP test-only, sin registro productivo del router nuevo.
@@ -191,7 +195,11 @@ Dependencia externa: A fusionado y sus gates verdes. No habilitar productores ha
 
 - [ ] **T36. Verificar checkpoint de servicios internos sin rutas productoras.** RF-001, RF-003, RF-008, RF-012, RF-019, RF-031; RNF-001, RNF-006
   - Dependencias: T25–T35. Gate de servicios, no autorización para exponerlos.
-  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py tests/test_match_live_close_db.py -k 'not consolidation'` y `git diff --check` pasan; el router F1 sigue ausente del montaje productivo. Si B1 se adopta, cumplir todos los gates y revisión antes de fusionar.
+  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py tests/test_match_live_close_db.py -k 'not consolidation'` y `git diff --check` pasan; el router F1 sigue ausente del montaje productivo. Cumplir todos los gates y revisión antes de la fusión autorizada de B1.
+
+## PR B2 — Cierre y avisos preparados (T37–T48)
+
+Dependencia externa: B1 fusionado y sus gates verdes. Preparar cierre y avisos sin activar rutas productoras F1 ni cambiar todavía la ruta pública.
 
 - [ ] **T37. Ampliar DTO de cierre sin abrir un bypass clásico de F1.** RF-019, RF-020, RF-022, RF-024; RNF-006
   - Tests primero: cierre clásico sin recibo intacto, variante F1 sin recibo/array vacío por defecto y campos extra; no aceptar subconjuntos del navegador.
@@ -239,7 +247,11 @@ Dependencia externa: A fusionado y sus gates verdes. No habilitar productores ha
 
 - [ ] **T48. Verificar checkpoint de cierre/avisos sin activar productores HTTP.** RF-013, RF-014, RF-019, RF-020, RF-021, RF-022, RF-027; RNF-002, RNF-006
   - Dependencias: T37–T47. Gate de preparación, no activación.
-  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py tests/test_match_live_realtime.py` y `git diff --check` pasan; nuevo router no incluido y ruta pública antigua todavía compatible. Si B2 se adopta, cumplir todos los gates y Review antes de fusionar.
+  - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py tests/test_match_live_realtime.py` y `git diff --check` pasan; nuevo router no incluido y ruta pública antigua todavía compatible. Cumplir todos los gates y Review antes de la fusión autorizada de B2.
+
+## PR B3 — Exposición completa y activación (T49–T60)
+
+Dependencia externa: B2 fusionado y sus gates verdes. Público exacto, consumidores compatibles y registro del router se entregan juntos; no activar T55 sin sus precondiciones.
 
 - [ ] **T49. Integrar la unión pública en la ruta y paginación existentes.** RF-009, RF-010, RF-028; RNF-001, RNF-002, RNF-006
   - Tests primero: anónimo sin organización, suspendido entre páginas, filtro de fase/grupo, invisible/cancelado y organización ajena.
@@ -266,7 +278,7 @@ Dependencia externa: A fusionado y sus gates verdes. No habilitar productores ha
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-close.test.ts` no envía una copia local como acta F1 ni borra su texto ante rechazo; cierre clásico sigue igual.
 
 - [ ] **T55. Registrar el router completo y verificar las precondiciones de activación.** RF-001, RF-003, RF-012, RF-013, RF-019, RF-028, RF-031; RNF-001, RNF-006
-  - Dependencias: T25–T54 completas, público y consumidores compatibles, revisión de seguridad del diff; si hay subdivisión, B1/B2 fusionados.
+  - Dependencias: T25–T54 completas, público y consumidores compatibles, revisión de seguridad del diff; B1/B2 fusionados.
   - Tests primero: rutas reales de la aplicación, auth/CSRF y ausencia de bypass por rutas antiguas.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py tests/test_match_live_close_db.py tests/test_match_live_public.py` pasa a través del montaje real, no solo el router test-only. El despliegue exige suspender escrituras y detener toda API/relay antigua antes de reabrir tráfico; no se introduce flag oculto ni rolling mixto.
 
@@ -282,17 +294,17 @@ Dependencia externa: A fusionado y sus gates verdes. No habilitar productores ha
   - Tests primero: flujo por HTTP y espectadores reales, suspensión/reanudación, ocultación del torneo y acta rectificada vigente.
   - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/realtime-public.spec.ts --project public` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_public_access_matrix.py tests/test_public_field_allowlist.py` no revelan hechos ni datos excluidos.
 
-- [ ] **T59. Ejecutar gate backend/BD/seguridad de B y registrar trazabilidad del servidor.** RF-003, RF-007, RF-008, RF-012, RF-019, RF-020, RF-022, RF-027, RF-031; RNF-001, RNF-003, RNF-006
+- [ ] **T59. Ejecutar gate backend/BD/seguridad de B3 y registrar trazabilidad del servidor.** RF-003, RF-007, RF-008, RF-012, RF-019, RF-020, RF-022, RF-027, RF-031; RNF-001, RNF-003, RNF-006
   - Dependencias: T25–T58. Gate, sin rojo artificial; esperas de suites aparte.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `cd backend && python -m compileall -q app`, más G-BE/G-INF/G-SEC pasan y las salidas saneadas quedan asociadas al SHA; no se posponen controles esenciales a C.
 
-- [ ] **T60. Ejecutar gates frontend/E2E/CI y comprobar fusión autorizada de B.** RF-009, RF-013, RF-016, RF-017, RF-018, RF-019, RF-028; RNF-002, RNF-004, RNF-005, RNF-006
+- [ ] **T60. Ejecutar gates frontend/E2E/CI y comprobar fusión autorizada de B3.** RF-009, RF-013, RF-016, RF-017, RF-018, RF-019, RF-028; RNF-002, RNF-004, RNF-005, RNF-006
   - Dependencias: T59; todos los controles B listos. Gate, esperas de CI aparte.
-  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run e2e:test` y `git diff --check`, más G-FE/G-E2E/G-REMOTE pasan; evidencias y Review revisadas. B solo se declara fusionado tras evidencia de la fusión autorizada; si B3 se adopta es su gate final y conserva G-INF/G-SEC de T59.
+  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run e2e:test` y `git diff --check`, más G-FE/G-E2E/G-REMOTE pasan; evidencias y Review revisadas. B3 solo se declara fusionado tras evidencia de la fusión autorizada y conserva G-INF/G-SEC de T59.
 
-## PR C — UX, verificación ampliada y aceptación (T61–T84)
+## PR C1 — Interfaz operativa (T61–T72)
 
-Dependencia externa: B completo fusionado con gates verdes; no se difiere seguridad del servidor hasta este PR. Si se adopta C1/C2, el PR C1 ya proporciona un recorrido completo antes de C2.
+Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del servidor hasta este PR. C1 proporciona un recorrido operativo completo antes de C2.
 
 - [ ] **T61. Separar editor compartido y estado clásico local en el composable.** RF-004, RF-005, RF-012, RF-024; RNF-004, RNF-006
   - Tests primero: carga de F1, vacío, modo clásico y error; ningún hecho local se considera aceptado sin HTTP.
@@ -340,7 +352,11 @@ Dependencia externa: B completo fusionado con gates verdes; no se difiere seguri
 
 - [ ] **T72. Verificar interfaz completa antes del checkpoint C1.** RF-001, RF-004, RF-011, RF-016, RF-019, RF-024, RF-029, RF-030; RNF-004, RNF-005, RNF-006
   - Dependencias: T61–T71. Gate, sin rojo artificial.
-  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run e2e:test`, más G-FE/G-E2E pasan; si C1 es PR independiente, además todos los gates comunes/Review y fusión autorizada se verifican antes de C2.
+  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run e2e:test`, más G-FE/G-E2E pasan; además todos los gates comunes/Review y fusión autorizada de C1 se verifican antes de C2.
+
+## PR C2 — Verificación ampliada y aceptación (T73–T84)
+
+Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin posponer controles esenciales; T84 exige aceptación humana expresa y no se completa por la aprobación de estas tareas.
 
 - [ ] **T73. Ampliar E2E del recorrido completo provisional→suspensión→cierre.** RF-001, RF-002, RF-004, RF-005, RF-008, RF-019, RF-021, RF-024, RF-029; RNF-006
   - Tests primero: dos lectores, operador, espectador y cierre con recibo; normal, borrador vacío válido y rechazo con hechos inválidos.
@@ -384,13 +400,13 @@ Dependencia externa: B completo fusionado con gates verdes; no se difiere seguri
 
 - [ ] **T83. Ejecutar gates finales frontend/E2E, CI y Review antes de solicitar aceptación.** RF-009, RF-011, RF-016, RF-017, RF-018, RF-019, RF-028, RF-029, RF-030; RNF-002, RNF-004, RNF-005, RNF-006
   - Dependencias: T82. Gate y documentación de evidencias; esperas remotas aparte.
-  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run e2e:test`, `git diff --check` y G-FE/G-E2E/G-REMOTE pasan para el SHA final, con push/PR comprobados por separado y hallazgos triados. La fusión de C se verifica solo si el usuario la decide; no confundirla con aceptación de F1.
+  - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run e2e:test`, `git diff --check` y G-FE/G-E2E/G-REMOTE pasan para el SHA final, con push/PR comprobados por separado y hallazgos triados. La fusión de C2 se verifica solo si el usuario la decide; no confundirla con aceptación de F1.
 
 - [ ] **T84. Obtener aceptación humana explícita de F1 y cerrar la spec solo entonces.** RF-001, RF-019, RF-021, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-004, RNF-005, RNF-006
   - Dependencias: T1–T83 verificadas, entregas integradas según la decisión del usuario y evidencia final disponible. Ningún test/merge sustituye esta decisión.
   - Hecho cuando: se registra fecha y texto de aceptación del usuario tras presentar evidencias/límites; solo entonces se marca implementación aceptada y se actualizan spec/Plan/tareas/MEMORY/documentación. Pasan `git diff --check` y `python3 infra/scripts/verify_version_sources.py --exclude-constitution`; cualquier commit de cierre vuelve a verificar CI. Sin respuesta expresa, T84 permanece abierta y no se declara F1 implementada/aceptada.
 
-## Matriz de cobertura del borrador
+## Matriz de cobertura de las tareas aprobadas
 
 Cada requisito tiene al menos una tarea funcional o de verificación, además de los gates; las referencias siguientes no acreditan su cumplimiento hasta ejecutar las tareas.
 
@@ -434,4 +450,4 @@ Cada requisito tiene al menos una tarea funcional o de verificación, además de
 | RNF-005 | T53, T63–T68, T71, T72, T78, T80 |
 | RNF-006 | T1, T16, T20, T23, T25, T33, T36–T38, T44, T49, T53, T54, T55, T58, T61, T62, T69, T73, T80, T81 |
 
-**Cobertura prevista: RF-001–RF-031 (31/31) y RNF-001–RNF-006 (6/6).** T84 exige aceptación humana de toda la implementación. Ninguna casilla está completada por la aprobación previa de spec o Plan.
+**Cobertura prevista: RF-001–RF-031 (31/31) y RNF-001–RNF-006 (6/6).** T84 exige aceptación humana de toda la implementación. Ninguna casilla está completada por la aprobación de spec, Plan o tareas.

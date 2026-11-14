@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/036-partido-en-vivo — fase actual: Tareas — spec y plan aprobados por el usuario («Apruebo la spec.» / «Apruebo el plan.», 2026-11-13, comunicados tras sus respectivas revisiones). DA-1–DA-7 y C1–C5 cerradas. tasks.md borrador de 84 tareas, pendiente de aprobación; sin implementación F1. F8 aceptada no habilita todavía borradores F1.
+- specs/036-partido-en-vivo — fase actual: Implementación — spec, plan y tareas aprobados por el usuario, con DA-1–DA-7 y C1–C5 confirmadas. Tareas aprobadas el 2026-11-13: «Apruebo las tareas, en siete PRs (A1–C2)». Las 84 siguen abiertas, sin implementación F1 ejecutada. F8 aceptada no habilita por sí sola borradores F1.
 
 ## Pendiente
-- Obtener aprobación de Tareas 036 antes de Implementación: A T1–T24 (24), B T25–T60 (36), C T61–T84 (24); cobertura 31 RF/6 RNF y aceptación humana T84. Se propone dividir en A1/A2, B1/B2/B3 y C1/C2 sin activar productores antes de B3; propuesta pendiente, no cambia C5 tácitamente. 056 solo propuesta. #79 abierto; no fusionar.
+- Siguiente paso: PR A1 (T1–T10), dominio/contratos inertes, tests primero y una tarea cada vez. División oficial: A1 T1–T10, A2 T11–T24, B1 T25–T36, B2 T37–T48, B3 T49–T60, C1 T61–T72, C2 T73–T84; cada PR espera fusión/gates del anterior. Sin productores antes de B3; 056 solo propuesta, aceptación humana final T84 pendiente. Este brief solo registra aprobación y CI documental; no iniciar A1 ni fusionar #79 aquí.
 
 ## Historial de fases
+- 2026-11-13 · Spec 036 · Tareas y división oficial en siete PRs aprobadas expresamente: «Apruebo las tareas, en siete PRs (A1–C2)». Fase Tareas cerrada; fase Implementación, siguiente PR A1 (T1–T10). No acredita tareas ejecutadas ni aceptación de F1. Fecha humana conservada aunque el registro documental sea posterior.
 - 2026-11-13 · Spec 036 · Plan y C1–C5 aprobados expresamente: «Apruebo el plan.», aprobación comunicada tras redactarlo. Fase Plan cerrada; inicio de Tareas autorizado, no implementación. Fecha humana conservada aunque el registro documental sea posterior.
 - 2026-11-13 · Spec 036 · Spec y clarificación cerradas por aprobación expresa del usuario «Apruebo la spec.», comunicada tras ronda 2; inicio de Plan autorizado. La fecha de aprobación es la comunicada por el usuario, aunque su registro sigue a la revisión documental del 2026-11-14. No autoriza Tareas ni Implementación.
 - 2026-11-14 · Spec 036 · Ronda 2 cerrada por respuesta humana «Recomendación» (DA-5 a, DA-6 a, DA-7 a); revisión integral sin dudas nuevas ni conflicto constitucional identificado. Spec sigue borrador, pendiente de aprobación expresa; no autoriza Plan ni acredita implementación o CI del nuevo commit.
