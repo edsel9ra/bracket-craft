@@ -1,0 +1,123 @@
+"""PR 82 review: capability separation and equivalence with report validation."""
+
+import pytest
+from fastapi import HTTPException
+
+from app.modules.matches.live_schemas import LiveReviewRequest, LiveResultDTO
+from test_match_live_db import live_service_db as live_service_db, command, goal
+from test_match_live_close_db import request as review_request
+from test_migration_056 import MATCH, ORG, SEGMENT_FIRST, TEAM_HOME
+
+
+async def initialize(f):
+    await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+    await f.call("execute", command("pause_clock", 1))
+
+
+async def test_review_finding_1_operate_only_can_capture_with_rosters(live_service_db):
+    f = live_service_db
+    await f.permissions(["OPERATE_MATCH_LIVE"])
+    capabilities = await f.call("access")
+    assert (
+        capabilities.can_operate
+        and not capabilities.can_view
+        and not capabilities.can_close
+    )
+    assert (
+        await f.admin.fetchval(
+            "SELECT count(*) FROM match_rosters WHERE match_id=$1", MATCH
+        )
+        == 2
+    )
+    result = await f.call("execute", command("add_event", event=goal()))
+    assert result.revision == 1
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_events") == 1
+
+
+async def test_review_finding_1_control_close_allows_legacy_sanction_validation(
+    live_service_db,
+):
+    f = live_service_db
+    await f.permissions(["OPERATE_MATCH_LIVE", "CLOSE_MATCH_REPORT"])
+    capabilities = await f.call("access")
+    assert (
+        capabilities.can_operate
+        and capabilities.can_close
+        and not capabilities.can_view
+    )
+    result = await f.call("execute", command("add_event", event=goal()))
+    assert result.revision == 1
+
+
+async def test_review_finding_2_walkover_needs_close_not_administrative(
+    live_service_db,
+):
+    f = live_service_db
+    await initialize(f)
+    await f.admin.execute(
+        "UPDATE roles SET role_definition_id=(SELECT id FROM role_definitions WHERE code='operator') WHERE organization_id=$1",
+        ORG,
+    )
+    await f.permissions(["VIEW_MATCH_LIVE_DRAFT", "CLOSE_MATCH_REPORT"])
+    result = await f.call(
+        "create_review",
+        LiveReviewRequest(
+            expected_content_revision=0,
+            result=LiveResultDTO(
+                resolution_type="walkover", winner_team_id=TEAM_HOME, reason="no_show"
+            ),
+        ),
+    )
+    assert result["report"].resolution_type == "walkover"
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 1
+
+
+@pytest.mark.parametrize(
+    "live_service_db", [{"stage_override": {"extra_time_enabled": True}}], indirect=True
+)
+async def test_review_finding_3_effective_stage_resolution(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    event = goal()
+    await f.call("execute", command("add_event", 2, event={**event, "minute": 91}))
+    result = await f.call(
+        "create_review",
+        LiveReviewRequest(
+            expected_content_revision=1,
+            result=LiveResultDTO(
+                resolution_type="extra_time",
+                home_score_regular=0,
+                away_score_regular=0,
+                home_score=1,
+                away_score=0,
+                winner_team_id=TEAM_HOME,
+            ),
+        ),
+    )
+    assert result["report"].resolution_type == "extra_time"
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 1
+
+
+@pytest.mark.parametrize(
+    "live_service_db", [{"bracket_code": "GF1"}, {"bracket_code": "GF2"}], indirect=True
+)
+async def test_review_finding_4_grand_final_requires_winner(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    with pytest.raises(HTTPException) as error:
+        await f.call("create_review", review_request())
+    assert error.value.status_code == 422
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0
+
+
+async def test_review_finding_5_requires_active_segment(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    await f.admin.execute(
+        "UPDATE match_segments SET status='completed',minute_end=CASE WHEN segment_number=1 THEN 45 ELSE 90 END WHERE match_id=$1",
+        MATCH,
+    )
+    with pytest.raises(HTTPException) as error:
+        await f.call("create_review", review_request())
+    assert error.value.status_code == 422
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0

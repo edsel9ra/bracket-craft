@@ -514,7 +514,27 @@ class LiveMatchService:
             resolution_type="regular", home_score_regular=home, away_score_regular=away
         )
         report = LiveReportDTO(**result.model_dump(exclude={"events"}), events=events)
-        snapshot = await load_report_payload_snapshot(self.db, context, match, report)
+        rosters = await CloseMatchReportService(self.db)._load_match_rosters(
+            context, match_id
+        )
+        ineligible = await self.db.scalar(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM match_live_ineligible_players(:match,:players,:now))"
+            ),
+            {
+                "match": match_id,
+                "players": sorted({row["player_id"] for row in rosters}, key=str),
+                "now": now,
+            },
+        )
+        snapshot = await load_report_payload_snapshot(
+            self.db,
+            context,
+            match,
+            report,
+            rosters=rosters,
+            has_suspended_players=ineligible,
+        )
         minutes = effective_match_minutes(match["rules_config"], match["stage_id"])
         segments = {segment["id"]: segment for segment in snapshot.segments}
         for event in events:

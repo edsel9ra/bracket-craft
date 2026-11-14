@@ -668,6 +668,7 @@ async def load_report_payload_snapshot(
     require_active_segment: bool = False,
     active_segment_id: UUID | None = None,
     exclude_suspensions_from_match_id: UUID | None = None,
+    has_suspended_players: bool | None = None,
 ) -> ReportPayloadSnapshot:
     """Read validation facts within the caller's tenant transaction; take no locks."""
     if payload.resolution_type == "walkover":
@@ -678,12 +679,14 @@ async def load_report_payload_snapshot(
     if segments is None:
         segments = await service._load_match_segments(context, match["id"])
     known = await service._load_event_team_scope(context, payload, match)
-    suspended = await service._has_suspended_players(
-        context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
-        match_id=match["id"],
-        exclude_origin_match_id=exclude_suspensions_from_match_id,
-        created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
-    )
+    suspended = has_suspended_players
+    if suspended is None:
+        suspended = await service._has_suspended_players(
+            context, match["tournament_id"], sorted({row["player_id"] for row in rosters}, key=str),
+            match_id=match["id"],
+            exclude_origin_match_id=exclude_suspensions_from_match_id,
+            created_before=match.get("original_report_confirmed_at") if exclude_suspensions_from_match_id else None,
+        )
     return ReportPayloadSnapshot(
         match, rosters, segments, known, suspended, require_active_segment, active_segment_id
     )
