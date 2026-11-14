@@ -208,6 +208,7 @@ async def test_player_references_use_composite_foreign_keys(db_session):
         }
     )
     allowed_pairs["match_report_version_events"] = allowed_pairs["match_events"].copy()
+    allowed_pairs["match_live_events"] = allowed_pairs["match_events"].copy()
     allowed_pairs["sanction_cases"] = {("represented_player_id", "organization_id")}
 
     by_table: dict[str, list] = {table: [] for table in allowed_pairs}
