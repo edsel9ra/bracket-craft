@@ -131,6 +131,8 @@ control(reference, command, now, match, active_segment):
 
 Si un segmento se completa/interrumpe por las rutas existentes, materializar y pausar el reloj F1 en su misma transacción. Crear uno nuevo no arranca implícitamente su reloj; su referencia comienza en cero al iniciarla expresamente, conservando la identificación de hechos de segmentos anteriores. La suspensión del partido no completa ni interrumpe por sí sola un segmento 017. Durante `suspended` no se admite control/corrección del reloj por fuera de la transición; se mantiene congelado.
 
+017 RF-014 sigue vigente: no se aceptan hechos nuevos ni correcciones cuyo destino sea un segmento interrumpido, ni se convierte ese estado en completado para revisar. Los hechos aceptados antes de interrumpir permanecen privados, sin descartarlos automáticamente ni alterar sus identidades: bloquean la revisión hasta su retirada o reasignación explícita a un segmento activo. Se permite reparar varios uno a uno aunque queden otros pendientes; los segmentos completados conservan su corrección previa. La revisión y el cierre usan los estados reales y el mismo validador de segmentos.
+
 ### Estados, comandos y concurrencia
 
 `decide_live_transition(current, command, facts, accepted_at)`, `derive_provisional_score(events, rules, teams)` y `review_fingerprint(events, result, content_revision)` son puras. Reutilizar catálogo 015, reglas configuradas, `replay_report_state`, validadores de minutos/sustituciones y coherencia marcador/eventos existentes; no duplicar constantes deportivas. Los minutos de captura se introducen explícitamente, no se reescriben desde el reloj. Un catálogo inválido nunca se degrada a texto libre.
@@ -182,6 +184,8 @@ close(context, body, optional_review_id):
 ```
 
 Refactorizar un punto interno del servicio, no llamar `execute` bajo otro `begin`. El DTO clásico conserva `extra=forbid`; añadir explícitamente `live_review_id` opcional y validación condicional: para F1, datos de hechos proceden del servidor, no del array por defecto vacío. Error aditivo `LIVE_REVIEW_REQUIRED/STALE` (409) sin cerrar nada si un cliente clásico intenta cerrar un partido F1. No adelantar el cambio a confirmación a un endpoint distinto. Cambiar solo reloj/referencia no invalida revisión; modificar hechos o resultado sí. Suspensión/terminal/permiso retirado impiden cierre aunque haya recibo válido. Tras cerrar, toda corrección corresponde exclusivamente a 033.
+
+Preparación B2: `live_close.py` comparte la lectura de hechos vigentes con el servicio y aporta preparación/congelación dentro del `begin` original; `execute(..., session_id=...)` recibe la sesión solo como argumento interno opcional. El router clásico no se cambia ni la infiere del recibo: B3 deberá pasar la sesión autenticada al cierre F1. El campo de recibo no se hereda como entrada en los contratos de revisión ni 033 (ClassVar), preservando sus esquemas estrictos. `live_public.py` define la unión por estado sin sustituir aún `PublicMatchResponse` en la ruta. `live_notices.py` encola dentro del comando no montado: la comparación pública usa el mismo instante servidor antes/después, sin considerar revisión privada ni el mero clock_observed_at; una tarjeta no dispara aviso público. Los avisos reutilizan el worker existente; no hay Redis en request ni cambios del dispatcher público hasta B3. Son puntos internos del diseño aprobado, no migraciones ni cambios de permisos HTTP.
 
 ## 6. Endpoints, contratos y pantallas
 

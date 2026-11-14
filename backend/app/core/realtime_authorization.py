@@ -44,6 +44,8 @@ class RealtimeAuthorizer:
             refs = resolve_event_references(event.rule, event.envelope['payload'])
             event_data = {'event_type': event.rule.event_type, 'match_id': str(refs.match_id),
                           'tournament_id': str(refs.tournament_id)}
+            if event.rule.scope is not None:
+                event_data['scope'] = event.rule.scope
             if event.rule.version_read:
                 event_data.update(scope='organization', version_id=str(refs.version_id))
             candidates = [{'user_id': str(p.user_id), 'session_id': str(p.session_id)} for p in principals]

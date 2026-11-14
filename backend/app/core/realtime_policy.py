@@ -24,6 +24,7 @@ CATALOG = (
     ReadRule('MATCH_UPDATED', 'organization', True, True),
     ReadRule('STANDINGS_UPDATED', 'organization', True, True),
     ReadRule('MATCH_REPORT_RECTIFIED', 'organization', False, True),
+    ReadRule('MATCH_LIVE_UPDATED', 'organization', True, False, 'VIEW_MATCH_LIVE_DRAFT', True),
 )
 
 
@@ -208,6 +209,8 @@ def resolve_event_references(rule, payload):
     if rule not in CATALOG or not isinstance(payload, Mapping):
         return None
     allowed = {'match_id', 'tournament_id'}
+    if rule.scope is not None:
+        allowed.add('scope')
     if rule.version_read:
         allowed |= {'scope', 'version_id', 'rectified_at'}
     if set(payload) - allowed or payload.get('scope') != rule.scope:

@@ -9,10 +9,31 @@ from starlette.requests import Request
 
 from app.main import _request_validation_exception_handler
 from app.modules.matches import live_schemas as schemas
-from app.modules.matches.schemas import EVENT_TYPES, MatchEventPayload
+from app.modules.matches.schemas import EVENT_TYPES, MatchEventPayload, CloseMatchReportDTO
+from app.modules.rectifications.schemas import RectificationReportDTO
 
 
 COMMAND, SEGMENT, EVENT, TEAM, PLAYER = (uuid4() for _ in range(5))
+
+
+def test_close_dto_accepts_review_without_browser_events():
+    receipt = uuid4()
+    dto = CloseMatchReportDTO(resolution_type="regular", home_score_regular=0,
+        away_score_regular=0, live_review_id=receipt)
+    assert dto.live_review_id == receipt and dto.events == []
+
+
+@pytest.mark.parametrize("events", [[], [{}]])
+def test_close_dto_rejects_even_empty_explicit_browser_events_with_review(events):
+    with pytest.raises(ValueError):
+        CloseMatchReportDTO(resolution_type="regular", home_score_regular=0,
+            away_score_regular=0, live_review_id=uuid4(), events=events)
+
+
+@pytest.mark.parametrize("model", [RectificationReportDTO, schemas.LiveResultDTO, schemas.LiveReportDTO])
+def test_close_receipt_does_not_extend_other_report_contracts(model):
+    with pytest.raises(ValidationError):
+        model(resolution_type="regular",home_score_regular=0,away_score_regular=0,live_review_id=uuid4())
 
 
 def command(kind="start", **body):

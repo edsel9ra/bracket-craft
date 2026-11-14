@@ -178,7 +178,8 @@ def facts():
 def test_permissions_general_read_does_not_require_write_or_official():
     recipient, resource = facts()
     for rule in policy.CATALOG:
-        assert policy.decide_private_delivery(rule, recipient, resource, NOW) == policy.Decision.ALLOW
+        expected = policy.Decision.DENY if rule.permission else policy.Decision.ALLOW
+        assert policy.decide_private_delivery(rule, recipient, resource, NOW) == expected
 
 
 @pytest.mark.parametrize('role_rows,assigned,expected', [

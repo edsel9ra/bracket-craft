@@ -177,6 +177,7 @@ class CloseMatchReportDTO(BaseModel):
     winner_team_id: UUID | None = None
     reason: str | None = Field(default=None, min_length=1, max_length=1000)
     events: list[MatchEventPayload] = Field(default_factory=list, max_length=500)
+    live_review_id: UUID | None = Field(default=None, exclude=True)
 
     @field_validator("reason")
     @classmethod
@@ -201,6 +202,8 @@ class CloseMatchReportDTO(BaseModel):
         resolución (D-9): la pareja reglamentaria es obligatoria salvo en
         `walkover`, cuyo marcador deriva el servidor de la configuración (RF-005).
         """
+        if self.live_review_id is not None and "events" in self.model_fields_set:
+            raise ValueError("El cierre live no admite hechos del navegador")
         regular_scores_set = (
             self.home_score_regular is not None or self.away_score_regular is not None
         )

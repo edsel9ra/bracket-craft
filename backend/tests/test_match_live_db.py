@@ -72,6 +72,12 @@ async def live_service_db(database_admin_url, request):
                 "UPDATE public.tournament_versions",
                 f"UPDATE public.matches SET bracket_code='{options['bracket_code']}'; UPDATE public.tournament_versions",
             )
+        if options.get("extra_match"):
+            sql=sql.replace("UPDATE public.tournament_versions", """INSERT INTO public.matches
+                (id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
+                SELECT '31000000-0000-4000-8000-000000000053',organization_id,tournament_id,
+                    tournament_version_id,stage_id,home_team_id,away_team_id,'scheduled' FROM public.matches;
+                UPDATE public.tournament_versions""")
         if options.get("missing_participant"):
             sql = sql.replace(
                 f"'{TEAM_HOME}', '{TEAM_AWAY}', 'scheduled', 1",
@@ -473,7 +479,7 @@ async def test_edit_event_validates_in_persisted_order(live_service_db, monkeypa
 
 @pytest.mark.parametrize("status", ["completed", "interrupted"])
 @pytest.mark.parametrize("kind", ["correct_event", "remove_event"])
-async def test_edit_event_previous_segment_stays_correctable(
+async def test_edit_event_previous_segment_respects_status(
     live_service_db, status, kind
 ):
     f = live_service_db
@@ -487,6 +493,13 @@ async def test_edit_event_previous_segment_stays_correctable(
     body = dict(event_id=event["client_event_id"])
     if kind == "correct_event":
         body["event"] = {**event, "minute": 2}
+    if kind == "correct_event" and status == "interrupted":
+        with pytest.raises(HTTPException) as error:
+            await f.call("execute", command(kind, 1, **body))
+        assert error.value.status_code == 409
+        snapshot = await f.call("snapshot")
+        assert snapshot.content_revision == 1 and snapshot.events[0].minute == 1
+        return
     await f.call("execute", command(kind, 1, **body))
     snapshot = await f.call("snapshot")
     assert snapshot.content_revision == 2
