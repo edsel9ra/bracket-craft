@@ -165,6 +165,18 @@ def initialized_snapshot():
     }
 
 
+@pytest.mark.parametrize("status", ["scheduled", "live", "finished", "suspended", "cancelled", "administrative_resolution"])
+def test_command_snapshot_accepts_real_match_statuses(status):
+    snapshot = schemas.LiveSnapshotResponse.model_validate({**initialized_snapshot(), "status": status})
+    assert snapshot.status == status
+
+
+@pytest.mark.parametrize("status", ["walkover", "abandoned", "postponed", "unknown"])
+def test_command_snapshot_rejects_nonexistent_match_statuses(status):
+    with pytest.raises(ValidationError):
+        schemas.LiveSnapshotResponse.model_validate({**initialized_snapshot(), "status": status})
+
+
 def test_command_snapshot_read_contract_accepts_initialized_empty_draft():
     snapshot = schemas.LiveSnapshotResponse.model_validate(initialized_snapshot())
     assert snapshot.events == []

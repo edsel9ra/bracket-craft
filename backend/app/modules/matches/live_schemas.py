@@ -142,7 +142,7 @@ class LiveClockResponse(BaseModel):
 class LiveSnapshotResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     initialized: bool = Field(strict=True)
-    status: Literal["scheduled", "live", "suspended", "finished", "walkover", "abandoned", "cancelled", "postponed"]
+    status: Literal["scheduled", "live", "finished", "suspended", "cancelled", "administrative_resolution"]
     revision: Revision | None = None
     content_revision: Revision | None = None
     events: list[LiveEventPayload] = Field(default_factory=list, max_length=500)
