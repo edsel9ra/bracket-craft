@@ -102,61 +102,88 @@ Sin cambios observables del flujo clásico ni productores nuevos. T1–T10 verif
 
 Dependencia externa: A1 fusionado y sus gates verdes. Entregar 056 completa con RLS, sin consumidores ni productores nuevos activos.
 
-- [ ] **T11. Preparar pruebas de migración limpia/incremental sobre bases desechables.** RF-008, RF-012, RF-023, RF-031; RNF-001
+### Evidencia común A2
+
+- Base: `main` actualizado con #80 fusionado, rama `devin/1794630110-partido-en-vivo-a2`; 056 reconfirmada como siguiente número libre. Solo se desarrolla/aplica en bases desechables; 001–055 intactas.
+- Tests escritos antes del SQL: baseline 055 con dos tenants y ausencia de estado F1; primera selección **1 passed, 28 errors** por archivo 056 ausente, no acreditada como rojo funcional. Rojo funcional adicional: cierre de segmento con reloj corriendo y metadata nula de tarjeta roja aceptados indebidamente (**DID NOT RAISE CheckViolationError**), y purga 034 bloqueada por FK de sesión (**ForeignKeyViolationError**). Corregidos en la misma 056 todavía no aplicada persistentemente.
+- Checkpoints PostgreSQL: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py`: **60 passed in 63.30s**; regresión adicional `-k compatible_with_existing_session_retention`: **1 passed, 60 deselected in 1.44s**. Suite final `RUN_DATABASE_TESTS=1 pytest -q -ra`: **3869 passed, 4 skipped in 919.30s (0:15:19)**, incluidos los 61 casos nuevos. Los cuatro skips son invitaciones que requieren `demo.owner`, ausente sin seed. La primera suite completa detectó el inventario cerrado de FKs a jugadores: ampliado aditivamente con las cuatro parejas compuestas nuevas, sin exclusiones ni relajación del aislamiento; repetición final verde. Sin BD: **2862 passed, 1011 skipped in 10.68s** (opt-in PostgreSQL).
+- Migrador real `sh infra/postgres/migrate.sh`: init + 001→056 en BD nueva y 055 con datos de dos tenants→056; segunda ejecución en ambas conserva **56 checksums** y datos previos. Reejecución SQL directa tampoco duplica permisos. `sh infra/scripts/test_migrate_target.sh`: **OK: todas las pruebas de MIGRATION_TARGET pasaron**. Ese script cambia la contraseña global del rol de pruebas: se restauró con `00_roles.sh` desde la configuración existente antes de repetir la suite, sin cambios de producto ni credenciales en el repo.
+- `ruff check .`: **All checks passed!**; `python -m compileall -q app`: exit 0; Bandit `-r app -ll`: exit 0 (**12 low, 0 medium, 0 high**). Recetas CI de infraestructura desarrollo/producción, contrato, versiones y sintaxis del migrador correctas. Gitleaks sobre el árbol final y `git diff --check` se adjuntan al reporte de publicación de A2; no equivalen a G-SEC completo ni a G-REMOTE.
+- Auditoría SQL real: **2 vistas security_barrier, SELECT aplicativo y sin PUBLIC; 5 funciones SECURITY INVOKER**. Las cuatro tablas tienen RLS + FORCE; `bracket_app` verificado **no superusuario y sin BYPASSRLS**. RLS garantiza tenant/membresía; RBAC intratenant HTTP y entrega siguen siendo verificaciones separadas.
+- Sin router, servicio HTTP, productor, emisión, frontend ni consumidor público F1 nuevo. Las dos vistas nuevas permanecen sin consumir; las definiciones públicas existentes y las filas de partidos se comparan antes/después de 056 en cada fixture. No se declara F1 implementada ni aceptada.
+
+| Tarea | Evidencia específica en `test_migration_056.py` y auditoría |
+|---|---|
+| T11 | `baseline_055`: dos tenants/partidos y ausencia del estado nuevo; fixture de cadena real anterior a 056. |
+| T12 | `state_table`/`rls`: estado vacío, microsegundos, referencias/anchor/tiempo inválidos y tenant ajeno; marcador confirmado intacto. |
+| T13 | `events_table`: siete tipos, estructura/metadata cerradas, identidad/retirada, referencias tenant y límite de 500 vigentes. Inventario estricto de `players` ampliado con cuatro FKs compuestas. |
+| T14 | `commands_table`: identidad repetida con hash igual/diferente rechazada, actor/sesión válidos y SELECT/INSERT sin UPDATE/DELETE. Conflicto HTTP/recuperación de aceptación siguen en B1. |
+| T15 | `reviews_table` y retención: recibo propio persistido, ajeno invisible, actor/sesión falsos rechazados e inmutabilidad. Sesión validada al insertar por trigger sin FK que bloquee 034; su purga conserva historial y no permite nuevos recibos con esa sesión. Huella/consumo de cierre siguen en B2. |
+| T16 | `permissions`: concesiones aditivas a owner/administrator/operator/referee, no viewer/personalizados; organización/rol nuevos por mecanismos reales, reejecución sin duplicados, CLOSE intacto y VIEW/OPERATE independientes. |
+| T17 | `live_integrity`: terminal/confirmado, suspendido, transición inválida, segmento cerrado con reloj corriendo, congelación/rollback. Un mero cerrador no edita marcador y puede congelar con identidad propia aunque no sea creador; 009/016 intactas. |
+| T18 | `realtime_live`: sin version_id, permiso/asignación, revocaciones, referencias incompatibles, 256/257 y restauración de los cuatro GUC; inválidos DENY/INDETERMINATE/fila ausente como antes. |
+| T19 | `public_projection`: selección interna y exactamente 14 claves; live/suspended, referencia nula, inactiva/oculto/versión no actual/cancelado. Catálogo verifica barrera/grants; vistas anteriores intactas y sin consumidores nuevos. |
+| T20 | `clean_incremental_idempotent`, migrador real en ambas bases, 56 checksums estables, partidos previos intactos, reejecución sin duplicados y sintaxis shell. |
+| T21 | `rls`: cuatro tablas bajo SET LOCAL ROLE bracket_app, dos tenants, contexto vacío, lectura/escritura cruzada, sin PUBLIC ni DELETE; comandos/recibos añaden política restrictiva de actor. |
+| T22 | `legacy_authorization`: tres casos clásicos y tres rectificativos concretos sobre 056, reutilizando pruebas 055; catálogo F9/desconocido cerrado y multirol. Misma firma, agrupación por usuario y máximo 256 en una llamada. |
+| T23 | Catálogo/diff: cinco funciones invocadoras, REVOKE/GRANT mínimos; comandos guardan identificadores/actor/sesión/hash/tipo/revisión/fecha sin cuerpo; recibos conservan el resultado revisado privado y estado responsable/momento. Sin credenciales ni detalle deportivo en logs, Python productivo, HTTP, estadísticas o frontend alterados. |
+
+- [x] **T11. Preparar pruebas de migración limpia/incremental sobre bases desechables.** RF-008, RF-012, RF-023, RF-031; RNF-001
   - Tests primero: caracterizar cadena hasta 055 y construir fixture reutilizable de dos tenants/roles; añadir aserciones de 056 todavía en rojo por ausencia de su esquema, no por fallo del entorno.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k baseline_055` pasa; la selección de esquema nuevo registra rojo esperado hasta T12–T20 sin aplicar una 056 parcial en volumen persistente.
 
-- [ ] **T12. Añadir estado/referencias de reloj y RLS tenant en 056.** RF-001, RF-002, RF-008, RF-011, RF-025, RF-029; RNF-001, RNF-004
+- [x] **T12. Añadir estado/referencias de reloj y RLS tenant en 056.** RF-001, RF-002, RF-008, RF-011, RF-025, RF-029; RNF-001, RNF-004
   - Tests primero: PK/FK compuestas, checks de referencia/anchor/tiempo, contexto ausente y tenant ajeno.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k state_table` valida `match_live_state` y su RLS con rol aplicativo; no se tocan scores confirmados.
 
-- [ ] **T13. Añadir hechos privados y restricciones de referencias tenant.** RF-004, RF-005, RF-007, RF-008, RF-023, RF-024; RNF-001
+- [x] **T13. Añadir hechos privados y restricciones de referencias tenant.** RF-004, RF-005, RF-007, RF-008, RF-023, RF-024; RNF-001
   - Tests primero: identidad única, referencias ajenas y retirada, catálogo/estructura compatibles sin insertar `match_events`.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k events_table` valida `match_live_events`, RLS y claves compuestas de equipo/segmento/jugadores.
 
-- [ ] **T14. Añadir registro idempotente de comandos sin credenciales ni cuerpos en logs.** RF-023, RF-026; RNF-001, RNF-004
+- [x] **T14. Añadir registro idempotente de comandos sin credenciales ni cuerpos en logs.** RF-023, RF-026; RNF-001, RNF-004
   - Tests primero: comando repetido, unicidad por partido, hash diferente, actor ajeno y permisos mínimos de tablas.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k commands_table` verifica tabla/RLS/GRANT de comandos y ausencia de DELETE innecesario.
 
-- [ ] **T15. Añadir recibos inmutables de revisión ligados a actor/sesión.** RF-019, RF-020, RF-023, RF-026; RNF-001
+- [x] **T15. Añadir recibos inmutables de revisión ligados a actor/sesión.** RF-019, RF-020, RF-023, RF-026; RNF-001
   - Tests primero: pertenencia de partido/actor, recibo ajeno, cambio de contexto y prohibición de sobrescritura/borrado por el rol aplicativo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k reviews_table` valida tabla, políticas y referencias sin convertir recibos en actas confirmadas.
 
-- [ ] **T16. Conceder permisos por defecto sin reemplazar permisos existentes.** RF-012, RF-031; RNF-001, RNF-006
+- [x] **T16. Conceder permisos por defecto sin reemplazar permisos existentes.** RF-012, RF-031; RNF-001, RNF-006
   - Tests primero: roles existentes/nuevos, dueño/administrador/operador/árbitro, observador, personalizados y reejecución sin duplicar entradas.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k permissions` demuestra VIEW/OPERATE independientes y CLOSE/lecturas existentes intactos.
 
-- [ ] **T17. Proteger integridad provisional frente a terminales y congelación de cierre.** RF-003, RF-008, RF-021, RF-022, RF-025
+- [x] **T17. Proteger integridad provisional frente a terminales y congelación de cierre.** RF-003, RF-008, RF-021, RF-022, RF-025
   - Tests primero: SQL directo sobre confirmado, transición inválida, reloj en segmento cerrado y congelación válida seguida de rollback.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k live_integrity` valida triggers nuevos sin relajar los triggers 009/016 ni permitir al mero cerrador una edición ordinaria.
 
-- [ ] **T18. Ampliar en 056 la función invocadora de entrega para F1.** RF-012, RF-013, RF-014, RF-015, RF-031; RNF-001
+- [x] **T18. Ampliar en 056 la función invocadora de entrega para F1.** RF-012, RF-013, RF-014, RF-015, RF-031; RNF-001
   - Tests primero: evento cerrado `MATCH_LIVE_UPDATED`, sin versión, permiso/asignación, referencias incompatibles y lote inválido.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k realtime_live` valida firma/límite 256, SECURITY INVOKER y restauración de contexto, sin modificar 055.
 
-- [ ] **T19. Añadir vistas acotadas F1 sin alterar vistas de estadísticas/acta vigente.** RF-009, RF-010, RF-028; RNF-001, RNF-002
+- [x] **T19. Añadir vistas acotadas F1 sin alterar vistas de estadísticas/acta vigente.** RF-009, RF-010, RF-028; RNF-001, RNF-002
   - Tests primero: organizaciones activas, versión publicada actual, cancelado/invisible, live/suspended y referencia nula; barrera de seguridad/grants.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k public_projection` valida selección interna separada de las 14 claves públicas y mantiene las vistas actuales sin consumo de borradores.
 
-- [ ] **T20. Verificar 056 completa en limpio, incremental y reejecución del migrador.** RF-008, RF-012, RF-023, RF-028, RF-031; RNF-001, RNF-006
+- [x] **T20. Verificar 056 completa en limpio, incremental y reejecución del migrador.** RF-008, RF-012, RF-023, RF-028, RF-031; RNF-001, RNF-006
   - Dependencias: T11–T19. Gate de migración, no edición de una versión aplicada.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py` y `sh -n infra/postgres/migrate.sh` pasan para 001→056 y 055 con datos→056, checksums estables y reejecución sin duplicar permisos; siguiente número libre reconfirmado.
 
-- [ ] **T21. Verificar aislamiento SQL directo de las cuatro tablas y privilegios reales.** RF-012, RF-016, RF-026; RNF-001
+- [x] **T21. Verificar aislamiento SQL directo de las cuatro tablas y privilegios reales.** RF-012, RF-016, RF-026; RNF-001
   - Tests primero: dos tenants, lectura/escritura cruzada y contexto ausente, bajo bracket_app no superusuario/BYPASSRLS.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_056.py -k rls` cubre las cuatro tablas y documenta la frontera: RLS tenant, RBAC HTTP/entrega por separado.
 
-- [ ] **T22. Probar compatibilidad de las decisiones 055 antiguas y roles acumulados.** RF-012, RF-013, RF-015, RF-027, RF-031; RNF-001, RNF-002
+- [x] **T22. Probar compatibilidad de las decisiones 055 antiguas y roles acumulados.** RF-012, RF-013, RF-015, RF-027, RF-031; RNF-001, RNF-002
   - Tests primero: los seis casos de catálogo anteriores frente a 056, error/fila ausente, desconocidos/F9 y vías multirol.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_realtime_delivery_db.py tests/test_migration_056.py -k 'legacy or authorization or multi_role'` recoge casos reales y no amplía destinatarios actuales ni introduce una llamada por socket.
 
-- [ ] **T23. Auditar grants, trazabilidad mínima e inercia de la fundación.** RF-008, RF-014, RF-022, RF-026, RF-027; RNF-001, RNF-006
+- [x] **T23. Auditar grants, trazabilidad mínima e inercia de la fundación.** RF-008, RF-014, RF-022, RF-026, RF-027; RNF-001, RNF-006
   - Caracterización: inspeccionar diff y artefactos; no hace falta rojo artificial.
   - Hecho cuando: `git diff --check` y `cd backend && ruff check .` pasan; SQL/tests prueban invocador/GRANT/REVOKE sin PUBLIC ni credenciales y se registra que no existen rutas productoras F1, cambios de estadísticas ni nuevos campos públicos activos.
 
 - [ ] **T24. Cerrar gates locales/remotos y fusión autorizada de A2.** RF-003, RF-008, RF-012, RF-013, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-006
   - Dependencias: T1–T23. Preparación de evidencias, esperas de suites/CI aparte del trabajo activo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `git diff --check`, más G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE pasan; verificación de 056 y rama limpia por SHA registradas. No se da por fusionado A2 hasta comprobar la fusión decidida por el usuario.
+  - **Abierta por autorización expresa:** falta G-REMOTE (CI de pull_request/push y Devin Review después de que el usuario abra el PR), además de fusión autorizada. Evidencia local solicitada arriba; no se certifican frontend/E2E ni el resto de G-SEC no ejecutados localmente. Se comprobarán sus jobs en el bucle del PR; no se abre ni fusiona desde esta entrega.
 
 ## PR B1 — Servicios privados internos (T25–T36)
 
