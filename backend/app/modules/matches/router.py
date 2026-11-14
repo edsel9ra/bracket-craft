@@ -96,7 +96,7 @@ async def _load_operation_match(
         text(
             """
             SELECT m.id, m.tournament_id, m.tournament_version_id, m.stage_id, m.group_id,
-                   m.matchday, m.match_date, m.status, m.result_confirmed,
+                   m.matchday, m.match_date, m.status, m.result_confirmed, m.bracket_code,
                    m.home_team_id, ht.name AS home_team_name, ht.short_code AS home_team_short_code,
                    ht.crest_object_key AS home_team_crest_object_key,
                    ht.logo_url AS home_team_logo_url,

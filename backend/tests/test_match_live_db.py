@@ -66,6 +66,12 @@ async def live_service_db(database_admin_url, request):
             "1, '{}'::jsonb, '{}'::jsonb,",
             f"1, '{json.dumps(config)}'::jsonb, '{{}}'::jsonb,",
         )
+        if options.get("bracket_code"):
+            assert options["bracket_code"] in {"GF1", "GF2"}
+            sql = sql.replace(
+                "UPDATE public.tournament_versions",
+                f"UPDATE public.matches SET bracket_code='{options['bracket_code']}'; UPDATE public.tournament_versions",
+            )
         if options.get("missing_participant"):
             sql = sql.replace(
                 f"'{TEAM_HOME}', '{TEAM_AWAY}', 'scheduled', 1",

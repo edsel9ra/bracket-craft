@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.matches.live_schemas import LiveReviewRequest, LiveResultDTO
+from test_match_live_close_db import request as review_request
 from test_match_live_db import live_service_db as live_service_db, command, goal
 from test_migration_056 import ORG, SEGMENT_FIRST, TEAM_HOME
 
@@ -84,3 +85,15 @@ async def test_review_uses_effective_stage_resolution(live_service_db):
     )
     assert result["report"].resolution_type == "extra_time"
     assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 1
+
+
+@pytest.mark.parametrize(
+    "live_service_db", [{"bracket_code": "GF1"}, {"bracket_code": "GF2"}], indirect=True
+)
+async def test_grand_final_review_requires_winner(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    with pytest.raises(HTTPException) as error:
+        await f.call("create_review", review_request())
+    assert error.value.status_code == 422
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0
