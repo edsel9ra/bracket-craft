@@ -3,10 +3,10 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 
 ## Spec activa
 - 036-partido-en-vivo, fase Implementación. Spec, plan y tareas aprobados por el usuario el 2026-11-13; DA-1–DA-7 y C1–C5 confirmadas. División oficial A1 → A2 → B1 → B2 → B3 → C1 → C2.
-- #80/A1 y #81/A2 fusionados según el usuario. B1 T25–T35 verificadas localmente; T36 abierta por G-REMOTE. No declara F1 implementada/aceptada ni despliegue.
+- #80/A1 y #81/A2 fusionados según el usuario. B1/#82 T25–T35 verificadas localmente; 058 y fixes Review 1–5 preparados. Backend 3963 passed, 4 skipped (PostgreSQL/Redis). T36 abierta por instrucción del usuario; no declara F1 implementada/aceptada ni despliegue.
 
 ## Pendiente
-- El usuario abre PR B1. Verificar CI pull_request/push y Devin Review; cerrar T36 en commit documental separado, volver a esperar CI y esperar fusión autorizada. No se abrió PR desde B1.
+- PR #82 abierto por el usuario. Verificar CI pull_request/push y Devin Review de los fixes; T36 permanece abierta por instrucción expresa, sin cierre automático en esta ronda. Esperar fusión autorizada antes de B2.
 - Solo después: B2 T37–T48 → B3 T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
 
 ## Historial de fases 036
@@ -18,6 +18,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 - Rojos B1 conservados: pausa CLOSE-only, orden estable de corrección, huella devuelta y corrección/retirada en segmentos previos. Primer rojo agregado de servicios era acceso no concedido a organizations; no acredita rojo funcional separado de cada conducta. Dos suites intermedias interrumpidas no cuentan como completas.
 
 ## Decisiones y límites vigentes
+- 2026-11-14 · Usuario aprobó Opción 1 del hallazgo 1/#82: 058 de elegibilidad mínima para OPERATE, sin ampliar lecturas F9 ni editar 042/056/057. SECURITY DEFINER necesario para calcular sin otorgar historial; tenant/permisos 056, search_path fijo y EXECUTE solo bracket_app. Captura usa IDs no elegibles; cierre/review siguen con load_effective_sanctions. Equivalencia, roles/tenant y migrador limpio/incremental/idempotente verificados localmente; evidencia y límites en plan/tasks. Fixes Review 2–5: f5646b15, 629de4e8, bc8c5111, e6e68784.
 - VIEW_MATCH_LIVE_DRAFT y OPERATE_MATCH_LIVE independientes; dueño/administrador/operador con alcance organizativo, árbitro asignado y observador sin concesión por defecto. Recibos requieren VIEW+CLOSE; operar no hereda lectura ni devuelve borrador.
 - Reloj basado en instante servidor UTC recibido por dominio puro, microsegundos, sin ticks persistidos. Reanudar conserva referencia detenida; corregir reloj no cambia minutos/content_revision de hechos. Revisiones optimistas, identidad idempotente y recibos actor/sesión/contenido.
 - 057 permite solo pausa automática al interrumpir/completar un segmento activo ya autorizado con CLOSE. SECURITY INVOKER y RLS, sin BYPASSRLS/SECURITY DEFINER, sin permiso de lectura ni operación F1 general. Excepción de trigger exige diferencia exacta de reloj/revisión/metadatos; no utiliza flag GUC falsificable.
