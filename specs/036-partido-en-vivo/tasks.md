@@ -190,53 +190,73 @@ Dependencia externa: A1 fusionado y sus gates verdes. Entregar 056 completa con 
 
 Dependencia externa: A2 fusionado y sus gates verdes. No habilitar productores hasta T55 y sus precondiciones; B1/B2 permanecen sin nuevo router productivo.
 
-- [ ] **T25. Implementar lectura de capacidades sin revelar borrador.** RF-012, RF-016, RF-031; RNF-001, RNF-006
+Desviación autorizada el **2026-11-14**, respuesta del usuario **«Opción 1: migración 057 mínima (recomendada)»**: B1 incluye `057_live_segment_automatic_pause.sql` para T33. 056 permanece intacta. CLOSE sin VIEW/OPERATE debe poder interrumpir/completar un segmento con reloj F1 running sin adquirir operación ni lectura F1. La pausa automática ocurre en la misma transacción de segmento; no cambia permisos HTTP. Pruebas: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_057.py`, rojo **2 failed, 7 deselected** (`LIVE_CLOCK_SEGMENT_NOT_ACTIVE`), verde **9 passed in 12.95s**, con negativos y cadena limpia/incremental 056→057, reejecución idempotente y funciones invocadoras.
+
+- [x] **T25. Implementar lectura de capacidades sin revelar borrador.** RF-012, RF-016, RF-031; RNF-001, RNF-006
   - Tests primero: booleans efectivos, contexto ajeno, observador y actor sin VIEW; usar fixture HTTP test-only, sin registro productivo del router nuevo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k access` devuelve capacidades sin hechos/score/reloj privados y no cambia GET operation.
 
-- [ ] **T26. Implementar snapshot privado coherente y lectura vacía sin inicializar.** RF-005, RF-012, RF-016, RF-018, RF-024; RNF-001, RNF-004
+- [x] **T26. Implementar snapshot privado coherente y lectura vacía sin inicializar.** RF-005, RF-012, RF-016, RF-018, RF-024; RNF-001, RNF-004
   - Tests primero: VIEW sí/no, session/membership actuales, `initialized=false`, cero hechos y dos lectores; lectura no mutante.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k snapshot` verifica GET live autorizado bajo RLS y 404 indistinguible fuera del tenant.
 
-- [ ] **T27. Construir transacción de comandos, revisiones e idempotencia.** RF-003, RF-007, RF-023, RF-026; RNF-001, RNF-004
+- [x] **T27. Construir transacción de comandos, revisiones e idempotencia.** RF-003, RF-007, RF-023, RF-026; RNF-001, RNF-004
   - Tests primero: repetición con igual hash, distinto cuerpo, respuesta perdida y revisión obsoleta; permiso revalidado incluso en retry.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k command_identity` prueba ack mínimo sin heredar VIEW y bloqueos/contexto compatibles con cierre.
 
-- [ ] **T28. Aceptar inicio de partido con estado persistido no confirmado.** RF-001, RF-003, RF-008, RF-025, RF-026
+- [x] **T28. Aceptar inicio de partido con estado persistido no confirmado.** RF-001, RF-003, RF-008, RF-025, RF-026
   - Tests primero: scheduled válido, participantes ausentes, versión no publicada y doble inicio concurrente.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k start_match` persiste una única transición live sin eventos confirmados ni efectos de cierre.
 
-- [ ] **T29. Aceptar suspensión y reanudación sin autoarranque del reloj.** RF-002, RF-003, RF-011, RF-026, RF-029
+- [x] **T29. Aceptar suspensión y reanudación sin autoarranque del reloj.** RF-002, RF-003, RF-011, RF-026, RF-029
   - Tests primero: reloj running/paused/no iniciado, captura durante suspended y conservación de hechos/segmento/tiempo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k suspend_resume` congela el reloj y rechaza escrituras inválidas sin cambios parciales.
 
-- [ ] **T30. Persistir controles/correcciones del reloj con instante servidor.** RF-011, RF-023, RF-026, RF-030; RNF-003, RNF-004
+- [x] **T30. Persistir controles/correcciones del reloj con instante servidor.** RF-011, RF-023, RF-026, RF-030; RNF-003, RNF-004
   - Tests primero: permiso retirado, revisión perdida, reloj running y pausado, corrección inválida y reinicio/lectura posterior.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k clock` recibe el tiempo en el dominio puro y no altera minutos ni content_revision de hechos.
 
-- [ ] **T31. Capturar hechos con catálogo/participantes/reglas actuales.** RF-004, RF-005, RF-007, RF-008, RF-024
+- [x] **T31. Capturar hechos con catálogo/participantes/reglas actuales.** RF-004, RF-005, RF-007, RF-008, RF-024
   - Tests primero: eventos válidos, vacíos/desconocidos, 501 hechos, referencias de otro tenant y tiempo inválido.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k add_event` reutiliza validadores, actualiza provisional coherentemente y no inserta `match_events`.
 
-- [ ] **T32. Corregir/retirar hechos explícitamente sin pérdida silenciosa.** RF-005, RF-006, RF-007, RF-023, RF-026
+- [x] **T32. Corregir/retirar hechos explícitamente sin pérdida silenciosa.** RF-005, RF-006, RF-007, RF-023, RF-026
   - Tests primero: corrección/retirada de identidad conocida, obsoleta/ajena, cambios simultáneos y nuevo marcador.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k edit_event` incrementa content_revision solo por contenido aceptado y conserva lo anterior si falla validación.
 
-- [ ] **T33. Coordinar rutas actuales de segmentos con el reloj F1.** RF-003, RF-011, RF-025, RF-029; RNF-003, RNF-006
+- [x] **T33. Coordinar rutas actuales de segmentos con el reloj F1.** RF-003, RF-011, RF-025, RF-029; RNF-003, RNF-006
   - Tests primero: interrupción/cierre de segmento pausa reloj, nuevo segmento no arranca implícitamente y modo clásico permanece igual.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k segment_clock` respeta orden de bloqueo y no cambia permisos existentes de segmentos.
 
-- [ ] **T34. Emitir recibos de revisión completa sin confirmar ni congelar hechos.** RF-006, RF-019, RF-020, RF-024, RF-026
+- [x] **T34. Emitir recibos de revisión completa sin confirmar ni congelar hechos.** RF-006, RF-019, RF-020, RF-024, RF-026
   - Tests primero: VIEW+CLOSE, falta cualquiera, vacío válido, resultado inválido y recibo ligado a actor/sesión/conjunto vigente.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k create_review` devuelve conjunto/resultado completos y preserva borrador/acta confirmada.
 
-- [ ] **T35. Probar atomicidad de comandos y ausencia de efectos confirmados.** RF-007, RF-008, RF-023, RF-026; RNF-003, RNF-004
+- [x] **T35. Probar atomicidad de comandos y ausencia de efectos confirmados.** RF-007, RF-008, RF-023, RF-026; RNF-003, RNF-004
   - Tests primero: fallo inducido tras cambio de estado/hecho antes de commit; no se pierde la respuesta aceptada ni se guarda una parcial.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py -k command_rollback` demuestra reversión de estado/comando/auditoría y clasificación/sanciones/avance intactos; inyección solo test-only.
 
 - [ ] **T36. Verificar checkpoint de servicios internos sin rutas productoras.** RF-001, RF-003, RF-008, RF-012, RF-019, RF-031; RNF-001, RNF-006
   - Dependencias: T25–T35. Gate de servicios, no autorización para exponerlos.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_db.py tests/test_match_live_close_db.py -k 'not consolidation'` y `git diff --check` pasan; el router F1 sigue ausente del montaje productivo. Cumplir todos los gates y revisión antes de la fusión autorizada de B1.
+
+### Evidencia local B1 — 2026-11-14
+
+T25–T35 verificadas en `RUN_DATABASE_TESTS=1 pytest -q -ra`: **3923 passed, 4 skipped in 1116.42s (0:18:36)**. Los cuatro skips son invitaciones que requieren demo.owner, ausente del arnés sin seed. Incluye 45 casos de servicios y 9 de 057; checkpoint previo de servicios: **40 passed in 55.15s**. Entorno Python 3.14, PostgreSQL y Redis reales, rol aplicativo sin BYPASSRLS. No hay router F1 registrado ni emisión F1; main.py, permisos HTTP, vistas públicas existentes y frontend intactos.
+
+| Tareas | Evidencia de comportamiento |
+|---|---|
+| T25–T26 | HTTP test-only de capacidades sin datos privados; permisos independientes, contexto ajeno, 404 ajeno/inexistente, sesión revocada y usuario/organización/membresía inactivos. Snapshot vacío no escribe; lectores concurrentes y snapshot inicializado coherente. |
+| T27–T28 | Reintento con mismo hash y ack mínimo, conflicto de cuerpo/sesión/revisión y permiso retirado; inicio concurrente único y rechazo de participantes ausentes/versión archivada. |
+| T29–T30 | Suspender/reanudar desde running/paused/not_started conserva referencia sin autoarranque; captura suspendida denegada. Corrección running/paused con instante servidor, revisión obsoleta y minutos/content_revision de hechos intactos. |
+| T31–T32 | Alta/corrección/retirada con marcador derivado y cero match_events; jugador ajeno, tiempo/segmento/equipo inválidos y límite 501 rechazados. Correcciones simultáneas no sobrescriben; fallo preserva contenido, orden validado igual al persistido y hechos de segmentos previos siguen corregibles/retirables. Catálogo vacío/desconocido y contratos estrictos cubiertos además por A1 en la suite completa. |
+| T33 | 057: interrupción/completado CLOSE-only, pausa directa/otras operaciones/tenant ajeno denegados. Ruta existente de interrupción pausa; crear otro segmento conserva referencia/revisión detenida sin autoarranque. Migrador real limpio 001→057 e incremental 056→057 con dos tenants: 57 checksums estables al reejecutar y datos previos intactos. |
+| T34 | Recibo append-only ligado a actor/sesión/content_revision/huella y conjunto completo; VIEW+CLOSE, resultado inválido y contenido obsoleto. Cambiar solo reloj no invalida revisión; sin congelación ni confirmación. |
+| T35 | Fallos inducidos después de cambiar estado/hecho y antes del ack revierten estado, hechos, comando y auditoría; matches, standings, suspensiones/servicios, advancement_links y outbox quedan idénticos. |
+
+Rojos conservados: servicios **17 failed** y revisión **5 failed**, inicialmente por acceso directo no permitido a organizations (corregido reutilizando fn_verify_user_org_membership; no se presenta como rojo funcional separado de cada conducta). Regresiones funcionales posteriores antes del fix: orden de corrección **1 failed, 34 deselected**; huella devuelta **1 failed, 5 deselected**; corregir/retirar hechos de segmentos previos **4 failed, 35 deselected**; 057 **2 failed, 7 deselected**. Todas quedan incluidas en el verde integral anterior. Dos ejecuciones integrales intermedias se interrumpieron para completar estas regresiones: no se cuentan como verificaciones completas.
+
+**T36 permanece abierta por G-REMOTE** y los gates remotos restantes: faltan PR del usuario, CI de pull_request/push y Devin Review del SHA publicado; cierre posterior en commit documental separado. Parte local: suite completa anterior, Ruff `All checks passed!`, Bandit exit 0 (12 low, 0 medium/high); Gitleaks se ejecuta sobre el árbol stageado final antes del commit y se reporta con git diff --check. No acredita aceptación F1, despliegue ni autoriza B2 antes de fusión/gates de B1.
 
 ## PR B2 — Cierre y avisos preparados (T37–T48)
 

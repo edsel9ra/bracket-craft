@@ -60,6 +60,12 @@ No se prevén dependencias, secretos ni variables de entorno nuevos. Reutilizar 
 
 ## 4. Base de datos — propuesta 056
 
+### Desviación autorizada durante B1: migración 057
+
+El usuario aprobó el 2026-11-14 «Opción 1: migración 057 mínima (recomendada)», incluida en B1. La reproducción con PostgreSQL demostró que CLOSE sin VIEW ni OPERATE supera la autorización existente de segmentos, pero 056 impide interrumpir un segmento con reloj corriendo y también impide pausarlo con esos permisos. T33 no puede cumplirse endureciendo los permisos HTTP. 056 queda intacta.
+
+057 permite exclusivamente materializar y pausar automáticamente la referencia running al pasar su segmento activo a interrupted/completed, en la misma sentencia/transacción autorizada con CLOSE_MATCH_REPORT. Funciones SECURITY INVOKER y RLS vigente; ningún SECURITY DEFINER, BYPASSRLS, permiso nuevo ni lectura HTTP. La excepción requiere ejecución anidada de trigger, segmento ya cerrado/interrumpido, actor vigente y diferencia exacta de reloj/revisión/metadatos, preservando contenido, marcador y congelación. Una pausa directa o cualquier otra edición sigue requiriendo OPERATE; no se usa un flag GUC falsificable. Tests rojo/verde, negativos tenant/operación y cadena limpia/incremental/idempotente en `test_migration_057.py`.
+
 ### Tablas e integridad
 
 - `match_live_state`: clave `(match_id, organization_id)` con FK compuesta a partido/tenant; `revision` para comandos, `content_revision` para el conjunto de hechos; marcador provisional derivado, referencia de segmento nullable, `clock_state`, `clock_elapsed_us >= 0`, `clock_anchor_at` UTC nullable, inicialización/finalización, responsable y momento. Sin referencia: segmento/tiempo públicos nulos y `not_started`. `running` exige segmento activo y anchor; `paused` no acumula. La observación no incrementa revisiones. No reutilizar marcadores confirmados de `matches` para persistir el provisional.
