@@ -628,6 +628,19 @@ def _thaw_report_value(value):
     return value
 
 
+def effective_report_match(match: Mapping[str, Any]) -> dict[str, Any]:
+    match = dict(match)
+    rules_config = dict(match["rules_config"])
+    stage_override = rules_config.get("stage_overrides", {}).get(str(match["stage_id"]), {})
+    if stage_override:
+        rules_config["stage_defaults"] = {
+            **rules_config["stage_defaults"],
+            **stage_override,
+        }
+        match["rules_config"] = rules_config
+    return match
+
+
 @dataclass(frozen=True)
 class ReportPayloadSnapshot:
     match: Mapping[str, Any]
@@ -1181,16 +1194,7 @@ class CloseMatchReportService:
         row = result.mappings().one_or_none()
         if row is None:
             raise LookupError("Partido no encontrado")
-        match = dict(row)
-        rules_config = dict(match["rules_config"])
-        stage_override = rules_config.get("stage_overrides", {}).get(str(match["stage_id"]), {})
-        if stage_override:
-            rules_config["stage_defaults"] = {
-                **rules_config["stage_defaults"],
-                **stage_override,
-            }
-            match["rules_config"] = rules_config
-        return match
+        return effective_report_match(row)
 
     async def _load_match_rosters(self, context: AuthContext, match_id: UUID):
         result = await self.db.execute(

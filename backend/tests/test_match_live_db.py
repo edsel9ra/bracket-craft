@@ -28,7 +28,7 @@ from test_migration_056 import (
     TEAM_HOME,
     PLAYER_HOME_FIRST,
 )
-from test_migration_031 import SEED_SQL, TEAM_AWAY, PLAYER_AWAY, TOURNAMENT
+from test_migration_031 import SEED_SQL, TEAM_AWAY, PLAYER_AWAY, TOURNAMENT, STAGE
 from test_substitutions import rules_config
 
 
@@ -59,9 +59,12 @@ class LiveFixture:
 async def live_service_db(database_admin_url, request):
     async with throwaway_database(database_admin_url, last=57) as db:
         options = getattr(request, "param", {})
+        config = rules_config()
+        if options.get("stage_override"):
+            config["stage_overrides"][STAGE] = options["stage_override"]
         sql = SEED_SQL.replace(
             "1, '{}'::jsonb, '{}'::jsonb,",
-            f"1, '{json.dumps(rules_config())}'::jsonb, '{{}}'::jsonb,",
+            f"1, '{json.dumps(config)}'::jsonb, '{{}}'::jsonb,",
         )
         if options.get("missing_participant"):
             sql = sql.replace(

@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.matches.live_schemas import LiveReviewRequest, LiveResultDTO
-from test_match_live_db import live_service_db as live_service_db, command
+from test_match_live_db import live_service_db as live_service_db, command, goal
 from test_migration_056 import ORG, SEGMENT_FIRST, TEAM_HOME
 
 
@@ -58,3 +58,29 @@ async def test_administrative_review_still_requires_administrative_permission(
         )
     assert error.value.status_code == 403
     assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0
+
+
+@pytest.mark.parametrize(
+    "live_service_db", [{"stage_override": {"extra_time_enabled": True}}], indirect=True
+)
+async def test_review_uses_effective_stage_resolution(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    event = goal()
+    await f.call("execute", command("add_event", 2, event={**event, "minute": 91}))
+    result = await f.call(
+        "create_review",
+        LiveReviewRequest(
+            expected_content_revision=1,
+            result=LiveResultDTO(
+                resolution_type="extra_time",
+                home_score_regular=0,
+                away_score_regular=0,
+                home_score=1,
+                away_score=0,
+                winner_team_id=TEAM_HOME,
+            ),
+        ),
+    )
+    assert result["report"].resolution_type == "extra_time"
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 1

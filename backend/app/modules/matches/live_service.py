@@ -37,6 +37,7 @@ from app.modules.matches.router import _load_operation_match
 from app.modules.matches.service import (
     CloseMatchReportService,
     effective_match_minutes,
+    effective_report_match,
     load_report_payload_snapshot,
     validate_event_minute,
     validate_report_payload,
@@ -433,6 +434,7 @@ class LiveMatchService:
         )
 
     async def _validated_report(self, context, match, events, result, now):
+        match = effective_report_match(match)
         report = LiveReportDTO.model_validate(
             {**result.model_dump(mode="python", exclude={"events"}), "events": events}
         )
