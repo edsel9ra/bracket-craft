@@ -25,11 +25,13 @@ usuario autenticado.
 from __future__ import annotations
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext
+from app.modules.matches.router import get_match_operation
 from app.modules.matches.service import CloseMatchReportService
 from db_helpers import TenantContext, create_test_user, set_tenant_context
 from tests.test_substitutions import (
@@ -274,3 +276,22 @@ async def test_the_role_catalogue_means_what_the_scenario_assumes(database_admin
     assert "CLOSE_MATCH_REPORT" in permissions["referee"]
     assert permissions["viewer"] == set()
     assert "CLOSE_MATCH_REPORT" in permissions["owner"]
+
+
+@pytest.mark.asyncio
+async def test_operation_read_does_not_grant_close_or_cross_tenant_access(database_admin_url):
+    async with committed_application(database_admin_url) as engine:
+        _, match = await seeded_match(engine)
+        viewer = await add_member(engine, match.tenant, role_code="viewer")
+        before = await read_state(engine, match)
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            operation = await get_match_operation(match.match_id, viewer, session)
+        assert operation["match"]["id"] == match.match_id
+        with pytest.raises(PermissionError):
+            await close(engine, viewer, match)
+        assert await read_state(engine, match) == before
+        other, _ = await seeded_match(engine)
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            with pytest.raises(HTTPException) as error:
+                await get_match_operation(match.match_id, other, session)
+        assert error.value.status_code == 404

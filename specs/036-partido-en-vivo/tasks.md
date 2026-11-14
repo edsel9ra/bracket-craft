@@ -1,6 +1,6 @@
 # Tareas 036 — Partido en vivo
 
-Estado: **aprobado** por el usuario el 2026-11-13: «Apruebo las tareas, en siete PRs (A1–C2)». Spec y Plan previamente aprobados («Apruebo la spec.» y «Apruebo el plan.»), con DA-1–DA-7 y C1–C5 confirmadas. Se autoriza la fase Implementación en el orden oficial A1–C2, empezando por PR A1 (T1–T10). Todas las casillas siguen abiertas; los comandos y archivos nuevos son entregables futuros, no resultados ejecutados. Esta aprobación no equivale a aceptación de la implementación F1.
+Estado: **aprobado** por el usuario el 2026-11-13: «Apruebo las tareas, en siete PRs (A1–C2)». Spec y Plan previamente aprobados («Apruebo la spec.» y «Apruebo el plan.»), con DA-1–DA-7 y C1–C5 confirmadas. Se autoriza la fase Implementación en el orden oficial A1–C2, empezando por PR A1 (T1–T10). Las casillas verificadas citan su evidencia; las abiertas siguen siendo entregables futuros. Esta aprobación no equivale a aceptación de la implementación F1.
 
 Son **84 tareas**, cada una estimada en **20–30 minutos de trabajo activo**; esperas de CI, suites completas, carga y aceptación humana se contabilizan aparte. El orden oficial aprobado es **A1 → A2 → B1 → B2 → B3 → C1 → C2**, con los rangos y cantidades de la tabla siguiente. Esta aprobación posterior concreta la división histórica A/B/C del Plan en siete PRs, sin cambiar sus garantías de seguridad ni las demás decisiones C1–C5. El tamaño se consigue separando piezas de dominio, tablas, endpoints, integración y gates; no se oculta todo el backend en una tarea. Si un bloque excede el tamaño al ejecutarlo, se propone descomposición antes de continuar, sin ampliar el alcance ni activar piezas incompletas.
 
@@ -43,47 +43,60 @@ Gates G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE al cierre de **cada uno de los siete 
 
 ## PR A1 — Dominio y contratos inertes (T1–T10)
 
-Sin cambios observables del flujo clásico ni productores nuevos. Dependencia externa: tareas y división aprobadas por el usuario; siguiente paso de Implementación, todavía sin tareas ejecutadas.
+Sin cambios observables del flujo clásico ni productores nuevos. T1–T10 verificadas el 2026-11-14, con G-REMOTE del PR #80 sobre `d58e65bc7a3660a3776b45ea9a727f58dac068aa`; A2 no comienza antes de fusión y gates de A1.
 
-- [ ] **T1. Caracterizar operación, cierre clásico y permisos con fixtures reutilizables.** RF-003, RF-012, RF-021, RF-022, RF-031; RNF-001, RNF-006
+- [x] **T1. Caracterizar operación, cierre clásico y permisos con fixtures reutilizables.** RF-003, RF-012, RF-021, RF-022, RF-031; RNF-001, RNF-006
   - Tests primero: baseline con dos tenants, operación sin permiso de cierre, oficial asignado/no asignado y acta confirmada; reutilizar fixtures existentes.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_close_authorization_db.py tests/test_rectification_readers.py` conserva resultados y quedan condiciones de lectura actuales registradas, sin cambios HTTP.
+  - Evidencia A1: comando anterior, **27 passed in 16.04s**. Reutiliza `committed_application`, `seeded_match`, `add_member`, `close` y `read_state`; añade lectura de operación por observador sin cierre, rollback sin cambios y 404 entre dos tenants. Los casos existentes cubren árbitro asignado/no asignado y acta confirmada. Caracterización del comportamiento actual, sin rojo artificial ni cambio HTTP.
 
-- [ ] **T2. Definir capacidades separadas y evaluación pura de vías organizativa/asignada.** RF-012, RF-031; RNF-001
+- [x] **T2. Definir capacidades separadas y evaluación pura de vías organizativa/asignada.** RF-012, RF-031; RNF-001
   - Tests primero: VIEW solo, OPERATE solo, observador, árbitro de otro partido, multirol y contexto ajeno/incompleto.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k access` prueba que escribir no concede leer y que una vía organizativa válida no exige asignación.
+  - Evidencia A1: comando anterior, rojo **18 failed** por política todavía no implementada; verde **18 passed in 0.04s**. Permisos separados, vías independientes y acumulables, sin unir permiso de una vía inválida a asignación de otra. No concede permisos en BD.
 
-- [ ] **T3. Definir los DTO estrictos del sobre de comandos y lectura/capacidades.** RF-001, RF-003, RF-007, RF-012, RF-029, RF-030
+- [x] **T3. Definir los DTO estrictos del sobre de comandos y lectura/capacidades.** RF-001, RF-003, RF-007, RF-012, RF-029, RF-030
   - Tests primero: tipos cerrados, UUID/revisión, cuerpo vacío, campos extra y datos incompatibles con el tipo de comando; 422 saneado.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_contracts.py -k command` verifica unión cerrada reutilizando esquemas existentes; no se registra router.
+  - Evidencia A1: comando anterior, rojo **13 failed, 17 passed**; verde **30 passed in 0.75s** tras implementar la unión y completar las cabeceras del Request test-only del saneador 422 existente. Contratos de lectura inicializada/sin inicializar y referencia del reloj ampliados después: rojo **3 failed, 8 passed**, verde **11 passed**, más casos running/paused/UTC cubiertos por los **172 passed** del checkpoint final. Ningún router registrado.
 
-- [ ] **T4. Reutilizar el catálogo/payload de hechos y contratos de revisión/cierre F1.** RF-004, RF-005, RF-007, RF-019, RF-024
+- [x] **T4. Reutilizar el catálogo/payload de hechos y contratos de revisión/cierre F1.** RF-004, RF-005, RF-007, RF-019, RF-024
   - Tests primero: catálogo completo, normalización de identidad, metadata desconocida, cero/500/501 hechos y recibo ausente/ajeno en estructura.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_contracts.py -k report` y `cd backend && pytest -q tests/test_match_events_contract.py` mantienen un único catálogo, sin habilitar F13.
+  - Evidencia A1: primera selección, rojo **2 failed, 13 passed** y verde **15 passed in 0.86s**; catálogo clásico **69 passed in 0.07s**. Reutiliza `EVENT_TYPES`, `MatchEventPayload`, `client_event_identity` y la validación de resolución/duplicados de `CloseMatchReportDTO`. Cero/500/501 hechos, identidad normalizada y metadatos cerrados; resultado F1 no acepta ni serializa `events`. Recibo UUID obligatorio, sin ámbito ajeno suministrado por el cliente; la pertenencia real a partido/actor/sesión requiere el servicio/BD de B2, no se infiere de un UUID válido. DTO clásico intacto.
 
-- [ ] **T5. Implementar observación pura de reloj con tiempo recibido como argumento.** RF-011, RF-017, RF-029; RNF-003, RNF-004
+- [x] **T5. Implementar observación pura de reloj con tiempo recibido como argumento.** RF-011, RF-017, RF-029; RNF-003, RNF-004
   - Tests primero: sin referencia, UTC aware, running, pausado, fracciones acumuladas, observación igual y reloj regresivo.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k observe_clock` produce segundos enteros sin perder microsegundos ni consultar reloj global/BD.
+  - Evidencia A1: comando anterior, rojo **14 failed** y verde **14 passed in 0.07s**. UTC aware, delta entero en microsegundos con límite inferior cero, sin referencia, pausado, instante igual/regresivo y validación de referencias incompatibles.
 
-- [ ] **T6. Reducir inicio, pausa, reanudación y corrección del reloj.** RF-002, RF-011, RF-026, RF-029, RF-030; RNF-003
+- [x] **T6. Reducir inicio, pausa, reanudación y corrección del reloj.** RF-002, RF-011, RF-026, RF-029, RF-030; RNF-003
   - Tests primero: controles en live/suspended, segmento inválido, corrección running/paused y hechos preexistentes inalterados.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k control_clock` reancla con el instante inyectado y no cambia minutos/tiempo añadido.
+  - Evidencia A1: comando anterior, rojo **19 failed** y verde **19 passed in 0.09s**. Diez ciclos conservan fracciones; corrección running/paused, rechazo en suspended/segmento inválido y nuevo segmento solo con inicio expreso. El reductor solo devuelve una referencia nueva: no recibe ni modifica hechos.
 
-- [ ] **T7. Reducir transiciones deportivas permitidas sin efectos secundarios.** RF-001, RF-002, RF-003, RF-025, RF-029
+- [x] **T7. Reducir transiciones deportivas permitidas sin efectos secundarios.** RF-001, RF-002, RF-003, RF-025, RF-029
   - Tests primero: scheduled→live→suspended→live, sin participantes, versión no publicada, estados terminales y suspensión sin reloj.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k transition` conserva segmento/borrador al reanudar y nunca arranca el reloj automáticamente.
+  - Evidencia A1: comando anterior, rojo **41 failed** y verde **41 passed in 0.07s**; dos guardas adicionales de reloj imposible verificadas en el checkpoint final. Recorrido completo, versión/participantes, confirmado/terminal, suspensión sin referencia y reanudación conservadora sin tocar el borrador.
 
-- [ ] **T8. Derivar marcador provisional reutilizando reglas y validación deportiva.** RF-004, RF-005, RF-007, RF-008, RF-024; RNF-003
+- [x] **T8. Derivar marcador provisional reutilizando reglas y validación deportiva.** RF-004, RF-005, RF-007, RF-008, RF-024; RNF-003
   - Tests primero: vacío/cero, goles/autogoles/penaltis, equipos incompatibles y corrección/retirada, sin escribir resultados confirmados.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k provisional_score` usa las reglas publicadas y no introduce constantes deportivas nuevas.
+  - Evidencia A1: comando anterior, rojo **8 failed** y verde **8 passed in 0.19s**. Conteo extraído sin cambiar semántica a `count_event_goals`, compartido por `compute_match_outcome` y la política F1; no hay segundo catálogo de goles. Valida participantes/configuración; plantillas, elegibilidad y acta completa siguen correspondiendo a los validadores existentes al integrar B1/B2. Ningún resultado confirmado se escribe.
 
-- [ ] **T9. Canonizar conjunto revisado y separar revisión de contenido de reloj.** RF-006, RF-019, RF-020, RF-023, RF-030
+- [x] **T9. Canonizar conjunto revisado y separar revisión de contenido de reloj.** RF-006, RF-019, RF-020, RF-023, RF-030
   - Tests primero: orden estable, subconjunto distinto, resultado cambiado, hechos retirados y reloj que avanza sin cambiar huella.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py -k review_fingerprint` demuestra invalidación por hechos/resultado, no por observación pública.
+  - Evidencia A1: comando anterior, rojo **8 failed** y verde **8 passed in 0.22s**. SHA-256 canónico de hechos, resultado completo y revisión de contenido; reutiliza `canonical_event_order` y preserva el desempate del payload. Subconjunto, retirada, corrección y resultado distinto cambian huella; reloj/observación no son entradas.
 
-- [ ] **T10. Verificar checkpoint de dominio/contratos inertes y su alcance.** RF-003, RF-007, RF-012, RF-019, RF-024; RNF-003, RNF-006
+- [x] **T10. Verificar checkpoint de dominio/contratos inertes y su alcance.** RF-003, RF-007, RF-012, RF-019, RF-024; RNF-003, RNF-006
   - Dependencias: T1–T9. Caracterización/gate, sin rojo artificial.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_policy.py tests/test_match_live_contracts.py` y `git diff --check` pasan; ningún router/productor/carril público se ha activado. Además pasan los seis gates y su revisión remota antes de la fusión autorizada de A1.
+  - Parte local autorizada: checkpoint anterior **172 passed in 0.80s**; `ruff check .`: **All checks passed!**; `python -m compileall -q app`: exit 0; suite sin BD **2852 passed, 950 skipped in 10.57s** (opt-in PostgreSQL). `RUN_DATABASE_TESTS=1 pytest -q -ra`: **3798 passed, 4 skipped in 845.79s (0:14:05)** sobre PostgreSQL/Redis reales, base aislada migrada hasta 055 y roles aplicativo/administrador separados; los cuatro skips son exclusivamente invitaciones que requieren `demo.owner`, ausente en esta base sin seed. La primera ejecución reveló que el arnés local apuntaba la URL administrativa a otra base: corregido fuera del repositorio y repetido en base nueva, sin parche de producto. Verificación AST: sin importaciones productivas de los módulos F1, reloj global, BD ni emisión en la política; sin 056. Sin frontend modificado: no se repiten sus suites en este brief.
+  - Comprobaciones adicionales: `bandit -r app -ll` exit 0 (**0 medium/high**, 12 low); recetas CI de Compose desarrollo/producción, contrato de entorno, versiones y sintaxis del migrador correctas. `git diff --check` exit 0. Ninguna de estas evidencias sustituye CI/revisión remotas.
+  - **G-REMOTE verificado, PR #80, SHA `d58e65bc7a3660a3776b45ea9a727f58dac068aa`:** `git_pr_checks(..., wait_mode="all")`: **7 passed, 0 failed, 0 pending, 0 skipped**. Run [`pull_request` 43553606036](https://github.com/edsel9ra/bracket-craft/actions/runs/43553606036) y run [`push` 43553601819](https://github.com/edsel9ra/bracket-craft/actions/runs/43553601819), ambos **success**: cinco jobs en PR, cuatro en push y E2E omitido en feature push según workflow. Backend con BD: **3808 passed, 4 skipped** en ambos runs; sin BD: **2862 passed, 950 skipped**; frontend **978 pass, 0 fail, 1 skipped**. Infraestructura y seguridad correctas.
+  - **Devin Review:** el hallazgo real sobre estados del snapshot en `f48c8501` se corrigió en `d58e65bc`, cotejando el CHECK de PostgreSQL y migraciones: acepta `administrative_resolution` y rechaza `walkover`/`abandoned`/`postponed`. Regresión rojo **4 failed, 6 passed**, verde de políticas/contratos **182 passed in 0.74s**; ruff correcto. No hay otros Literals de estado de partido incorrectos en los dos módulos. Status Review de `d58e65bc`: **success**, **"Devin fixed the finding"**, sin hallazgos pendientes; review GitHub **5901409056** sobre ese SHA: **1 hallazgo, Fixed by Devin (1)**, cero comentarios inline. Cierre documental separado autorizado por el usuario; su CI se verifica tras el push. No acredita fusión, aceptación F1 ni autorización de A2.
 
 ## PR A2 — Migración completa (T11–T24)
 
