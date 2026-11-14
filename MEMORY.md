@@ -3,10 +3,10 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 
 ## Spec activa
 - 036-partido-en-vivo, fase Implementación. Spec, plan y tareas aprobados por el usuario el 2026-11-13; DA-1–DA-7 y C1–C5 confirmadas. División oficial A1 → A2 → B1 → B2 → B3 → C1 → C2.
-- #80/A1 y #81/A2 fusionados según el usuario. B1/#82 T25–T35 verificadas localmente; 058 y fixes Review 1–5 preparados. Backend 3963 passed, 4 skipped (PostgreSQL/Redis). T36 abierta por instrucción del usuario; no declara F1 implementada/aceptada ni despliegue.
+- #80/A1 y #81/A2 fusionados según el usuario. B1/#82 T25–T36 verificadas; 058 y fixes Review 1–5 publicados. Backend 3963 passed, 4 skipped (PostgreSQL/Redis). T36 cerrada con G-REMOTE y autorización del usuario; no declara fusión de B1, F1 implementada/aceptada ni despliegue.
 
 ## Pendiente
-- PR #82 abierto por el usuario. Verificar CI pull_request/push y Devin Review de los fixes; T36 permanece abierta por instrucción expresa, sin cierre automático en esta ronda. Esperar fusión autorizada antes de B2.
+- PR #82 abierto, sin fusionar. El commit documental de cierre T36 requiere CI pull_request/push y nueva Devin Review verdes; esperar fusión autorizada antes de B2. No fusionar desde esta ronda.
 - Solo después: B2 T37–T48 → B3 T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
 
 ## Historial de fases 036
@@ -16,6 +16,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 - 2026-11-14 · Usuario autorizó «Opción 1: migración 057 mínima (recomendada)» dentro de B1: T33 era imposible con 056 para CLOSE sin VIEW/OPERATE. Desviación registrada en plan/tasks; 056 intacta.
 - 2026-11-14 · B1 T25–T35: capacidades/snapshot, comandos transaccionales, reloj, hechos provisionales y recibos completos; sin router nuevo, productores, cambios HTTP/públicos/frontend. Backend PostgreSQL 3923 pass/4 skips demo (45 casos de servicios, 9 de 057), Ruff y Bandit correctos. Seguridad final del árbol stageado en reporte. Migrador limpio 001→057 e incremental 056 con dos tenants, reejecución y 57 checksums estables. T36 pendiente remoto.
 - Rojos B1 conservados: pausa CLOSE-only, orden estable de corrección, huella devuelta y corrección/retirada en segmentos previos. Primer rojo agregado de servicios era acceso no concedido a organizations; no acredita rojo funcional separado de cada conducta. Dos suites intermedias interrumpidas no cuentan como completas.
+- 2026-11-14 · T36 cerrada por autorización del usuario: PR #82, SHA b9a888ad980c013cbc89abd2c9a33c73738a4ace, CI 7/7; pull_request 43596664230 y push 43596659340 success (E2E push omitido). Devin Review success «Completed analysis in 1m 54s», sin hallazgos según confirmación del usuario; cinco hallazgos anteriores resueltos. Evidencia detallada en tasks.md; no declara fusión.
 
 ## Decisiones y límites vigentes
 - 2026-11-14 · Usuario aprobó Opción 1 del hallazgo 1/#82: 058 de elegibilidad mínima para OPERATE, sin ampliar lecturas F9 ni editar 042/056/057. SECURITY DEFINER necesario para calcular sin otorgar historial; tenant/permisos 056, search_path fijo y EXECUTE solo bracket_app. Captura usa IDs no elegibles; cierre/review siguen con load_effective_sanctions. Equivalencia, roles/tenant y migrador limpio/incremental/idempotente verificados localmente; evidencia y límites en plan/tasks. Fixes Review 2–5: f5646b15, 629de4e8, bc8c5111, e6e68784.
