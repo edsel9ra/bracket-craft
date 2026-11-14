@@ -60,6 +60,24 @@ No se prevén dependencias, secretos ni variables de entorno nuevos. Reutilizar 
 
 ## 4. Base de datos — propuesta 056
 
+### Desviación autorizada durante B1: migración 058
+
+El usuario aprobó el **2026-11-14** la **Opción 1** para el hallazgo 1 de Review del PR #82: `058_live_player_eligibility.sql`, siguiente número libre confirmado. Con planillas cargadas, capturar con OPERATE sin lectura de sanciones llegaba a la función protegida de 042 y fallaba con SANCTION_OPERATION_DENIED. RF-007 exige validar la elegibilidad al capturar, no diferirla al cierre. 042, 056, 057, permisos HTTP y lecturas VIEW_SANCTION_CASES permanecen intactos.
+
+La función `match_live_ineligible_players(match, players, as_of)` devuelve únicamente los IDs sin duplicados de los jugadores solicitados no elegibles, sin hechos, motivos, duraciones ni historial. Recibe el instante del servidor; por defecto usa statement_timestamp. Su autorización reutiliza match_live_has_permission de 056 para OPERATE_MATCH_LIVE: dueño/administrador/operador en la organización y los demás solo con asignación vigente. Comprueba existencia del partido dentro del tenant actual y restringe cada lectura del ledger a esa organización y al alcance deportivo del partido; un match ajeno o permiso ausente produce la misma denegación.
+
+SECURITY DEFINER es imprescindible para calcular sin conceder al invocador lectura de historial protegido por RLS F9; no existe una función invocadora autorizada para ese actor. Se fija search_path=pg_catalog,public, se califican las tablas, se revoca PUBLIC y se concede EXECUTE solo a bracket_app. No se añade BYPASSRLS ni privilegios de tabla ni se relajan políticas RLS. Alternativas descartadas: ampliar 042 o conceder lectura disciplinaria hereda detalle no autorizado; omitir/diferir la comprobación incumple RF-007.
+
+La captura usa siempre esta proyección mínima y entrega el booleano precalculado al cargador compartido; cierre/review conservan por defecto load_effective_sanctions. Python project_fact no puede ejecutarse en PL/pgSQL sin otra dependencia/lenguaje: la proyección SQL reproduce solo su resultado blocking, y se contrasta con el cálculo existente sobre estados, cumplimientos anulados/vigentes, resoluciones pendientes/aplicadas/excluidas, snapshots y límites temporales del primer segmento. No se duplica la validación deportiva general ni se expone un nuevo router o productor.
+
+Tests: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_058.py tests/test_match_live_review_regressions.py`; el rojo OPERATE-only queda incorporado al repositorio. Migrador real en limpio 001→058 e incremental 057→058 con dos tenants, datos anteriores intactos y 58 checksums estables al reejecutar. El runner no cambia la contraseña de bracket_app; si se usa test_migrate_target.sh, restaurar el rol desde la configuración existente antes de ejecutar suites compartidas.
+
+### Desviación autorizada durante B1: migración 057
+
+El usuario aprobó el 2026-11-14 «Opción 1: migración 057 mínima (recomendada)», incluida en B1. La reproducción con PostgreSQL demostró que CLOSE sin VIEW ni OPERATE supera la autorización existente de segmentos, pero 056 impide interrumpir un segmento con reloj corriendo y también impide pausarlo con esos permisos. T33 no puede cumplirse endureciendo los permisos HTTP. 056 queda intacta.
+
+057 permite exclusivamente materializar y pausar automáticamente la referencia running al pasar su segmento activo a interrupted/completed, en la misma sentencia/transacción autorizada con CLOSE_MATCH_REPORT. Funciones SECURITY INVOKER y RLS vigente; ningún SECURITY DEFINER, BYPASSRLS, permiso nuevo ni lectura HTTP. La excepción requiere ejecución anidada de trigger, segmento ya cerrado/interrumpido, actor vigente y diferencia exacta de reloj/revisión/metadatos, preservando contenido, marcador y congelación. Una pausa directa o cualquier otra edición sigue requiriendo OPERATE; no se usa un flag GUC falsificable. Tests rojo/verde, negativos tenant/operación y cadena limpia/incremental/idempotente en `test_migration_057.py`.
+
 ### Tablas e integridad
 
 - `match_live_state`: clave `(match_id, organization_id)` con FK compuesta a partido/tenant; `revision` para comandos, `content_revision` para el conjunto de hechos; marcador provisional derivado, referencia de segmento nullable, `clock_state`, `clock_elapsed_us >= 0`, `clock_anchor_at` UTC nullable, inicialización/finalización, responsable y momento. Sin referencia: segmento/tiempo públicos nulos y `not_started`. `running` exige segmento activo y anchor; `paused` no acumula. La observación no incrementa revisiones. No reutilizar marcadores confirmados de `matches` para persistir el provisional.
