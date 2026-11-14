@@ -381,6 +381,14 @@ def _goal_credit(event: dict[str, Any]) -> UUID:
     return UUID(str(event["team_id"]))
 
 
+def count_event_goals(events: Iterable[dict[str, Any]]) -> dict[UUID, int]:
+    counted: defaultdict[UUID, int] = defaultdict(int)
+    for event in events:
+        if event["event_type"] in {"goal", "own_goal", "penalty_goal"}:
+            counted[_goal_credit(event)] += 1
+    return dict(counted)
+
+
 def compute_match_outcome(
     config: dict[str, Any],
     events: list[dict[str, Any]],
@@ -430,13 +438,9 @@ def compute_match_outcome(
             raise ValueError("La resolución administrativa requiere un único marcador final")
         return MatchOutcome(home_score, away_score, winner_team_id, None, None)
 
-    counted_goals: defaultdict[UUID, int] = defaultdict(int)
-    for event in events:
-        if event["event_type"] in {"goal", "own_goal", "penalty_goal"}:
-            counted_goals[_goal_credit(event)] += 1
-
-    event_home_goals = counted_goals[home_team_id]
-    event_away_goals = counted_goals[away_team_id]
+    counted_goals = count_event_goals(events)
+    event_home_goals = counted_goals.get(home_team_id, 0)
+    event_away_goals = counted_goals.get(away_team_id, 0)
     if resolution_type == "regular" and (event_home_goals != home_score_regular or event_away_goals != away_score_regular):
         raise ValueError("El marcador no coincide con los eventos de gol")
     if resolution_type == "regular" and (
