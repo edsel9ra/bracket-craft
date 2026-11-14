@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/036-partido-en-vivo — fase actual: Spec (pendiente de aprobación expresa) — estado: borrador. Rondas 1 y 2 cerradas: DA-1 c, DA-2 b, DA-3 b, DA-4 b, DA-5 a, DA-6 a, DA-7 a. Sin dudas abiertas identificadas; sin aprobación global de spec/plan/tareas/implementación. F8 aceptada no habilita todavía borradores F1.
+- specs/036-partido-en-vivo — fase actual: Plan — spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras ronda 2). DA-1–DA-7 cerradas. Plan borrador pendiente de aprobación; sin tareas ni implementación F1. F8 aceptada no habilita todavía borradores F1.
 
 ## Pendiente
-- Aprobación expresa del usuario de la spec 036 completa antes de Plan; no se propone ronda 3. 020 recoge la ampliación futura de suspendidos con catorce campos exactos; sin implementación, cronología F13 ni F9 en tiempo real. #79 abierto; no fusionar.
+- Redactar y obtener aprobación del Plan 036 y sus decisiones técnicas antes de Tareas. 020 recoge la ampliación futura de suspendidos con catorce campos exactos; sin implementación, cronología F13 ni F9 en tiempo real. #79 abierto; no fusionar.
 
 ## Historial de fases
+- 2026-11-13 · Spec 036 · Spec y clarificación cerradas por aprobación expresa del usuario «Apruebo la spec.», comunicada tras ronda 2; inicio de Plan autorizado. La fecha de aprobación es la comunicada por el usuario, aunque su registro sigue a la revisión documental del 2026-11-14. No autoriza Tareas ni Implementación.
 - 2026-11-14 · Spec 036 · Ronda 2 cerrada por respuesta humana «Recomendación» (DA-5 a, DA-6 a, DA-7 a); revisión integral sin dudas nuevas ni conflicto constitucional identificado. Spec sigue borrador, pendiente de aprobación expresa; no autoriza Plan ni acredita implementación o CI del nuevo commit.
 - 2026-11-13 · Spec 036 · CI original de #79 sobre `656dc049`: PR `43528619347` y push `43528536147` success; backend 3625 pass/4 skip, frontend 978 pass/1 skip, E2E PR 66 pass; Review `5899609714` sin hallazgos y cero comentarios inline. Ronda 1 cerrada con respuesta humana, fase Spec/clarificación sigue abierta; no implica aprobar la spec completa ni acredita CI de cambios posteriores.
 - 2026-11-13 · Spec 035 · Implementación y Validación cerradas con aprobación expresa del usuario: «Opción A» («Acepto F8; ciérrala y empieza la spec de F1»). T47–T49 verificadas; F8 aceptada y R32f cerrado. #78 fusionado en `4b13d55d`, árbol idéntico al SHA validado `1edcb5bb`. CI PR `43512284375` y push `43511994626` success: backend 3625 pass/4 skip, frontend 978 pass/1 skip, E2E PR 66 pass; Review sin hallazgos (`end_triage` no disponible). Gates locales, carga real de 1.000 sockets/100 principales y límites en verificacion.md; no acredita producción.

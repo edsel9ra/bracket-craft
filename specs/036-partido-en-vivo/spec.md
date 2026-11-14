@@ -1,8 +1,8 @@
 # Spec 036 — Partido en vivo
 
-Estado: borrador
+Estado: aprobada
 
-Fecha: 2026-11-13. Revisión: 2026-11-14. Fase: Spec, pendiente de aprobación expresa. Corresponde a F1 del informe de funciones adicionales. El usuario respondió «Recomendación» a ambas rondas: DA-1 (c), DA-2 (b), DA-3 (b), DA-4 (b), DA-5 (a), DA-6 (a) y DA-7 (a) quedan aceptadas. No quedan dudas abiertas identificadas; esto no equivale a aprobar la spec completa ni autoriza plan, tareas o implementación.
+Fecha: 2026-11-13. Revisión: 2026-11-14. Fase Spec cerrada: el usuario aprobó expresamente la spec completa («Apruebo la spec.», 2026-11-13, aprobación comunicada tras la ronda 2). Corresponde a F1 del informe de funciones adicionales. DA-1 (c), DA-2 (b), DA-3 (b), DA-4 (b), DA-5 (a), DA-6 (a) y DA-7 (a) están cerradas. Se autoriza redactar el Plan; no se aprueban su diseño, tareas ni implementación.
 
 ## Contexto y objetivo
 
@@ -182,6 +182,6 @@ Las fotos ya públicas siguen sujetas a consentimiento vigente y la formación t
 
 ## Dudas abiertas
 
-Sin dudas abiertas identificadas tras la revisión integral de ambas rondas. DA-1–DA-7 están cerradas; no se propone ronda 3. La spec permanece en borrador, pendiente de aprobación expresa del usuario antes de Plan.
+Sin dudas abiertas identificadas tras la revisión integral de ambas rondas. DA-1–DA-7 están cerradas; no se propone ronda 3. Spec aprobada expresamente por el usuario («Apruebo la spec.», 2026-11-13); las decisiones técnicas del Plan requieren su propia aprobación.
 
 La revisión de coherencia conserva: la inmutabilidad y consolidación atómica de la constitución; la lista específica de catorce campos de 020 para suspendidos, sin extenderla a eventos individuales; la rectificación 033 como única corrección del acta confirmada, sin restringir su historial existente a los nuevos lectores de borrador; y la autorización fresca por lectura HTTP equivalente, invalidaciones mínimas y recuperación sin replay de 035. Las concesiones nuevas de F1 no endurecen las lecturas existentes ni habilitan F9 en tiempo real. La reanudación del partido no sustituye las reglas de segmentos de 017.
