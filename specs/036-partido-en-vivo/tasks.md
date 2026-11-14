@@ -180,10 +180,11 @@ Dependencia externa: A1 fusionado y sus gates verdes. Entregar 056 completa con 
   - Caracterización: inspeccionar diff y artefactos; no hace falta rojo artificial.
   - Hecho cuando: `git diff --check` y `cd backend && ruff check .` pasan; SQL/tests prueban invocador/GRANT/REVOKE sin PUBLIC ni credenciales y se registra que no existen rutas productoras F1, cambios de estadísticas ni nuevos campos públicos activos.
 
-- [ ] **T24. Cerrar gates locales/remotos y fusión autorizada de A2.** RF-003, RF-008, RF-012, RF-013, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-006
+- [x] **T24. Cerrar gates locales/remotos y fusión autorizada de A2.** RF-003, RF-008, RF-012, RF-013, RF-022, RF-028, RF-031; RNF-001, RNF-002, RNF-003, RNF-006
   - Dependencias: T1–T23. Preparación de evidencias, esperas de suites/CI aparte del trabajo activo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q` y `git diff --check`, más G-BE/G-FE/G-E2E/G-INF/G-SEC/G-REMOTE pasan; verificación de 056 y rama limpia por SHA registradas. No se da por fusionado A2 hasta comprobar la fusión decidida por el usuario.
-  - **Abierta por autorización expresa:** falta G-REMOTE (CI de pull_request/push y Devin Review después de que el usuario abra el PR), además de fusión autorizada. Evidencia local solicitada arriba; no se certifican frontend/E2E ni el resto de G-SEC no ejecutados localmente. Se comprobarán sus jobs en el bucle del PR; no se abre ni fusiona desde esta entrega.
+  - **G-REMOTE verificado, PR #81, SHA `8c9de99bd4e0e09241a5e05763f7e5d9ec79e5a5`:** `git_pr_checks(..., wait_mode="all")`: **7 passed, 0 failed, 0 pending, 0 skipped**. Run [`pull_request` 43560167502](https://github.com/edsel9ra/bracket-craft/actions/runs/43560167502) y run [`push` 43560076300](https://github.com/edsel9ra/bracket-craft/actions/runs/43560076300), ambos **success**: cinco jobs en PR, cuatro en push y E2E omitido en feature push según workflow. Backend, frontend, infraestructura, seguridad y E2E acreditados por CI; no se confunden con ejecuciones locales no realizadas.
+  - **Devin Review:** review GitHub **5901823122**, sobre `8c9de99b`, **"No Issues Found"**, sin comentarios inline; status **success**, **"Completed analysis in 1m 21s"**. Sin hallazgos ni fixes pendientes. Cierre documental separado solicitado por el usuario; su CI se verifica tras el push. No acredita fusión del PR, inicio de B1 ni aceptación de F1; la fusión sigue en manos del usuario.
 
 ## PR B1 — Servicios privados internos (T25–T36)
 
