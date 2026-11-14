@@ -270,53 +270,67 @@ Rojos conservados: servicios **17 failed** y revisión **5 failed**, inicialment
 
 Dependencia externa: B1 fusionado y sus gates verdes. Preparar cierre y avisos sin activar rutas productoras F1 ni cambiar todavía la ruta pública.
 
-- [ ] **T37. Ampliar DTO de cierre sin abrir un bypass clásico de F1.** RF-019, RF-020, RF-022, RF-024; RNF-006
+**Checkpoint local B2 (2026-11-14):** #82 fusionado según el usuario; rama nueva desde main actualizado. T37–T47 verificadas conjuntamente con `RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py tests/test_match_live_realtime.py tests/test_match_live_contracts.py tests/test_match_live_public.py tests/test_realtime_policy.py tests/test_rectification_flow.py`: **285 passed in 122.35s (0:02:02)**. Cada comando por filtro de las tareas es un subconjunto de esa ejecución. Caracterización clásica previa: **223 passed in 21.34s** en test_close_validation_order/test_walkover_close/test_close_authorization_db. Regresión completa y controles finales se registran en T48; no acredita G-REMOTE.
+
+**Rojo → verde:** T37, **1 failed, 14 passed, 60 deselected**, `live_review_id` rechazado como extra; T39, **1 failed, 6 deselected**, el cliente clásico llegaba al UPDATE terminal y fallaba en el trigger en vez de exigir revisión (sin efectos persistidos). Ronda agregada inicial de cierre: **16 failed, 1 passed, 6 deselected**, dominada por el contrato aún ausente, no un rojo funcional independiente por cada carrera/rollback. Dos usos erróneos de dict como modelo en tests se corrigieron sin alterar la conducta de producto. T44: **6 failed** por módulo de unión aún ausente, no prueba roja separada de las 14 claves. T45/T47: **2 failed, 7 passed, 20 deselected**, evento cerrado no clasificado y outbox vacío tras un comando válido. Aislamiento de contratos: **3 failed, 75 deselected**, el recibo se heredaba indebidamente en revisión/033; ClassVar preserva esos contratos y rechaza el campo. Verde conjunto: **285 passed**. Carreras adicionales con barreras y aprobación real 033 se añadieron como regresiones de invariantes, sin atribuirles un rojo funcional propio.
+
+**Límite de activación:** ningún router registrado ni llamada Redis en request; no se modifica main.py, el frontend, la ruta pública ni migraciones 001–058. El router clásico sigue sin pasar sesión al cierre F1; el argumento interno se prepara para B3 y nunca se infiere del UUID del recibo. Unión pública en módulo separado, no aplicada a HTTP. Avisos de comandos internos encolados atómicamente pero sin productores HTTP accesibles; emisión pública/revalidación y consumidores pertenecen a B3. Sin cambios de permisos HTTP ni desviaciones funcionales del plan.
+
+La primera ejecución integral se interrumpió tras descubrir un doble clásico sin el nuevo atributo opcional: **1 failed, 1562 passed, 4 skipped**; no se cuenta como suite completa. Reproducción dirigida: **1 failed** (`AttributeError: SimpleNamespace.live_review_id`); consulta opcional compatible sin modificar el test, verde de todo `test_lock_order.py`: **17 passed in 0.38s**. La suite integral definitiva se registra debajo después de esa corrección.
+
+La siguiente ejecución integral con parada al primer fallo detectó la regresión del seed clásico a esquema 043: **1 failed, 1711 passed, 4 skipped in 328.27s** (`relation match_live_state does not exist`). Tampoco se cuenta como completa. Se corrige consultando primero `to_regclass` en la lectura bloqueada; solo se consulta el estado si está disponible el esquema F1, y un partido sin estado conserva su DTO/camino clásico. No se modifica el seed, sus tests ni ninguna migración aplicada.
+Verde posterior: `RUN_DATABASE_TESTS=1 pytest -q tests/test_match_result_immutability.py tests/test_close_validation_order.py tests/test_lock_order.py tests/test_match_live_close_db.py`: **264 passed in 55.93s** (incluye seed 043, cierre clásico y F1, recibos, rollback, carreras y rectificación).
+
+- [x] **T37. Ampliar DTO de cierre sin abrir un bypass clásico de F1.** RF-019, RF-020, RF-022, RF-024; RNF-006
   - Tests primero: cierre clásico sin recibo intacto, variante F1 sin recibo/array vacío por defecto y campos extra; no aceptar subconjuntos del navegador.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_contracts.py -k close` y `cd backend && pytest -q tests/test_close_validation_order.py` validan `live_review_id` explícito y 422/409 previstos.
 
-- [ ] **T38. Extraer punto interno de integración sin transacciones anidadas.** RF-019, RF-020, RF-021, RF-022; RNF-003, RNF-006
+- [x] **T38. Extraer punto interno de integración sin transacciones anidadas.** RF-019, RF-020, RF-021, RF-022; RNF-003, RNF-006
   - Tests primero: caracterizar cierre original, walkover/administrativa, bloqueos y orden de errores antes del refactor.
   - Hecho cuando: `cd backend && pytest -q tests/test_close_validation_order.py tests/test_walkover_close.py` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_close_authorization_db.py` pasan con el mismo `begin` y autorización originales.
 
-- [ ] **T39. Revalidar recibo, resultado completo y contenido antes de consolidar.** RF-006, RF-019, RF-020, RF-023, RF-030
+- [x] **T39. Revalidar recibo, resultado completo y contenido antes de consolidar.** RF-006, RF-019, RF-020, RF-023, RF-030
   - Tests primero: revisión stale por hecho/resultado, recibo de otra sesión/tenant, permiso retirado y reloj que avanza/corrige sin cambiar hechos.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k validate_review` produce errores aditivos sin invalidar revisión por meras observaciones del reloj.
 
-- [ ] **T40. Construir el DTO canónico desde todos los hechos vigentes del servidor.** RF-004, RF-007, RF-019, RF-024; RNF-003
+- [x] **T40. Construir el DTO canónico desde todos los hechos vigentes del servidor.** RF-004, RF-007, RF-019, RF-024; RNF-003
   - Tests primero: omisión/orden/subconjunto enviado por cliente, retirados excluidos explícitamente, borrador vacío y reglas de resolución.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k canonical_report` conserva identidades y usa validadores actuales sin duplicar reglas ni elegir silenciosamente un subconjunto.
 
-- [ ] **T41. Consolidar hechos y congelar F1 dentro del cierre atómico actual.** RF-008, RF-019, RF-020, RF-021, RF-025
+- [x] **T41. Consolidar hechos y congelar F1 dentro del cierre atómico actual.** RF-008, RF-019, RF-020, RF-021, RF-025
   - Tests primero: cierre válido completo, vacío válido y transición a terminal; efectos actuales se producen una vez.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k consolidation` confirma hechos/resultado/contadores/sanciones/clasificación/avance/outbox en una transacción, sin cambiar triggers de inmutabilidad.
 
-- [ ] **T42. Probar rollback de consolidación en puntos tardíos del cierre.** RF-019, RF-020, RF-021; RNF-004
+- [x] **T42. Probar rollback de consolidación en puntos tardíos del cierre.** RF-019, RF-020, RF-021; RNF-004
   - Tests primero: errores test-only en sanciones, avance y outbox después de persistir hechos/congelar reloj.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k rollback` conserva borrador privado aceptado y no deja efectos o acta parcialmente confirmados.
 
-- [ ] **T43. Probar carreras cierre-edición/doble cierre y rectificación posterior.** RF-006, RF-019, RF-021, RF-022, RF-023
+- [x] **T43. Probar carreras cierre-edición/doble cierre y rectificación posterior.** RF-006, RF-019, RF-021, RF-022, RF-023
   - Tests primero: commits concurrentes y barreras reales; edición posterior a revisión y acta cerrada que solo admite 033.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py -k concurrency` y `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_rectification_flow.py` pasan sin duplicar hechos ni sobrescribir lo confirmado.
 
-- [ ] **T44. Definir modelos públicos por estado y serialización exacta del suspendido.** RF-009, RF-010, RF-028; RNF-002, RNF-006
+- [x] **T44. Definir modelos públicos por estado y serialización exacta del suspendido.** RF-009, RF-010, RF-028; RNF-002, RNF-006
   - Tests primero: 14 claves exactas incluyendo null, unión Pydantic, live con campos adicionales y otros estados sin nuevos defaults.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_public.py -k serialization` no añade lineup/fase/escudos/actores a suspended; la ruta pública todavía no se cambia.
 
-- [ ] **T45. Ampliar catálogo Python y adaptación SQL solo para el evento privado nuevo.** RF-012, RF-013, RF-014, RF-015, RF-027
+- [x] **T45. Ampliar catálogo Python y adaptación SQL solo para el evento privado nuevo.** RF-012, RF-013, RF-014, RF-015, RF-027
   - Tests primero: scope organizativo sin version_id, referencias inválidas/extra, F9 y payload mínimo sin hechos/revisiones.
   - Hecho cuando: `cd backend && pytest -q tests/test_match_live_realtime.py -k catalog` y `cd backend && pytest -q tests/test_realtime_policy.py` distinguen live de operation/version sin comodines ni cambios del wire antiguo.
 
-- [ ] **T46. Verificar paridad HTTP/SQL real para los nuevos lectores.** RF-012, RF-015, RF-016, RF-031; RNF-001
+- [x] **T46. Verificar paridad HTTP/SQL real para los nuevos lectores.** RF-012, RF-015, RF-016, RF-031; RNF-001
   - Tests primero: VIEW/OPERATE separados, multirol, oficial asignado a otro partido, plataforma y membresía/sesión inválidas.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k http_sql_parity` compara GET live del router test-only y autorización 056 bajo bracket_app, sin tomar el helper Python como prueba suficiente.
 
-- [ ] **T47. Encolar invalidaciones mínimas y condicionar público a cambios de proyección.** RF-008, RF-013, RF-014, RF-026, RF-027; RNF-002
+- [x] **T47. Encolar invalidaciones mínimas y condicionar público a cambios de proyección.** RF-008, RF-013, RF-014, RF-026, RF-027; RNF-002
   - Tests primero: comando aceptado/rechazado/repetido, tarjeta sin efecto público, cambio de score/estado/reloj y rollback transaccional.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k outbox` verifica IDs estables y worker existente sin Redis en request, sin ticks y sin avisos públicos por hechos exclusivamente privados.
 
 - [ ] **T48. Verificar checkpoint de cierre/avisos sin activar productores HTTP.** RF-013, RF-014, RF-019, RF-020, RF-021, RF-022, RF-027; RNF-002, RNF-006
   - Dependencias: T37–T47. Gate de preparación, no activación.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_close_db.py tests/test_match_live_realtime.py` y `git diff --check` pasan; nuevo router no incluido y ruta pública antigua todavía compatible. Cumplir todos los gates y Review antes de la fusión autorizada de B2.
+  - **Abierta por G-REMOTE:** ningún PR B2 abierto; CI/Devin Review pendientes del PR del usuario. No se declara fusión ni inicio de B3.
+  - **Backend integral definitivo, PostgreSQL y Redis, Python 3.14:** `RUN_DATABASE_TESTS=1 pytest -q -ra --maxfail=1`: **4022 passed, 4 skipped in 1408.53s (0:23:28)**. Ejecutadas las 4026 pruebas, sin parada anticipada; 59 casos nuevos frente a B1. Los cuatro skips son invitaciones que requieren demo.owner, ausente en el arnés sin seed. Incluye cierre/validación/seed 043/033/035/056/057/058 y todos los casos B2; no se reemplaza por la ronda focalizada ni por las integrales incompletas.
+  - **Seguridad local:** `ruff check app tests`: `All checks passed!`; `bandit -r app -ll`: exit 0, 12 low, 0 medium/high. Gitleaks sobre snapshot del árbol stageado y `git diff --check` finales se adjuntan en el reporte de publicación; no se sustituyen por checks de un SHA anterior. Frontend/E2E/G-INF y G-REMOTE no se ejecutan ni se declaran verdes en este checkpoint backend interno.
 
 ## PR B3 — Exposición completa y activación (T49–T60)
 

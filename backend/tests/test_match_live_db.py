@@ -72,6 +72,12 @@ async def live_service_db(database_admin_url, request):
                 "UPDATE public.tournament_versions",
                 f"UPDATE public.matches SET bracket_code='{options['bracket_code']}'; UPDATE public.tournament_versions",
             )
+        if options.get("extra_match"):
+            sql=sql.replace("UPDATE public.tournament_versions", """INSERT INTO public.matches
+                (id,organization_id,tournament_id,tournament_version_id,stage_id,home_team_id,away_team_id,status)
+                SELECT '31000000-0000-4000-8000-000000000053',organization_id,tournament_id,
+                    tournament_version_id,stage_id,home_team_id,away_team_id,'scheduled' FROM public.matches;
+                UPDATE public.tournament_versions""")
         if options.get("missing_participant"):
             sql = sql.replace(
                 f"'{TEAM_HOME}', '{TEAM_AWAY}', 'scheduled', 1",

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -12,6 +12,7 @@ class RectificationEventPayload(MatchEventPayload):
 
 
 class RectificationReportDTO(CloseMatchReportDTO):
+    live_review_id: ClassVar[None] = None
     events: list[RectificationEventPayload] = Field(default_factory=list, max_length=500)
 
 

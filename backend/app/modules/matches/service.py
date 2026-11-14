@@ -24,6 +24,7 @@ from app.modules.matches.errors import (
     WalkoverStateNotAllowed,
 )
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload, client_event_identity
+from app.modules.matches.live_close import freeze_live_report, prepare_live_report
 from app.modules.rule_contract import requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
@@ -758,7 +759,10 @@ class CloseMatchReportService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def execute(self, context: AuthContext, match_id: UUID, dto: CloseMatchReportDTO) -> dict[str, Any]:
+    async def execute(
+        self, context: AuthContext, match_id: UUID, dto: CloseMatchReportDTO,
+        *, session_id: UUID | None = None,
+    ) -> dict[str, Any]:
         """Cierra el acta aplicando el **orden único** de validación (RF-001).
 
         Una petición con dos defectos de dominio informa el del paso anterior y
@@ -861,6 +865,12 @@ class CloseMatchReportService:
             if not resolution_enabled(minutes, dto.resolution_type):
                 raise ResolutionNotEnabled()
 
+            live = False
+            if match.get("live_schema_available") or getattr(dto, "live_review_id", None) is not None:
+                prepared = await prepare_live_report(self.db, context, match, dto, session_id)
+                if prepared is not None:
+                    dto, live = prepared, True
+
             # --- 13′/14′. Rama del walkover (spec 016) ----------------------
             # Se **inserta** aquí: los pasos 1-5 son los de la 017 y no se
             # reordena nada. La rama omite los pasos 6 (segmento activo,
@@ -875,6 +885,8 @@ class CloseMatchReportService:
             # esta rama y se conservan como la exención de la resolución
             # administrativa y como defensa en profundidad.
             if dto.resolution_type == "walkover":
+                if live:
+                    await freeze_live_report(self.db, context, match_id)
                 return await self._execute_walkover(
                     context, match, dto, active_segment_row
                 )
@@ -900,6 +912,8 @@ class CloseMatchReportService:
             # --- 14. Escritura atómica, clasificación, avance, auditoría y
             #         outbox ---------------------------------------------------
 
+            if live:
+                await freeze_live_report(self.db, context, match_id)
             persisted_events = await self._persist_events(context, match, dto, rosters, segments)
             target_status = "administrative_resolution" if dto.resolution_type == "administrative" else "finished"
             await self.db.execute(
@@ -1184,7 +1198,8 @@ class CloseMatchReportService:
                 SELECT m.id, m.tournament_id, m.tournament_version_id, m.matchday, m.match_date,
                        m.bracket_code,
                        m.status, m.stage_id, m.home_team_id, m.away_team_id,
-                       tv.rules_config, tv.status AS version_status
+                       tv.rules_config, tv.status AS version_status,
+                       to_regclass('public.match_live_state') IS NOT NULL AS live_schema_available
                 FROM matches m
                 JOIN tournament_versions tv
                   ON tv.id = m.tournament_version_id

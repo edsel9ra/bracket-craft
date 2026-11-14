@@ -1,7 +1,7 @@
 """Strict contracts for F1; not registered with any production router."""
 
 from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -84,10 +84,12 @@ class LiveCommandAck(BaseModel):
 
 
 class LiveReportDTO(CloseMatchReportDTO):
+    live_review_id: ClassVar[None] = None
     events: list[LiveEventPayload] = Field(default_factory=list, max_length=500)
 
 
 class LiveResultDTO(CloseMatchReportDTO):
+    live_review_id: ClassVar[None] = None
     events: list[MatchEventPayload] = Field(default_factory=list, max_length=0, exclude=True)
 
     @model_validator(mode="before")

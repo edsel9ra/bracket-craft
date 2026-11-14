@@ -28,11 +28,12 @@ from app.modules.matches.live_schemas import (
     LiveAccessResponse,
     LiveClockResponse,
     LiveCommandAck,
-    LiveEventPayload,
     LiveReportDTO,
     LiveResultDTO,
     LiveSnapshotResponse,
 )
+from app.modules.matches.live_close import read_live_events
+from app.modules.matches.live_notices import enqueue_live_notices, public_live_key
 from app.modules.matches.router import _load_operation_match
 from app.modules.matches.service import (
     CloseMatchReportService,
@@ -169,27 +170,7 @@ class LiveMatchService:
         return dict(row) if row else None
 
     async def _events(self, context, match_id):
-        rows = (
-            (
-                await self.db.execute(
-                    text("""
-            SELECT client_event_id,event_type,team_id,beneficiary_team_id,player_id,
-                player_out_id,player_in_id,assist_player_id,minute,added_minute,segment_id,metadata
-            FROM match_live_events WHERE organization_id=:org AND match_id=:id AND removed_at IS NULL
-            ORDER BY event_order,id
-        """),
-                    {"org": context.organization_id, "id": match_id},
-                )
-            )
-            .mappings()
-            .all()
-        )
-        return [
-            LiveEventPayload.model_validate(
-                {**row, "client_event_id": str(row["client_event_id"])}
-            )
-            for row in rows
-        ]
+        return await read_live_events(self.db, context, match_id)
 
     async def _clock(self, state):
         if state is None or state["clock_state"] == "not_started":
@@ -311,6 +292,7 @@ class LiveMatchService:
                 if command.expected_revision != (state["revision"] if state else 0):
                     raise conflict("LIVE_REVISION_CONFLICT")
                 clock = await self._clock(state)
+                previous_public = public_live_key(match["status"], state, clock, now)
                 target = match["status"]
                 if command.type in {"start", "suspend", "resume"}:
                     try:
@@ -388,6 +370,10 @@ class LiveMatchService:
                     await self._set_status(context, match_id, target)
                 await self._record_command(
                     context, match_id, session_id, command, digest, state["revision"]
+                )
+                await enqueue_live_notices(
+                    self.db, context, match,
+                    public_changed=previous_public != public_live_key(target, state, clock, now),
                 )
                 return LiveCommandAck(
                     command_id=command.command_id, revision=state["revision"]
