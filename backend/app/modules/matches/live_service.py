@@ -437,15 +437,6 @@ class LiveMatchService:
                 ),
                 None,
             ),
-            segments=tuple(
-                {
-                    **segment,
-                    "status": "completed"
-                    if segment["status"] == "interrupted"
-                    else segment["status"],
-                }
-                for segment in snapshot.segments
-            ),
         )
         validate_report_payload(snapshot, report, now)
         return report
@@ -487,7 +478,16 @@ class LiveMatchService:
             requires_active = (
                 command.type == "add_event" or segment_id != old.segment_id
             )
-            if not segment_status or (requires_active and segment_status != "active"):
+            invalid_correction = (
+                command.type == "correct_event"
+                and segment_id == command.event.segment_id
+                and segment_status not in {"active", "completed"}
+            )
+            if (
+                not segment_status
+                or (requires_active and segment_status != "active")
+                or invalid_correction
+            ):
                 raise conflict("LIVE_EVENT_SEGMENT_NOT_ACTIVE")
         if len(events) > 500:
             raise conflict("LIVE_EVENT_LIMIT")

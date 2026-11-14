@@ -6,7 +6,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 - #80/A1, #81/A2 y #82/B1 fusionados según el usuario. B2 prepara T37–T47 sin productores HTTP accesibles; T48 abierta por G-REMOTE. Rama nueva desde main a86c6f5c: devin/1794663227-partido-en-vivo-b2. Sin aceptación F1 ni despliegue.
 
 ## Pendiente
-- B2: commit/push sin abrir PR; T48 requiere el PR del usuario, CI y Devin Review antes de cerrarse. No activar B3 ni fusionar desde esta ronda.
+- B2: PR #83 abierto por el usuario desde 0cab6674; bucle CI y Review, T48 abierta hasta verde del SHA corregido. No activar B3 ni fusionar desde esta ronda.
 - Solo después de B2 fusionado: B3 T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
 
 ## Historial de fases 036
@@ -20,6 +20,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 - 2026-11-14 · Cierre documental T36 5a40d6e7: pull_request 43598550413/push 43598545804 success, 7/7, nueva Review sin hallazgos. #82 fusionado según el usuario antes de iniciar B2.
 - 2026-11-14 · B2 T37–T47: DTO con recibo, hechos íntegros del servidor y congelación en la transacción clásica; recibo actor/sesión/permisos/contenido/resultado actual, reloj solo no invalida. Catálogo privado 056 y outbox mínimo en comandos internos; público solo si cambia la proyección. Unión pública inerte de 14 claves suspendidas. Focalizado 285 passed (carreras reales, rollback tardío, aprobación 033 y paridad HTTP/SQL incluidos); rojos y límites en tasks.md. T48 pendiente remoto.
 - B2 integral final: 4022 passed, 4 skipped in 1408.53s, PostgreSQL/Redis y Python 3.14 (59 casos nuevos; skips demo.owner). Ruff correcto; Bandit exit 0, 12 low, 0 medium/high; Gitleaks/árbol final en reporte de publicación. Corregidas regresiones del doble clásico y seed 043 sin alterar sus tests ni migraciones; detalle de rondas incompletas y verde de 264 casos en tasks.md.
+- Review #83: reproducido en PostgreSQL (2 rojos) el recibo inválido para cierre tras interrumpir y reabrir segmento. Se conserva 017 RF-014: review con estados reales; no corregir hacia interrumpidos. Hechos previos retenidos, sin descarte automático: retirada/reasignación explícita a activo antes de revisar; reparación parcial permitida. Verde matches/live: 895 passed, Ruff correcto. Evidencia y regresiones en tasks.md; CI/Review corregidos pendientes.
 
 ## Decisiones y límites vigentes
 - 2026-11-14 · Usuario aprobó Opción 1 del hallazgo 1/#82: 058 de elegibilidad mínima para OPERATE, sin ampliar lecturas F9 ni editar 042/056/057. SECURITY DEFINER necesario para calcular sin otorgar historial; tenant/permisos 056, search_path fijo y EXECUTE solo bracket_app. Captura usa IDs no elegibles; cierre/review siguen con load_effective_sanctions. Equivalencia, roles/tenant y migrador limpio/incremental/idempotente verificados localmente; evidencia y límites en plan/tasks. Fixes Review 2–5: f5646b15, 629de4e8, bc8c5111, e6e68784.

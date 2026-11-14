@@ -131,6 +131,8 @@ control(reference, command, now, match, active_segment):
 
 Si un segmento se completa/interrumpe por las rutas existentes, materializar y pausar el reloj F1 en su misma transacción. Crear uno nuevo no arranca implícitamente su reloj; su referencia comienza en cero al iniciarla expresamente, conservando la identificación de hechos de segmentos anteriores. La suspensión del partido no completa ni interrumpe por sí sola un segmento 017. Durante `suspended` no se admite control/corrección del reloj por fuera de la transición; se mantiene congelado.
 
+017 RF-014 sigue vigente: no se aceptan hechos nuevos ni correcciones cuyo destino sea un segmento interrumpido, ni se convierte ese estado en completado para revisar. Los hechos aceptados antes de interrumpir permanecen privados, sin descartarlos automáticamente ni alterar sus identidades: bloquean la revisión hasta su retirada o reasignación explícita a un segmento activo. Se permite reparar varios uno a uno aunque queden otros pendientes; los segmentos completados conservan su corrección previa. La revisión y el cierre usan los estados reales y el mismo validador de segmentos.
+
 ### Estados, comandos y concurrencia
 
 `decide_live_transition(current, command, facts, accepted_at)`, `derive_provisional_score(events, rules, teams)` y `review_fingerprint(events, result, content_revision)` son puras. Reutilizar catálogo 015, reglas configuradas, `replay_report_state`, validadores de minutos/sustituciones y coherencia marcador/eventos existentes; no duplicar constantes deportivas. Los minutos de captura se introducen explícitamente, no se reescriben desde el reloj. Un catálogo inválido nunca se degrada a texto libre.
