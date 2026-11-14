@@ -1,8 +1,8 @@
 # Plan 036 — Partido en vivo
 
-Estado: borrador
+Estado: aprobado
 
-Spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras la ronda 2). Este documento propone el diseño; C1–C5 y el plan completo requieren aprobación antes de Tareas. No contiene implementación ni acredita pruebas funcionales. Numeración de migración comprobada en esta rama: última 055; se propone 056, a reconfirmar antes de implementarla.
+Spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras la ronda 2). Plan completo y C1–C5 aprobados expresamente por el usuario («Apruebo el plan.», 2026-11-13, aprobación comunicada tras su redacción). Se autoriza la fase Tareas, no su ejecución ni la implementación. No contiene implementación ni acredita pruebas funcionales. Numeración de migración comprobada en esta rama: última 055; se propone 056, a reconfirmar antes de implementarla.
 
 ## 1. Idea central y evidencia del código
 
@@ -24,9 +24,9 @@ Persistir un borrador privado separado del acta confirmada y un reloj referencia
 
 Estas diferencias son carencias esperadas de F1, no contradicciones que obliguen a enmendar la spec o la constitución. Sí sería contradictorio reutilizar la lectura amplia de operación para revelar el nuevo borrador, introducirlo en estadísticas antes del cierre o rellenar el suspendido con todo `PublicMatchResponse`.
 
-## 2. Decisiones técnicas a confirmar
+## 2. Decisiones técnicas confirmadas
 
-Todas son propuestas, no decisiones aprobadas. Son las únicas confirmaciones técnicas abiertas identificadas en este plan.
+El usuario confirmó C1–C5 tal como estaban recomendadas al aprobar el plan («Apruebo el plan.», 2026-11-13). Las alternativas se conservan como justificación histórica, no como opciones abiertas.
 
 | ID | Recomendación | Alternativa descartada y motivo |
 |---|---|---|
@@ -244,11 +244,11 @@ Gates finales: desde `backend/`, `pytest -q`, `RUN_DATABASE_TESTS=1 pytest -q` c
 2. **PR B — Recorrido backend completo y consumidores preparados.** Rutas privadas autorizadas, comandos, recibos y cierre adaptado; ruta pública exacta y adaptación mínima de tipos/render público; nuevos eventos, SQL/clasificador coordinados, dispatcher y reconstrucción HTTP de clientes, arnés multiproceso/E2E. La UI aún no ofrece capturar F1, pero un cliente autorizado que use la API obtiene un recorrido seguro completo, y el Workspace reconoce F1 para no cerrarlo desde una copia local. No posponer la protección de cierre ni el soporte público a C. Despliegue coordinado sin productores hasta renovar API/relay/consumidores; verificar que no queda instancia antigua capaz de cerrar un partido F1. Gates: todos los de CI y recorrido completo por HTTP + sockets reales.
 3. **PR C — UX de operación, regresión y aceptación.** Editor compartido, transición explícita desde local, controles y reloj, revisión/confirmación completa, conflictos, ES/EN/accesibilidad; pruebas visuales y carga/regresión ampliadas, documentación de usuario/despliegue y matriz final. No introduce autorización nueva no cubierta en B. Fusionable porque B ya protege todos los contratos y no depende de C para confidencialidad o integridad. Mantener implementación pendiente de aceptación humana hasta cerrar validación.
 
-Si la implementación muestra que B requiere mayor división, volver al usuario con el límite de seguridad, no habilitar un estado intermedio incompleto. No se crean tasks.md ni tareas ejecutables hasta aprobar Plan/C1–C5; cada PR futuro tendrá sus tests y documentación verificables propios.
+Si la implementación muestra que B requiere mayor división, volver al usuario con el límite de seguridad, no habilitar un estado intermedio incompleto. Plan y C1–C5 ya aprobados autorizan redactar tasks.md; las tareas requieren aprobación propia antes de ejecutarse. Cada PR futuro tendrá sus tests y documentación verificables propios.
 
 ## 11. Verificación de constitución
 
-Esta tabla verifica el diseño propuesto, no acredita ejecución ni despliegue.
+Esta tabla verifica el diseño aprobado, no acredita ejecución ni despliegue.
 
 | Principio/regla/criterio | Aplica | Cómo se cumple / gate |
 |---|---|---|

@@ -6,12 +6,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas.
 - Regresión unitaria ejecuta el composable real con 24 roles sin posiciones: rojo antes del fix; cubre refresco, vacío/reducción y prioridad táctica por segmento/equipo. El E2E de operación deja de reintroducir titulares manualmente y exige persistencia tras guardar y recargar contra la API real.
 
 ## Spec activa
-- specs/036-partido-en-vivo — fase actual: Plan — spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras ronda 2). DA-1–DA-7 cerradas. Plan borrador pendiente de aprobación; sin tareas ni implementación F1. F8 aceptada no habilita todavía borradores F1.
+- specs/036-partido-en-vivo — fase actual: Tareas — spec y plan aprobados por el usuario («Apruebo la spec.» / «Apruebo el plan.», 2026-11-13, comunicados tras sus respectivas revisiones). DA-1–DA-7 y C1–C5 cerradas. Tareas por redactar/aprobar; sin implementación F1. F8 aceptada no habilita todavía borradores F1.
 
 ## Pendiente
-- Obtener aprobación del Plan 036 borrador y C1–C5 antes de Tareas: persistencia/reloj separados, recibo de revisión y cierre existente, eventos dirigidos, unión pública exacta y tres PRs seguros (fundación inerte/backend completo/UX). 056 es el siguiente número libre observado, no una migración creada. Sin implementación ni F9/F13 en tiempo real. #79 abierto; no fusionar.
+- Redactar y obtener aprobación de Tareas 036 antes de Implementación; respetar C1–C5 y PRs A/B/C aprobados. 056 es el siguiente número libre observado, no una migración creada. Sin implementación ni F9/F13 en tiempo real. #79 abierto; no fusionar.
 
 ## Historial de fases
+- 2026-11-13 · Spec 036 · Plan y C1–C5 aprobados expresamente: «Apruebo el plan.», aprobación comunicada tras redactarlo. Fase Plan cerrada; inicio de Tareas autorizado, no implementación. Fecha humana conservada aunque el registro documental sea posterior.
 - 2026-11-13 · Spec 036 · Spec y clarificación cerradas por aprobación expresa del usuario «Apruebo la spec.», comunicada tras ronda 2; inicio de Plan autorizado. La fecha de aprobación es la comunicada por el usuario, aunque su registro sigue a la revisión documental del 2026-11-14. No autoriza Tareas ni Implementación.
 - 2026-11-14 · Spec 036 · Ronda 2 cerrada por respuesta humana «Recomendación» (DA-5 a, DA-6 a, DA-7 a); revisión integral sin dudas nuevas ni conflicto constitucional identificado. Spec sigue borrador, pendiente de aprobación expresa; no autoriza Plan ni acredita implementación o CI del nuevo commit.
 - 2026-11-13 · Spec 036 · CI original de #79 sobre `656dc049`: PR `43528619347` y push `43528536147` success; backend 3625 pass/4 skip, frontend 978 pass/1 skip, E2E PR 66 pass; Review `5899609714` sin hallazgos y cero comentarios inline. Ronda 1 cerrada con respuesta humana, fase Spec/clarificación sigue abierta; no implica aprobar la spec completa ni acredita CI de cambios posteriores.
