@@ -438,9 +438,19 @@ class LiveMatchService:
         report = LiveReportDTO.model_validate(
             {**result.model_dump(mode="python", exclude={"events"}), "events": events}
         )
-        snapshot = await load_report_payload_snapshot(self.db, context, match, report)
+        snapshot = await load_report_payload_snapshot(
+            self.db, context, match, report, require_active_segment=True
+        )
         snapshot = replace(
             snapshot,
+            active_segment_id=next(
+                (
+                    segment["id"]
+                    for segment in snapshot.segments
+                    if segment["status"] == "active"
+                ),
+                None,
+            ),
             segments=tuple(
                 {
                     **segment,

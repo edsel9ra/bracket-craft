@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.modules.matches.live_schemas import LiveReviewRequest, LiveResultDTO
 from test_match_live_close_db import request as review_request
 from test_match_live_db import live_service_db as live_service_db, command, goal
-from test_migration_056 import ORG, SEGMENT_FIRST, TEAM_HOME
+from test_migration_056 import MATCH, ORG, SEGMENT_FIRST, TEAM_HOME
 
 
 async def initialize(f):
@@ -97,3 +97,36 @@ async def test_grand_final_review_requires_winner(live_service_db):
         await f.call("create_review", review_request())
     assert error.value.status_code == 422
     assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0
+
+
+async def test_review_requires_active_segment(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    await f.admin.execute(
+        "UPDATE match_segments SET status='completed',minute_end=CASE WHEN segment_number=1 THEN 45 ELSE 90 END WHERE match_id=$1",
+        MATCH,
+    )
+    with pytest.raises(HTTPException) as error:
+        await f.call("create_review", review_request())
+    assert error.value.status_code == 422
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 0
+
+
+async def test_walkover_review_does_not_require_active_segment(live_service_db):
+    f = live_service_db
+    await initialize(f)
+    await f.admin.execute(
+        "UPDATE match_segments SET status='completed',minute_end=CASE WHEN segment_number=1 THEN 45 ELSE 90 END WHERE match_id=$1",
+        MATCH,
+    )
+    result = await f.call(
+        "create_review",
+        LiveReviewRequest(
+            expected_content_revision=0,
+            result=LiveResultDTO(
+                resolution_type="walkover", winner_team_id=TEAM_HOME, reason="no_show"
+            ),
+        ),
+    )
+    assert result["report"].resolution_type == "walkover"
+    assert await f.admin.fetchval("SELECT count(*) FROM match_live_reviews") == 1
