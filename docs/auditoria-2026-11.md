@@ -1,5 +1,24 @@
 # Auditoría de noviembre de 2026
 
+## Seguimiento R32f — cierre por F8 (2026-11-13)
+
+La spec 035 está implementada y aceptada expresamente por el usuario («Opción A»:
+«Acepto F8; ciérrala y empieza la spec de F1»), tras fusionar
+[#78](https://github.com/edsel9ra/bracket-craft/pull/78). **R32f cerrado** para
+la implementación validada: entrega privada por destinatario con autorización
+fresca de la lectura HTTP equivalente, sin fallback organizativo, fail-closed
+y recuperación HTTP sin replay. El carril público no cambia y F9 sigue fuera
+de Socket.IO. F8 no habilita por sí sola borradores F1.
+
+CI #78 sobre `1edcb5bb`: [pull_request 43512284375](https://github.com/edsel9ra/bracket-craft/actions/runs/43512284375)
+y [push 43511994626](https://github.com/edsel9ra/bracket-craft/actions/runs/43511994626)
+en `success`, más Devin Review sin hallazgos. Evidencias y límites en
+`specs/035-tiempo-real-por-rol/verificacion.md`. Esto no acredita despliegue
+productivo: siguen vigentes el orden coordinado y el rollback fail-closed de
+`docs/despliegue-tiempo-real-por-rol.md`, incluida la 055 antes de arrancar API.
+El informe fechado siguiente y sus límites de ejecución se conservan como
+historial; H9 trata la revalidación periódica, no sustituye el filtro por evento.
+
 ## Resumen y alcance
 
 Auditoría del **2026-11-09**, contrastada con `main` en

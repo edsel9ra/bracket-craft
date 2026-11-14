@@ -1,10 +1,40 @@
-# Verificación 035 — registro A/B y validación local C
+# Verificación 035 — cierre aceptado y registro A/B/C
 
-**Estado actual, 2026-11-13:** A #76 y B #77 fusionados; T1–T46 verificadas
-localmente. T47/T48 abiertas por CI/revisión independiente de C; no se ha abierto
-el PR. T49 sin aceptación: **F8 pendiente de aceptación, R32f abierto**. No hay
-despliegue productivo acreditado ni estado «implementada». Las secciones A/B
-siguientes son evidencia histórica; el cierre local C está al final.
+**Estado actual, 2026-11-13:** A #76, B #77 y C #78 fusionados; T1–T49 verificadas.
+El usuario aceptó expresamente la implementación: «Opción A» («Acepto F8;
+ciérrala y empieza la spec de F1»). Spec 035 **implementada**, **F8 aceptada y
+R32f cerrado**. No hay despliegue productivo acreditado ni autorización de
+borradores F1. Las secciones posteriores al cierre siguiente son registros
+históricos de cada etapa; sus estados pendientes no son el estado vigente.
+
+## Cierre T47–T49 — CI, revisión y aceptación (2026-11-13)
+
+- Implementación validada: `1edcb5bbd0a6ffed26bb0f2129af461307080274`.
+  [PR #78](https://github.com/edsel9ra/bracket-craft/pull/78) fusionado el
+  2026-11-13 en `4b13d55d6c1e478332e4796dbbf1c6f548cf0ce2`, con árbol idéntico.
+- T47: `git_pr_checks(wait_mode="all")` dio `7 passed, 0 failed, 0 pending`.
+  [pull_request 43512284375](https://github.com/edsel9ra/bracket-craft/actions/runs/43512284375)
+  y [push 43511994626](https://github.com/edsel9ra/bracket-craft/actions/runs/43511994626):
+  `success`. Backend PR: `3625 passed, 4 skipped in 482.30s`; push:
+  `3625 passed, 4 skipped in 934.03s`. Frontend en ambos: 979 tests,
+  978 passed, 0 failed, 1 skipped. E2E PR: `66 passed (7.1m)`,
+  `RESULTADO: VERDE (0)`; omitido en push según workflow. Infraestructura,
+  escaneos y GitGuardian correctos.
+- Revisión independiente #78, review `5898404094`, sobre ese SHA:
+  «Devin Review: No Issues Found». Cero hallazgos/comentarios inline;
+  no hubo correcciones ni elementos que clasificar. `end_triage` no estaba
+  disponible y no se ejecutó; no se presenta como hecho.
+- T48: matriz RF/RNF y evidencia P/D/S/F/E/L local de las secciones siguientes,
+  contrastadas con la CI y revisión de T47. Se mantienen los límites de carga
+  local, mejor esfuerzo y corte al inicio de evaluación, sin inventar un SLA.
+- T49: aceptación humana anterior, comunicada expresamente por el usuario al
+  pedir este cierre. No se infiere de la fusión ni de la revisión automática.
+  Se cierran F8/R32f; F1 requiere su propia spec y catálogo/lectura equivalentes,
+  y F9 permanece fuera de Socket.IO.
+- Este cierre solo modifica documentación. La CI remota citada verifica la
+  implementación de #78; no acredita una ejecución futura de estos documentos.
+  El procedimiento de despliegue sigue siendo obligatorio y no se acredita
+  haberlo ejecutado en producción.
 
 ## Registro histórico — PR A inerte
 

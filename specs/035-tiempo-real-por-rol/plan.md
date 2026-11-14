@@ -1,6 +1,6 @@
 # Plan 035 — Tiempo real privado según permisos de lectura
 
-Fecha: 2026-11-13. Estado: **aprobado** por el usuario el 2026-11-13 («Apruebo el plan.»), con C1–C4 confirmadas tal como estaban recomendadas. Spec 035 aprobada; constitución 2.0.0. Se autoriza pasar a Tareas, no a Implementación: `tasks.md` permanece en borrador hasta su aprobación expresa. DA-1–DA-4 siguen cerradas.
+Fecha: 2026-11-13. Estado: **implementado**, tras la aceptación expresa de F8 el 2026-11-13 («Opción A»: «Acepto F8; ciérrala y empieza la spec de F1»), con #78 fusionado. Evidencia y límites en `verificacion.md`. Aprobación histórica del plan: 2026-11-13 («Apruebo el plan.»), con C1–C4 confirmadas tal como estaban recomendadas; constitución 2.0.0. DA-1–DA-4 siguen cerradas. No autoriza la implementación de F1.
 
 ## 1. Idea central y comprobación contra el código
 

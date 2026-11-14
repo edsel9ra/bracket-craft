@@ -2,6 +2,8 @@
 
 Estado: implementada
 
+El estado anterior corresponde al alcance original. **Cambio de requisitos F1, 2026-11-13:** el usuario aceptó DA-2 (b) de la spec 036 («Recomendación»): los partidos suspendidos de torneos visibles pasan a tener la proyección pública mínima de RF-021. Esta ampliación está pendiente de implementación en 036, que sigue en borrador/clarificación; no se afirma que el producto ya la sirva ni se reabre el resto de 020.
+
 ## Contexto y objetivo
 
 La consulta pública de un torneo (portada y detalle, sin sesión) ya existe y funciona, pero navega mal la estructura real del torneo y no deja claro qué es público y qué sigue protegido. Esta spec (primera de tres) cierra la navegación por fases y grupos y audita el acceso público. Las estadísticas y las formaciones gráficas quedan para las specs 021 y 022.
@@ -14,7 +16,7 @@ Problemas concretos a resolver:
 
 **Objetivo:** que cualquier visitante recorra un torneo según su estructura real (una fase a la vez, con grupos independientes) y que quede auditado y verificado qué es público y qué no, sin ampliar lo público más allá de lo mínimo necesario ni tocar lo protegido.
 
-### Comportamiento actual verificado
+### Comportamiento verificado del alcance original (anterior a F1)
 
 | # | Hecho verificado |
 |---|---|
@@ -91,15 +93,18 @@ Todo dato de una organización sigue protegido por el aislamiento entre organiza
 - **RF-013.** EL SISTEMA servirá **sin sesión, sin organización activa y sin credenciales** las lecturas públicas existentes: listado de torneos, detalle del torneo, clasificación y partidos (con alineaciones publicadas). Ninguna otra lectura se añade en esta spec.
 - **RF-014.** SI el torneo no es visible públicamente (borrador, sin versión publicada, organización inactiva o inexistente), ENTONCES todas las lecturas públicas responderán el mismo «no encontrado», indistinguible de un torneo inexistente.
 - **RF-015.** EL SISTEMA publicará de cada respuesta pública **solo** los campos de una lista cerrada y aprobada, y una verificación automática **fallará** si aparece cualquier campo fuera de esa lista. La lista cerrada es la unión de los campos de los modelos de respuesta públicos vigentes (`PublicTournamentSummaryResponse`, `PublicStageResponse`, `PublicTournamentTeamResponse`, `PublicTournamentResponse`, `PublicStandingResponse`, `PublicLineupPlayerResponse`, `PublicTeamLineupResponse` —que incluye `segment_number` aditivo desde la spec 021—, `PublicMatchLineupResponse`, `PublicMatchResponse`) y de las vistas públicas (`v_public_tournaments`, `v_public_stages`, `v_public_tournament_teams`, `v_public_standings`, `v_public_matches`, `v_public_match_lineups`). La lista se actualiza en el mismo cambio que añade un campo nuevo; no se versiona por separado. El anexo de campos exactos se adjunta en el plan de esta spec.
-- **RF-016.** EL SISTEMA no publicará nunca documentos de identidad, fecha de nacimiento, edad, la dirección externa heredada del escudo (`logo_url` heredado, distinta del enlace firmado `crest_url`), claves internas de almacenamiento, el motivo de un walkover o de una resolución administrativa, sanciones y suspensiones, registros de auditoría ni datos de miembros u organizaciones.
+- **RF-016.** EL SISTEMA no publicará nunca documentos de identidad, fecha de nacimiento, edad, la dirección externa heredada del escudo (`logo_url` heredado, distinta del enlace firmado `crest_url`), claves internas de almacenamiento, el motivo de un walkover o de una resolución administrativa, sanciones y suspensiones de jugadores, registros de auditoría ni datos de miembros u organizaciones. La suspensión del encuentro de RF-021 no es una suspensión disciplinaria de jugador.
 - **RF-017.** EL SISTEMA no mezclará en ninguna respuesta pública datos de más de un torneo ni de otra organización, y ningún torneo de otra organización será visible ni modificable a través de las lecturas públicas.
 - **RF-018.** EL SISTEMA no añadirá ninguna escritura, permiso, cookie ni dependencia de sesión a la consulta pública; toda escritura sigue exigiendo sesión, organización y permiso como hoy.
 - **RF-019.** SI un parámetro de consulta de una lectura pública está fuera de rango, ENTONCES EL SISTEMA responderá con el error estructural vigente: `422` con `detail` en lista (`type`, `loc`, `msg`) y sin `code`. El shape exacto del error de FastAPI/Pydantic para parámetros de consulta se documenta en el plan (no se garantiza la omisión del valor recibido, porque los query params quedan fuera del cierre de la spec 019).
 - **RF-020.** EL SISTEMA documentará la **matriz de acceso** (qué es público, qué exige sesión, qué no sale nunca) en la documentación del producto, en el mismo cambio.
+- **RF-021 (ampliación F1, DA-2 b de 036).** CUANDO un partido de un torneo públicamente visible esté `suspended`, EL SISTEMA lo mantendrá visible sin sesión, solo con `id`, `tournament_id`, `home_team_id`, `home_team_name`, `away_team_id`, `away_team_name`, `status`, `home_score`, `away_score`, `is_provisional`, `clock_segment_number`, `clock_elapsed_seconds`, `clock_state` y `clock_observed_at`, con los significados exactos de la proyección pública de 036. Estado `suspended`, marcador provisional congelado, `is_provisional=true` y reloj detenido (`paused`) o sin iniciar (`not_started`, segmento/tiempo nulos); no se añaden eventos individuales, alineaciones ni motivos por esta ampliación. Un torneo no visible o un partido cancelado siguen sin publicarse. Los demás estados conservan su proyección vigente y los campos de reloj/provisionalidad de `live` se definen en 036.
 
 ## Requisitos no funcionales
 
 - **RNF-001 (solo lectura y compatibilidad).** La consulta pública no escribe datos. Las respuestas públicas existentes solo cambian de forma **aditiva**: un cliente que ignore los campos nuevos conserva su comportamiento. Todo cambio no aditivo se declara aquí y en la documentación. `engine_version` sigue en **2026.1** y el contrato interno de reglas no se toca.
+
+La ampliación F1 declara expresamente el cambio de visibilidad de RF-021: antes se ocultaban los partidos suspendidos; ahora la matriz objetivo permite únicamente esos catorce campos. No es una autorización para publicar incidencias ni todo el detalle del partido. El conjunto cerrado general de RF-015 conserva las listas vigentes para los demás estados; la lista específica de RF-021 limita la nueva representación del suspendido. Es un requisito aprobado para 036, todavía no una verificación de implementación.
 - **RNF-002 (consistencia).** La clasificación pública se deriva únicamente de partidos con resultado confirmado y es reproducible a partir de ellos. Tras cerrar un acta, la clasificación llega al público en el mismo plazo que hoy (aviso en tiempo real o consulta periódica de 30 s como máximo).
 - **RNF-003 (rendimiento acotado).** Cada respuesta pública está acotada por un tope de filas y el número de consultas a la base por respuesta **no crece** con el número de partidos ni de filas. Las fotos se firman en un solo lote por respuesta y **después** de cerrar la transacción de lectura, como hoy. No se fija una latencia absoluta porque no se midió.
 - **RNF-004 (accesibilidad y adaptación).** Las tablas llevan título y encabezados asociados a sus celdas; ninguna información depende solo del color; todo texto nuevo existe en español e inglés. En una pantalla de 360 px de ancho la página no desborda horizontalmente (las tablas se desplazan dentro de su contenedor).
