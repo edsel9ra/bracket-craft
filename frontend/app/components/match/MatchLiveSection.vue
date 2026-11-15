@@ -114,7 +114,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
 <template>
   <section v-if="liveView.detailVisible" class="panel live-panel" id="seccion-en-vivo" tabindex="-1">
     <div class="panel-heading">
-      <div><p class="eyebrow">LIVE · {{ t('live.section.eyebrow') }}</p><h2>{{ t('live.section.title') }}</h2></div>
+      <div><p class="eyebrow">{{ t('live.section.eyebrow') }}</p><h2>{{ t('live.section.title') }}</h2></div>
       <span v-if="shared" class="muted-note">{{ t(`live.status.${shared.status}`) }} · {{ shared.homeScore }}–{{ shared.awayScore }}</span>
     </div>
 
