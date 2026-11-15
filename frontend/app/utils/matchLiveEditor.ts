@@ -188,6 +188,11 @@ export function normalizeLiveSnapshot(raw: unknown): SharedLiveDraft | null {
   };
 }
 
+/** El borrador compartido solo se edita con el partido en `live` (T67). */
+export function isDraftEditable(status: string | undefined | null): boolean {
+  return status === 'live';
+}
+
 /** `classic` sin snapshot autorizado; `live` con borrador compartido vigente. */
 export function liveEditorMode(shared: SharedLiveDraft | null): LiveEditorMode {
   return shared === null ? 'classic' : 'live';

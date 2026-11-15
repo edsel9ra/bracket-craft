@@ -17,6 +17,7 @@ import { createLiveCapture } from '~/utils/matchLiveCapture';
 import { createLiveEdit } from '~/utils/matchLiveEdit';
 import { deriveLiveView } from '~/utils/matchLiveAccess';
 import { createLiveClock } from '~/utils/matchLiveClock';
+import { createLiveTransitions } from '~/utils/matchLiveTransitions';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -118,6 +119,23 @@ export function useMatchOperation() {
     requestSnapshot: () => liveContext.request(),
     editor: liveEditor,
     commandId: () => crypto.randomUUID(),
+  });
+  // T67: inicio/suspensión/reanudación con confirmación expresa; start
+  // resuelve antes el borrador clásico local (T62) y resume jamás arranca
+  // el reloj ni crea segmento.
+  const liveTransitions = createLiveTransitions({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    commandId: () => crypto.randomUUID(),
+    confirm: (kind) => confirm({
+      title: t(`live.transition.${kind}.title`),
+      message: t(`live.transition.${kind}.message`),
+      confirmLabel: t(`live.transition.${kind}.action`),
+      tone: kind === 'suspend' ? 'danger' : 'primary',
+    }),
+    resolveLocalDraft: () => localDraftResolver.resolveBeforeStart(),
+    matchStatus: () => operation.value?.status ?? '',
   });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
@@ -477,7 +495,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;

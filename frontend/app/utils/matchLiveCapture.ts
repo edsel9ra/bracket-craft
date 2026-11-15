@@ -10,7 +10,7 @@
  */
 
 import { getApiStatus, isForbidden, isNotFound, isUnauthorized } from './api.ts';
-import { isAcceptedEvent, markPendingEvent, type LiveEditorState } from './matchLiveEditor.ts';
+import { isAcceptedEvent, isDraftEditable, markPendingEvent, type LiveEditorState } from './matchLiveEditor.ts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -161,7 +161,8 @@ export function createLiveCapture(options: LiveCaptureOptions): LiveCapture {
     async capture(payload: unknown): Promise<LiveCaptureOutcome> {
       if (inFlight) return 'busy';
       const shared = options.editor.shared;
-      if (shared === null) return 'unavailable';
+      // Suspendido/terminal: el borrador no admite capturas (T67).
+      if (shared === null || !isDraftEditable(shared.status)) return 'unavailable';
       const event = validateLiveEventForm(payload);
       if (event === null) return 'invalid';
       // Nada local se considera aceptado sin HTTP; pero un hecho ya aceptado no

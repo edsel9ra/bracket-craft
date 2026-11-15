@@ -10,7 +10,7 @@
  */
 
 import { classifyCaptureFailure, type LiveCaptureOutcome } from './matchLiveCapture.ts';
-import type { LiveEditorState } from './matchLiveEditor.ts';
+import { isDraftEditable, type LiveEditorState } from './matchLiveEditor.ts';
 
 export interface LiveClockView {
   state: 'not_started' | 'running' | 'paused';
@@ -90,7 +90,8 @@ export function createLiveClock(options: LiveClockOptions): LiveClock {
   async function run(command: Record<string, unknown>): Promise<LiveClockOutcome> {
     if (inFlight) return 'busy';
     const shared = options.editor.shared;
-    if (shared === null) return 'unavailable';
+    // Suspendido: el reloj no recibe comandos (T67).
+    if (shared === null || !isDraftEditable(shared.status)) return 'unavailable';
     inFlight = true;
     const commandId = options.commandId();
     try {

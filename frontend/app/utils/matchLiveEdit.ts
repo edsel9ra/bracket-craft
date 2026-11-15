@@ -9,7 +9,7 @@
  */
 
 import { classifyCaptureFailure, validateLiveEventForm, type LiveCaptureOutcome } from './matchLiveCapture.ts';
-import type { LiveEditorState } from './matchLiveEditor.ts';
+import { isDraftEditable, type LiveEditorState } from './matchLiveEditor.ts';
 
 export interface LiveEditSession {
   /** `client_event_id` del hecho en edición (su `event_id` en el wire). */
@@ -129,7 +129,8 @@ export function createLiveEdit(options: LiveEditOptions): LiveEdit {
     async saveEdit(form: unknown): Promise<LiveEditOutcome> {
       if (inFlight) return 'busy';
       const shared = options.editor.shared;
-      if (shared === null) return 'unavailable';
+      // Suspendido/terminal: no admitir correcciones del borrador (T67).
+      if (shared === null || !isDraftEditable(shared.status)) return 'unavailable';
       if (!editing) return 'missing';
       // Nunca guardar sobre una base movida sin revisar primero (RF-023).
       if (editing.stale) return 'stale';
@@ -155,7 +156,7 @@ export function createLiveEdit(options: LiveEditOptions): LiveEdit {
     async removeFact(clientEventId: string): Promise<LiveEditOutcome> {
       if (inFlight) return 'busy';
       const shared = options.editor.shared;
-      if (shared === null) return 'unavailable';
+      if (shared === null || !isDraftEditable(shared.status)) return 'unavailable';
       if (!eventExists(clientEventId)) return 'missing';
       inFlight = true;
       try {
