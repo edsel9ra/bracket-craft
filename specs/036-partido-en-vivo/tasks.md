@@ -462,11 +462,12 @@ Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del 
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-accessibility.test.ts` y `cd frontend && pnpm run lint` pasan sin diálogos nativos ni imports implícitos inválidos.
   - Evidencia 2026-11-15: `match-live-accessibility.test.ts` **5/5** y `pnpm run lint` limpio. Paridad ES/EN completa de todo el catálogo `live.*` (borrador local, corrección/retirada, transiciones start/suspend/resume, cierre) y cada clave usada por los controles declarada una vez por idioma; confirmaciones solo por `useConfirm` + claves i18n, sin diálogos nativos ni `alert()/prompt()`; el estado F1 se presenta por modo/capacidad (`LiveViewMode`, `stale` del reloj, `pending` del editor), nunca solo por color.
 
-- [ ] **T72. Verificar interfaz completa antes del checkpoint C1.** RF-001, RF-004, RF-011, RF-016, RF-019, RF-024, RF-029, RF-030; RNF-004, RNF-005, RNF-006
+- [x] **T72. Verificar interfaz completa antes del checkpoint C1.** RF-001, RF-004, RF-011, RF-016, RF-019, RF-024, RF-029, RF-030; RNF-004, RNF-005, RNF-006
   - Dependencias: T61–T71. Gate, sin rojo artificial.
   - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run e2e:test`, más G-FE/G-E2E pasan; además todos los gates comunes/Review y fusión autorizada de C1 se verifican antes de C2.
   - Gate local 2026-11-15 (rama `devin/1794761950-partido-en-vivo-c1`): `pnpm test` **1079 pass / 0 fail / 1 skipped**; `pnpm run typecheck` limpio; `pnpm run lint` limpio; `pnpm run e2e:test` **66 passed — RESULTADO VERDE** (public/workspace/operation/operation-flow todas passed). Pendiente G-REMOTE: PR de C1, CI y fusión autorizada antes de C2.
   - Review PR #85 (autorización del usuario "Opción 1" para cablear UI): `MatchLiveSection.vue` expone transiciones/reloj/captura/corrección/revisión/cierre según `liveView`; fixes de review: command_id estable = client_event_id (minúsculas), recibo normaliza hechos a camelCase + marcadores regulares, `metadata:{}` en red_card válida. match-live-section.test.ts 5/5; lint/typecheck limpios sobre 89be722b+.
+  - G-REMOTE 2026-11-15: PR #85 fusionado en main como `4c3b071a` con CI 7/7 verde (backend, frontend, infra, escaneo, realtime E2E, GitGuardian, Review); tres rondas de review triadas (9 corregidos, 1 escalado resuelto por decisión del usuario).
 
 ## PR C2 — Verificación ampliada y aceptación (T73–T84)
 
