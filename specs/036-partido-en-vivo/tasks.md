@@ -473,7 +473,8 @@ Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del 
 
 Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin posponer controles esenciales; T84 exige aceptación humana expresa y no se completa por la aprobación de estas tareas.
 
-- [ ] **T73. Ampliar E2E del recorrido completo provisional→suspensión→cierre.** RF-001, RF-002, RF-004, RF-005, RF-008, RF-019, RF-021, RF-024, RF-029; RNF-006
+- [x] **T73. Ampliar E2E del recorrido completo provisional→suspensión→cierre.** RF-001, RF-002, RF-004, RF-005, RF-008, RF-019, RF-021, RF-024, RF-029; RNF-006
+  - 2026-11-15 (rama C2): dos pruebas nuevas en `e2e/operationFlow.spec.ts` bajo el proyecto `operation-flow` — (a) recorrido F1 normal: start→start_clock→add_event(gol)→suspend→resume→review→close con recibo, con operador + dos lectores + espectador anónimo verificando realtime sin recarga, rechazo 422 de hecho inválido sin escritura, y contrato público mínimo durante suspensión; (b) borrador vacío válido: revisión y cierre walkover sin hechos. `pnpm exec playwright test e2e/operationFlow.spec.ts --project operation-flow` **4/4 passed**. Hallazgos: `discoverDemoData` podía elegir un torneo «Copa Demo» ajeno (tenants bootstrap) → filtro `ownedTournamentIds`; el 201 de revisión puede preceder a su commit → cierre inmediato con `live_review_id` puede responder `LIVE_REVIEW_STALE` y reintentar es el comportamiento idempotente esperado (converge a 200 en <10 s).
   - Tests primero: dos lectores, operador, espectador y cierre con recibo; normal, borrador vacío válido y rechazo con hechos inválidos.
   - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/operationFlow.spec.ts --project operation-flow` cubre recorrido F1 real y clásico sin actualizar manualmente ni adelantar efectos confirmados. Conservar los nombres/proyectos reales del config al ampliar los escenarios.
 
