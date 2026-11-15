@@ -39,7 +39,7 @@ test('all public cards, modal and bracket use the mark without private fields', 
   assert.equal((page.match(/<PublicRectifiedMark\b/g) || []).length, 4);
   for (const file of ['pages/tournaments/[id].vue', 'components/public/PublicBracket.vue', 'components/public/PublicLineupModal.vue']) {
     const source = read(file);
-    assert.match(source, /<PublicRectifiedMark :rectified-at="match.rectified_at"/);
+    assert.match(source, /<PublicRectifiedMark :rectified-at="match(RectifiedAt\(match\)|\.rectified_at)"/);
     assert.doesNotMatch(source, /requested_by|published_by|resolution_reason|\.evidence/);
   }
 });

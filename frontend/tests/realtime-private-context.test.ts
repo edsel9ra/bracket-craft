@@ -152,10 +152,19 @@ function operationHarness() {
     '~/utils/api': api, '~/utils/realtimeReload': reload,
   };
   for (const name of ['matchResolution', 'matchSegments', 'rosterLimits', 'matchDraft', 'navigation', 'requestBodies', 'substitutions']) modules[`~/utils/${name}`] = {};
+  // El coordinador F1 se prueba en match-live-context.test.ts; aquí solo
+  // importa que el disparador de recargas exista y no añada lecturas extra.
+  const liveRequests: number[] = [];
+  modules['~/utils/matchLiveContext'] = { createLiveContextCoordinator: () => ({
+    request: async () => { liveRequests.push(1); }, inFlight: false,
+  }) };
+  modules['~/utils/matchLiveClose'] = { isLiveInitialized: () => false,
+    classifyLiveCloseConflict: () => null,
+    LIVE_CLOSE_CONFLICT_LABEL_KEYS: { live_review_required: 'match.liveReviewRequired', live_review_stale: 'match.liveReviewStale' } };
   modules['~/utils/matchResolution'] = { classifyMatchConflict: () => null };
   modules['~/utils/navigation'] = { safeInternalRedirect: (path: string) => path };
   const exports = load<{ useMatchOperation: typeof useMatchOperation }>('composables/useMatchOperation.ts', modules,
-    { watch, useHead: () => {}, onBeforeRouteLeave: () => {},
+    { ref, watch, useHead: () => {}, onBeforeRouteLeave: () => {},
       navigateTo: async (target: unknown) => { navigations.push(target); }, window: { removeEventListener() {} } });
   return { operation: exports.useMatchOperation(), state, requests, navigations, changeContext: (key?: string) => {
     version++;

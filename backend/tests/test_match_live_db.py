@@ -2,11 +2,12 @@
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import TypeAdapter
 from sqlalchemy.engine import make_url
@@ -201,29 +202,199 @@ async def test_access_foreign_context(live_service_db):
     assert error.value.status_code in (403, 404)
 
 
-async def test_access_http_test_only_and_no_production_routes(live_service_db):
+def live_headers(f):
+    from app.core.security import create_access_token
+
+    token = create_access_token(UUID(USER), f.session_id)
+    return {"Authorization": f"Bearer {token}", "X-Organization-ID": ORG}
+
+
+def mounted_routes(app):
+    """(path, método) de cada ruta efectiva, expandiendo `_IncludedRouter` (montaje perezoso)."""
+
+    found = set()
+    stack = list(app.routes)
+    while stack:
+        route = stack.pop()
+        candidates = getattr(route, "effective_candidates", None)
+        if callable(candidates):
+            stack.extend(candidates())
+            continue
+        methods = getattr(route, "methods", None)
+        if methods is None:
+            methods = getattr(getattr(route, "original_route", route), "methods", ())
+        for method in methods or ():
+            found.add((getattr(route, "path", ""), method))
+    return found
+
+
+@asynccontextmanager
+async def live_client(f):
+    """Cliente HTTP sobre el montaje real con `get_db` apuntando a la base desechable."""
+
+    from app.core.database import get_db
     from app.main import api as production_app
 
-    f = live_service_db
-    app = FastAPI()
-
-    @app.get("/matches/{match_id}/live/access")
-    async def access(match_id: UUID):
+    async def throwaway_db():
         async with AsyncSession(f.engine) as db:
-            return await LiveMatchService(db).access(f.context, match_id, f.session_id)
+            yield db
 
+    production_app.dependency_overrides[get_db] = throwaway_db
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=production_app), base_url="http://test"
+        ) as client:
+            yield client
+    finally:
+        production_app.dependency_overrides.clear()
+
+
+async def csrf_headers(client):
+    return {
+        "X-CSRF-Token": (await client.get("/api/v1/auth/csrf")).headers["X-CSRF-Token"]
+    }
+
+
+async def test_live_routes_registered_on_production_app(live_service_db):
+    from app.main import api as production_app
+
+    routes = mounted_routes(production_app)
+    base = "/api/v1/matches/{match_id}"
+    assert (f"{base}/live", "GET") in routes
+    assert (f"{base}/live/access", "GET") in routes
+    assert (f"{base}/live/commands", "POST") in routes
+    assert (f"{base}/live/reviews", "POST") in routes
+
+
+async def test_access_http_through_production_mount(live_service_db):
+    f = live_service_db
     await f.permissions(["OPERATE_MATCH_LIVE"])
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.get(f"/matches/{MATCH}/live/access")
+    async with live_client(f) as client:
+        assert (
+            await client.get(f"/api/v1/matches/{MATCH}/live/access")
+        ).status_code == 401
+        response = await client.get(
+            f"/api/v1/matches/{MATCH}/live/access", headers=live_headers(f)
+        )
         assert response.status_code == 200
         assert response.json() == dict(
             can_view=False, can_operate=True, can_close=False, available=True
         )
-    assert not any(
-        "/live" in getattr(route, "path", "") for route in production_app.routes
+
+
+async def test_live_writes_require_csrf_and_session(live_service_db):
+    f = live_service_db
+    await f.permissions(["OPERATE_MATCH_LIVE"])
+    body = command("start_clock", segment_id=SEGMENT_FIRST).model_dump(mode="json")
+    url = f"/api/v1/matches/{MATCH}/live/commands"
+    async with live_client(f) as client:
+        assert (await client.post(url, json=body)).status_code == 401
+        denied = await client.post(url, json=body, headers=live_headers(f))
+        assert denied.status_code == 403
+        assert denied.json() == {"detail": "Token CSRF inválido"}
+        response = await client.post(
+            url,
+            json=body,
+            headers={**live_headers(f), **await csrf_headers(client)},
+        )
+        assert response.status_code == 200
+        assert set(response.json()) == {"command_id", "revision"}
+        assert response.json()["command_id"] == body["command_id"]
+        snapshot = await client.get(
+            f"/api/v1/matches/{MATCH}/live", headers=live_headers(f)
+        )
+        # Sin VIEW la lectura de detalle sigue denegada tras el comando.
+        assert snapshot.status_code == 403
+
+
+async def test_live_review_through_production_mount(live_service_db):
+    f = live_service_db
+    await f.permissions(["VIEW_MATCH_LIVE_DRAFT", "CLOSE_MATCH_REPORT"])
+    url = f"/api/v1/matches/{MATCH}"
+    async with live_client(f) as client:
+        headers = {**live_headers(f), **await csrf_headers(client)}
+        # Sin estado F1 el partido responde initialized=false sin crear estado.
+        snapshot = await client.get(f"{url}/live", headers=headers)
+        assert snapshot.status_code == 200
+        assert snapshot.json()["initialized"] is False
+        # La revisión exige estado inicializado.
+        review = await client.post(
+            f"{url}/live/reviews",
+            headers=headers,
+            json={
+                "expected_content_revision": 0,
+                "result": {
+                    "resolution_type": "regular",
+                    "home_score_regular": 0,
+                    "away_score_regular": 0,
+                },
+            },
+        )
+        assert review.status_code == 409
+        assert review.json()["detail"] == "LIVE_MATCH_NOT_EDITABLE"
+        await f.permissions(["VIEW_MATCH_LIVE_DRAFT", "CLOSE_MATCH_REPORT", "OPERATE_MATCH_LIVE"])
+        await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+        review = await client.post(
+            f"{url}/live/reviews",
+            headers=headers,
+            json={
+                "expected_content_revision": 0,
+                "result": {
+                    "resolution_type": "regular",
+                    "home_score_regular": 0,
+                    "away_score_regular": 0,
+                },
+            },
+        )
+        assert review.status_code == 201
+        receipt = review.json()
+        assert receipt["content_revision"] == 0
+        assert set(receipt) == {"live_review_id", "content_revision", "report", "fingerprint"}
+
+
+async def test_classic_close_route_is_not_a_bypass_of_live_review(live_service_db):
+    f = live_service_db
+    await f.permissions(
+        ["VIEW_MATCH_LIVE_DRAFT", "CLOSE_MATCH_REPORT", "OPERATE_MATCH_LIVE"]
     )
+    await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+    url = f"/api/v1/matches/{MATCH}"
+    async with live_client(f) as client:
+        headers = {**live_headers(f), **await csrf_headers(client)}
+        bypass = await client.post(
+            f"{url}/close",
+            headers=headers,
+            json={
+                "resolution_type": "regular",
+                "home_score_regular": 0,
+                "away_score_regular": 0,
+            },
+        )
+        assert bypass.status_code == 409
+        assert bypass.json()["detail"] == "LIVE_REVIEW_REQUIRED"
+        review = await client.post(
+            f"{url}/live/reviews",
+            headers=headers,
+            json={
+                "expected_content_revision": 0,
+                "result": {
+                    "resolution_type": "regular",
+                    "home_score_regular": 0,
+                    "away_score_regular": 0,
+                },
+            },
+        )
+        closed = await client.post(
+            f"{url}/close",
+            headers=headers,
+            json={
+                "resolution_type": "regular",
+                "home_score_regular": 0,
+                "away_score_regular": 0,
+                "live_review_id": review.json()["live_review_id"],
+            },
+        )
+        assert closed.status_code == 200
 
 
 async def test_snapshot_foreign_or_missing_indistinguishable(live_service_db):
@@ -328,7 +499,7 @@ async def test_start_match_invalid(live_service_db):
     f = live_service_db
     await f.admin.execute("UPDATE matches SET status='scheduled' WHERE id=$1", MATCH)
     with pytest.raises(HTTPException) as error:
-        await f.call("execute", command("start"))
+        await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
     assert error.value.status_code == 409
     assert await f.admin.fetchval("SELECT count(*) FROM match_live_state") == 0
 

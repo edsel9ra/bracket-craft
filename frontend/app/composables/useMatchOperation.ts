@@ -9,6 +9,8 @@ import { type SegmentRefreshCause } from '~/utils/matchSegments';
 import { describeOpeningBlocked } from '~/utils/rosterLimits';
 import { type MatchDraftStorage } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
+import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/matchLiveContext';
+import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -28,6 +30,7 @@ export function useMatchOperation() {
     removePersistedDraft: (...args): void => draftActions.removePersistedDraft(...args),
     refreshOperation,
     runAction,
+    liveInitialized: () => isLiveInitialized(liveSnapshot.value),
   });
   const lineupActions = useMatchLineup(state, {
     refreshOperation,
@@ -48,6 +51,26 @@ export function useMatchOperation() {
   const mountedContextKey = realtime.contextKey.value;
   let contextIsCurrent = realtime.captureContext();
   const canUpdate = () => !disposed && realtime.contextKey.value === mountedContextKey && contextIsCurrent();
+
+  // F1 (036): capacidades y borrador live solo existen con lectura autorizada;
+  // una denegación limpia la vista privada sin tocar el historial 033.
+  const liveAccess = ref<LiveCapabilities | null>(null);
+  const liveSnapshot = ref<unknown | null>(null);
+  const liveContext = createLiveContextCoordinator({
+    isCurrent: canUpdate,
+    isBusy: () => busyAction.value !== null,
+    onBusy: () => { pendingReload = true; },
+    source: {
+      fetchAccess: () => request(`/matches/${matchId}/live/access`),
+      fetchLive: () => request(`/matches/${matchId}/live`),
+    },
+    callbacks: {
+      applyAccess: (value) => { liveAccess.value = value; },
+      applyLive: (value) => { liveSnapshot.value = value; },
+      denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; },
+      denyLive: () => { liveSnapshot.value = null; },
+    },
+  });
 
   function failureMessage(cause: unknown, fallback: string): string {
     return errorMessage(cause, fallback);
@@ -103,6 +126,7 @@ export function useMatchOperation() {
         return;
       }
       void operationReload.request({ resetPagination: decision.resetPagination });
+      void liveContext.request();
     }
   }
 
@@ -257,11 +281,14 @@ export function useMatchOperation() {
 
   watch(realtime.contextKey, (key) => {
     operation.value = null;
+    liveAccess.value = null;
+    liveSnapshot.value = null;
     pendingReload = false;
     refreshGeneration += 1;
     if (!disposed && key === mountedContextKey) {
       contextIsCurrent = realtime.captureContext();
       void operationReload.request();
+      void liveContext.request();
     }
   }, { flush: 'sync' });
 
@@ -363,10 +390,14 @@ export function useMatchOperation() {
     const restored = restoreResolution(operation.value?.limits ?? null);
     resolutionFallback.value = restored.fellBack;
     window.addEventListener('beforeunload', handleBeforeUnload);
+    // F1 (036): el contexto live se pide con la carga inicial, no solo ante
+    // eventos; el guard del cierre clásico lo necesita desde el primer acceso.
+    void liveContext.request();
     realtime.connect({
       onEvent: (event, payload) => {
         if (['MATCH_CLOSED', 'MATCH_UPDATED'].includes(event)) requestOperationReload('event', payload);
       },
+      onMatchLiveUpdated: (payload) => requestOperationReload('event', payload),
       onReconnect: () => requestOperationReload('reconnect'),
       onResync: (payload) => requestOperationReload(resyncTrigger(payload.reason)),
     });
@@ -379,7 +410,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;

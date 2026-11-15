@@ -58,7 +58,7 @@ test('031 T8: named statistics tabs retain independent scope, server order and o
   assert.match(page, /if \(!statsGeneration\.isCurrent\(generation\)\) return/);
   assert.match(page, /@load-more="loadMorePlayerStats"/);
   assert.match(page, /@load-more="loadMoreTeamStats"/);
-  assert.match(page, /if \(!match\.lineup\) return/);
+  assert.match(page, /!match\.lineup\) return/);
   assert.match(page, /void nextTick\(\(\) => trigger\?\.focus\(\)\)/);
   assert.match(page, /if \(match\.home_score === null \|\| match\.away_score === null\) return '-'/);
   for (const component of ['PublicPlayerStatsTable', 'PublicTeamStatsTable']) {

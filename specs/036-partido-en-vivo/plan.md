@@ -60,6 +60,12 @@ No se prevén dependencias, secretos ni variables de entorno nuevos. Reutilizar 
 
 ## 4. Base de datos — propuesta 056
 
+### Desviación autorizada durante B3: migración 059
+
+El usuario aprobó el **2026-11-15** la **Opción 1** («migración 059 mínima (recomendada)»): `059_live_selection_bracket_code.sql`, siguiente número libre confirmado. T49 ordena la unión pública antes de paginar por `stage_order, stage_id, matchday, bracket_code, match_date, id`, el mismo orden del partido clásico. La vista interna `v_match_live_public_selection` de 056 no exponía `bracket_code` y ninguna otra fuente anónima lo aporta a un suspendido (`v_public_matches` lo excluye y `matches` exige contexto organizativo), así que sin la columna el suspendido se ordenaba como NULL al final de su fase y podía cambiar de página al cambiar de estado.
+
+`CREATE OR REPLACE VIEW` basta porque `m.bracket_code` se añade al final de la selección conservando nombres y tipos previos (precedente 029): grants, propiedad, `security_barrier` y la exención RLS se preservan. La salida pública `v_public_match_live` sigue seleccionando exactamente sus 14 columnas y 001–058 quedan intactas. `stage_order` se resuelve en la ruta con `v_public_stages`, ya concedida a `bracket_app`; no se añaden más metadatos a la vista. Alternativa descartada: tratar `bracket_code` como NULL para suspendidos, determinista pero móvil de página al transicionar. Pruebas: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_059.py`.
+
 ### Desviación autorizada durante B1: migración 058
 
 El usuario aprobó el **2026-11-14** la **Opción 1** para el hallazgo 1 de Review del PR #82: `058_live_player_eligibility.sql`, siguiente número libre confirmado. Con planillas cargadas, capturar con OPERATE sin lectura de sanciones llegaba a la función protegida de 042 y fallaba con SANCTION_OPERATION_DENIED. RF-007 exige validar la elegibilidad al capturar, no diferirla al cierre. 042, 056, 057, permisos HTTP y lecturas VIEW_SANCTION_CASES permanecen intactos.

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, ClassVar, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload, client_event_identity
 
@@ -69,6 +69,10 @@ LiveCommand = Annotated[
 ]
 
 
+class LiveCommandRequest(RootModel[LiveCommand]):
+    """Cuerpo del comando F1: el JSON es la variante discriminada por ``type``."""
+
+
 class LiveAccessResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     can_view: bool = Field(strict=True)
@@ -112,6 +116,14 @@ class LiveCloseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     live_review_id: UUID
     result: LiveResultDTO
+
+
+class LiveReviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    live_review_id: UUID
+    content_revision: Revision
+    report: LiveReportDTO
+    fingerprint: str
 
 
 class LiveClockResponse(BaseModel):

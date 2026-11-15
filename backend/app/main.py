@@ -56,6 +56,7 @@ from app.modules.matches.errors import (
     WalkoverScoreMismatch,
     WalkoverStateNotAllowed,
 )
+from app.modules.matches.live_router import router as match_live_router
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
@@ -68,6 +69,7 @@ from app.modules.tournaments.router import router as tournaments_router
 
 
 PUBLIC_REALTIME_EVENTS = frozenset({"MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"})
+MATCH_LIVE_PUBLIC_UPDATED = "MATCH_LIVE_PUBLIC_UPDATED"
 RESYNC = "RESYNC"
 SOCKET_REVALIDATION_SECONDS = 30
 SOCKET_PUBLIC_RATE_LIMIT = 60
@@ -337,13 +339,71 @@ def build_realtime_payload(payload: dict, event_id: str | None) -> dict:
     return realtime_payload
 
 
+async def live_public_projection_visible(
+    match_id: str, tournament_id: str, organization_id: str
+) -> bool:
+    """Revalida en la proyección autorizada que el aviso sigue vigente.
+
+    El torneo pudo ocultarse tras encolar; solo se emite si la selección
+    interna sigue exponiendo el partido en un torneo público de la
+    organización del sobre. Un fallo de consulta se propaga al relay para
+    reintento: nunca se emite sin verificar.
+    """
+
+    async with SessionFactory() as db:
+        async with db.begin():
+            visible = await db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM v_match_live_public_selection s
+                    JOIN v_public_tournaments t
+                      ON t.id = s.tournament_id
+                     AND t.organization_id = :organization_id
+                    WHERE s.id = :match_id AND s.tournament_id = :tournament_id
+                    """
+                ),
+                {
+                    "match_id": match_id,
+                    "tournament_id": tournament_id,
+                    "organization_id": organization_id,
+                },
+            )
+            return visible.scalar_one_or_none() is not None
+
+
+async def emit_live_public_updated(event: ParsedEvent) -> None:
+    """Emite ``MATCH_LIVE_PUBLIC_UPDATED`` solo con proyección vigente."""
+
+    payload = event.payload
+    if set(payload) != {"match_id", "tournament_id"}:
+        return
+    match_id = payload["match_id"]
+    tournament_id = payload["tournament_id"]
+    try:
+        identifiers = tuple(
+            str(UUID(str(value)))
+            for value in (match_id, tournament_id, event.organization_id)
+        )
+    except ValueError:
+        return
+    if not await live_public_projection_visible(*identifiers):
+        return
+    await sio.emit(
+        event.event_type,
+        build_realtime_payload(payload, event.event_id),
+        room=f"tournament:{identifiers[1]}",
+    )
+
+
 async def emit_domain_event(event: ParsedEvent) -> None:
-    payload = build_realtime_payload(event.payload, event.event_id)
     tournament_id = event.payload.get("tournament_id")
-    if tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS and event.payload.get("scope") != "organization":
+    if event.event_type == MATCH_LIVE_PUBLIC_UPDATED:
+        await emit_live_public_updated(event)
+    elif tournament_id and event.event_type in PUBLIC_REALTIME_EVENTS and event.payload.get("scope") != "organization":
         await sio.emit(
             event.event_type,
-            payload,
+            build_realtime_payload(event.payload, event.event_id),
             room=f"tournament:{tournament_id}",
         )
     await private_delivery.deliver(event.envelope if event.envelope is not None else {
@@ -996,6 +1056,7 @@ api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")
 api.include_router(matches_router, prefix="/api/v1")
+api.include_router(match_live_router, prefix="/api/v1")
 api.include_router(rectifications_router, prefix="/api/v1")
 api.include_router(sanction_appeals_router, prefix="/api/v1")
 api.include_router(crests_router, prefix="/api/v1")

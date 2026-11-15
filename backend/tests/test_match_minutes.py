@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import get_db
+from app.core.security import get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.matches import router as matches_router
@@ -798,6 +799,9 @@ async def close_client():
 
     api.dependency_overrides[get_db] = database
     api.dependency_overrides[get_auth_context] = auth
+    api.dependency_overrides[get_session_id] = lambda: UUID(
+        "00000000-0000-4000-8000-000000000000"
+    )
     try:
         async with AsyncClient(
             transport=ASGITransport(app=api), base_url="http://test"
@@ -806,11 +810,12 @@ async def close_client():
     finally:
         api.dependency_overrides.pop(get_db, None)
         api.dependency_overrides.pop(get_auth_context, None)
+        api.dependency_overrides.pop(get_session_id, None)
 
 
 @pytest.mark.asyncio
 async def test_the_close_route_answers_the_unified_409_with_its_code(monkeypatch):
-    async def reject(self, context_, match_id, dto):
+    async def reject(self, context_, match_id, dto, session_id=None):
         raise ResolutionNotEnabled()
 
     monkeypatch.setattr(matches_router.CloseMatchReportService, "execute", reject)
@@ -831,7 +836,7 @@ async def test_the_close_route_answers_the_unified_409_with_its_code(monkeypatch
 async def test_the_close_route_still_rejects_an_out_of_range_minute_with_422(monkeypatch):
     called = False
 
-    async def should_not_run(self, context_, match_id, dto):  # pragma: no cover
+    async def should_not_run(self, context_, match_id, dto, session_id=None):  # pragma: no cover
         nonlocal called
         called = True
 
@@ -1148,6 +1153,9 @@ async def test_both_routes_answer_the_identical_unified_409(monkeypatch, path, b
 
     api.dependency_overrides[get_db] = database
     api.dependency_overrides[get_auth_context] = auth
+    api.dependency_overrides[get_session_id] = lambda: UUID(
+        "00000000-0000-4000-8000-000000000000"
+    )
     try:
         async with AsyncClient(
             transport=ASGITransport(app=api), base_url="http://test"
@@ -1156,6 +1164,7 @@ async def test_both_routes_answer_the_identical_unified_409(monkeypatch, path, b
     finally:
         api.dependency_overrides.pop(get_db, None)
         api.dependency_overrides.pop(get_auth_context, None)
+        api.dependency_overrides.pop(get_session_id, None)
 
     assert response.status_code == 409
     assert response.json() == {

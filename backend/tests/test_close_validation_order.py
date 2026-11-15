@@ -54,6 +54,7 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import get_db
+from app.core.security import get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.matches import router as matches_router
@@ -1889,6 +1890,9 @@ async def api_client():
 
     api.dependency_overrides[get_auth_context] = auth_context
     api.dependency_overrides[get_db] = session
+    api.dependency_overrides[get_session_id] = lambda: UUID(
+        "00000000-0000-4000-8000-000000000000"
+    )
     try:
         async with AsyncClient(
             transport=ASGITransport(app=api), base_url="http://test"
@@ -1897,6 +1901,7 @@ async def api_client():
     finally:
         api.dependency_overrides.pop(get_auth_context, None)
         api.dependency_overrides.pop(get_db, None)
+        api.dependency_overrides.pop(get_session_id, None)
 
 
 def structural_body(**overrides) -> dict:

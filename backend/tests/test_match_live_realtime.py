@@ -28,6 +28,7 @@ from test_match_live_db import (
 )
 from test_migration_031 import TOURNAMENT
 from test_migration_056 import SEGMENT_FIRST
+from test_rectification_flow import flow as flow
 
 
 def envelope(**payload):
@@ -242,3 +243,366 @@ async def test_http_sql_parity(live_service_db, case):
     expected = case in {"view", "both", "assigned", "multirole"}
     assert (response.status_code == 200) is expected
     assert decision == (Decision.ALLOW if expected else Decision.DENY)
+
+
+# ---------------------------------------------------------------------------
+# B3 T50: el aviso público nuevo solo se emite tras revalidar visibilidad actual
+# ---------------------------------------------------------------------------
+
+LIVE_PUBLIC = "MATCH_LIVE_PUBLIC_UPDATED"
+FOREIGN = "32000000-0000-4000-8000-"
+
+
+def public_envelope(event_type=LIVE_PUBLIC, **payload):
+    return {
+        "event_id": str(uuid4()),
+        "organization_id": ORG,
+        "event_type": event_type,
+        "payload": {"match_id": MATCH, "tournament_id": TOURNAMENT, **payload},
+    }
+
+
+class RecordingDelivery:
+    def __init__(self):
+        self.envelopes = []
+
+    async def deliver(self, envelope):
+        self.envelopes.append(envelope)
+
+
+def dispatch_harness(fixture, monkeypatch):
+    from app import main
+
+    calls = []
+
+    async def emit(name, payload, **kwargs):
+        calls.append((name, payload, kwargs))
+
+    delivery = RecordingDelivery()
+    monkeypatch.setattr(
+        main, "SessionFactory", lambda: AsyncSession(fixture.engine)
+    )
+    monkeypatch.setattr(main.sio, "emit", emit)
+    monkeypatch.setattr(main, "private_delivery", delivery)
+    return main, calls, delivery
+
+
+async def emit_envelope(main, data):
+    await main.emit_domain_event(main.parse_envelope({"event": json.dumps(data)}))
+
+
+async def start_clock(f):
+    """Materializa ``match_live_state``: el partido entra en la proyección."""
+    await f.call(
+        "execute", command("start_clock", segment_id=SEGMENT_FIRST)
+    )
+
+
+async def test_public_dispatch_emits_after_current_visibility_revalidation(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, delivery = dispatch_harness(live_service_db, monkeypatch)
+    data = public_envelope()
+    await emit_envelope(main, data)
+    assert calls == [
+        (
+            LIVE_PUBLIC,
+            {
+                "event_id": data["event_id"],
+                "match_id": MATCH,
+                "tournament_id": TOURNAMENT,
+            },
+            {"room": f"tournament:{TOURNAMENT}"},
+        )
+    ]
+    assert len(delivery.envelopes) == 1
+
+
+async def test_public_dispatch_tournament_hidden_after_enqueue_does_not_emit(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(
+        "UPDATE tournaments SET status='draft' WHERE id=$1", TOURNAMENT
+    )
+    await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # Organización inactiva tras encolar: ya no es proyección autorizada.
+        "UPDATE organizations SET is_active=FALSE WHERE id='" + ORG + "'",
+        # Versión archivada tras encolar: sale de la selección publicada.
+        "UPDATE tournament_versions SET status='archived' WHERE tournament_id='"
+        + TOURNAMENT + "'",
+    ],
+    ids=["organization_inactive", "version_archived"],
+)
+async def test_public_dispatch_match_out_of_projection_does_not_emit(
+    live_service_db, monkeypatch, statement
+):
+    await start_clock(live_service_db)
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(statement)
+    await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "organization_id,match_id,tournament_id",
+    [
+        (FOREIGN + "000000000001", MATCH, TOURNAMENT),
+        (ORG, FOREIGN + "000000000050", TOURNAMENT),
+        (ORG, MATCH, FOREIGN + "000000000010"),
+        (FOREIGN + "000000000001", FOREIGN + "000000000050", FOREIGN + "000000000010"),
+    ],
+    ids=["foreign_org", "foreign_match", "foreign_tournament", "all_foreign"],
+)
+async def test_public_dispatch_foreign_references_do_not_emit(
+    live_service_db, monkeypatch, organization_id, match_id, tournament_id
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    data = public_envelope(match_id=match_id, tournament_id=tournament_id)
+    data["organization_id"] = organization_id
+    await emit_envelope(main, data)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "event_type,extra",
+    [
+        # Nombre privado compartiendo identificadores: nunca sale al room público.
+        ("MATCH_LIVE_UPDATED", {}),
+        ("MATCH_LIVE_UPDATED", {"scope": "organization"}),
+        # El nombre público no acepta ámbito organizativo ni claves extra.
+        (LIVE_PUBLIC, {"scope": "organization"}),
+        (LIVE_PUBLIC, {"home_score": 3}),
+        (LIVE_PUBLIC, {"match_id": None}),
+        (LIVE_PUBLIC, {"match_id": "no-uuid"}),
+        (LIVE_PUBLIC, {"tournament_id": "no-uuid"}),
+    ],
+    ids=[
+        "private_name",
+        "private_name_scoped",
+        "public_scoped",
+        "extra_key",
+        "null_match",
+        "bad_match",
+        "bad_tournament",
+    ],
+)
+async def test_public_dispatch_rejects_private_or_malformed_wires(
+    live_service_db, monkeypatch, event_type, extra
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await emit_envelope(main, public_envelope(event_type=event_type, **extra))
+    assert calls == []
+
+
+async def test_public_dispatch_query_failure_does_not_emit(
+    live_service_db, monkeypatch
+):
+    from app import main
+
+    calls = []
+
+    async def emit(name, payload, **kwargs):
+        calls.append((name, payload, kwargs))
+
+    def broken_factory():
+        raise RuntimeError("consulta de visibilidad caída")
+
+    monkeypatch.setattr(main, "SessionFactory", broken_factory)
+    monkeypatch.setattr(main.sio, "emit", emit)
+    monkeypatch.setattr(main, "private_delivery", RecordingDelivery())
+    with pytest.raises(RuntimeError):
+        await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+async def test_public_dispatch_preserves_previous_public_events(
+    live_service_db, monkeypatch
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(
+        "UPDATE tournaments SET status='draft' WHERE id=$1", TOURNAMENT
+    )
+    for name in ("MATCH_UPDATED", "MATCH_CLOSED", "STANDINGS_UPDATED"):
+        await emit_envelope(main, public_envelope(event_type=name))
+    assert [c[0] for c in calls] == ["MATCH_UPDATED", "MATCH_CLOSED", "STANDINGS_UPDATED"]
+    assert all(c[2] == {"room": f"tournament:{TOURNAMENT}"} for c in calls)
+
+
+async def test_public_dispatch_draft_never_broadcasts_to_organization_room(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, delivery = dispatch_harness(live_service_db, monkeypatch)
+    await emit_envelope(main, public_envelope())
+    await emit_envelope(
+        main, public_envelope(event_type="MATCH_LIVE_UPDATED", scope="organization")
+    )
+    rooms = [c[2].get("room", "") for c in calls]
+    assert all(not room.startswith("organization:") for room in rooms)
+    # Solo el aviso privado llega a la entrega organizativa autorizada; el
+    # público pasa por el filtro pero el catálogo lo descarta.
+    assert len(delivery.envelopes) == 2
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_delivery_two_apis_two_tenants(flow):
+    """T56: sockets reales en dos API y dos tenants; solo los tres ids de wire."""
+
+    import httpx
+    from realtime_process import ProcessCluster
+
+    denied_user = uuid4()
+    await flow.admin.execute("""INSERT INTO users(id,email,password_hash,full_name)
+        VALUES($1,$2,'hash','Denied live');""", denied_user, f'{denied_user}@example.test')
+    member = await flow.admin.fetchval(
+        "INSERT INTO organization_users(organization_id,user_id) VALUES($1,$2) RETURNING id",
+        UUID(ORG), denied_user)
+    role = await flow.admin.fetchval(
+        """INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+        SELECT $1,id,'Denied live','[]'::jsonb FROM role_definitions
+        WHERE code='member' RETURNING id""", UUID(ORG))
+    if role is None:
+        role = await flow.admin.fetchval(
+            """INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+            SELECT $1,id,'Denied live','[]'::jsonb FROM role_definitions LIMIT 1 RETURNING id""",
+            UUID(ORG))
+    await flow.admin.execute(
+        "INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES($1,$2,$3)",
+        UUID(ORG), member, role)
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        denied = await cluster.identity(str(denied_user))
+        other = await cluster.identity(USER.replace('31000000', '32000000'))
+        left = await cluster.connect(0, identity)
+        right = await cluster.connect(1, identity)
+        denied_wire = await cluster.connect(0, denied)
+        outsider = await cluster.connect(1, other, ORG.replace('31000000', '32000000'))
+        assert (await cluster.rpc(0, 'probe'))['pid'] != (await cluster.rpc(1, 'probe'))['pid']
+
+        event = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED',
+            payload={'scope': 'organization', 'match_id': MATCH, 'tournament_id': TOURNAMENT})
+        await cluster.settle(event)
+        expected = {'event_id': event, 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+        for wire in (left, right):
+            assert wire.payload(event) == expected
+        for denied_socket in (denied_wire, outsider):
+            assert denied_socket.payload(event) is None
+            # Cero frames de dominio en ajenos o denegados: solo control.
+            assert not any(name == 'MATCH_LIVE_UPDATED' for name, _ in denied_socket.frames)
+
+        # Lectura HTTP posterior sobre el montaje real: el mismo partido.
+        async with httpx.AsyncClient() as http:
+            response = await http.get(
+                f'http://127.0.0.1:{cluster.children[0][2]}/api/v1/matches/{MATCH}/live/access',
+                headers={'Authorization': f'Bearer {identity["token"]}',
+                         'X-Organization-ID': ORG})
+        assert response.status_code == 200
+        assert set(response.json()) == {
+            'can_view', 'can_operate', 'can_close', 'available'}
+        assert response.json()['can_view'] is True
+
+
+LIVE_WIRE = {'scope': 'organization', 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+@pytest.mark.parametrize('withdrawal', ['session', 'membership', 'roles', 'live_view'])
+async def test_multiprocess_recovery_cutoff_fail_closed_no_replay(flow, withdrawal):
+    """T57: retirada confirmada en la barrera de evaluación; nada llega tras el corte."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        left = await cluster.connect(0, identity)
+        right = await cluster.connect(1, identity)
+        outsider = await cluster.connect(
+            1, await cluster.identity(USER.replace('31000000', '32000000')),
+            ORG.replace('31000000', '32000000'))
+        event = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(event)
+        for wire in (left, right):
+            assert wire.payload(event) == {
+                'event_id': event, 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+
+        pending_event = await cluster.enqueue(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.gate(pending_event)
+        await cluster.flush()
+        await cluster.paused()
+        if withdrawal == 'live_view':
+            await flow.admin.execute(
+                "UPDATE roles SET permissions=permissions-'VIEW_MATCH_LIVE_DRAFT' WHERE organization_id=$1",
+                UUID(ORG))
+            # La lectura clásica sigue autorizada (permiso distinto); lo
+            # denegado es solo el canal live, visible en /live/access.
+            import httpx
+            async with httpx.AsyncClient() as http:
+                access = await http.get(
+                    f'http://127.0.0.1:{cluster.children[1][2]}/api/v1/matches/{MATCH}/live/access',
+                    headers={'Authorization': f'Bearer {identity["token"]}',
+                             'X-Organization-ID': ORG})
+            assert access.status_code == 200
+            assert access.json()['can_view'] is False
+        else:
+            await cluster.withdraw(withdrawal, identity)
+            assert (await cluster.http(1, identity)) in (401, 403, 404)
+        await cluster.release()
+        await cluster.settle(pending_event)
+        # El corte evalúa al inicio del lote: frames ya comprometidos no se
+        # prometen «retirar», y nada nuevo atraviesa sin replay.
+        assert left.payload(pending_event) is None
+        assert right.payload(pending_event) is None
+        assert outsider.payload(event) is None
+        assert outsider.payload(pending_event) is None
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_recovery_sql_failure_suspends_and_resyncs(flow):
+    """T57: fallo SQL suspende fail-closed; `recover` reanuda solo lo vigente."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        victim, healthy = await cluster.identities(2)
+        affected = await cluster.connect(0, victim)
+        independent = await cluster.connect(1, healthy)
+        await cluster.rpc(0, 'mode', values={'fail': True})
+        lost = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(lost)
+        assert affected.payload(lost) is None
+        assert independent.payload(lost) is not None
+        # Sesión/JWT expirado de verdad: el socket suspendido no se reanuda.
+        await flow.admin.execute(
+            "UPDATE user_sessions SET expires_at=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE id=$1",
+            victim['session'])
+        await cluster.rpc(0, 'mode', values={'fail': False})
+        for _ in range(2):
+            await cluster.rpc(0, 'recover')
+            probe = await cluster.rpc(0, 'probe')
+        # Fail-closed: la sesión expirada no vuelve a quedar suscripta.
+        assert probe['suspended'] == 0
+        await cluster.fence()
+        assert affected.payload(lost) is None
+        assert not any(
+            name == 'RESYNC' and value['reason'] == 'RELAY_START'
+            for name, value in affected.frames)
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        assert affected.payload(fresh) is None
+        assert independent.payload(fresh) is not None
+        assert (await cluster.http(0, victim)) in (401, 403)

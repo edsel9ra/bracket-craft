@@ -17,22 +17,31 @@ import {
   type ReloadTrigger,
 } from '~/utils/realtimeReload';
 import {
+  bracketEligibleMatches,
   combinationKey,
+  formatSuspendedClock,
   getPublicStagePresentation,
   groupsOfStage,
-  matchesForGroup,
+  isSuspendedPublicMatch,
+  matchEntriesForGroup,
+  matchEntriesForStage,
+  mergeMatchEntries,
+  normalizePublicMatchPage,
   normalizePublicSelection,
   resolveMatchOutcomeLabel,
   resolvePublicStatsScope,
   sortPublicStages,
   standingsForGroup,
-  type PublicMatch,
+  type PublicMatchEntry,
+  type PublicMatchLineup,
+  type PublicMatchState,
   type PublicSelection,
   type PublicStage,
   type PublicStanding,
   type PublicStatsScope,
   type PublicTournament,
   type PublicStagePresentation,
+  type SuspendedPublicMatch,
 } from '~/utils/publicTournament';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import type { LocationQueryRaw } from 'vue-router';
@@ -64,7 +73,8 @@ const { data: tournamentData, status, error: dataError, refresh } = await useAsy
 
 const tournament = computed<PublicTournament | null>(() => tournamentData.value?.tournament ?? null);
 const standings = ref<PublicStanding[]>([]);
-const matches = ref<PublicMatch[]>([]);
+const matches = ref<PublicMatchEntry[]>([]);
+const matchList = computed(() => matches.value.map((entry) => entry.match));
 const stages = computed(() => sortPublicStages(tournament.value?.stages ?? []));
 const stageAwareLayout = computed(() => stages.value.length > 0);
 const selectedStage = computed<PublicStage | null>(() =>
@@ -84,7 +94,10 @@ const selectedStageId = computed(() => publicSelection.value.stageId);
 const selectedGroupId = computed(() => publicSelection.value.groupId);
 const selectedLineupMatchId = ref<string | null>(null);
 const lineupTrigger = ref<HTMLButtonElement | null>(null);
-const selectedLineupMatch = computed(() => matches.value.find((match) => match.id === selectedLineupMatchId.value) ?? null);
+const selectedLineupMatch = computed(() => {
+  const match = matchList.value.find((item) => item.id === selectedLineupMatchId.value) ?? null;
+  return match && !isSuspendedPublicMatch(match) && match.lineup ? match : null;
+});
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
 const standingsOffsets = ref(new Map<string, number>());
@@ -142,7 +155,8 @@ function stagePresentation(stage: PublicStage): PublicStagePresentation {
   return getPublicStagePresentation(stage.stage_type);
 }
 
-function resolutionLabel(match: PublicMatch): string {
+function resolutionLabel(match: PublicMatchState): string {
+  if (isSuspendedPublicMatch(match)) return '';
   const outcome = resolveMatchOutcomeLabel(match);
   if (outcome === 'walkover') return t('match.walkover');
   if (outcome === 'penalties') return t('public.penalties');
@@ -155,8 +169,12 @@ function standingsForStage(stageId: string): PublicStanding[] {
   return standings.value.filter((standing) => standing.stage_id === stageId);
 }
 
-function matchesForStage(stageId: string): PublicMatch[] {
-  return matches.value.filter((match) => match.stage_id === stageId);
+function matchesForStage(stageId: string): PublicMatchState[] {
+  return matchEntriesForStage(matches.value, stageId);
+}
+
+function matchesForGroup(stageId: string, groupId: string | null | undefined): PublicMatchState[] {
+  return matchEntriesForGroup(matches.value, stageId, groupId);
 }
 
 const firstStandingsStageId = computed(() => stages.value.find(
@@ -165,6 +183,13 @@ const firstStandingsStageId = computed(() => stages.value.find(
 const firstMatchesStageId = computed(() => stages.value.find(
   (stage) => matchesForStage(stage.id).length > 0,
 )?.id ?? stages.value[0]?.id ?? null);
+// F1 (036): en una eliminatoria el suspendido no entra al bracket, pero
+// conserva su tarjeta mínima junto a la llave.
+const suspendedMatchesForSelection = computed<SuspendedPublicMatch[]>(() =>
+  (selectedStage.value
+    ? matchesForGroup(selectedStage.value.id, selectedGroupId.value)
+    : []
+  ).filter(isSuspendedPublicMatch));
 
 useHead(() => ({
   title: tournament.value ? `${tournament.value.name} | Bracket Craft` : `${t('public.tournament')} | Bracket Craft`,
@@ -178,12 +203,53 @@ useHead(() => ({
   ],
 }));
 
-function formatScore(match: PublicMatch) {
+function formatScore(match: PublicMatchState) {
   if (match.home_score === null || match.away_score === null) return '-';
-  const penalties = match.home_penalties !== null && match.away_penalties !== null
+  const penalties = !isSuspendedPublicMatch(match) && match.home_penalties !== null && match.away_penalties !== null
      ? ` (${match.home_penalties}-${match.away_penalties} ${t('public.penalties')})`
     : '';
   return `${match.home_score}-${match.away_score}${penalties}`;
+}
+
+// F1 (036): el suspendido no publica fase, fecha, llave, escudos ni alineación;
+// el contexto visible sale de la consulta que lo trajo, no del objeto.
+function matchStageLabel(match: PublicMatchState): string {
+  return isSuspendedPublicMatch(match) ? (selectedStage.value?.name ?? '') : match.stage_name;
+}
+
+function matchGroupLabel(match: PublicMatchState): string {
+  return isSuspendedPublicMatch(match) ? '' : (match.group_name || t('public.bracket'));
+}
+
+function matchRectifiedAt(match: PublicMatchState): string | null {
+  return isSuspendedPublicMatch(match) ? null : match.rectified_at;
+}
+
+function matchTeamName(match: PublicMatchState, side: 'home' | 'away'): string {
+  const name = side === 'home' ? match.home_team_name : match.away_team_name;
+  const code = isSuspendedPublicMatch(match)
+    ? null
+    : (side === 'home' ? match.home_team_short_code : match.away_team_short_code);
+  return name || code || t('public.toDefine');
+}
+
+function matchTeamShortCode(match: PublicMatchState, side: 'home' | 'away'): string | null {
+  if (isSuspendedPublicMatch(match)) return null;
+  return side === 'home' ? match.home_team_short_code : match.away_team_short_code;
+}
+
+function matchTeamCrest(match: PublicMatchState, side: 'home' | 'away'): string | null {
+  if (isSuspendedPublicMatch(match)) return null;
+  return side === 'home' ? match.home_team_crest_url : match.away_team_crest_url;
+}
+
+function matchFooterDate(match: PublicMatchState): string {
+  if (isSuspendedPublicMatch(match)) return formatSuspendedClock(match) ?? '—';
+  return formatDate(match.match_date);
+}
+
+function matchLineup(match: PublicMatchState): PublicMatchLineup | null {
+  return isSuspendedPublicMatch(match) ? null : match.lineup;
 }
 
 function formatDate(value: string | null) {
@@ -191,8 +257,8 @@ function formatDate(value: string | null) {
   return formatDateTime(value);
 }
 
-function openLineup(match: PublicMatch, event: MouseEvent) {
-  if (!match.lineup) return;
+function openLineup(match: PublicMatchState, event: MouseEvent) {
+  if (isSuspendedPublicMatch(match) || !match.lineup) return;
   selectedLineupMatchId.value = match.id;
   lineupTrigger.value = event.currentTarget as HTMLButtonElement;
 }
@@ -227,8 +293,8 @@ async function loadCombinationFirstPage(kind: 'standings' | 'matches', stageId: 
     standingsOffsets.value.set(key, page.length);
     standingsHasMoreByCombo.value.set(key, page.length === PAGE_SIZE);
   } else {
-    matches.value = matches.value.filter((m) => !(m.stage_id === stageId && m.group_id === groupId));
-    matches.value = [...matches.value, ...page];
+    const kept = matches.value.filter((entry) => !(entry.stageId === stageId && entry.groupId === groupId));
+    matches.value = mergeMatchEntries(kept, normalizePublicMatchPage(page), stageId, groupId);
     matchesOffsets.value.set(key, page.length);
     matchesHasMoreByCombo.value.set(key, page.length === PAGE_SIZE);
   }
@@ -315,7 +381,7 @@ async function resetActiveCombination(): Promise<void> {
   const groupId = selectedGroupId.value;
   const key = combinationKey(stageId, groupId);
   standings.value = standings.value.filter((s) => !(s.stage_id === stageId && s.group_id === groupId));
-  matches.value = matches.value.filter((m) => !(m.stage_id === stageId && m.group_id === groupId));
+  matches.value = matches.value.filter((entry) => !(entry.stageId === stageId && entry.groupId === groupId));
   standingsOffsets.value.delete(key);
   standingsHasMoreByCombo.value.delete(key);
   matchesOffsets.value.delete(key);
@@ -388,7 +454,7 @@ async function loadMore(kind: 'standings' | 'matches', stageId: string | null = 
       standingsOffsets.value.set(key, offset + page.length);
       standingsHasMoreByCombo.value.set(key, page.length === PAGE_SIZE);
     } else {
-      matches.value = [...matches.value, ...page];
+      matches.value = mergeMatchEntries(matches.value, normalizePublicMatchPage(page), stageId, groupId);
       matchesOffsets.value.set(key, offset + page.length);
       matchesHasMoreByCombo.value.set(key, page.length === PAGE_SIZE);
     }
@@ -412,6 +478,9 @@ function onRealtimeEvent(event: string, payload: unknown) {
 function connectRealtime() {
   realtime.connect({
     onEvent: onRealtimeEvent,
+    onMatchLivePublicUpdated: (payload) => {
+      if (payloadTargetsTournament(payload)) reloadFromRealtime('event');
+    },
     onResync: (payload) => reloadFromRealtime(resyncTrigger(payload.reason)),
   }, { tournamentId });
 }
@@ -548,27 +617,27 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  <p class="eyebrow">{{ t('public.fixtures') }}</p>
                  <h2>{{ t('public.matches') }}</h2>
                </div>
-               <span class="muted">{{ t('public.matchesCount', { count: matches.length }) }}</span>
+               <span class="muted">{{ t('public.matchesCount', { count: matchList.length }) }}</span>
              </div>
-             <div v-if="!matches.length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
+             <div v-if="!matchList.length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
              <TransitionGroup v-else name="card-list" tag="div" class="match-list">
-               <article v-for="match in matches" :key="match.id" class="match-card">
-                 <PublicRectifiedMark :rectified-at="match.rectified_at" />
-                 <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+               <article v-for="match in matchList" :key="match.id" class="match-card">
+                 <PublicRectifiedMark :rectified-at="matchRectifiedAt(match)" />
+                 <div v-if="matchStageLabel(match) || matchGroupLabel(match)" class="match-context"><span v-if="matchStageLabel(match)">{{ matchStageLabel(match) }}</span><span v-if="matchGroupLabel(match)">{{ matchGroupLabel(match) }}</span></div>
                  <div class="match-teams">
                         <div class="match-team">
-                          <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
-                          <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                          <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: matchTeamShortCode(match, 'home') }" :crest-url="matchTeamCrest(match, 'home')" surface="public" />
+                          <span>{{ matchTeamName(match, 'home') }}</span>
                         </div>
                         <strong>{{ formatScore(match) }}</strong>
                         <div class="match-team match-team--away">
-                          <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
-                          <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                          <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: matchTeamShortCode(match, 'away') }" :crest-url="matchTeamCrest(match, 'away')" surface="public" />
+                          <span>{{ matchTeamName(match, 'away') }}</span>
                         </div>
                       </div>
-                 <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                 <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span></div>
                  <button
-                   v-if="match.lineup"
+                   v-if="matchLineup(match)"
                    class="lineup-trigger"
                    type="button"
                    aria-controls="public-lineup-dialog"
@@ -626,25 +695,25 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                    </Button>
 
                    <div class="phase-matches">
-                     <div v-if="!matchesForGroup(matches, selectedStage.id, group.groupId).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
+                     <div v-if="!matchesForGroup(selectedStage.id, group.groupId).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                      <TransitionGroup v-else name="card-list" tag="div" class="match-list">
-                       <article v-for="match in matchesForGroup(matches, selectedStage.id, group.groupId)" :key="match.id" class="match-card">
-                         <PublicRectifiedMark :rectified-at="match.rectified_at" />
-                         <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+                       <article v-for="match in matchesForGroup(selectedStage.id, group.groupId)" :key="match.id" class="match-card">
+                         <PublicRectifiedMark :rectified-at="matchRectifiedAt(match)" />
+                         <div v-if="matchStageLabel(match) || matchGroupLabel(match)" class="match-context"><span v-if="matchStageLabel(match)">{{ matchStageLabel(match) }}</span><span v-if="matchGroupLabel(match)">{{ matchGroupLabel(match) }}</span></div>
                          <div class="match-teams">
                             <div class="match-team">
-                              <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
-                              <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                              <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: matchTeamShortCode(match, 'home') }" :crest-url="matchTeamCrest(match, 'home')" surface="public" />
+                              <span>{{ matchTeamName(match, 'home') }}</span>
                             </div>
                             <strong>{{ formatScore(match) }}</strong>
                             <div class="match-team match-team--away">
-                              <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
-                              <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                              <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: matchTeamShortCode(match, 'away') }" :crest-url="matchTeamCrest(match, 'away')" surface="public" />
+                              <span>{{ matchTeamName(match, 'away') }}</span>
                             </div>
                           </div>
-                         <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
+                         <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
                          <button
-                           v-if="match.lineup"
+                           v-if="matchLineup(match)"
                            class="lineup-trigger"
                            type="button"
                            aria-controls="public-lineup-dialog"
@@ -676,23 +745,23 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                    </div>
                    <div v-if="!matchesForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                    <TransitionGroup v-else name="card-list" tag="div" class="match-list">
-                     <article v-for="match in matchesForGroup(matches, selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
-                       <PublicRectifiedMark :rectified-at="match.rectified_at" />
-                       <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+                     <article v-for="match in matchesForGroup(selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
+                       <PublicRectifiedMark :rectified-at="matchRectifiedAt(match)" />
+                       <div v-if="matchStageLabel(match) || matchGroupLabel(match)" class="match-context"><span v-if="matchStageLabel(match)">{{ matchStageLabel(match) }}</span><span v-if="matchGroupLabel(match)">{{ matchGroupLabel(match) }}</span></div>
                        <div class="match-teams">
                           <div class="match-team">
-                            <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
-                            <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                            <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: matchTeamShortCode(match, 'home') }" :crest-url="matchTeamCrest(match, 'home')" surface="public" />
+                            <span>{{ matchTeamName(match, 'home') }}</span>
                           </div>
                           <strong>{{ formatScore(match) }}</strong>
                           <div class="match-team match-team--away">
-                            <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
-                            <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                            <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: matchTeamShortCode(match, 'away') }" :crest-url="matchTeamCrest(match, 'away')" surface="public" />
+                            <span>{{ matchTeamName(match, 'away') }}</span>
                           </div>
                         </div>
-                       <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
+                       <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
                        <button
-                         v-if="match.lineup"
+                         v-if="matchLineup(match)"
                          class="lineup-trigger"
                          type="button"
                          aria-controls="public-lineup-dialog"
@@ -713,9 +782,31 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 
              <template v-else-if="stagePresentation(selectedStage) === 'bracket'">
                <PublicBracket
-                 :matches="matchesForGroup(matches, selectedStage.id, selectedGroupId)"
+                 :matches="bracketEligibleMatches(matchesForGroup(selectedStage.id, selectedGroupId))"
                  @open-lineup="openLineup"
                />
+               <TransitionGroup
+                 v-if="suspendedMatchesForSelection.length"
+                 name="card-list"
+                 tag="div"
+                 class="match-list suspended-matches"
+               >
+                 <article v-for="match in suspendedMatchesForSelection" :key="match.id" class="match-card">
+                   <div v-if="matchStageLabel(match)" class="match-context"><span>{{ matchStageLabel(match) }}</span></div>
+                   <div class="match-teams">
+                     <div class="match-team">
+                       <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: null }" :crest-url="null" surface="public" />
+                       <span>{{ matchTeamName(match, 'home') }}</span>
+                     </div>
+                     <strong>{{ formatScore(match) }}</strong>
+                     <div class="match-team match-team--away">
+                       <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: null }" :crest-url="null" surface="public" />
+                       <span>{{ matchTeamName(match, 'away') }}</span>
+                     </div>
+                   </div>
+                   <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                 </article>
+               </TransitionGroup>
                <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
                  {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
                </Button>
@@ -724,23 +815,23 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              <template v-else>
                <div v-if="!matchesForStage(selectedStage.id).length" class="empty-state compact">{{ t('public.noFixtures') }}</div>
                <TransitionGroup v-else name="card-list" tag="div" class="match-list">
-                 <article v-for="match in matchesForGroup(matches, selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
-                   <PublicRectifiedMark :rectified-at="match.rectified_at" />
-                   <div class="match-context"><span>{{ match.stage_name }}</span><span>{{ match.group_name || t('public.bracket') }}</span></div>
+                 <article v-for="match in matchesForGroup(selectedStage.id, selectedGroupId)" :key="match.id" class="match-card">
+                   <PublicRectifiedMark :rectified-at="matchRectifiedAt(match)" />
+                   <div v-if="matchStageLabel(match) || matchGroupLabel(match)" class="match-context"><span v-if="matchStageLabel(match)">{{ matchStageLabel(match) }}</span><span v-if="matchGroupLabel(match)">{{ matchGroupLabel(match) }}</span></div>
                    <div class="match-teams">
                         <div class="match-team">
-                          <TeamCrest :team="{ name: match.home_team_name || match.home_team_short_code || t('public.toDefine'), short_code: match.home_team_short_code }" :crest-url="match.home_team_crest_url" surface="public" />
-                          <span>{{ match.home_team_name || match.home_team_short_code || t('public.toDefine') }}</span>
+                          <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: matchTeamShortCode(match, 'home') }" :crest-url="matchTeamCrest(match, 'home')" surface="public" />
+                          <span>{{ matchTeamName(match, 'home') }}</span>
                         </div>
                         <strong>{{ formatScore(match) }}</strong>
                         <div class="match-team match-team--away">
-                          <TeamCrest :team="{ name: match.away_team_name || match.away_team_short_code || t('public.toDefine'), short_code: match.away_team_short_code }" :crest-url="match.away_team_crest_url" surface="public" />
-                          <span>{{ match.away_team_name || match.away_team_short_code || t('public.toDefine') }}</span>
+                          <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: matchTeamShortCode(match, 'away') }" :crest-url="matchTeamCrest(match, 'away')" surface="public" />
+                          <span>{{ matchTeamName(match, 'away') }}</span>
                         </div>
                       </div>
-                   <div class="match-footer"><span>{{ formatDate(match.match_date) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
+                   <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span><span v-if="resolutionLabel(match)">{{ resolutionLabel(match) }}</span></div>
                    <button
-                     v-if="match.lineup"
+                     v-if="matchLineup(match)"
                      class="lineup-trigger"
                      type="button"
                      aria-controls="public-lineup-dialog"

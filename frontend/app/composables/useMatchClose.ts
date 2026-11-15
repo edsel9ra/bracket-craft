@@ -1,15 +1,18 @@
 import type { MatchOperationState } from '~/composables/useMatchOperationState';
 import { RESOLUTION_LABEL_KEYS, closeResolutionDecision, maximumMinuteFor, normalizeResolution, resolutionChangeOutcome, type EventMinuteValidation, type ResolutionType } from '~/utils/matchResolution';
 import { buildCloseReportBody, closePreflight, type ClosePreflightIssue } from '~/utils/matchClose';
+import { classifyLiveCloseConflict, LIVE_CLOSE_CONFLICT_LABEL_KEYS } from '~/utils/matchLiveClose';
 import { classifyCloseConflict, closeConflictMessageKey, type SegmentRefreshCause } from '~/utils/matchSegments';
 
 export function useMatchClose(state: MatchOperationState, dependencies: {
   removePersistedDraft(): void;
   refreshOperation(cause?: SegmentRefreshCause): Promise<void>;
   runAction(action: string, callback: () => Promise<void>, onError?: (cause: unknown) => boolean): Promise<void>;
+  /** F1 (036): `true` solo cuando la lectura autorizada declara el partido inicializado. */
+  liveInitialized?(): boolean;
 }) {
   const { request, t, confirm, matchId, operation, actionError, draftEvents, draftRestored, draftDroppedEvents, closeForm, match, selectedSegmentIsActive, operationLimits, resolution, plannedResolution, selectResolution, snapshotResolution, resolutionFallback, resolutionChangeNotice, closeSnapshotTaken, draftMinuteViolations, hasCompleteLineup, closeFieldIssue } = state;
-  const { removePersistedDraft, refreshOperation, runAction } = dependencies;
+  const { removePersistedDraft, refreshOperation, runAction, liveInitialized } = dependencies;
 
   function beginClose(): void {
     if (closeSnapshotTaken.value) return;
@@ -155,6 +158,13 @@ export function useMatchClose(state: MatchOperationState, dependencies: {
     } else if (import.meta.client && !(await confirm({ title: t('confirm.closeReport.title'), message: t('match.confirmClosePrompt'), confirmLabel: t('confirm.closeReport.action'), tone: 'danger' }))) {
       return;
     }
+    // F1 (036): con el partido inicializado en vivo, el cierre exige la
+    // revisión autorizada (`live_review_id`); nunca se envía la copia local
+    // del borrador como acta. El texto local se conserva hasta la revisión.
+    if (liveInitialized?.() === true) {
+      actionError.value = t(LIVE_CLOSE_CONFLICT_LABEL_KEYS.live_review_required);
+      return;
+    }
     await runAction('close', async () => {
       await request(`/matches/${matchId}/close`, {
         method: 'POST',
@@ -178,6 +188,12 @@ export function useMatchClose(state: MatchOperationState, dependencies: {
       // RF-006/RF-010: el 409 del cierre se explica por su `code` aditivo con el
       // clasificador de `matchSegments`. Una causa sin código conocido conserva
       // el `detail` del servidor, que es más concreto que un texto genérico.
+      // F1 (036): el 409 de revisión live llega por `detail`, no por `code`.
+      const liveKind = classifyLiveCloseConflict(cause);
+      if (liveKind) {
+        actionError.value = t(LIVE_CLOSE_CONFLICT_LABEL_KEYS[liveKind]);
+        return true;
+      }
       const kind = classifyCloseConflict(cause);
       const key = kind === 'other' ? null : closeConflictMessageKey(kind);
       if (!key) return false;
