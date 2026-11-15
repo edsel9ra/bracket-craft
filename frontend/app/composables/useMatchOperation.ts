@@ -14,6 +14,7 @@ import { applySharedSnapshot, createLiveEditorState, markPendingEvent } from '~/
 import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
 import { createLiveCapture } from '~/utils/matchLiveCapture';
+import { createLiveEdit } from '~/utils/matchLiveEdit';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -92,6 +93,20 @@ export function useMatchOperation() {
     editor: liveEditor,
     commandId: () => crypto.randomUUID(),
   });
+  // T64: corrección/retirada con confirmación expresa; una base movida exige
+  // revisar antes de guardar y la edición conserva su texto.
+  const liveEdit = createLiveEdit({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    confirm: async (kind) => await confirm({
+      title: t(kind === 'correct' ? 'live.editCorrect.title' : 'live.editRemove.title'),
+      message: t(kind === 'correct' ? 'live.editCorrect.message' : 'live.editRemove.message'),
+      confirmLabel: t(kind === 'correct' ? 'live.editCorrect.action' : 'live.editRemove.action'),
+      tone: kind === 'remove' ? 'danger' : 'primary',
+    }),
+    commandId: () => crypto.randomUUID(),
+  });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
     isBusy: () => busyAction.value !== null,
@@ -102,7 +117,7 @@ export function useMatchOperation() {
     },
     callbacks: {
       applyAccess: (value) => { liveAccess.value = value; },
-      applyLive: (value) => { applySharedSnapshot(liveEditor, value); liveSnapshot.value = value; },
+      applyLive: (value) => { applySharedSnapshot(liveEditor, value); liveEdit.onSharedChanged(); liveSnapshot.value = value; },
       denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; liveEditor.shared = null; },
       denyLive: () => { liveSnapshot.value = null; liveEditor.shared = null; },
     },
@@ -322,6 +337,7 @@ export function useMatchOperation() {
     // Otro partido/identidad: ni el compartido ni los pendientes pertenecen aquí.
     liveEditor.shared = null;
     liveEditor.pending = [];
+    liveEdit.cancelEdit();
     pendingReload = false;
     refreshGeneration += 1;
     if (!disposed && key === mountedContextKey) {
@@ -449,7 +465,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
