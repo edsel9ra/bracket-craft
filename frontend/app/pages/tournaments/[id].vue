@@ -41,6 +41,7 @@ import {
   type PublicStatsScope,
   type PublicTournament,
   type PublicStagePresentation,
+  type SuspendedPublicMatch,
 } from '~/utils/publicTournament';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import type { LocationQueryRaw } from 'vue-router';
@@ -182,6 +183,13 @@ const firstStandingsStageId = computed(() => stages.value.find(
 const firstMatchesStageId = computed(() => stages.value.find(
   (stage) => matchesForStage(stage.id).length > 0,
 )?.id ?? stages.value[0]?.id ?? null);
+// F1 (036): en una eliminatoria el suspendido no entra al bracket, pero
+// conserva su tarjeta mínima junto a la llave.
+const suspendedMatchesForSelection = computed<SuspendedPublicMatch[]>(() =>
+  (selectedStage.value
+    ? matchesForGroup(selectedStage.value.id, selectedGroupId.value)
+    : []
+  ).filter(isSuspendedPublicMatch));
 
 useHead(() => ({
   title: tournament.value ? `${tournament.value.name} | Bracket Craft` : `${t('public.tournament')} | Bracket Craft`,
@@ -470,6 +478,9 @@ function onRealtimeEvent(event: string, payload: unknown) {
 function connectRealtime() {
   realtime.connect({
     onEvent: onRealtimeEvent,
+    onMatchLivePublicUpdated: (payload) => {
+      if (payloadTargetsTournament(payload)) reloadFromRealtime('event');
+    },
     onResync: (payload) => reloadFromRealtime(resyncTrigger(payload.reason)),
   }, { tournamentId });
 }
@@ -774,6 +785,28 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  :matches="bracketEligibleMatches(matchesForGroup(selectedStage.id, selectedGroupId))"
                  @open-lineup="openLineup"
                />
+               <TransitionGroup
+                 v-if="suspendedMatchesForSelection.length"
+                 name="card-list"
+                 tag="div"
+                 class="match-list suspended-matches"
+               >
+                 <article v-for="match in suspendedMatchesForSelection" :key="match.id" class="match-card">
+                   <div v-if="matchStageLabel(match)" class="match-context"><span>{{ matchStageLabel(match) }}</span></div>
+                   <div class="match-teams">
+                     <div class="match-team">
+                       <TeamCrest :team="{ name: matchTeamName(match, 'home'), short_code: null }" :crest-url="null" surface="public" />
+                       <span>{{ matchTeamName(match, 'home') }}</span>
+                     </div>
+                     <strong>{{ formatScore(match) }}</strong>
+                     <div class="match-team match-team--away">
+                       <TeamCrest :team="{ name: matchTeamName(match, 'away'), short_code: null }" :crest-url="null" surface="public" />
+                       <span>{{ matchTeamName(match, 'away') }}</span>
+                     </div>
+                   </div>
+                   <div class="match-footer"><span>{{ matchFooterDate(match) }}</span><span>{{ statusLabel(match.status) }}</span></div>
+                 </article>
+               </TransitionGroup>
                <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
                  {{ loadingMore === 'matches' ? t('common.loading') : t('public.loadMoreMatches') }}
                </Button>
