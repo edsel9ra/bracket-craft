@@ -14,7 +14,13 @@ from app.modules.matches.live_public import (
     PublicMatchStateResponse,
     SuspendedPublicMatchResponse,
 )
+from app.modules.tournaments.public_timeline import (
+    build_public_timeline,
+    public_player_names,
+    timeline_availability,
+)
 from app.modules.tournaments.schemas import (
+    PublicMatchTimelineResponse,
     PublicPlayerStatsResponse,
     PublicStandingResponse,
     PublicTeamStatsResponse,
@@ -576,3 +582,118 @@ async def public_team_stats(
 
     await sign_crest_rows(page, policy="null")
     return page
+
+
+@router.get(
+    "/public/{tournament_id}/matches/{match_id}/timeline",
+    response_model=PublicMatchTimelineResponse,
+)
+async def public_match_timeline(
+    tournament_id: UUID,
+    match_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PublicMatchTimelineResponse:
+    """Cronología pública de un partido confirmado (spec 037).
+
+    Torneo no visible, partido cancelado, inexistente o de otro torneo devuelven
+    el mismo 404 que el resto de lecturas públicas (RF-004). Un partido en
+    curso, suspendido o sin juego no lee eventos (RF-002, RF-003).
+    """
+
+    params = {"tournament_id": str(tournament_id), "match_id": str(match_id)}
+    async with db.begin():
+        org_id = (
+            await db.execute(
+                text("SELECT organization_id FROM v_public_tournaments WHERE id = :tournament_id"),
+                params,
+            )
+        ).scalar_one_or_none()
+        if org_id is None:
+            raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+        await set_rls_context(db, org_id, None)
+
+        match = (
+            await db.execute(
+                text("""
+                    SELECT id, status, resolution_type, home_team_id, away_team_id,
+                           home_score, away_score, home_score_regular, away_score_regular
+                    FROM v_public_matches
+                    WHERE tournament_id = :tournament_id AND id = :match_id
+                """),
+                params,
+            )
+        ).mappings().one_or_none()
+        if match is None:
+            suspended = (
+                await db.execute(
+                    text("""
+                        SELECT id, status FROM v_match_live_public_selection
+                        WHERE tournament_id = :tournament_id AND id = :match_id
+                          AND status = 'suspended'
+                    """),
+                    params,
+                )
+            ).mappings().one_or_none()
+            if suspended is None:
+                raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+            match = {"id": suspended["id"], "status": "suspended", "resolution_type": None}
+        match = dict(match)
+
+        events: list[dict] = []
+        segments: list[dict] = []
+        names: dict[str, tuple[str, str]] = {}
+        if timeline_availability(match["status"], match["resolution_type"]) == "available":
+            events = [
+                dict(row)
+                for row in (
+                    await db.execute(
+                        text("""
+                            SELECT id, match_id, segment_id, team_id, player_id, event_type,
+                                   minute, added_minute, player_out_id, player_in_id,
+                                   beneficiary_team_id, metadata, is_voided
+                            FROM v_public_match_events
+                            WHERE tournament_id = :tournament_id AND match_id = :match_id
+                              AND (is_voided IS FALSE OR is_voided IS NULL)
+                        """),
+                        params,
+                    )
+                ).mappings().all()
+            ]
+            segments = [
+                dict(row)
+                for row in (
+                    await db.execute(
+                        text("""
+                            SELECT id, match_id, segment_number
+                            FROM v_public_match_segments
+                            WHERE match_id = :match_id
+                        """),
+                        params,
+                    )
+                ).mappings().all()
+            ]
+            player_ids = sorted(
+                {
+                    str(value)
+                    for event in events
+                    for value in (event["player_id"], event["player_out_id"], event["player_in_id"])
+                    if value is not None
+                }
+            )
+            if player_ids:
+                # Solo nombre y apellido (DA-2 a): ni dorsal, ni foto, ni plantilla.
+                rosters = (
+                    await db.execute(
+                        text("""
+                            SELECT player_id, first_name, last_name
+                            FROM v_public_tournament_rosters
+                            WHERE tournament_id = :tournament_id
+                              AND player_id = ANY(CAST(:player_ids AS UUID[]))
+                            ORDER BY player_id, is_active DESC
+                        """),
+                        {**params, "player_ids": player_ids},
+                    )
+                ).mappings().all()
+                names = public_player_names(rosters)
+
+    return PublicMatchTimelineResponse(**build_public_timeline(match, events, segments, names))
