@@ -13,6 +13,7 @@ import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/mat
 import { applySharedSnapshot, createLiveEditorState, markPendingEvent } from '~/utils/matchLiveEditor';
 import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
+import { createLiveCapture } from '~/utils/matchLiveCapture';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -82,6 +83,14 @@ export function useMatchOperation() {
     },
     clearDraft: () => draftActions.clearDraft(),
     markPending: (raw) => markPendingEvent(liveEditor, raw),
+  });
+  // T63: capturas compartidas por `POST /live/commands` con command_id
+  // estable; solo el snapshot autorizado las presenta como aceptadas.
+  const liveCapture = createLiveCapture({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    commandId: () => crypto.randomUUID(),
   });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
@@ -440,7 +449,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
