@@ -1,7 +1,7 @@
 # Despliegue coordinado del partido en vivo (036, F1)
 
-Este procedimiento no acredita un despliegue productivo; la implementación queda
-pendiente de la aceptación humana explícita de F1 (T84). Describe el orden y los
+Este procedimiento no acredita un despliegue productivo; F1 está implementada y
+aceptada por el usuario el 2026-11-15 («Acepto F1», T84). Describe el orden y los
 límites del ensayo local controlado registrado en la evidencia de T81.
 
 ## Orden obligatorio
