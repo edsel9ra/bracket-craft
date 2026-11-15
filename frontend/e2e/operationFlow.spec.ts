@@ -10,13 +10,16 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 import { expect, test } from '@playwright/test';
 
 import { reportPath } from './artifacts.ts';
-import { discoverDemoData } from './demo.ts';
+import { demoApiBase, discoverDemoData } from './demo.ts';
 import { runOperationFlow } from './operationFlow.ts';
 import { OPERATION_FLOW_VIEW, isOperationFlowArtifact } from './operationFlowModel.ts';
+import { control, http, login, type Tenant } from './realtimeHarness.ts';
+import { waitForHydration } from './workspaceSession.ts';
 
 test('operación y cierre: reglas, avisos, bloqueos y retiro lógico', async ({ page, baseURL }) => {
   // Las corridas realtime siembran organizaciones completas con su «Copa
@@ -72,12 +75,6 @@ test('operación y cierre: reglas, avisos, bloqueos y retiro lógico', async ({ 
  * Escenarios: (a) recorrido normal con hechos, corrección y rechazo 422 de un
  * hecho inválido; (b) borrador vacío válido: revisión y cierre sin hechos.
  */
-import { randomUUID } from 'node:crypto';
-
-import { demoApiBase } from './demo.ts';
-import { control, http, login, type Tenant } from './realtimeHarness.ts';
-import { waitForHydration } from './workspaceSession.ts';
-
 const api = demoApiBase();
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 
