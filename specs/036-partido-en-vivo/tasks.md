@@ -488,7 +488,8 @@ Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin pos
   - Tests primero: retirada de lectura con OPERATE vigente, salida de organización, sesión vencida y A→B→A, con respuesta vieja exitosa/denegada.
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-context.test.ts` y `cd frontend && pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` no restauran datos/reenvíos ajenos; el cliente solo recupera al reautorizar.
 
-- [ ] **T76. Ampliar recuperación backend entre procesos con reinicio real.** RF-015, RF-017, RF-018, RF-023; RNF-001, RNF-004
+- [x] **T76. Ampliar recuperación backend entre procesos con reinicio real.** RF-015, RF-017, RF-018, RF-023; RNF-001, RNF-004
+  - 2026-11-15 (rama C2): nueva prueba `test_multiprocess_restart_recovery_preserves_accepted_state` en `tests/test_match_live_realtime.py` — dos suspensiónes por fallo SQL con `recover` real entre ellas, revocación de `VIEW_MATCH_LIVE_DRAFT` mientras el socket sigue suspendido (rol ajeno para el testigo), reinicio real del proceso API 0 vía `cluster.restart` y reconexión de la misma identidad al proceso 1: lo aceptado se conserva, el backlog perdido nunca llega (ni antes ni después del reinicio), los permisos retirados no vuelven (`/live/access` → `can_view:false`) y el testigo sano recibe el evento fresco. `RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k restart_recovery` 1 passed; archivo completo **49/49**.
   - Tests primero: repetir suspensión de autorización, revocación durante fallo, reinicio API y reconexión al otro proceso usando helpers 035.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k restart_recovery` preserva estado aceptado, no reproduce backlog privado ni recupera permisos antiguos.
 

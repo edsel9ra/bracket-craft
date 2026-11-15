@@ -570,6 +570,90 @@ async def test_multiprocess_recovery_cutoff_fail_closed_no_replay(flow, withdraw
 
 
 @pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_restart_recovery_preserves_accepted_state(flow):
+    """T76: suspensión repetida + revocación durante el fallo + reinicio real de
+    la API; la reconexión al otro proceso conserva lo aceptado, sin replay del
+    backlog privado ni recuperación de permisos retirados."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        victim, healthy = await cluster.identities(2)
+        affected = await cluster.connect(0, victim)
+        independent = await cluster.connect(1, healthy)
+
+        accepted = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(accepted)
+        assert affected.payload(accepted) is not None
+        assert independent.payload(accepted) is not None
+
+        # Suspensión por fallo SQL repetida (dos rondas) con recuperación real.
+        lost_ids = []
+        for _ in range(2):
+            await cluster.rpc(0, 'mode', values={'fail': True})
+            lost = await cluster.publish(
+                event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+            await cluster.settle(lost)
+            lost_ids.append(lost)
+            assert affected.payload(lost) is None
+            assert independent.payload(lost) is not None
+            probe = await cluster.rpc(0, 'probe')
+            assert probe['suspended'] >= 1
+            await cluster.rpc(0, 'mode', values={'fail': False})
+            await cluster.rpc(0, 'recover')
+
+        # Revocación durante el fallo: VIEW_MATCH_LIVE_DRAFT se retira al rol
+        # del socket suspendido mientras `healthy` conserva un rol propio; la
+        # lectura clásica no usa ese permiso.
+        healthy_member = await flow.admin.fetchval(
+            'SELECT id FROM organization_users WHERE organization_id=$1 AND user_id=$2',
+            UUID(ORG), UUID(healthy['user']))
+        await flow.admin.execute('''WITH newrole AS (
+            INSERT INTO roles (organization_id,role_definition_id,name,permissions)
+            SELECT $1, role_definition_id, 'Lector live', permissions
+            FROM roles WHERE organization_id=$1 LIMIT 1 RETURNING id)
+            UPDATE organization_user_roles SET role_id=(SELECT id FROM newrole)
+            WHERE organization_id=$1 AND organization_user_id=$2''',
+            UUID(ORG), healthy_member)
+        await flow.admin.execute(
+            "UPDATE roles SET permissions=permissions-'VIEW_MATCH_LIVE_DRAFT' WHERE organization_id=$1 AND name<>'Lector live'",
+            UUID(ORG))
+        for _ in range(2):
+            await cluster.rpc(0, 'recover')
+        # El permiso retirado no se recupera tras la suspensión.
+        import httpx
+        async with httpx.AsyncClient() as http:
+            access = await http.get(
+                f'http://127.0.0.1:{cluster.children[0][2]}/api/v1/matches/{MATCH}/live/access',
+                headers={'Authorization': f'Bearer {victim["token"]}',
+                         'X-Organization-ID': ORG})
+        assert access.status_code == 200
+        assert access.json()['can_view'] is False
+
+        # Reinicio real del proceso 0: la conexión cae y el relay vuelve limpio.
+        await cluster.restart(0)
+        await cluster.fence()
+        # Reconexión al otro proceso con la misma identidad: solo lo vigente.
+        reconnected = await cluster.connect(1, victim)
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        assert reconnected.payload(fresh) is None
+        assert independent.payload(fresh) is not None
+        # Nada del backlog privado llega: ni antes ni después del reinicio.
+        # Un RESYNC de control sí puede alcanzar el socket suspendido al
+        # recuperar (su sesión sigue válida); nunca un evento de dominio.
+        for lost in lost_ids:
+            assert affected.payload(lost) is None
+            assert reconnected.payload(lost) is None
+        assert not any(
+            name == 'MATCH_LIVE_UPDATED'
+            for name, _ in affected.frames
+            if _ is not None and _.get('event_id') in lost_ids)
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
 async def test_multiprocess_recovery_sql_failure_suspends_and_resyncs(flow):
     """T57: fallo SQL suspende fail-closed; `recover` reanuda solo lo vigente."""
 
