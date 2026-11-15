@@ -465,6 +465,7 @@ Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del 
 - [ ] **T72. Verificar interfaz completa antes del checkpoint C1.** RF-001, RF-004, RF-011, RF-016, RF-019, RF-024, RF-029, RF-030; RNF-004, RNF-005, RNF-006
   - Dependencias: T61–T71. Gate, sin rojo artificial.
   - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run e2e:test`, más G-FE/G-E2E pasan; además todos los gates comunes/Review y fusión autorizada de C1 se verifican antes de C2.
+  - Gate local 2026-11-15 (rama `devin/1794761950-partido-en-vivo-c1`): `pnpm test` **1079 pass / 0 fail / 1 skipped**; `pnpm run typecheck` limpio; `pnpm run lint` limpio; `pnpm run e2e:test` **66 passed — RESULTADO VERDE** (public/workspace/operation/operation-flow todas passed). Pendiente G-REMOTE: PR de C1, CI y fusión autorizada antes de C2.
 
 ## PR C2 — Verificación ampliada y aceptación (T73–T84)
 

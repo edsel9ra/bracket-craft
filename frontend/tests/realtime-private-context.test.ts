@@ -161,10 +161,26 @@ function operationHarness() {
   modules['~/utils/matchLiveClose'] = { isLiveInitialized: () => false,
     classifyLiveCloseConflict: () => null,
     LIVE_CLOSE_CONFLICT_LABEL_KEYS: { live_review_required: 'match.liveReviewRequired', live_review_stale: 'match.liveReviewStale' } };
+  // Coordinadores F1 (T61–T70): sus contratos se prueban en match-live-*;
+  // aquí solo importa que existan y no añadan lecturas ni confirmaciones.
+  modules['~/utils/matchLiveEditor'] = {
+    applySharedSnapshot: () => true,
+    createLiveEditorState: () => ({ shared: null, pending: [] }),
+    markPendingEvent: () => {},
+    isDraftEditable: () => true,
+  };
+  modules['~/utils/matchLiveLocalDraft'] = { createLocalDraftResolver: () => ({ resolveBeforeStart: async () => 'proceed' }) };
+  modules['~/utils/matchLiveCapture'] = { createLiveCapture: () => ({ inFlight: false }) };
+  modules['~/utils/matchLiveEdit'] = { createLiveEdit: () => ({ onSharedChanged() {}, cancelEdit() {} }) };
+  modules['~/utils/matchLiveAccess'] = { deriveLiveView: () => ({ mode: 'hidden', detailVisible: false, controlsEnabled: false, closeEnabled: false }) };
+  modules['~/utils/matchLiveClock'] = { createLiveClock: () => ({ inFlight: false }) };
+  modules['~/utils/matchLiveTransitions'] = { createLiveTransitions: () => ({ inFlight: false }) };
+  modules['~/utils/matchLiveReview'] = { createLiveReview: () => ({ clear() {}, currentReceipt: () => null, receiptValid: () => false, inFlight: false }) };
+  modules['~/utils/matchLiveCloseLive'] = { createLiveClose: () => ({ inFlight: false }) };
   modules['~/utils/matchResolution'] = { classifyMatchConflict: () => null };
   modules['~/utils/navigation'] = { safeInternalRedirect: (path: string) => path };
   const exports = load<{ useMatchOperation: typeof useMatchOperation }>('composables/useMatchOperation.ts', modules,
-    { ref, watch, useHead: () => {}, onBeforeRouteLeave: () => {},
+    { ref, reactive, computed, watch, crypto, useHead: () => {}, onBeforeRouteLeave: () => {},
       navigateTo: async (target: unknown) => { navigations.push(target); }, window: { removeEventListener() {} } });
   return { operation: exports.useMatchOperation(), state, requests, navigations, changeContext: (key?: string) => {
     version++;
