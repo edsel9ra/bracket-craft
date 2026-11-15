@@ -10,6 +10,7 @@ import { describeOpeningBlocked } from '~/utils/rosterLimits';
 import { type MatchDraftStorage } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/matchLiveContext';
+import { applySharedSnapshot, createLiveEditorState } from '~/utils/matchLiveEditor';
 import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
@@ -56,6 +57,9 @@ export function useMatchOperation() {
   // una denegación limpia la vista privada sin tocar el historial 033.
   const liveAccess = ref<LiveCapabilities | null>(null);
   const liveSnapshot = ref<unknown | null>(null);
+  // T61: el editor compartido (snapshot aceptado por HTTP + capturas locales
+  // pendientes) vive separado del borrador clásico local de `draftEvents`.
+  const liveEditor = reactive(createLiveEditorState());
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
     isBusy: () => busyAction.value !== null,
@@ -66,9 +70,9 @@ export function useMatchOperation() {
     },
     callbacks: {
       applyAccess: (value) => { liveAccess.value = value; },
-      applyLive: (value) => { liveSnapshot.value = value; },
-      denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; },
-      denyLive: () => { liveSnapshot.value = null; },
+      applyLive: (value) => { applySharedSnapshot(liveEditor, value); liveSnapshot.value = value; },
+      denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; liveEditor.shared = null; },
+      denyLive: () => { liveSnapshot.value = null; liveEditor.shared = null; },
     },
   });
 
@@ -283,6 +287,9 @@ export function useMatchOperation() {
     operation.value = null;
     liveAccess.value = null;
     liveSnapshot.value = null;
+    // Otro partido/identidad: ni el compartido ni los pendientes pertenecen aquí.
+    liveEditor.shared = null;
+    liveEditor.pending = [];
     pendingReload = false;
     refreshGeneration += 1;
     if (!disposed && key === mountedContextKey) {
@@ -410,7 +417,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;

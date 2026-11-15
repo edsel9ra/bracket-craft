@@ -407,9 +407,10 @@ Desviación autorizada el **2026-11-15**, respuesta del usuario **«Opción 1: m
 
 Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del servidor hasta este PR. C1 proporciona un recorrido operativo completo antes de C2.
 
-- [ ] **T61. Separar editor compartido y estado clásico local en el composable.** RF-004, RF-005, RF-012, RF-024; RNF-004, RNF-006
+- [x] **T61. Separar editor compartido y estado clásico local en el composable.** RF-004, RF-005, RF-012, RF-024; RNF-004, RNF-006
   - Tests primero: carga de F1, vacío, modo clásico y error; ningún hecho local se considera aceptado sin HTTP.
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-editor.test.ts` mantiene snapshots separados y usa exclusivamente useApi.
+  - Evidencia 2026-11-15: `match-live-editor.test.ts` **8/8 pass** (rojo inicial por módulo ausente; verde tras la utilidad). `utils/matchLiveEditor.ts` nuevo: `normalizeLiveSnapshot` espeja `LiveSnapshotResponse` (extra=forbid en raíz y por hecho; `initialized:false` → modo clásico con `shared:null`; reloj coherente por estado e instantes UTC). `LiveEditorState` separa `shared` (aceptado por HTTP) de `pending` (capturas locales, nunca presentadas como aceptadas); `applySharedSnapshot` reconoce pendientes aceptados y conserva los locales ante respuesta inválida. `useMatchOperation` crea `liveEditor` reactivo alimentado en `applyLive`, limpio en denegaciones y vacío completo ante cambio de contexto; lecturas solo por `request` de useApi. `pnpm run lint` y `pnpm run typecheck` limpios.
 
 - [ ] **T62. Resolver explícitamente un borrador clásico antes de iniciar F1.** RF-001, RF-019, RF-024; RNF-006
   - Tests primero: borrador local presente/ausente, cancelación de confirmación y fallo de inicio; no importación ni pérdida automática.
