@@ -511,3 +511,98 @@ async def test_multiprocess_delivery_two_apis_two_tenants(flow):
         assert set(response.json()) == {
             'can_view', 'can_operate', 'can_close', 'available'}
         assert response.json()['can_view'] is True
+
+
+LIVE_WIRE = {'scope': 'organization', 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+@pytest.mark.parametrize('withdrawal', ['session', 'membership', 'roles', 'live_view'])
+async def test_multiprocess_recovery_cutoff_fail_closed_no_replay(flow, withdrawal):
+    """T57: retirada confirmada en la barrera de evaluación; nada llega tras el corte."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        left = await cluster.connect(0, identity)
+        right = await cluster.connect(1, identity)
+        outsider = await cluster.connect(
+            1, await cluster.identity(USER.replace('31000000', '32000000')),
+            ORG.replace('31000000', '32000000'))
+        event = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(event)
+        for wire in (left, right):
+            assert wire.payload(event) == {
+                'event_id': event, 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+
+        pending_event = await cluster.enqueue(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.gate(pending_event)
+        await cluster.flush()
+        await cluster.paused()
+        if withdrawal == 'live_view':
+            await flow.admin.execute(
+                "UPDATE roles SET permissions=permissions-'VIEW_MATCH_LIVE_DRAFT' WHERE organization_id=$1",
+                UUID(ORG))
+            # La lectura clásica sigue autorizada (permiso distinto); lo
+            # denegado es solo el canal live, visible en /live/access.
+            import httpx
+            async with httpx.AsyncClient() as http:
+                access = await http.get(
+                    f'http://127.0.0.1:{cluster.children[1][2]}/api/v1/matches/{MATCH}/live/access',
+                    headers={'Authorization': f'Bearer {identity["token"]}',
+                             'X-Organization-ID': ORG})
+            assert access.status_code == 200
+            assert access.json()['can_view'] is False
+        else:
+            await cluster.withdraw(withdrawal, identity)
+            assert (await cluster.http(1, identity)) in (401, 403, 404)
+        await cluster.release()
+        await cluster.settle(pending_event)
+        # El corte evalúa al inicio del lote: frames ya comprometidos no se
+        # prometen «retirar», y nada nuevo atraviesa sin replay.
+        assert left.payload(pending_event) is None
+        assert right.payload(pending_event) is None
+        assert outsider.payload(event) is None
+        assert outsider.payload(pending_event) is None
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_recovery_sql_failure_suspends_and_resyncs(flow):
+    """T57: fallo SQL suspende fail-closed; `recover` reanuda solo lo vigente."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        victim, healthy = await cluster.identities(2)
+        affected = await cluster.connect(0, victim)
+        independent = await cluster.connect(1, healthy)
+        await cluster.rpc(0, 'mode', values={'fail': True})
+        lost = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(lost)
+        assert affected.payload(lost) is None
+        assert independent.payload(lost) is not None
+        # Sesión/JWT expirado de verdad: el socket suspendido no se reanuda.
+        await flow.admin.execute(
+            "UPDATE user_sessions SET expires_at=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE id=$1",
+            victim['session'])
+        await cluster.rpc(0, 'mode', values={'fail': False})
+        for _ in range(2):
+            await cluster.rpc(0, 'recover')
+            probe = await cluster.rpc(0, 'probe')
+        # Fail-closed: la sesión expirada no vuelve a quedar suscripta.
+        assert probe['suspended'] == 0
+        await cluster.fence()
+        assert affected.payload(lost) is None
+        assert not any(
+            name == 'RESYNC' and value['reason'] == 'RELAY_START'
+            for name, value in affected.frames)
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        assert affected.payload(fresh) is None
+        assert independent.payload(fresh) is not None
+        assert (await cluster.http(0, victim)) in (401, 403)
