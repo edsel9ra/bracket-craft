@@ -466,6 +466,7 @@ Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del 
   - Dependencias: T61–T71. Gate, sin rojo artificial.
   - Hecho cuando: `cd frontend && pnpm test`, `cd frontend && pnpm run typecheck` y `cd frontend && pnpm run e2e:test`, más G-FE/G-E2E pasan; además todos los gates comunes/Review y fusión autorizada de C1 se verifican antes de C2.
   - Gate local 2026-11-15 (rama `devin/1794761950-partido-en-vivo-c1`): `pnpm test` **1079 pass / 0 fail / 1 skipped**; `pnpm run typecheck` limpio; `pnpm run lint` limpio; `pnpm run e2e:test` **66 passed — RESULTADO VERDE** (public/workspace/operation/operation-flow todas passed). Pendiente G-REMOTE: PR de C1, CI y fusión autorizada antes de C2.
+  - Review PR #85 (autorización del usuario "Opción 1" para cablear UI): `MatchLiveSection.vue` expone transiciones/reloj/captura/corrección/revisión/cierre según `liveView`; fixes de review: command_id estable = client_event_id (minúsculas), recibo normaliza hechos a camelCase + marcadores regulares, `metadata:{}` en red_card válida. match-live-section.test.ts 5/5; lint/typecheck limpios sobre 89be722b+.
 
 ## PR C2 — Verificación ampliada y aceptación (T73–T84)
 
