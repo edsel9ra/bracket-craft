@@ -158,6 +158,9 @@ function operationHarness() {
   modules['~/utils/matchLiveContext'] = { createLiveContextCoordinator: () => ({
     request: async () => { liveRequests.push(1); }, inFlight: false,
   }) };
+  modules['~/utils/matchLiveClose'] = { isLiveInitialized: () => false,
+    classifyLiveCloseConflict: () => null,
+    LIVE_CLOSE_CONFLICT_LABEL_KEYS: { live_review_required: 'match.liveReviewRequired', live_review_stale: 'match.liveReviewStale' } };
   modules['~/utils/matchResolution'] = { classifyMatchConflict: () => null };
   modules['~/utils/navigation'] = { safeInternalRedirect: (path: string) => path };
   const exports = load<{ useMatchOperation: typeof useMatchOperation }>('composables/useMatchOperation.ts', modules,

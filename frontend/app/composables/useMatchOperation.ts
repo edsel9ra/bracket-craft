@@ -10,6 +10,7 @@ import { describeOpeningBlocked } from '~/utils/rosterLimits';
 import { type MatchDraftStorage } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/matchLiveContext';
+import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -29,6 +30,7 @@ export function useMatchOperation() {
     removePersistedDraft: (...args): void => draftActions.removePersistedDraft(...args),
     refreshOperation,
     runAction,
+    liveInitialized: () => isLiveInitialized(liveSnapshot.value),
   });
   const lineupActions = useMatchLineup(state, {
     refreshOperation,
