@@ -457,9 +457,10 @@ Dependencia externa: B3 fusionado con gates verdes; no se difiere seguridad del 
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-context.test.ts tests/match-live-editor.test.ts` no remonta, no cierra editor ni restaura información revocada, y recupera mediante HTTP autorizado.
   - Evidencia 2026-11-15: `match-live-context.test.ts` **7/7** + `match-live-editor.test.ts` **8/8**. `createLiveContextCoordinator` (existente, verificado E2E): aviso durante escritura aplaza la lectura del borrador (`onBusy`) sin descartarla ni cerrar el editor — la trailing la trae al soltar; ráfaga → una corrida + a lo sumo una trailing; respuesta vieja/fuera de contexto nunca se aplica ni restaura lo revocado; denegación de acceso limpia ambos y del borrador solo live; fallo no denegación conserva lo vigente y se recupera por HTTP autorizado; `can_view:false` jamás trae el borrador.
 
-- [ ] **T71. Completar ES/EN y accesibilidad de todos los controles F1.** RF-003, RF-007, RF-017, RF-019, RF-029; RNF-005
+- [x] **T71. Completar ES/EN y accesibilidad de todos los controles F1.** RF-003, RF-007, RF-017, RF-019, RF-029; RNF-005
   - Tests primero: mensajes/claves en ambos idiomas, aria-invalid/describedby, teclado, focus y estado no dependiente del color.
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-accessibility.test.ts` y `cd frontend && pnpm run lint` pasan sin diálogos nativos ni imports implícitos inválidos.
+  - Evidencia 2026-11-15: `match-live-accessibility.test.ts` **5/5** y `pnpm run lint` limpio. Paridad ES/EN completa de todo el catálogo `live.*` (borrador local, corrección/retirada, transiciones start/suspend/resume, cierre) y cada clave usada por los controles declarada una vez por idioma; confirmaciones solo por `useConfirm` + claves i18n, sin diálogos nativos ni `alert()/prompt()`; el estado F1 se presenta por modo/capacidad (`LiveViewMode`, `stale` del reloj, `pending` del editor), nunca solo por color.
 
 - [ ] **T72. Verificar interfaz completa antes del checkpoint C1.** RF-001, RF-004, RF-011, RF-016, RF-019, RF-024, RF-029, RF-030; RNF-004, RNF-005, RNF-006
   - Dependencias: T61–T71. Gate, sin rojo artificial.
