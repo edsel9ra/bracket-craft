@@ -391,6 +391,53 @@ async def test_validate_review_required_for_classic_attempt(live_service_db):
     )
 
 
+async def test_legacy_bypass_classic_client_cannot_close_live(live_service_db):
+    """T81: un cliente antiguo (sin ``live_review_id``) o un recibo ajeno/obsoleto
+    no cierra un partido F1; solo la revisión vigente del conjunto lo consolida."""
+    f = live_service_db
+    await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+    await f.call("execute", command("add_event", 1, event=goal()))
+
+    async def attempt(dto):
+        async with AsyncSession(f.engine) as db:
+            await CloseMatchReportService(db).execute(
+                f.context, UUID(MATCH), dto, session_id=f.session_id
+            )
+
+    # Cliente clásico: cierre sin revisión → rechazo sin efectos.
+    classic = CloseMatchReportDTO(
+        resolution_type="regular", home_score_regular=1, away_score_regular=0
+    )
+    with pytest.raises(HTTPException) as error:
+        await attempt(classic)
+    assert error.value.status_code == 409 and error.value.detail == "LIVE_REVIEW_REQUIRED"
+    assert await f.admin.fetchval(
+        "SELECT result_confirmed FROM matches WHERE id=$1", MATCH
+    ) is False
+    assert await f.admin.fetchval("SELECT count(*) FROM match_events") == 0
+
+    # Recibo fabricado: un UUID inexistente es indistinguible de uno ajeno.
+    with pytest.raises(HTTPException) as error:
+        await attempt(CloseMatchReportDTO(
+            resolution_type="regular", home_score_regular=1, away_score_regular=0,
+            live_review_id=uuid4(),
+        ))
+    assert error.value.status_code == 409 and error.value.detail == "LIVE_REVIEW_STALE"
+
+    # Revisión válida pero el conjunto cambió después → revisión obsoleta.
+    review = await f.call("create_review", request(1, home=1))
+    await f.call("execute", command("add_event", 2, event=goal()))
+    with pytest.raises(HTTPException) as error:
+        await attempt(CloseMatchReportDTO(
+            resolution_type="regular", home_score_regular=1, away_score_regular=0,
+            live_review_id=review["live_review_id"],
+        ))
+    assert error.value.status_code == 409 and error.value.detail == "LIVE_REVIEW_STALE"
+    assert await f.admin.fetchval(
+        "SELECT result_confirmed FROM matches WHERE id=$1", MATCH
+    ) is False
+
+
 def request(revision=0, home=0):
     return LiveReviewRequest(
         expected_content_revision=revision,
