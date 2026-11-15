@@ -19,7 +19,7 @@ function component(globals: Record<string, unknown> = {}) {
     exports, ...vue,
     ref: vue.ref, reactive: vue.reactive, computed: vue.computed, toRefs: vue.toRefs,
     onMounted: vue.onMounted, onBeforeUnmount: vue.onBeforeUnmount, crypto,
-    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchLiveClock') ? { displayedClock: (clock: { state: string; elapsed_us: number | null }) => ({ state: clock.state, elapsedUs: clock.elapsed_us ?? 0, acceptedElapsedUs: clock.elapsed_us ?? 0, computed: false }) } : {},
+    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchLiveClock') ? { clockPresentation: (clock: { state: string; elapsed_us: number | null }, connection: string) => ({ state: clock.state, elapsedUs: clock.elapsed_us ?? 0, acceptedElapsedUs: clock.elapsed_us ?? 0, computed: false, stale: connection !== 'connected' }), displayedClock: (clock: { state: string; elapsed_us: number | null }) => ({ state: clock.state, elapsedUs: clock.elapsed_us ?? 0, acceptedElapsedUs: clock.elapsed_us ?? 0, computed: false }) } : {},
     useI18n: () => ({ t: (key: string) => key }),
     ...globals,
   });
@@ -52,6 +52,8 @@ function liveContext(overrides: Record<string, unknown> = {}) {
     liveClock: { startClock: async () => 'sent', pauseClock: async () => 'sent', resumeClock: async () => 'sent', inFlight: false },
     liveReview: { beginReview: async () => 'reviewed', currentReceipt: () => null, receiptValid: () => false, inFlight: false },
     liveClose: { confirmClose: async () => 'closed', inFlight: false },
+    activeSegment: vue.ref(null),
+    realtime: { status: vue.ref('connected') },
     ...overrides,
   };
 }

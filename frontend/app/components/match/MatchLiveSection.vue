@@ -3,10 +3,10 @@ import FormField from '~/components/ui/FormField.vue';
 import type { MatchRecord } from '~/components/match/types';
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
 import type { SharedLiveEvent } from '~/utils/matchLiveEditor';
-import { displayedClock } from '~/utils/matchLiveClock';
+import { clockPresentation } from '~/utils/matchLiveClock';
 
 const props = defineProps<{ context: MatchOperationContext; match: MatchRecord }>();
-const { t, liveView, liveEditor, liveTransitions, liveCapture, liveEdit, liveClock, liveReview, liveClose, activeSegment } = props.context;
+const { t, liveView, liveEditor, liveTransitions, liveCapture, liveEdit, liveClock, liveReview, liveClose, activeSegment, realtime } = props.context;
 const { match } = toRefs(props);
 
 const EVENT_TYPE_OPTIONS = ['goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul'] as const;
@@ -29,10 +29,10 @@ const editing = computed(() => { void liveTick.value; return liveEdit.editing();
 const displayed = computed(() => {
   const value = clock.value;
   if (!value) return null;
-  return displayedClock({
+  return clockPresentation({
     state: value.state, segment_id: value.segmentId, segment_number: value.segmentNumber,
     elapsed_us: value.elapsedUs, anchor_at: value.anchorAt, observed_at: value.observedAt,
-  }, now.value);
+  }, realtime.status, now.value);
 });
 // El segmento del wire: el del reloj vigente o el segmento activo del partido.
 const segmentId = computed(() => clock.value?.segmentId ?? activeSegment.value?.id ?? '');
@@ -152,7 +152,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
 
     <template v-if="shared">
       <div class="live-clock muted-note" role="status">
-        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="displayed && clock?.state !== 'not_started'"> · {{ t('live.clock.elapsed', { seconds: Math.floor(displayed.elapsedUs / 1_000_000) }) }}</template>
+        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="displayed && clock?.state !== 'not_started'"> · {{ t('live.clock.elapsed', { seconds: Math.floor(displayed.elapsedUs / 1_000_000) }) }}</template><template v-if="displayed?.stale"> · {{ t('live.clock.stale') }}</template>
       </div>
       <div v-if="liveView.controlsEnabled" class="live-actions">
         <button v-if="shared.status === 'live'" class="button-secondary" type="button" :disabled="liveTransitions.inFlight" @click="suspendLive">{{ t('live.transition.suspend.action') }}</button>
