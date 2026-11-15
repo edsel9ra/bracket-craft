@@ -6,19 +6,27 @@ import {
   createRealtimeDispatcher,
   parseResyncPayload,
   RESYNC_EVENT,
+  type LiveInvalidationPayload,
   type ResyncPayload,
 } from '~/utils/realtimeDispatch';
 import { createInitializationWindow, createReconnectJoinController } from '~/utils/realtimeReload';
 import { shouldForceReconnect } from '~/utils/realtimeRetry';
 import { normalizeOrganizationId, normalizeUuid } from '~/utils/validation';
 
-export type RealtimeEventName = 'MATCH_CLOSED' | 'MATCH_UPDATED' | 'STANDINGS_UPDATED';
+export type RealtimeEventName =
+  | 'MATCH_CLOSED'
+  | 'MATCH_UPDATED'
+  | 'STANDINGS_UPDATED'
+  | 'MATCH_LIVE_UPDATED'
+  | 'MATCH_LIVE_PUBLIC_UPDATED';
 export type RealtimeStatus = RealtimeConnectionStatus;
 
 export interface RealtimeHandlers {
   onMatchClosed?: (payload: unknown) => void;
   onMatchUpdated?: (payload: unknown) => void;
   onStandingsUpdated?: (payload: unknown) => void;
+  onMatchLiveUpdated?: (payload: LiveInvalidationPayload) => void;
+  onMatchLivePublicUpdated?: (payload: LiveInvalidationPayload) => void;
   onEvent?: (event: string, payload: unknown) => void;
   onReconnect?: () => void;
   onResync?: (payload: ResyncPayload) => void;
