@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_discipline, lock_matches
 from app.core.permissions import require_permission
+from app.core.security import get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.crests.resolver import MediaGroup, sign_media_rows
 from app.modules.matches.audit import (
@@ -466,6 +467,7 @@ async def close_match(
     payload: CloseMatchReportDTO,
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
+    session_id: UUID = Depends(get_session_id),
 ) -> MatchCloseResponse:
     """Cierra el acta y aplica el máximo efectivo de la resolución del cierre.
 
@@ -476,7 +478,9 @@ async def close_match(
     """
 
     try:
-        return await CloseMatchReportService(db).execute(context, match_id, payload)
+        return await CloseMatchReportService(db).execute(
+            context, match_id, payload, session_id=session_id
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except LookupError as exc:

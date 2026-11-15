@@ -134,6 +134,23 @@ async def get_current_user_id(
     return user_id
 
 
+async def get_session_id(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+) -> UUID:
+    """Id de sesión del JWT (`jti`); su vigencia la exige `get_current_user_id`."""
+
+    settings = get_settings()
+    raw_token = credentials.credentials if credentials else request.cookies.get(settings.auth_cookie_name)
+    claims = decode_access_token_claims(raw_token)
+    try:
+        return UUID(claims["jti"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida"
+        ) from exc
+
+
 async def get_optional_current_user_id(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),

@@ -114,6 +114,14 @@ class LiveCloseRequest(BaseModel):
     result: LiveResultDTO
 
 
+class LiveReviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    live_review_id: UUID
+    content_revision: Revision
+    report: LiveReportDTO
+    fingerprint: str
+
+
 class LiveClockResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     state: Literal["not_started", "running", "paused"]

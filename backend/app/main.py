@@ -56,6 +56,7 @@ from app.modules.matches.errors import (
     WalkoverScoreMismatch,
     WalkoverStateNotAllowed,
 )
+from app.modules.matches.live_router import router as match_live_router
 from app.modules.matches.router import router as matches_router
 from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
@@ -1055,6 +1056,7 @@ api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")
 api.include_router(matches_router, prefix="/api/v1")
+api.include_router(match_live_router, prefix="/api/v1")
 api.include_router(rectifications_router, prefix="/api/v1")
 api.include_router(sanction_appeals_router, prefix="/api/v1")
 api.include_router(crests_router, prefix="/api/v1")
