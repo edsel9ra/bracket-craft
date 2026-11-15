@@ -478,7 +478,8 @@ Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin pos
   - Tests primero: dos lectores, operador, espectador y cierre con recibo; normal, borrador vacío válido y rechazo con hechos inválidos.
   - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/operationFlow.spec.ts --project operation-flow` cubre recorrido F1 real y clásico sin actualizar manualmente ni adelantar efectos confirmados. Conservar los nombres/proyectos reales del config al ampliar los escenarios.
 
-- [ ] **T74. Ampliar E2E privado con edición abierta y RESYNC real.** RF-006, RF-016, RF-017, RF-018, RF-023; RNF-004
+- [x] **T74. Ampliar E2E privado con edición abierta y RESYNC real.** RF-006, RF-016, RF-017, RF-018, RF-023; RNF-004
+  - 2026-11-15 (rama C2): nueva prueba `live draft: RESYNC real conserva la edición abierta sin botón Actualizar ni replay` en `e2e/private-realtime.spec.ts` — bootstrap + `prepare_open`, start/start_clock/goal por API real, se abre «Corregir hecho» y se edita el minuto (7) sin enviar; `stream_gap` trim + `release` produce RESYNC `STREAM_TRIMMED` real sobre socket auténtico: la edición se conserva, no aparece botón Actualizar, no hay replay del `event_id` perdido y el hecho/marcador siguen visibles. Proyecto completo **13/13 passed**.
   - Tests primero: publicación mientras se escribe, desconexión de transporte real, trim/reset y recuperación del estado autorizado en otro receptor.
   - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` comprueba hechos y marcador actuales sin botón Actualizar, conserva edición y no usa replay ni mocks de reconexión.
 
