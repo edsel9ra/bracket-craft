@@ -241,6 +241,16 @@ def test_production_rejects_development_storage_secret_key_without_the_old_brand
     assert "minio" not in message.casefold()
 
 
+def test_settings_validation_errors_do_not_echo_input_values():
+    with pytest.raises(ValidationError) as error:
+        production_settings(storage_secret_key=DEVELOPMENT_STORAGE_SECRET_KEY)
+
+    message = str(error.value)
+    assert "production-secret-" not in message
+    assert "production-player-key-" not in message
+    assert "production-password" not in message
+
+
 def test_settings_read_the_seven_recovered_variables_from_the_environment(monkeypatch):
     # R20: las cinco variables de comportamiento y las dos opcionales llegan a
     # ``Settings`` desde el entorno, no solo desde el uso que hace el código.

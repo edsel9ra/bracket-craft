@@ -21,15 +21,15 @@
     "nuxt": "^4.6.4",
     "pinia": "^4.1.0",
     "socket.io-client": "^4.8.4",
-    "vue": "^3.5.44"
+    "vue": "^3.5.45"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.17.0",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@types/node": "^22.20.1",
-    "axe-core": "4.10.3",
+    "axe-core": "4.14.0",
     "eslint": "^10.14.0",
     "typescript": "~6.0.3",
-    "vue-tsc": "^3.3.13"
+    "vue-tsc": "^3.3.14"
   }
 }

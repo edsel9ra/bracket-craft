@@ -476,7 +476,7 @@ test('la configuración de Playwright es Chromium headless, serial y sin reinten
 });
 
 test('package.json fija Playwright como devDependency y expone los comandos del arnés', () => {
-  assert.equal(packageJson.devDependencies['@playwright/test'], '1.64.1');
+  assert.equal(packageJson.devDependencies['@playwright/test'], '1.65.0');
   assert.equal(packageJson.dependencies['@playwright/test'], undefined);
   for (const script of ['e2e', 'e2e:test', 'typecheck:e2e']) {
     assert.ok(packageJson.scripts[script], `missing script ${script}`);
