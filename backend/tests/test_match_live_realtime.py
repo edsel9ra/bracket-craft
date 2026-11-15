@@ -28,6 +28,7 @@ from test_match_live_db import (
 )
 from test_migration_031 import TOURNAMENT
 from test_migration_056 import SEGMENT_FIRST
+from test_rectification_flow import flow as flow
 
 
 def envelope(**payload):
@@ -450,3 +451,63 @@ async def test_public_dispatch_draft_never_broadcasts_to_organization_room(
     # Solo el aviso privado llega a la entrega organizativa autorizada; el
     # público pasa por el filtro pero el catálogo lo descarta.
     assert len(delivery.envelopes) == 2
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_delivery_two_apis_two_tenants(flow):
+    """T56: sockets reales en dos API y dos tenants; solo los tres ids de wire."""
+
+    import httpx
+    from realtime_process import ProcessCluster
+
+    denied_user = uuid4()
+    await flow.admin.execute("""INSERT INTO users(id,email,password_hash,full_name)
+        VALUES($1,$2,'hash','Denied live');""", denied_user, f'{denied_user}@example.test')
+    member = await flow.admin.fetchval(
+        "INSERT INTO organization_users(organization_id,user_id) VALUES($1,$2) RETURNING id",
+        UUID(ORG), denied_user)
+    role = await flow.admin.fetchval(
+        """INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+        SELECT $1,id,'Denied live','[]'::jsonb FROM role_definitions
+        WHERE code='member' RETURNING id""", UUID(ORG))
+    if role is None:
+        role = await flow.admin.fetchval(
+            """INSERT INTO roles(organization_id,role_definition_id,name,permissions)
+            SELECT $1,id,'Denied live','[]'::jsonb FROM role_definitions LIMIT 1 RETURNING id""",
+            UUID(ORG))
+    await flow.admin.execute(
+        "INSERT INTO organization_user_roles(organization_id,organization_user_id,role_id) VALUES($1,$2,$3)",
+        UUID(ORG), member, role)
+
+    async with ProcessCluster(flow) as cluster:
+        identity = await cluster.identity(USER)
+        denied = await cluster.identity(str(denied_user))
+        other = await cluster.identity(USER.replace('31000000', '32000000'))
+        left = await cluster.connect(0, identity)
+        right = await cluster.connect(1, identity)
+        denied_wire = await cluster.connect(0, denied)
+        outsider = await cluster.connect(1, other, ORG.replace('31000000', '32000000'))
+        assert (await cluster.rpc(0, 'probe'))['pid'] != (await cluster.rpc(1, 'probe'))['pid']
+
+        event = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED',
+            payload={'scope': 'organization', 'match_id': MATCH, 'tournament_id': TOURNAMENT})
+        await cluster.settle(event)
+        expected = {'event_id': event, 'match_id': MATCH, 'tournament_id': TOURNAMENT}
+        for wire in (left, right):
+            assert wire.payload(event) == expected
+        for denied_socket in (denied_wire, outsider):
+            assert denied_socket.payload(event) is None
+            # Cero frames de dominio en ajenos o denegados: solo control.
+            assert not any(name == 'MATCH_LIVE_UPDATED' for name, _ in denied_socket.frames)
+
+        # Lectura HTTP posterior sobre el montaje real: el mismo partido.
+        async with httpx.AsyncClient() as http:
+            response = await http.get(
+                f'http://127.0.0.1:{cluster.children[0][2]}/api/v1/matches/{MATCH}/live/access',
+                headers={'Authorization': f'Bearer {identity["token"]}',
+                         'X-Organization-ID': ORG})
+        assert response.status_code == 200
+        assert set(response.json()) == {
+            'can_view', 'can_operate', 'can_close', 'available'}
+        assert response.json()['can_view'] is True
