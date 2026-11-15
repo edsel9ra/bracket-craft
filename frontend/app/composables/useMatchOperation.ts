@@ -16,6 +16,7 @@ import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
 import { createLiveCapture } from '~/utils/matchLiveCapture';
 import { createLiveEdit } from '~/utils/matchLiveEdit';
 import { deriveLiveView } from '~/utils/matchLiveAccess';
+import { createLiveClock } from '~/utils/matchLiveClock';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -108,6 +109,14 @@ export function useMatchOperation() {
       confirmLabel: t(kind === 'correct' ? 'live.editCorrect.action' : 'live.editRemove.action'),
       tone: kind === 'remove' ? 'danger' : 'primary',
     }),
+    commandId: () => crypto.randomUUID(),
+  });
+  // T66: el reloj solo cambia su referencia por comandos; la vista calcula
+  // con `now` inyectable y ningún intervalo escribe al servidor.
+  const liveClock = createLiveClock({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
     commandId: () => crypto.randomUUID(),
   });
   const liveContext = createLiveContextCoordinator({
@@ -468,7 +477,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
