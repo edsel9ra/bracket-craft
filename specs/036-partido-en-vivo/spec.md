@@ -1,8 +1,8 @@
 # Spec 036 — Partido en vivo
 
-Estado: aprobada
+Estado: implementada y aceptada (2026-11-15); spec cerrada
 
-Fecha: 2026-11-13. Revisión: 2026-11-14. Fase Spec cerrada: el usuario aprobó expresamente la spec completa («Apruebo la spec.», 2026-11-13, aprobación comunicada tras la ronda 2). Corresponde a F1 del informe de funciones adicionales. DA-1 (c), DA-2 (b), DA-3 (b), DA-4 (b), DA-5 (a), DA-6 (a) y DA-7 (a) están cerradas. Se autoriza redactar el Plan; no se aprueban su diseño, tareas ni implementación.
+Fecha: 2026-11-13. Revisión: 2026-11-14. Fase Spec cerrada: el usuario aprobó expresamente la spec completa («Apruebo la spec.», 2026-11-13, aprobación comunicada tras la ronda 2). Corresponde a F1 del informe de funciones adicionales. DA-1 (c), DA-2 (b), DA-3 (b), DA-4 (b), DA-5 (a), DA-6 (a) y DA-7 (a) están cerradas. Implementación verificada T1–T84 en siete PRs (A1→C2: #80, #81, #82, #83, #84, #85, #86, todos fusionados) con gates y auditoría constitucional registrados en `tasks.md`; aceptación humana explícita de F1 del usuario el 2026-11-15 («Acepto F1»). Rollback a versión anterior tras crear borrador F1 no soportado (corrección hacia delante): ver `docs/despliegue-partido-en-vivo.md`. Sin despliegue productivo acreditado.
 
 ## Contexto y objetivo
 

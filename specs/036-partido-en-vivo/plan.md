@@ -1,8 +1,8 @@
 # Plan 036 — Partido en vivo
 
-Estado: aprobado
+Estado: aprobado e implementado; F1 aceptada por el usuario el 2026-11-15 («Acepto F1»)
 
-Spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras la ronda 2). Plan completo y C1–C5 aprobados expresamente por el usuario («Apruebo el plan.», 2026-11-13, aprobación comunicada tras su redacción). Se autoriza la fase Tareas, no su ejecución ni la implementación. No contiene implementación ni acredita pruebas funcionales. Numeración de migración comprobada en esta rama: última 055; se propone 056, a reconfirmar antes de implementarla.
+Spec aprobada por el usuario («Apruebo la spec.», 2026-11-13, comunicada tras la ronda 2). Plan completo y C1–C5 aprobados expresamente por el usuario («Apruebo el plan.», 2026-11-13, aprobación comunicada tras su redacción). Las 84 tareas se ejecutaron en siete PRs (A1→C2: #80–#86, todos fusionados) con evidencia y auditoría constitucional en `tasks.md`. Las migraciones propuestas se materializaron como 056–059 (059 autorizada por el usuario el 2026-11-15: `bracket_code` en la vista interna de selección). Desviaciones autorizadas registradas en `tasks.md`.
 
 ## 1. Idea central y evidencia del código
 
