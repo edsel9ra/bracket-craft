@@ -119,6 +119,8 @@ def test_order_by_segment_minute_added_and_stable_tiebreak():
         ('{"red_card_type": "direct_red"}', "direct_red"),
         ({}, None),
         ({"red_card_type": "otra"}, None),
+        ({"red_card_type": ["direct_red"]}, None),
+        ({"red_card_type": {"type": "direct_red"}}, None),
         ("no-json", None),
         (None, None),
     ],

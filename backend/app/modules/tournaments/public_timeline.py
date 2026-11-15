@@ -55,7 +55,7 @@ def public_red_card_type(event_type: str | None, metadata: Any) -> RedCardType |
     if not isinstance(metadata, Mapping):
         return None
     value = metadata.get("red_card_type")
-    return value if value in RED_CARD_TYPES else None
+    return value if isinstance(value, str) and value in RED_CARD_TYPES else None
 
 
 def timeline_sort_key(event: Mapping[str, Any]) -> tuple[int, int, int, str]:
