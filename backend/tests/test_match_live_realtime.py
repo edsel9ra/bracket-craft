@@ -570,6 +570,301 @@ async def test_multiprocess_recovery_cutoff_fail_closed_no_replay(flow, withdraw
 
 
 @pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_load_1000_sockets_257_principals(flow):
+    """T77: carga reproducible con receptores reales — 257 principales
+    (lote 256/1) con ~4 sockets cada uno (~1028) repartidos entre dos APIs,
+    ráfaga de eventos y fallo/recuperación; registra p50/p95, lotes SQL y RSS,
+    sin duplicación ni backlog."""
+
+    import asyncio
+    from time import perf_counter
+    from realtime_process import ProcessCluster, percentile
+
+    PRINCIPALS = 257
+    SOCKETS_EACH = 4
+    BURST = 6
+
+    async with ProcessCluster(flow) as cluster:
+        principals = await cluster.identities(PRINCIPALS)
+        wires = []
+        started = perf_counter()
+        # Conexión concurrente por lotes para caber en el presupuesto del test.
+        pending = [cluster.connect(0, identity) for identity in principals
+                   for _ in range(SOCKETS_EACH)]
+        for offset in range(0, len(pending), 128):
+            wires.extend(await asyncio.gather(*pending[offset:offset + 128]))
+        # Dos APIs: los principales cargan el proceso 0 (lote 256/N) y un
+        # testigo sano escucha en el proceso 1.
+        healthy_wires = [
+            await cluster.connect(1, principals[0]),
+            await cluster.connect(1, principals[1])]
+        print(f'LOAD connect {len(wires) + len(healthy_wires)} sockets: {perf_counter() - started:.1f}s')
+        async with asyncio.timeout(60):
+            while (await cluster.rpc(0, 'probe'))['connections'] != len(wires):
+                await asyncio.sleep(0.05)
+            while (await cluster.rpc(1, 'probe'))['connections'] != 2:
+                await asyncio.sleep(0.05)
+        rss_before = [await cluster.rpc(i, 'probe') for i in range(2)]
+
+        # Ráfaga: cada evento debe llegar a cada socket exactamente una vez.
+        latencies = []
+        events = []
+        for _ in range(BURST):
+            sent = perf_counter()
+            event = await cluster.publish(
+                event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+            await cluster.settle(event)
+            for wire in wires:
+                latencies.append(wire.received_at(event) - sent)
+            events.append(event)
+        for event in events:
+            for wire in wires + healthy_wires:
+                occurrences = sum(
+                    1 for _, payload in wire.frames
+                    if payload.get('event_id') == event)
+                assert occurrences == 1
+        print(f'LOAD delivery p50={percentile(latencies, 0.5) * 1000:.1f}ms '
+              f'p95={percentile(latencies, 0.95) * 1000:.1f}ms n={len(latencies)}')
+        probes = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for index, probe in enumerate(probes):
+            assert all(size <= 256 for size in probe['batches'])
+            assert probe['counts'].get('calls', 0) >= BURST
+            print(f'LOAD api{index} batches={probe["batches"]} '
+                  f'calls={probe["counts"].get("calls")} '
+                  f'rss={rss_before[index]["rss_kib"]}->{probe["rss_kib"]}KiB '
+                  f'current={probe["current_rss_kib"]}KiB')
+
+        # Fallo en la API 0 durante la ráfaga: suspensión fail-closed.
+        await cluster.rpc(0, 'mode', values={'fail': True})
+        lost = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(lost)
+        dropped = wires
+        healthy = healthy_wires
+        for wire in dropped:
+            assert wire.payload(lost) is None
+        for wire in healthy:
+            assert wire.payload(lost) is not None
+        probe0 = await cluster.rpc(0, 'probe')
+        print(f'LOAD api0 suspended={probe0["suspended"]} '
+              f'controls={probe0["controls"]}')
+        assert probe0['suspended'] >= 1
+
+        # Recuperación: las sesiones vigentes se re-suscriben y reciben el
+        # evento fresco; el backlog perdido nunca se reproduce; sin duplicados.
+        await cluster.rpc(0, 'mode', values={'fail': False})
+        await cluster.rpc(0, 'recover')
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        for wire in dropped:
+            assert wire.payload(lost) is None
+            occurrences = sum(
+                1 for _, payload in wire.frames
+                if payload.get('event_id') == fresh)
+            assert occurrences == 1
+        for wire in healthy:
+            occurrences = sum(
+                1 for _, payload in wire.frames
+                if payload.get('event_id') == fresh)
+            assert occurrences == 1
+        rss_after = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for index in range(2):
+            growth = rss_after[index]['current_rss_kib'] - rss_before[index]['current_rss_kib']
+            print(f'LOAD api{index} rss growth={growth}KiB')
+            # Sin fuga: el crecimiento queda por debajo de un tope razonable
+            # para ~500 sockets (no se exige memoria constante).
+            assert growth < 128 * 1024
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_restart_recovery_preserves_accepted_state(flow):
+    """T76: suspensión repetida + revocación durante el fallo + reinicio real de
+    la API; la reconexión al otro proceso conserva lo aceptado, sin replay del
+    backlog privado ni recuperación de permisos retirados."""
+
+    from realtime_process import ProcessCluster
+
+    async with ProcessCluster(flow) as cluster:
+        victim, healthy = await cluster.identities(2)
+        affected = await cluster.connect(0, victim)
+        independent = await cluster.connect(1, healthy)
+
+        accepted = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(accepted)
+        assert affected.payload(accepted) is not None
+        assert independent.payload(accepted) is not None
+
+        # Suspensión por fallo SQL repetida (dos rondas) con recuperación real.
+        lost_ids = []
+        for _ in range(2):
+            await cluster.rpc(0, 'mode', values={'fail': True})
+            lost = await cluster.publish(
+                event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+            await cluster.settle(lost)
+            lost_ids.append(lost)
+            assert affected.payload(lost) is None
+            assert independent.payload(lost) is not None
+            probe = await cluster.rpc(0, 'probe')
+            assert probe['suspended'] >= 1
+            await cluster.rpc(0, 'mode', values={'fail': False})
+            await cluster.rpc(0, 'recover')
+
+        # Revocación durante el fallo: VIEW_MATCH_LIVE_DRAFT se retira al rol
+        # del socket suspendido mientras `healthy` conserva un rol propio; la
+        # lectura clásica no usa ese permiso.
+        healthy_member = await flow.admin.fetchval(
+            'SELECT id FROM organization_users WHERE organization_id=$1 AND user_id=$2',
+            UUID(ORG), UUID(healthy['user']))
+        await flow.admin.execute('''WITH newrole AS (
+            INSERT INTO roles (organization_id,role_definition_id,name,permissions)
+            SELECT $1, role_definition_id, 'Lector live', permissions
+            FROM roles WHERE organization_id=$1 LIMIT 1 RETURNING id)
+            UPDATE organization_user_roles SET role_id=(SELECT id FROM newrole)
+            WHERE organization_id=$1 AND organization_user_id=$2''',
+            UUID(ORG), healthy_member)
+        await flow.admin.execute(
+            "UPDATE roles SET permissions=permissions-'VIEW_MATCH_LIVE_DRAFT' WHERE organization_id=$1 AND name<>'Lector live'",
+            UUID(ORG))
+        for _ in range(2):
+            await cluster.rpc(0, 'recover')
+        # El permiso retirado no se recupera tras la suspensión.
+        import httpx
+        async with httpx.AsyncClient() as http:
+            access = await http.get(
+                f'http://127.0.0.1:{cluster.children[0][2]}/api/v1/matches/{MATCH}/live/access',
+                headers={'Authorization': f'Bearer {victim["token"]}',
+                         'X-Organization-ID': ORG})
+        assert access.status_code == 200
+        assert access.json()['can_view'] is False
+
+        # Reinicio real del proceso 0: la conexión cae y el relay vuelve limpio.
+        await cluster.restart(0)
+        await cluster.fence()
+        # Reconexión al otro proceso con la misma identidad: solo lo vigente.
+        reconnected = await cluster.connect(1, victim)
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        assert reconnected.payload(fresh) is None
+        assert independent.payload(fresh) is not None
+        # Nada del backlog privado llega: ni antes ni después del reinicio.
+        # Un RESYNC de control sí puede alcanzar el socket suspendido al
+        # recuperar (su sesión sigue válida); nunca un evento de dominio.
+        for lost in lost_ids:
+            assert affected.payload(lost) is None
+            assert reconnected.payload(lost) is None
+        assert not any(
+            name == 'MATCH_LIVE_UPDATED'
+            for name, _ in affected.frames
+            if _ is not None and _.get('event_id') in lost_ids)
+
+
+# ---------------------------------------------------------------------------
+# T79: privacidad — la salida técnica/pública nunca transporta datos del borrador
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        # Datos personales/de evento del borrador: jamás en el wire privado.
+        {"player_id": str(uuid4())},
+        {"player_name": "Nombre Privado"},
+        {"assist_player_id": str(uuid4())},
+        {"events": [{"event_type": "goal", "player_id": str(uuid4())}]},
+        {"metadata": {"note": "dato privado"}},
+        {"birth_date": "2000-01-01"},
+        {"document_number": "123456789"},
+        # Identificadores internos de estado o usuario.
+        {"revision": 7},
+        {"content_revision": 3},
+        {"session_id": str(uuid4())},
+        {"user_id": str(uuid4())},
+        {"home_score": 2},
+    ],
+    ids=[
+        "player_id", "player_name", "assist", "events", "metadata",
+        "birth_date", "document", "revision", "content_revision",
+        "session_id", "user_id", "score",
+    ],
+)
+def test_privacy_live_wire_rejects_personal_or_internal_fields(extra):
+    """El catálogo privado descarta cualquier envoltura con campos ajenos a los tres ids."""
+    assert classify_organization_event(envelope(**extra)) is None
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        "VERIFICATION_OUTBOX_PROBE",
+        "SANCTION_CASE_NOTICE_INTERNAL",
+        "SANCTION_CASE_NOTICE_EMAIL",
+        "MATCH_LIVE_UNKNOWN_KIND",
+        "PLAYER_SUSPENSION_NOTICE",
+    ],
+    ids=["probe", "f9_internal", "f9_email", "unknown_live", "player_sanction"],
+)
+def test_privacy_unknown_catalog_and_f9_never_route_as_live(event_type):
+    """Catálogo desconocido, sonda de verificación y avisos F9 no son eventos live."""
+    data = envelope()
+    data["event_type"] = event_type
+    assert classify_organization_event(data) is None
+
+
+async def test_privacy_public_and_technical_output_never_carry_draft_detail(
+    live_service_db, monkeypatch
+):
+    """Wire público, outbox y auditoría solo transportan identificadores mínimos."""
+    f = live_service_db
+    await f.permissions(["OPERATE_MATCH_LIVE", "VIEW_MATCH_LIVE_DRAFT"])
+    await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+    private_event = goal()
+    private_event["event_type"] = "red_card"
+    private_event["metadata"] = {"red_card_type": "direct_red"}
+    await f.call("execute", command("add_event", 1, event=private_event))
+
+    # Outbox: ambos wires solo llevan los ids acordados, nunca el hecho ni el jugador.
+    rows = await live_outbox(f)
+    assert rows
+    for row in rows:
+        payload = json.loads(row["payload"])
+        allowed = {"match_id", "tournament_id"}
+        if row["event_type"] == "MATCH_LIVE_UPDATED":
+            allowed.add("scope")
+        assert set(payload) == allowed
+        serialized = json.dumps(payload)
+        for forbidden in ("player", "Nombre", "Privado", "assist", "metadata", "goal"):
+            assert forbidden not in serialized
+
+    # Auditoría administrativa: solo tipo, comando y revisión — sin el evento.
+    audit = await f.admin.fetch(
+        "SELECT payload FROM administrative_audit_logs WHERE action='MATCH_LIVE_COMMAND'"
+    )
+    assert len(audit) == 2
+    for row in audit:
+        payload = json.loads(row["payload"])
+        assert set(payload) == {"command_id", "type", "revision"}
+        assert "event" not in payload
+
+    # Emisión pública revalidada: el emit solo lleva los tres ids del aviso.
+    main, calls, _ = dispatch_harness(f, monkeypatch)
+    await emit_envelope(main, public_envelope())
+    assert calls == [
+        (LIVE_PUBLIC, {
+            "event_id": calls[0][1]["event_id"],
+            "match_id": MATCH,
+            "tournament_id": TOURNAMENT,
+        }, {"room": f"tournament:{TOURNAMENT}"})
+    ]
+
+    # La lectura autorizada sí devuelve el detalle; la pública jamás lo contiene.
+    snapshot = await f.call("snapshot")
+    assert snapshot.events and snapshot.events[0].client_event_id == private_event["client_event_id"]
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
 async def test_multiprocess_recovery_sql_failure_suspends_and_resyncs(flow):
     """T57: fallo SQL suspende fail-closed; `recover` reanuda solo lo vigente."""
 

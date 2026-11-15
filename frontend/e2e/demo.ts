@@ -174,6 +174,13 @@ async function getJson(fetchImpl: typeof fetch, url: string): Promise<unknown> {
 export interface DiscoverDemoDataOptions {
   readonly apiBase?: string;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Torneos que el usuario de la corrida puede abrir en el Workspace. Las
+   * corridas realtime siembran organizaciones enteras con su propia «Copa
+   * Demo»: sin este filtro la elección puede caer en un torneo ajeno que la
+   * interfaz nunca lista (spec 036, T73).
+   */
+  readonly ownedTournamentIds?: ReadonlySet<string>;
 }
 
 /**
@@ -199,6 +206,9 @@ export async function discoverDemoData(
 
   const candidates: DemoTournamentCandidate[] = [];
   for (const tournament of tournaments) {
+    if (options.ownedTournamentIds && !options.ownedTournamentIds.has(tournament.id)) {
+      continue;
+    }
     const matches = parseMatches(
       await getJson(
         fetchImpl,

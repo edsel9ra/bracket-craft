@@ -169,6 +169,51 @@ test('capacidades sin can_view nunca traen el borrador ni lo restauran', async (
   assert.equal(editor.shared, null);
 });
 
+test('retirada de lectura con OPERATE vigente limpia el borrador pero conserva operar', async () => {
+  let caps = access();
+  const { coordinator, editor, applied, stats } = harness({ fetchAccess: async () => caps });
+  await coordinator.request();
+  assert.equal(editor.shared!.events.length, 1);
+  // La lectura se retira mientras OPERATE sigue vigente: solo cae el borrador.
+  caps = access({ can_view: false });
+  await coordinator.request();
+  assert.equal(editor.shared, null);
+  assert.equal(stats().deniedAccess, 1);
+  assert.equal(stats().deniedLive, 0);
+  const last = applied.at(-1) as { can_view: boolean; can_operate: boolean };
+  assert.equal(last.can_view, false);
+  assert.equal(last.can_operate, true);
+});
+
+test('A→B→A: una respuesta vieja de A no se aplica en B y volver a A reautoriza de nuevo', async () => {
+  let current = true;
+  let flips = 0;
+  const { coordinator, editor, applied, stats } = harness({
+    current: () => current,
+    fetchLive: async () => {
+      // El contexto cambia mientras la primera respuesta viaja hacia el cliente.
+      flips += 1;
+      if (flips === 1) current = false;
+      return snapshot();
+    },
+  });
+  await coordinator.request();
+  assert.equal(stats().liveCalls, 1);
+  assert.equal(editor.shared, null); // la respuesta vieja de A no se aplica en B
+  // Volver a A reautoriza de nuevo: una solicitud fresca sí aplica.
+  current = true;
+  await coordinator.request();
+  assert.equal(editor.shared!.revision, 4);
+  assert.equal(applied.length, 2);
+  // Una respuesta vieja denegada tampoco restaura el estado revocado.
+  const c2 = harness({
+    current: () => current,
+    fetchAccess: async () => { current = false; throw failure(403); },
+  });
+  await c2.coordinator.request();
+  assert.equal(c2.stats().deniedAccess, 0);
+});
+
 test('respuesta de acceso inválida equivale a denegación limpia', async () => {
   const { coordinator, stats } = harness({ fetchAccess: async () => ({ garbage: true }) });
   await coordinator.request();

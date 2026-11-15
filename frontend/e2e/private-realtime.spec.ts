@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { demoApiBase } from './demo.ts';
 import { waitForHydration } from './workspaceSession.ts';
@@ -230,6 +232,48 @@ test('published rectification refreshes history without manual refresh and prese
     await editing.page.getByRole('dialog').getByRole('button', { name: 'Descartar cambios', exact: true }).click();
     await expect(editorPanel.locator('select').first()).toHaveValue('2');
   } finally { await owner.close(); await reader.close(); }
+});
+
+test('live draft: RESYNC real conserva la edición abierta sin botón Actualizar ni replay', async ({ browser }) => {
+  const [tenant] = await control<[Tenant, Tenant]>({ action: 'bootstrap' });
+  await control({ action: 'prepare_open', organization_id: tenant.organization_id });
+  const matchId = tenant.open_match_id;
+  const owner = await login(browser, tenant);
+  try {
+    const view = await receiver(owner, { ...tenant, match_id: matchId });
+    await expect(view.page.locator('.operation-shell')).toBeVisible();
+    const operation = await http<{ match: { home_team_id: string }; segments: Array<{ id: string; status: string }>; rosters: Array<{ player_id: string; team_id: string }> }>(
+      owner, tenant, `/matches/${matchId}/operation`);
+    const segment = operation.segments.find(row => row.status === 'active');
+    expect(segment).toBeDefined();
+    const home = operation.match.home_team_id;
+    const player = operation.rosters.find(row => row.team_id === home);
+    const live = (body: Record<string, unknown>) => http<{ revision: number }>(owner, tenant, `/matches/${matchId}/live/commands`, body);
+    let revision = (await live({ command_id: randomUUID(), type: 'start', expected_revision: 0 })).revision;
+    revision = (await live({ command_id: randomUUID(), type: 'start_clock', expected_revision: revision, segment_id: segment!.id })).revision;
+    revision = (await live({
+      command_id: randomUUID(), type: 'add_event', expected_revision: revision,
+      event: { client_event_id: randomUUID(), event_type: 'goal', team_id: home, player_id: player!.player_id, minute: 5, added_minute: 0, segment_id: segment!.id, metadata: null },
+    })).revision;
+    await expect(view.page.locator('.live-events li').getByText('Gol · 5\'').first()).toBeVisible();
+    // Edición abierta: corregir el hecho y escribir un minuto sin enviar.
+    await view.page.getByRole('button', { name: 'Corregir hecho', exact: true }).click();
+    const minute = view.page.locator('#live-edit-minute');
+    await minute.fill('7');
+    // RESYNC real por hueco de stream: sin botón Actualizar ni replay.
+    const baseline = view.wire.length;
+    const pending = await publish(tenant, { barrier: 'before' });
+    await expect.poll(async () => (await control<Probe>({ action: 'probe' })).paused).toBe(pending.event_id);
+    const lost = await control<{ event_id: string }>({ action: 'stream_gap', kind: 'trim' });
+    await control({ action: 'release' });
+    await expect.poll(() => view.wire.slice(baseline).some(row => row.event === 'RESYNC' && row.payload.reason === 'STREAM_TRIMMED')).toBe(true);
+    await flush([view.page]);
+    expect(view.ids()).not.toContain(lost.event_id);
+    await expect(minute).toHaveValue('7');
+    await expect(view.page.getByRole('button', { name: 'Actualizar', exact: true })).toHaveCount(0);
+    // El hecho sigue editable y el borrador muestra el gol sin pérdida.
+    await expect(view.page.locator('.live-events li').getByText('Gol · 5\'').first()).toBeVisible();
+  } finally { await owner.close(); }
 });
 
 test.afterEach(async () => {

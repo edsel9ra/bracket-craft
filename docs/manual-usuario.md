@@ -114,6 +114,18 @@ Compatibilidad, despliegue coordinado y contingencia sin restaurar el broadcast:
 - Una expulsión por doble amarilla exige exactamente dos amarillas previas del mismo jugador en el mismo acta; si no, 409 `DOUBLE_YELLOW_INCONSISTENT`.
 - Al cerrar se crean sanciones (una por expulsión por doble amarilla, absorbiendo las amarillas), se actualiza clasificación y avance de llave, se emiten eventos al outbox. Las actas cerradas son inmutables.
 
+### Partido en vivo (F1)
+
+Un partido puede operarse **en vivo**: un borrador privado compartido con reloj y hechos provisionales que solo se confirma al cerrar el acta.
+
+- **Iniciar:** desde la pantalla del partido, «Iniciar en vivo» pide confirmación expresa. Exige permiso de operación y que el partido admita apertura (versión publicada, participantes válidos).
+- **Capacidades separadas:** *ver el borrador* (`VIEW_MATCH_LIVE_DRAFT`) y *operar* (`OPERATE_MATCH_LIVE`) son permisos independientes — se puede ver sin poder escribir. Dueño, administrador y operador los reciben por defecto; el árbitro accede por su asignación al partido; el observador no recibe ninguna. El cierre usa el permiso de siempre (`CLOSE_MATCH_REPORT`).
+- **Reloj y hechos:** el reloj se inicia por segmento, se pausa y se reanuda; puede corregirse explícitamente. Los hechos se capturan con catálogo cerrado (gol, autogol, penal, tarjetas, sustitución, falta) y cada captura se confirma con acuse; también pueden corregirse o retirarse con confirmación. Si otro operador cambió el borrador, la respuesta es un conflicto explícito y hay que releer.
+- **Suspensión:** «Suspender partido» congela marcador y reloj; el público sigue viendo el partido con marcador provisional y reloj detenido. «Reanudar» devuelve el estado live conservando lo aceptado.
+- **Desactualización:** si la conexión se pierde, el reloj se muestra «sin conexión (estimado)» y el estado se reconstruye por HTTP al volver — no hay replay de lo perdido. Un `RESYNC` real conserva la edición abierta.
+- **Revisión y cierre:** cerrar exige revisar el conjunto completo vigente («Revisar conjunto» devuelve un recibo con los hechos y resultado calculados) y luego confirmar el cierre con ese recibo. Si algo cambia tras la revisión hay que revisar de nuevo; el avance del reloj no invalida la revisión. El partido sin borrador en vivo sigue cerrándose por la vía clásica, sin revisión previa.
+- **Corrección posterior:** un acta confirmada nunca se reabre desde el modo en vivo; la rectificación 033 es la única vía.
+
 ### Corregir un acta confirmada (spec 033, criterios 1–9)
 
 1. Abre el partido confirmado en el Workspace y elige «Solicitar rectificación». Completa la propuesta, el motivo y la evidencia; quedan asociados a tu identidad, fecha y versión base. Una solicitud inválida no se guarda.
@@ -170,6 +182,7 @@ Todo este contenido es privado. La consulta pública no muestra sanciones, exped
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
+- Un partido `live` muestra su marcador provisional, segmento y estado del reloj junto a sus campos habituales; un partido `suspended` aparece solo con una tarjeta mínima (equipos, marcador provisional congelado y reloj detenido o sin iniciar) — nunca dentro del bracket ni con eventos individuales. Ninguno expone protagonistas del borrador ni datos personales nuevos; al reanudar o cerrar, el partido vuelve a su lectura habitual.
 - «Ver torneos» lleva directamente al listado desde la primera pantalla. El marcador fijo de portada es un ejemplo, no un partido real. Registro y documentación siguen disponibles.
 - En el detalle, «Resultados», «Estadísticas» y «Equipos» enlazan a sus secciones, también sin JavaScript. El selector de fase aparece antes de la lista completa de equipos; esta conserva su propio acceso.
 - Las estadísticas abren en «Torneo completo»; elegir una fase y restaurar el torneo completo es independiente del calendario. Posición y empates son los recibidos del servidor. El recuento indica filas mostradas y el criterio de orden está junto a cada tabla. En móvil se ven inicialmente Posición/Jugador/Goles o Posición/Equipos/GF; las demás métricas se alcanzan con scroll local y la identidad permanece fija. Clasificación también tiene pista y región de scroll con foco de teclado.
