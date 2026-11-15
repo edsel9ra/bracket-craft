@@ -10,8 +10,9 @@ import { describeOpeningBlocked } from '~/utils/rosterLimits';
 import { type MatchDraftStorage } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/matchLiveContext';
-import { applySharedSnapshot, createLiveEditorState } from '~/utils/matchLiveEditor';
+import { applySharedSnapshot, createLiveEditorState, markPendingEvent } from '~/utils/matchLiveEditor';
 import { isLiveInitialized } from '~/utils/matchLiveClose';
+import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -60,6 +61,28 @@ export function useMatchOperation() {
   // T61: el editor compartido (snapshot aceptado por HTTP + capturas locales
   // pendientes) vive separado del borrador clásico local de `draftEvents`.
   const liveEditor = reactive(createLiveEditorState());
+  // T62: antes de `start` el borrador clásico local exige decisión expresa —
+  // nunca se importa ni se reenvía al compartido.
+  const localDraftResolver = createLocalDraftResolver({
+    hasLocalDraft: () => hasUnsavedDraft.value,
+    confirmResolve: async () => {
+      const discard = await confirm({
+        title: t('live.localDraft.title'),
+        message: t('live.localDraft.message'),
+        confirmLabel: t('live.localDraft.discard'),
+        tone: 'danger',
+      });
+      if (discard) return 'discard';
+      const keep = await confirm({
+        title: t('live.localDraft.keepTitle'),
+        message: t('live.localDraft.keepMessage'),
+        confirmLabel: t('live.localDraft.keep'),
+      });
+      return keep ? 'keep' : null;
+    },
+    clearDraft: () => draftActions.clearDraft(),
+    markPending: (raw) => markPendingEvent(liveEditor, raw),
+  });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
     isBusy: () => busyAction.value !== null,
@@ -417,7 +440,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
