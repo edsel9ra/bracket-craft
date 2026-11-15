@@ -18,6 +18,7 @@ import { createLiveEdit } from '~/utils/matchLiveEdit';
 import { deriveLiveView } from '~/utils/matchLiveAccess';
 import { createLiveClock } from '~/utils/matchLiveClock';
 import { createLiveTransitions } from '~/utils/matchLiveTransitions';
+import { createLiveReview } from '~/utils/matchLiveReview';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -136,6 +137,12 @@ export function useMatchOperation() {
     }),
     resolveLocalDraft: () => localDraftResolver.resolveBeforeStart(),
     matchStatus: () => operation.value?.status ?? '',
+  });
+  // T68: la revisión exige lectura autorizada del conjunto vigente completo
+  // y su recibo solo sirve para el content_revision revisado.
+  const liveReview = createLiveReview({
+    sendReview: (body) => request(`/matches/${matchId}/live/reviews`, { method: 'POST', body }),
+    editor: liveEditor,
   });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
@@ -495,7 +502,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions, liveReview };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
