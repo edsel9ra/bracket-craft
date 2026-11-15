@@ -493,7 +493,8 @@ Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin pos
   - Tests primero: repetir suspensión de autorización, revocación durante fallo, reinicio API y reconexión al otro proceso usando helpers 035.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k restart_recovery` preserva estado aceptado, no reproduce backlog privado ni recupera permisos antiguos.
 
-- [ ] **T77. Ejecutar carga reproducible de entrega F1 reutilizando el arnés real.** RF-013, RF-014, RF-015, RF-018; RNF-001, RNF-004
+- [x] **T77. Ejecutar carga reproducible de entrega F1 reutilizando el arnés real.** RF-013, RF-014, RF-015, RF-018; RNF-001, RNF-004
+  - 2026-11-15 (rama C2): nueva prueba `test_multiprocess_load_1000_sockets_257_principals` en `tests/test_match_live_realtime.py` — 257 principales × 4 sockets (~1030) sobre la API 0 más testigo en la API 1, ráfaga de 6 eventos, fallo SQL + `recover` real. Resultados medidos: conexión en 5,0 s; entrega **p50=858,5 ms / p95=1059,8 ms** (n=6168); lotes de autorización exactamente **[256,1]** por llamada (12 llamadas); RSS estable (api0 +5,7 MiB, api1 +124 KiB); suspensión fail-closed de 1028 sockets durante el fallo y re-suscripción de sesiones vigentes tras `recover`, **sin backlog ni duplicados** (cada `event_id` llega exactamente una vez por socket). `RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py` **50/50**.
   - Tests primero: lote 256/257, dos API, 1.000 sockets/100 principales, ráfagas y fallo/recuperación; no crear generador productivo.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_realtime.py -k load` registra p50/p95, SQL/batching/RSS y ausencia de fuga/duplicación con receptores reales, sin inventar SLA ni memoria constante.
 

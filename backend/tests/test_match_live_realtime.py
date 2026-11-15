@@ -570,6 +570,114 @@ async def test_multiprocess_recovery_cutoff_fail_closed_no_replay(flow, withdraw
 
 
 @pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
+async def test_multiprocess_load_1000_sockets_257_principals(flow):
+    """T77: carga reproducible con receptores reales — 257 principales
+    (lote 256/1) con ~4 sockets cada uno (~1028) repartidos entre dos APIs,
+    ráfaga de eventos y fallo/recuperación; registra p50/p95, lotes SQL y RSS,
+    sin duplicación ni backlog."""
+
+    import asyncio
+    from time import perf_counter
+    from realtime_process import ProcessCluster, percentile
+
+    PRINCIPALS = 257
+    SOCKETS_EACH = 4
+    BURST = 6
+
+    async with ProcessCluster(flow) as cluster:
+        principals = await cluster.identities(PRINCIPALS)
+        wires = []
+        started = perf_counter()
+        # Conexión concurrente por lotes para caber en el presupuesto del test.
+        pending = [cluster.connect(0, identity) for identity in principals
+                   for _ in range(SOCKETS_EACH)]
+        for offset in range(0, len(pending), 128):
+            wires.extend(await asyncio.gather(*pending[offset:offset + 128]))
+        # Dos APIs: los principales cargan el proceso 0 (lote 256/N) y un
+        # testigo sano escucha en el proceso 1.
+        healthy_wires = [
+            await cluster.connect(1, principals[0]),
+            await cluster.connect(1, principals[1])]
+        print(f'LOAD connect {len(wires) + len(healthy_wires)} sockets: {perf_counter() - started:.1f}s')
+        async with asyncio.timeout(60):
+            while (await cluster.rpc(0, 'probe'))['connections'] != len(wires):
+                await asyncio.sleep(0.05)
+            while (await cluster.rpc(1, 'probe'))['connections'] != 2:
+                await asyncio.sleep(0.05)
+        rss_before = [await cluster.rpc(i, 'probe') for i in range(2)]
+
+        # Ráfaga: cada evento debe llegar a cada socket exactamente una vez.
+        latencies = []
+        events = []
+        for _ in range(BURST):
+            sent = perf_counter()
+            event = await cluster.publish(
+                event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+            await cluster.settle(event)
+            for wire in wires:
+                latencies.append(wire.received_at(event) - sent)
+            events.append(event)
+        for event in events:
+            for wire in wires + healthy_wires:
+                occurrences = sum(
+                    1 for _, payload in wire.frames
+                    if payload.get('event_id') == event)
+                assert occurrences == 1
+        print(f'LOAD delivery p50={percentile(latencies, 0.5) * 1000:.1f}ms '
+              f'p95={percentile(latencies, 0.95) * 1000:.1f}ms n={len(latencies)}')
+        probes = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for index, probe in enumerate(probes):
+            assert all(size <= 256 for size in probe['batches'])
+            assert probe['counts'].get('calls', 0) >= BURST
+            print(f'LOAD api{index} batches={probe["batches"]} '
+                  f'calls={probe["counts"].get("calls")} '
+                  f'rss={rss_before[index]["rss_kib"]}->{probe["rss_kib"]}KiB '
+                  f'current={probe["current_rss_kib"]}KiB')
+
+        # Fallo en la API 0 durante la ráfaga: suspensión fail-closed.
+        await cluster.rpc(0, 'mode', values={'fail': True})
+        lost = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(lost)
+        dropped = wires
+        healthy = healthy_wires
+        for wire in dropped:
+            assert wire.payload(lost) is None
+        for wire in healthy:
+            assert wire.payload(lost) is not None
+        probe0 = await cluster.rpc(0, 'probe')
+        print(f'LOAD api0 suspended={probe0["suspended"]} '
+              f'controls={probe0["controls"]}')
+        assert probe0['suspended'] >= 1
+
+        # Recuperación: las sesiones vigentes se re-suscriben y reciben el
+        # evento fresco; el backlog perdido nunca se reproduce; sin duplicados.
+        await cluster.rpc(0, 'mode', values={'fail': False})
+        await cluster.rpc(0, 'recover')
+        fresh = await cluster.publish(
+            event_type='MATCH_LIVE_UPDATED', payload=dict(LIVE_WIRE))
+        await cluster.settle(fresh)
+        for wire in dropped:
+            assert wire.payload(lost) is None
+            occurrences = sum(
+                1 for _, payload in wire.frames
+                if payload.get('event_id') == fresh)
+            assert occurrences == 1
+        for wire in healthy:
+            occurrences = sum(
+                1 for _, payload in wire.frames
+                if payload.get('event_id') == fresh)
+            assert occurrences == 1
+        rss_after = [await cluster.rpc(i, 'probe') for i in range(2)]
+        for index in range(2):
+            growth = rss_after[index]['current_rss_kib'] - rss_before[index]['current_rss_kib']
+            print(f'LOAD api{index} rss growth={growth}KiB')
+            # Sin fuga: el crecimiento queda por debajo de un tope razonable
+            # para ~500 sockets (no se exige memoria constante).
+            assert growth < 128 * 1024
+
+
+@pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
 async def test_multiprocess_restart_recovery_preserves_accepted_state(flow):
     """T76: suspensión repetida + revocación durante el fallo + reinicio real de
     la API; la reconexión al otro proceso conserva lo aceptado, sin replay del
