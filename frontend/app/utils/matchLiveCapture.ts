@@ -119,7 +119,9 @@ export function validateLiveEventForm(raw: unknown): LiveEventFormInput | null {
   }
 
   return {
-    client_event_id: candidate.client_event_id,
+    // UUID del wire en minúsculas: el servidor los serializa así y el
+    // pendiente solo se cierra por igualdad con el snapshot/recibo.
+    client_event_id: (candidate.client_event_id as string).toLowerCase(),
     event_type: eventType,
     team_id: candidate.team_id,
     beneficiary_team_id: candidate.beneficiary_team_id as string | null,
