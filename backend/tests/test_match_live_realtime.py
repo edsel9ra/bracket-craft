@@ -242,3 +242,211 @@ async def test_http_sql_parity(live_service_db, case):
     expected = case in {"view", "both", "assigned", "multirole"}
     assert (response.status_code == 200) is expected
     assert decision == (Decision.ALLOW if expected else Decision.DENY)
+
+
+# ---------------------------------------------------------------------------
+# B3 T50: el aviso público nuevo solo se emite tras revalidar visibilidad actual
+# ---------------------------------------------------------------------------
+
+LIVE_PUBLIC = "MATCH_LIVE_PUBLIC_UPDATED"
+FOREIGN = "32000000-0000-4000-8000-"
+
+
+def public_envelope(event_type=LIVE_PUBLIC, **payload):
+    return {
+        "event_id": str(uuid4()),
+        "organization_id": ORG,
+        "event_type": event_type,
+        "payload": {"match_id": MATCH, "tournament_id": TOURNAMENT, **payload},
+    }
+
+
+class RecordingDelivery:
+    def __init__(self):
+        self.envelopes = []
+
+    async def deliver(self, envelope):
+        self.envelopes.append(envelope)
+
+
+def dispatch_harness(fixture, monkeypatch):
+    from app import main
+
+    calls = []
+
+    async def emit(name, payload, **kwargs):
+        calls.append((name, payload, kwargs))
+
+    delivery = RecordingDelivery()
+    monkeypatch.setattr(
+        main, "SessionFactory", lambda: AsyncSession(fixture.engine)
+    )
+    monkeypatch.setattr(main.sio, "emit", emit)
+    monkeypatch.setattr(main, "private_delivery", delivery)
+    return main, calls, delivery
+
+
+async def emit_envelope(main, data):
+    await main.emit_domain_event(main.parse_envelope({"event": json.dumps(data)}))
+
+
+async def start_clock(f):
+    """Materializa ``match_live_state``: el partido entra en la proyección."""
+    await f.call(
+        "execute", command("start_clock", segment_id=SEGMENT_FIRST)
+    )
+
+
+async def test_public_dispatch_emits_after_current_visibility_revalidation(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, delivery = dispatch_harness(live_service_db, monkeypatch)
+    data = public_envelope()
+    await emit_envelope(main, data)
+    assert calls == [
+        (
+            LIVE_PUBLIC,
+            {
+                "event_id": data["event_id"],
+                "match_id": MATCH,
+                "tournament_id": TOURNAMENT,
+            },
+            {"room": f"tournament:{TOURNAMENT}"},
+        )
+    ]
+    assert len(delivery.envelopes) == 1
+
+
+async def test_public_dispatch_tournament_hidden_after_enqueue_does_not_emit(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(
+        "UPDATE tournaments SET status='draft' WHERE id=$1", TOURNAMENT
+    )
+    await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # Organización inactiva tras encolar: ya no es proyección autorizada.
+        "UPDATE organizations SET is_active=FALSE WHERE id='" + ORG + "'",
+        # Versión archivada tras encolar: sale de la selección publicada.
+        "UPDATE tournament_versions SET status='archived' WHERE tournament_id='"
+        + TOURNAMENT + "'",
+    ],
+    ids=["organization_inactive", "version_archived"],
+)
+async def test_public_dispatch_match_out_of_projection_does_not_emit(
+    live_service_db, monkeypatch, statement
+):
+    await start_clock(live_service_db)
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(statement)
+    await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "organization_id,match_id,tournament_id",
+    [
+        (FOREIGN + "000000000001", MATCH, TOURNAMENT),
+        (ORG, FOREIGN + "000000000050", TOURNAMENT),
+        (ORG, MATCH, FOREIGN + "000000000010"),
+        (FOREIGN + "000000000001", FOREIGN + "000000000050", FOREIGN + "000000000010"),
+    ],
+    ids=["foreign_org", "foreign_match", "foreign_tournament", "all_foreign"],
+)
+async def test_public_dispatch_foreign_references_do_not_emit(
+    live_service_db, monkeypatch, organization_id, match_id, tournament_id
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    data = public_envelope(match_id=match_id, tournament_id=tournament_id)
+    data["organization_id"] = organization_id
+    await emit_envelope(main, data)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "event_type,extra",
+    [
+        # Nombre privado compartiendo identificadores: nunca sale al room público.
+        ("MATCH_LIVE_UPDATED", {}),
+        ("MATCH_LIVE_UPDATED", {"scope": "organization"}),
+        # El nombre público no acepta ámbito organizativo ni claves extra.
+        (LIVE_PUBLIC, {"scope": "organization"}),
+        (LIVE_PUBLIC, {"home_score": 3}),
+        (LIVE_PUBLIC, {"match_id": None}),
+        (LIVE_PUBLIC, {"match_id": "no-uuid"}),
+        (LIVE_PUBLIC, {"tournament_id": "no-uuid"}),
+    ],
+    ids=[
+        "private_name",
+        "private_name_scoped",
+        "public_scoped",
+        "extra_key",
+        "null_match",
+        "bad_match",
+        "bad_tournament",
+    ],
+)
+async def test_public_dispatch_rejects_private_or_malformed_wires(
+    live_service_db, monkeypatch, event_type, extra
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await emit_envelope(main, public_envelope(event_type=event_type, **extra))
+    assert calls == []
+
+
+async def test_public_dispatch_query_failure_does_not_emit(
+    live_service_db, monkeypatch
+):
+    from app import main
+
+    calls = []
+
+    async def emit(name, payload, **kwargs):
+        calls.append((name, payload, kwargs))
+
+    def broken_factory():
+        raise RuntimeError("consulta de visibilidad caída")
+
+    monkeypatch.setattr(main, "SessionFactory", broken_factory)
+    monkeypatch.setattr(main.sio, "emit", emit)
+    monkeypatch.setattr(main, "private_delivery", RecordingDelivery())
+    with pytest.raises(RuntimeError):
+        await emit_envelope(main, public_envelope())
+    assert calls == []
+
+
+async def test_public_dispatch_preserves_previous_public_events(
+    live_service_db, monkeypatch
+):
+    main, calls, _ = dispatch_harness(live_service_db, monkeypatch)
+    await live_service_db.admin.execute(
+        "UPDATE tournaments SET status='draft' WHERE id=$1", TOURNAMENT
+    )
+    for name in ("MATCH_UPDATED", "MATCH_CLOSED", "STANDINGS_UPDATED"):
+        await emit_envelope(main, public_envelope(event_type=name))
+    assert [c[0] for c in calls] == ["MATCH_UPDATED", "MATCH_CLOSED", "STANDINGS_UPDATED"]
+    assert all(c[2] == {"room": f"tournament:{TOURNAMENT}"} for c in calls)
+
+
+async def test_public_dispatch_draft_never_broadcasts_to_organization_room(
+    live_service_db, monkeypatch
+):
+    await start_clock(live_service_db)
+    main, calls, delivery = dispatch_harness(live_service_db, monkeypatch)
+    await emit_envelope(main, public_envelope())
+    await emit_envelope(
+        main, public_envelope(event_type="MATCH_LIVE_UPDATED", scope="organization")
+    )
+    rooms = [c[2].get("room", "") for c in calls]
+    assert all(not room.startswith("organization:") for room in rooms)
+    # Solo el aviso privado llega a la entrega organizativa autorizada; el
+    # público pasa por el filtro pero el catálogo lo descarta.
+    assert len(delivery.envelopes) == 2

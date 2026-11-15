@@ -6,7 +6,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 - #80/A1, #81/A2, #82/B1 y #83/B2 fusionados según main 8098cf35. B3 T49–T60 en curso en devin/1794673735-partido-en-vivo-b3. Sin aceptación F1 ni despliegue.
 
 ## Pendiente
-- B3: T49 cerrada en verde local (2 passed route; 3 passed 059; regresión pública limpia, Ruff OK). Desviación autorizada 2026-11-15 (Opción 1): 059 añade bracket_code al final de la vista interna de selección; público sigue con 14 claves, 001–058 intactas. test_rectification_flow fijado a schema:59 donde lee /matches. Contenedores bc-b3-db/python/redis activos, PostgreSQL 001–059.
+- B3: T49–T50 cerradas en verde local (route 2 passed; 059 3 passed; public_dispatch 18 passed; regresión realtime limpia, Ruff OK). Desviación autorizada 2026-11-15 (Opción 1): 059 añade bracket_code al final de la vista interna de selección; público sigue con 14 claves, 001–058 intactas. test_rectification_flow fijado a schema:59 donde lee /matches. Despacho público nuevo revalida visibilidad en la selección interna + torneo/organización; fallo de consulta propaga al relay. Contenedores bc-b3-db/python/redis activos, PostgreSQL 001–059; tests realtime_db necesitan REDIS_URL=redis://172.17.0.3:6379/0.
 - Continuar T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
 
 ## Historial de fases 036
