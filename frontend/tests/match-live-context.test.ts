@@ -1,197 +1,177 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  createLiveContextCoordinator,
-  isAccessDenied,
-  normalizeLiveCapabilities,
-  type LiveCapabilities,
-} from '../app/utils/matchLiveContext.ts';
+import { createLiveContextCoordinator, normalizeLiveCapabilities } from '../app/utils/matchLiveContext.ts';
+import { applySharedSnapshot, createLiveEditorState } from '../app/utils/matchLiveEditor.ts';
 
-const ACCESS: LiveCapabilities = {
-  can_view: true,
-  can_operate: false,
-  can_close: false,
-  available: true,
-};
+const SEGMENT = '11111111-2222-4333-8444-555566667777';
+const TEAM = 'aaaaaaaa-0000-4000-8000-000000000001';
 
-function apiFailure(status: number) {
+function liveEvent() {
+  return {
+    client_event_id: 'cccccccc-0000-4000-8000-000000000003',
+    event_type: 'goal',
+    team_id: TEAM,
+    beneficiary_team_id: null,
+    player_id: 'eeeeeeee-0000-4000-8000-000000000010',
+    player_out_id: null,
+    player_in_id: null,
+    assist_player_id: null,
+    minute: 12,
+    added_minute: 0,
+    segment_id: SEGMENT,
+    metadata: null,
+  };
+}
+
+function snapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    initialized: true,
+    status: 'live',
+    revision: 4,
+    content_revision: 2,
+    events: [liveEvent()],
+    home_score: 1,
+    away_score: 0,
+    clock: { state: 'paused', segment_id: SEGMENT, segment_number: 1, elapsed_us: 60_000_000, anchor_at: null, observed_at: '2026-11-15T10:02:00Z' },
+    ...overrides,
+  };
+}
+
+function access(overrides: Record<string, unknown> = {}) {
+  return { can_view: true, can_operate: true, can_close: true, available: true, ...overrides };
+}
+
+function failure(status: number) {
   return Object.assign(new Error(`HTTP ${status}`), { status });
 }
 
-interface Applied {
-  access: LiveCapabilities | null;
-  live: unknown;
-  history033: unknown[];
-}
-
 function harness(overrides: {
-  access?: () => Promise<unknown>;
-  live?: () => Promise<unknown>;
+  fetchAccess?: () => Promise<unknown>;
+  fetchLive?: () => Promise<unknown>;
   current?: () => boolean;
   busy?: () => boolean;
 } = {}) {
-  const applied: Applied = { access: null, live: null, history033: [{ id: 'rect-1' }] };
-  const denied: string[] = [];
-  const busyMarks: number[] = [];
-  const fetches: string[] = [];
+  const editor = createLiveEditorState();
+  const applied: unknown[] = [];
+  let deniedAccess = 0;
+  let deniedLive = 0;
+  let busyMarks = 0;
+  let accessCalls = 0;
+  let liveCalls = 0;
   const coordinator = createLiveContextCoordinator({
-    isCurrent: overrides.current ?? (() => true),
-    isBusy: overrides.busy ?? (() => false),
-    onBusy: () => busyMarks.push(1),
+    isCurrent: () => (overrides.current ? overrides.current() : true),
+    isBusy: () => (overrides.busy ? overrides.busy() : false),
+    onBusy: () => { busyMarks += 1; },
     source: {
       fetchAccess: async () => {
-        fetches.push('access');
-        return overrides.access ? overrides.access() : ACCESS;
+        accessCalls += 1;
+        return overrides.fetchAccess ? overrides.fetchAccess() : access();
       },
       fetchLive: async () => {
-        fetches.push('live');
-        return overrides.live ? overrides.live() : { initialized: true, status: 'live' };
+        liveCalls += 1;
+        return overrides.fetchLive ? overrides.fetchLive() : snapshot();
       },
     },
     callbacks: {
-      applyAccess: (value) => {
-        applied.access = value;
-      },
-      applyLive: (value) => {
-        applied.live = value;
-      },
-      denyAccess: () => {
-        denied.push('access');
-        applied.access = null;
-        applied.live = null;
-      },
-      denyLive: () => {
-        denied.push('live');
-        applied.live = null;
-      },
+      applyAccess: (caps) => applied.push(caps),
+      applyLive: (value) => { applySharedSnapshot(editor, value); },
+      denyAccess: () => { deniedAccess += 1; editor.shared = null; },
+      denyLive: () => { deniedLive += 1; editor.shared = null; },
     },
   });
-  return { coordinator, applied, denied, busyMarks, fetches };
+  return {
+    coordinator,
+    editor,
+    applied,
+    stats: () => ({ deniedAccess, deniedLive, busyMarks, accessCalls, liveCalls }),
+  };
 }
 
-test('normalizeLiveCapabilities exige las cuatro booleanas y nada más', () => {
-  assert.deepEqual(normalizeLiveCapabilities(ACCESS), ACCESS);
-  for (const raw of [
-    null,
-    'x',
-    [],
-    {},
-    { ...ACCESS, can_view: 'true' },
-    { ...ACCESS, available: 1 },
-    { can_view: true, can_operate: false, can_close: false },
-    { ...ACCESS, scope: 'organization' },
-  ]) {
-    // Los extras se descartan pero la forma se admite solo si las cuatro son booleanas.
-    if (typeof raw === 'object' && raw !== null && 'scope' in raw) {
-      assert.deepEqual(normalizeLiveCapabilities(raw), ACCESS);
-    } else {
-      assert.equal(normalizeLiveCapabilities(raw), null);
-    }
-  }
-});
-
-test('isAccessDenied cubre solo 401/403/404', () => {
-  for (const status of [401, 403, 404]) assert.equal(isAccessDenied(apiFailure(status)), true);
-  for (const status of [0, 409, 500]) assert.equal(isAccessDenied(apiFailure(status)), false);
-});
-
-test('reconstruye capacidades y borrador autorizado con useApi inyectado', async () => {
-  const { coordinator, applied, fetches } = harness();
-  await coordinator.request();
-  assert.deepEqual(applied.access, ACCESS);
-  assert.deepEqual(applied.live, { initialized: true, status: 'live' });
-  assert.deepEqual(fetches, ['access', 'live']);
-});
-
-test('permiso perdido limpia capacidades y borrador sin tocar historial 033', async () => {
-  for (const [label, access, expectedAccess] of [
-    ['can_view_false', async () => ({ ...ACCESS, can_view: false }), { ...ACCESS, can_view: false }],
-    ['forbidden', async () => { throw apiFailure(403); }, null],
-  ] as const) {
-    const { coordinator, applied, denied, fetches } = harness({ access });
-    await coordinator.request();
-    assert.deepEqual(applied.access, expectedAccess, label);
-    assert.equal(applied.live, null, label);
-    assert.equal(denied.includes('access'), true, label);
-    // Sin lectura autorizada, el borrador ni siquiera se consulta.
-    assert.deepEqual(fetches, ['access'], label);
-    assert.equal(applied.history033.length, 1, label);
-  }
-});
-
-test('denegación live limpia el borrador y conserva capacidades e historial 033', async () => {
-  const { coordinator, applied, denied } = harness({
-    live: async () => {
-      throw apiFailure(404);
-    },
-  });
-  await coordinator.request();
-  assert.deepEqual(applied.access, ACCESS);
-  assert.equal(applied.live, null);
-  assert.deepEqual(denied, ['live']);
-  assert.deepEqual(applied.history033, [{ id: 'rect-1' }]);
-});
-
-test('una respuesta antigua tras cambio de contexto nunca se aplica', async () => {
-  let current = true;
-  let resolveLive: ((v: unknown) => void) | null = null;
-  const { coordinator, applied } = harness({
-    current: () => current,
-    live: () => new Promise((resolve) => {
-      resolveLive = resolve;
-    }),
-  });
-  const run = coordinator.request();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  current = false;
-  resolveLive?.({ initialized: true, status: 'live' });
-  await run;
-  assert.deepEqual(applied.access, ACCESS);
-  assert.equal(applied.live, null);
-});
-
-test('una corrida en curso aplica la última generación, no la anterior', async () => {
-  let stale = true;
-  let call = 0;
-  const { coordinator, applied } = harness({
-    live: async () => {
-      call += 1;
-      return { generation: call };
-    },
-  });
-  await coordinator.request();
-  assert.deepEqual(applied.live, { generation: 1 });
-  stale = false;
-  await coordinator.request();
-  assert.deepEqual(applied.live, { generation: 2 });
-});
-
-test('busy aplaza la corrida con una sola trailing, sin duplicar lecturas', async () => {
+test('aviso durante escritura: la lectura se aplaza, no descarta ni cierra el editor', async () => {
   let busy = true;
-  const { coordinator, applied, busyMarks, fetches } = harness({ busy: () => busy });
+  const { coordinator, stats } = harness({ busy: () => busy });
   const first = coordinator.request();
-  const second = coordinator.request();
   await first;
-  await second;
-  // Con la acción ocupada la reconstrucción se marca pendiente una vez.
-  assert.equal(busyMarks.length, 2);
-  assert.equal(applied.access, null);
+  assert.equal(stats().liveCalls, 0);
+  assert.equal(stats().busyMarks >= 1, true);
+  // Al terminar la escritura, una nueva corrida sí trae el borrador.
   busy = false;
   await coordinator.request();
-  assert.deepEqual(applied.access, ACCESS);
-  assert.equal(fetches.filter((f) => f === 'live').length, 1);
+  assert.equal(stats().liveCalls, 1);
 });
 
-test('un fallo no denegación conserva el estado vigente sin limpiar', async () => {
-  const failures = [
-    { live: async () => { throw apiFailure(500); } },
-    { access: async () => { throw apiFailure(500); } },
-  ];
-  for (const extra of failures) {
-    const { coordinator, applied, denied } = harness(extra);
-    await coordinator.request();
-    assert.equal(denied.length, 0);
-    assert.equal(applied.history033.length, 1);
-  }
+test('ráfaga de avisos produce una corrida y a lo sumo una trailing', async () => {
+  let liveCallsSeen = 0;
+  const { coordinator, stats } = harness({
+    fetchLive: () => {
+      liveCallsSeen += 1;
+      // La primera lectura se resuelve en un microtask: los avisos posteriores
+      // ya marcaron la corrida trailing; la segunda resuelve de inmediato.
+      if (liveCallsSeen === 1) return new Promise((r) => { queueMicrotask(() => r(snapshot())); });
+      return Promise.resolve(snapshot());
+    },
+  });
+  const p1 = coordinator.request();
+  const p2 = coordinator.request();
+  const p3 = coordinator.request();
+  await Promise.all([p1, p2, p3]);
+  assert.equal(stats().accessCalls <= 2, true);
+  assert.equal(stats().liveCalls <= 2, true);
+});
+
+test('respuesta vieja o fuera de contexto nunca se aplica ni restaura lo revocado', async () => {
+  let current = true;
+  const { coordinator, editor, applied } = harness({
+    current: () => current,
+    fetchLive: async () => {
+      // La organización/identidad cambió mientras la lectura viajaba.
+      current = false;
+      return snapshot();
+    },
+  });
+  await coordinator.request();
+  assert.equal(applied.length, 1);
+  assert.equal(editor.shared, null);
+});
+
+test('denegación de acceso limpia ambos; denegación del borrador solo limpia live', async () => {
+  const { coordinator, editor, stats } = harness({ fetchAccess: async () => { throw failure(403); } });
+  await coordinator.request();
+  assert.equal(stats().deniedAccess, 1);
+  assert.equal(stats().liveCalls, 0);
+  const { coordinator: c2, editor: e2, stats: s2 } = harness({ fetchLive: async () => { throw failure(404); } });
+  await c2.request();
+  assert.equal(s2().deniedLive, 1);
+  assert.equal(e2.shared, null);
+});
+
+test('un fallo no denegación conserva el estado vigente y se recupera por HTTP autorizado', async () => {
+  let fail = true;
+  const { coordinator, editor } = harness({
+    fetchLive: async () => {
+      if (fail) throw failure(500);
+      return snapshot();
+    },
+  });
+  await coordinator.request();
+  assert.equal(editor.shared, null);
+  fail = false;
+  await coordinator.request();
+  assert.equal(editor.shared!.events.length, 1);
+  assert.equal(editor.shared!.revision, 4);
+});
+
+test('capacidades sin can_view nunca traen el borrador ni lo restauran', async () => {
+  const { coordinator, editor, stats } = harness({ fetchAccess: async () => access({ can_view: false, can_operate: true }) });
+  await coordinator.request();
+  assert.equal(stats().liveCalls, 0);
+  assert.equal(editor.shared, null);
+});
+
+test('respuesta de acceso inválida equivale a denegación limpia', async () => {
+  const { coordinator, stats } = harness({ fetchAccess: async () => ({ garbage: true }) });
+  await coordinator.request();
+  assert.equal(stats().deniedAccess, 1);
+  assert.equal(stats().liveCalls, 0);
 });

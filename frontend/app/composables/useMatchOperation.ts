@@ -10,7 +10,16 @@ import { describeOpeningBlocked } from '~/utils/rosterLimits';
 import { type MatchDraftStorage } from '~/utils/matchDraft';
 import { safeInternalRedirect } from '~/utils/navigation';
 import { createLiveContextCoordinator, type LiveCapabilities } from '~/utils/matchLiveContext';
+import { applySharedSnapshot, createLiveEditorState, markPendingEvent } from '~/utils/matchLiveEditor';
 import { isLiveInitialized } from '~/utils/matchLiveClose';
+import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
+import { createLiveCapture } from '~/utils/matchLiveCapture';
+import { createLiveEdit } from '~/utils/matchLiveEdit';
+import { deriveLiveView } from '~/utils/matchLiveAccess';
+import { createLiveClock } from '~/utils/matchLiveClock';
+import { createLiveTransitions } from '~/utils/matchLiveTransitions';
+import { createLiveReview } from '~/utils/matchLiveReview';
+import { createLiveClose } from '~/utils/matchLiveCloseLive';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -56,6 +65,107 @@ export function useMatchOperation() {
   // una denegación limpia la vista privada sin tocar el historial 033.
   const liveAccess = ref<LiveCapabilities | null>(null);
   const liveSnapshot = ref<unknown | null>(null);
+  // T61: el editor compartido (snapshot aceptado por HTTP + capturas locales
+  // pendientes) vive separado del borrador clásico local de `draftEvents`.
+  const liveEditor = reactive(createLiveEditorState());
+  // T65: cada capacidad gobierna solo su superficie (detalle/controles/cierre).
+  const liveView = computed(() => deriveLiveView(liveAccess.value));
+  // T62: antes de `start` el borrador clásico local exige decisión expresa —
+  // nunca se importa ni se reenvía al compartido.
+  const localDraftResolver = createLocalDraftResolver({
+    hasLocalDraft: () => hasUnsavedDraft.value,
+    confirmResolve: async () => {
+      const discard = await confirm({
+        title: t('live.localDraft.title'),
+        message: t('live.localDraft.message'),
+        confirmLabel: t('live.localDraft.discard'),
+        tone: 'danger',
+      });
+      if (discard) return 'discard';
+      const keep = await confirm({
+        title: t('live.localDraft.keepTitle'),
+        message: t('live.localDraft.keepMessage'),
+        confirmLabel: t('live.localDraft.keep'),
+      });
+      return keep ? 'keep' : null;
+    },
+    clearDraft: () => draftActions.clearDraft(),
+    markPending: (raw) => markPendingEvent(liveEditor, raw),
+  });
+  // T63: capturas compartidas por `POST /live/commands` con command_id
+  // estable; solo el snapshot autorizado las presenta como aceptadas.
+  const liveCapture = createLiveCapture({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+  });
+  // T64: corrección/retirada con confirmación expresa; una base movida exige
+  // revisar antes de guardar y la edición conserva su texto.
+  const liveEdit = createLiveEdit({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    confirm: async (kind) => await confirm({
+      title: t(kind === 'correct' ? 'live.editCorrect.title' : 'live.editRemove.title'),
+      message: t(kind === 'correct' ? 'live.editCorrect.message' : 'live.editRemove.message'),
+      confirmLabel: t(kind === 'correct' ? 'live.editCorrect.action' : 'live.editRemove.action'),
+      tone: kind === 'remove' ? 'danger' : 'primary',
+    }),
+    commandId: () => crypto.randomUUID(),
+  });
+  // T66: el reloj solo cambia su referencia por comandos; la vista calcula
+  // con `now` inyectable y ningún intervalo escribe al servidor.
+  const liveClock = createLiveClock({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    commandId: () => crypto.randomUUID(),
+  });
+  // T67: inicio/suspensión/reanudación con confirmación expresa; start
+  // resuelve antes el borrador clásico local (T62) y resume jamás arranca
+  // el reloj ni crea segmento.
+  const liveTransitions = createLiveTransitions({
+    send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
+    requestSnapshot: () => liveContext.request(),
+    editor: liveEditor,
+    commandId: () => crypto.randomUUID(),
+    confirm: (kind) => confirm({
+      title: t(`live.transition.${kind}.title`),
+      message: t(`live.transition.${kind}.message`),
+      confirmLabel: t(`live.transition.${kind}.action`),
+      tone: kind === 'suspend' ? 'danger' : 'primary',
+    }),
+    resolveLocalDraft: () => localDraftResolver.resolveBeforeStart(),
+    matchStatus: () => operation.value?.match?.status ?? '',
+  });
+  // T68: la revisión exige lectura autorizada del conjunto vigente completo
+  // y su recibo solo sirve para el content_revision revisado.
+  const liveReview = createLiveReview({
+    sendReview: (body) => request(`/matches/${matchId}/live/reviews`, { method: 'POST', body }),
+    editor: liveEditor,
+  });
+  // T69: el cierre live solo envía el recibo revisado; el borrador se
+  // conserva ante cualquier error y el modo provisional solo termina tras
+  // un cierre aceptado.
+  const liveClose = createLiveClose({
+    sendClose: (body) => request(`/matches/${matchId}/close`, { method: 'POST', body }),
+    review: liveReview,
+    editor: liveEditor,
+    confirm: () => confirm({
+      title: t('live.closeConfirm.title'),
+      message: t('live.closeConfirm.message'),
+      confirmLabel: t('live.closeConfirm.action'),
+      tone: 'danger',
+    }),
+    onClosed: () => {
+      liveEditor.shared = null;
+      liveEditor.pending = [];
+      liveReview.clear();
+      liveEdit.cancelEdit();
+      liveSnapshot.value = null;
+      refreshOperation();
+    },
+  });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
     isBusy: () => busyAction.value !== null,
@@ -66,9 +176,9 @@ export function useMatchOperation() {
     },
     callbacks: {
       applyAccess: (value) => { liveAccess.value = value; },
-      applyLive: (value) => { liveSnapshot.value = value; },
-      denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; },
-      denyLive: () => { liveSnapshot.value = null; },
+      applyLive: (value) => { applySharedSnapshot(liveEditor, value); liveEdit.onSharedChanged(); liveSnapshot.value = value; },
+      denyAccess: () => { liveAccess.value = null; liveSnapshot.value = null; liveEditor.shared = null; },
+      denyLive: () => { liveSnapshot.value = null; liveEditor.shared = null; },
     },
   });
 
@@ -283,6 +393,10 @@ export function useMatchOperation() {
     operation.value = null;
     liveAccess.value = null;
     liveSnapshot.value = null;
+    // Otro partido/identidad: ni el compartido ni los pendientes pertenecen aquí.
+    liveEditor.shared = null;
+    liveEditor.pending = [];
+    liveEdit.cancelEdit();
     pendingReload = false;
     refreshGeneration += 1;
     if (!disposed && key === mountedContextKey) {
@@ -410,7 +524,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions, liveReview, liveClose };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;

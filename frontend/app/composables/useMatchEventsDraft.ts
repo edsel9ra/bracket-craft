@@ -89,8 +89,9 @@ export function useMatchEventsDraft(state: MatchOperationState, dependencies: {
     }
   }
 
-  async function discardDraft() {
-    if (!import.meta.client || !(await confirm({ title: t('confirm.discardDraft.title'), message: t('match.discardDraft'), confirmLabel: t('confirm.discardDraft.action'), tone: 'danger' }))) return;
+  // T62: el resolver del borrador clásico limpia sin su propia confirmación —
+  // la decisión expresa la hace quien lo invoca.
+  function clearDraft() {
     draftEvents.value = [];
     Object.assign(closeForm, defaultCloseForm);
     eventForm.player_out_id = '';
@@ -101,5 +102,10 @@ export function useMatchEventsDraft(state: MatchOperationState, dependencies: {
     persistDraft();
   }
 
-  return { draftStorageOrNull, closeFormSnapshot, removePersistedDraft, loadPersistedDraft, persistDraft, discardDraft };
+  async function discardDraft() {
+    if (!import.meta.client || !(await confirm({ title: t('confirm.discardDraft.title'), message: t('match.discardDraft'), confirmLabel: t('confirm.discardDraft.action'), tone: 'danger' }))) return;
+    clearDraft();
+  }
+
+  return { draftStorageOrNull, closeFormSnapshot, removePersistedDraft, loadPersistedDraft, persistDraft, discardDraft, clearDraft };
 }

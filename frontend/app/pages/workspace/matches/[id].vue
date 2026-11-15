@@ -12,6 +12,7 @@ import MatchFieldSection from '~/components/match/MatchFieldSection.vue';
 import MatchRosterLinks from '~/components/match/MatchRosterLinks.vue';
 import MatchLineupSection from '~/components/match/MatchLineupSection.vue';
 import MatchEventsSection from '~/components/match/MatchEventsSection.vue';
+import MatchLiveSection from '~/components/match/MatchLiveSection.vue';
 import MatchCloseSection from '~/components/match/MatchCloseSection.vue';
 import { OPENING_BLOCKED_LABEL_KEYS } from '~/utils/rosterLimits';
 import type { MatchOperation } from '~/components/match/types';
@@ -102,6 +103,8 @@ onBeforeUnmount(context.unmountOperation);
            <MatchLineupSection :context="context" @save-lineup="context.saveLineup" @set-formation="context.setFormation" @toggle-lineup-publication="context.toggleLineupPublication" />
 
            <MatchEventsSection :context="context" :operation="operation" :match="match" @add-event="context.addEvent" @remove-event="context.removeEvent" @discard-draft="context.discardDraft" />
+
+           <MatchLiveSection :context="context" :match="match" />
 
            <MatchCloseSection :context="context" :match="match" @begin-close="context.beginClose" @close-match="context.closeMatch" />
         </div>
