@@ -13,6 +13,22 @@ Se conserva el 401 genérico, el 409 de registro y el rate limit. Es mitigación
 del atajo temporal, no una garantía de latencia idéntica entre peticiones:
 consulta de base de datos, red y carga del proceso siguen variando.
 
+## Cambio posterior — majors de acciones (2026-11-15)
+
+Se integran las propuestas major de Dependabot (#28–#32) en un único cambio,
+con CI verde. Los SHA siguen fijados al commit (verificados con
+`git ls-remote`, desreferenciando `^{}`); Trivy continúa en v0.36.0:
+
+| Acción | Tag | Commit |
+|---|---|---|
+| actions/checkout | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| actions/setup-python | v7.1.0 | `6d4fd22b20465ccc0f7354476588e8df7c9ca0e0` |
+| actions/setup-node | v7.1.0 | `949feb2413d6458794dcd2491c4babbbce0c15c1` |
+| pnpm/action-setup | v6.1.1 | `73e46992e05b19abd31f2f3c20e0e7370d762115` |
+| actions/upload-artifact | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` |
+
+La tabla siguiente queda como antecedente de H4.
+
 ## Cambio posterior H4 — acciones y dependencias (2026-11-09)
 
 Todos los `uses:` de los workflows apuntan a commits SHA completos. El

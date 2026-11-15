@@ -18,6 +18,10 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    # Node 24 es la versión de referencia (constitución §3.5): sus tipos no deben superar ese major.
+    ignore:
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       frontend-minor-patch:
         update-types: [minor, patch]
