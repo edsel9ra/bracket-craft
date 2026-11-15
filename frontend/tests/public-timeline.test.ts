@@ -167,3 +167,30 @@ test('cada clave de la cronología existe en ES y EN', () => {
     assert.match(en!, new RegExp(`'${key.replace(/\./g, '\\.')}': '`), `en ${key}`);
   }
 });
+
+const page = readFileSync(new URL('../app/pages/tournaments/[id].vue', import.meta.url), 'utf8');
+
+test('la página ofrece la cronología solo en partidos finished, junto a la alineación', () => {
+  const triggers = page.match(/v-if="canOpenTimeline\(match\)"/g) ?? [];
+  const lineupTriggers = page.match(/v-if="matchLineup\(match\)"/g) ?? [];
+  assert.equal(triggers.length, lineupTriggers.length);
+  assert.ok(triggers.length > 0);
+  assert.match(page, /aria-controls="public-timeline-dialog"/);
+  assert.match(page, /if \(isSuspendedPublicMatch\(match\) \|\| !canOpenTimeline\(match\)\) return;/);
+});
+
+test('la página carga la cronología bajo demanda mediante useApi', () => {
+  assert.match(page, /const \{ request \} = useApi\(\);/);
+  assert.match(page, /request<PublicMatchTimelineData>\(`\/tournaments\/public\/\$\{tournamentId\}\/matches\/\$\{matchId\}\/timeline`\)/);
+  assert.doesNotMatch(page, /\$fetch\(|fetch\(`/);
+  assert.match(page, /<PublicMatchTimeline[\s\S]*@retry="loadTimeline"/);
+});
+
+test('el diálogo abierto se recarga con el refresco público, sin evento nuevo', () => {
+  assert.match(page, /shouldReloadTimeline\(previous, next\)\) void loadTimeline\(\)/);
+  for (const field of ['status', 'home_score', 'away_score', 'rectified_at']) {
+    assert.match(page, new RegExp(`${field}: match\\.${field}`), field);
+  }
+  assert.match(page, /\['MATCH_CLOSED', 'MATCH_UPDATED', 'STANDINGS_UPDATED'\]/);
+  assert.doesNotMatch(page, /TIMELINE_UPDATED|MATCH_TIMELINE/);
+});
