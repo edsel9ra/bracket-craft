@@ -98,7 +98,6 @@ export function useMatchOperation() {
     send: (body) => request(`/matches/${matchId}/live/commands`, { method: 'POST', body }),
     requestSnapshot: () => liveContext.request(),
     editor: liveEditor,
-    commandId: () => crypto.randomUUID(),
   });
   // T64: corrección/retirada con confirmación expresa; una base movida exige
   // revisar antes de guardar y la edición conserva su texto.

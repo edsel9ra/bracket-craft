@@ -108,9 +108,11 @@ export function validateLiveEventForm(raw: unknown): LiveEventFormInput | null {
     if (typeof metadata !== 'object' || Array.isArray(metadata)) return null;
     const keys = Object.keys(metadata);
     if (eventType === 'red_card') {
+      // `{}` equivale a direct_red en el servidor (schemas.py D-9); otras
+      // claves o un tipo fuera del catálogo se rechazan como el wire.
       if (keys.length > 1 || (keys.length === 1 && keys[0] !== 'red_card_type')) return null;
       const redCardType = (metadata as Record<string, unknown>).red_card_type;
-      if (typeof redCardType !== 'string' || !RED_CARD_TYPES.has(redCardType)) return null;
+      if (redCardType !== undefined && (typeof redCardType !== 'string' || !RED_CARD_TYPES.has(redCardType))) return null;
     } else if (keys.length > 0) {
       return null;
     }
@@ -145,8 +147,6 @@ export interface LiveCaptureOptions {
   /** Recarga del snapshot autorizado (liveContext.request()). */
   requestSnapshot(): Promise<void>;
   editor: LiveEditorState;
-  /** Genera el `command_id` del comando (UUID nuevo por captura). */
-  commandId(): string;
 }
 
 export interface LiveCapture {
@@ -173,7 +173,10 @@ export function createLiveCapture(options: LiveCaptureOptions): LiveCapture {
         return 'sent';
       }
       inFlight = true;
-      const commandId = options.commandId();
+      // El `client_event_id` identifica la captura: un reintento tras perder la
+      // respuesta repite el mismo comando y el servidor reenvía su recibo
+      // (dedupe command_id+request_hash+session_id), nunca una escritura nueva.
+      const commandId = event.client_event_id;
       try {
         const ack = await options.send({
           command_id: commandId,
