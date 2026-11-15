@@ -72,11 +72,12 @@ function captureSubmit() {
     client_event_id: captureEventId.value,
     event_type: captureForm.event_type,
     team_id: captureForm.team_id,
-    beneficiary_team_id: uuidOrNull(captureForm.beneficiary_team_id),
-    player_id: captureForm.player_id,
-    player_out_id: uuidOrNull(captureForm.player_out_id),
-    player_in_id: uuidOrNull(captureForm.player_in_id),
-    assist_player_id: uuidOrNull(captureForm.assist_player_id),
+    // Solo los campos del tipo elegido viajan: los ocultos se envían null.
+    beneficiary_team_id: captureForm.event_type === 'own_goal' ? uuidOrNull(captureForm.beneficiary_team_id) : null,
+    player_id: captureForm.event_type === 'substitution' ? captureForm.player_out_id : captureForm.player_id,
+    player_out_id: captureForm.event_type === 'substitution' ? uuidOrNull(captureForm.player_out_id) : null,
+    player_in_id: captureForm.event_type === 'substitution' ? uuidOrNull(captureForm.player_in_id) : null,
+    assist_player_id: captureForm.event_type === 'goal' ? uuidOrNull(captureForm.assist_player_id) : null,
     minute: captureForm.minute,
     added_minute: captureForm.added_minute,
     segment_id: segmentId.value,
@@ -151,7 +152,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
 
     <template v-if="shared">
       <div class="live-clock muted-note" role="status">
-        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="displayed"> · {{ t('live.clock.elapsed', { seconds: Math.floor(displayed.elapsedUs / 1_000_000) }) }}</template>
+        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="displayed && clock?.state !== 'not_started'"> · {{ t('live.clock.elapsed', { seconds: Math.floor(displayed.elapsedUs / 1_000_000) }) }}</template>
       </div>
       <div v-if="liveView.controlsEnabled" class="live-actions">
         <button v-if="shared.status === 'live'" class="button-secondary" type="button" :disabled="liveTransitions.inFlight" @click="suspendLive">{{ t('live.transition.suspend.action') }}</button>
@@ -192,7 +193,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
             <FormField :label="t('live.capture.playerOut')" for-id="live-capture-out"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_out_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
             <FormField :label="t('live.capture.playerIn')" for-id="live-capture-in"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_in_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
           </template>
-          <FormField v-if="captureForm.event_type === 'goal' || captureForm.event_type === 'penalty_goal'" :label="t('live.capture.assist')" for-id="live-capture-assist"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.assist_player_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
+          <FormField v-if="captureForm.event_type === 'goal'" :label="t('live.capture.assist')" for-id="live-capture-assist"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.assist_player_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField :label="t('live.capture.minute')" for-id="live-capture-minute"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model.number="captureForm.minute" type="number" min="0" max="180" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField :label="t('live.capture.addedMinute')" for-id="live-capture-added"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model.number="captureForm.added_minute" type="number" min="0" max="30" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField v-if="captureForm.event_type === 'red_card'" :label="t('live.capture.redCardType')" for-id="live-capture-red"><template #default="{ id }"><select :id="id" v-model="captureForm.red_card_type"><option v-for="option in RED_CARD_OPTIONS" :key="option" :value="option">{{ t(`live.redCardType.${option}`) }}</option></select></template></FormField>
