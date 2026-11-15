@@ -3,22 +3,42 @@ import FormField from '~/components/ui/FormField.vue';
 import type { MatchRecord } from '~/components/match/types';
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
 import type { SharedLiveEvent } from '~/utils/matchLiveEditor';
+import { displayedClock } from '~/utils/matchLiveClock';
 
 const props = defineProps<{ context: MatchOperationContext; match: MatchRecord }>();
-const { t, liveView, liveEditor, liveTransitions, liveCapture, liveEdit, liveClock, liveReview, liveClose } = props.context;
+const { t, liveView, liveEditor, liveTransitions, liveCapture, liveEdit, liveClock, liveReview, liveClose, activeSegment } = props.context;
 const { match } = toRefs(props);
 
 const EVENT_TYPE_OPTIONS = ['goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul'] as const;
 const RESOLUTION_OPTIONS = ['regular', 'extra_time', 'penalties', 'walkover', 'administrative'] as const;
 const RED_CARD_OPTIONS = ['direct_red', 'double_yellow_red'] as const;
 const liveOutcome = ref('');
+// La sesión de edición y el recibo viven fuera de la reactividad de Vue: este
+// tick los vuelve a leer tras cada acción.
+const liveTick = ref(0);
+const now = ref(new Date());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => { clockTimer = setInterval(() => { now.value = new Date(); }, 1000); });
+onBeforeUnmount(() => { if (clockTimer !== null) clearInterval(clockTimer); });
 
 const shared = computed(() => liveEditor.shared);
 const pending = computed(() => liveEditor.pending);
-const receipt = computed(() => liveReview.currentReceipt());
+const receipt = computed(() => { void liveTick.value; return liveReview.currentReceipt(); });
 const clock = computed(() => shared.value?.clock ?? null);
-const editing = computed(() => liveEdit.editing());
-const segmentId = computed(() => clock.value?.segmentId ?? '');
+const editing = computed(() => { void liveTick.value; return liveEdit.editing(); });
+const displayed = computed(() => {
+  const value = clock.value;
+  if (!value) return null;
+  return displayedClock({
+    state: value.state, segment_id: value.segmentId, segment_number: value.segmentNumber,
+    elapsed_us: value.elapsedUs, anchor_at: value.anchorAt, observed_at: value.observedAt,
+  }, now.value);
+});
+// El segmento del wire: el del reloj vigente o el segmento activo del partido.
+const segmentId = computed(() => clock.value?.segmentId ?? activeSegment.value?.id ?? '');
+// Identidad estable del hecho a capturar: un reintento tras perder el recibo
+// repite el mismo client_event_id y el servidor reenvía su ack (dedupe).
+const captureEventId = ref(crypto.randomUUID());
 
 const captureForm = reactive({
   event_type: 'goal', team_id: '', player_id: '', minute: null as number | null,
@@ -37,6 +57,7 @@ const uuidOrNull = (value: string) => value.trim() === '' ? null : value.trim();
 
 async function runOutcome(promise: Promise<string>) {
   liveOutcome.value = await promise;
+  liveTick.value += 1;
 }
 
 const startLive = () => runOutcome(liveTransitions.start());
@@ -48,7 +69,7 @@ const resumeClock = () => runOutcome(liveClock.resumeClock());
 
 function captureSubmit() {
   runOutcome(liveCapture.capture({
-    client_event_id: crypto.randomUUID(),
+    client_event_id: captureEventId.value,
     event_type: captureForm.event_type,
     team_id: captureForm.team_id,
     beneficiary_team_id: uuidOrNull(captureForm.beneficiary_team_id),
@@ -60,6 +81,9 @@ function captureSubmit() {
     added_minute: captureForm.added_minute,
     segment_id: segmentId.value,
     metadata: captureForm.event_type === 'red_card' ? { red_card_type: captureForm.red_card_type } : null,
+  }).then(async (outcome) => {
+    if (outcome === 'sent' || outcome === 'accepted') captureEventId.value = crypto.randomUUID();
+    return outcome;
   }));
 }
 
@@ -77,6 +101,7 @@ function beginCorrect(event: SharedLiveEvent) {
   if (result !== 'ok') { liveOutcome.value = result; return; }
   editForm.minute = event.minute;
   editForm.added_minute = event.addedMinute;
+  liveTick.value += 1;
 }
 function saveCorrect() {
   const event = editingEvent();
@@ -91,7 +116,7 @@ function saveCorrect() {
     segment_id: event.segmentId, metadata: event.metadata,
   }));
 }
-const cancelCorrect = () => liveEdit.cancelEdit();
+const cancelCorrect = () => { liveEdit.cancelEdit(); liveTick.value += 1; };
 const removeFact = (event: SharedLiveEvent) => runOutcome(liveEdit.removeFact(event.clientEventId));
 
 function beginReview() {
@@ -126,7 +151,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
 
     <template v-if="shared">
       <div class="live-clock muted-note" role="status">
-        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="clock?.elapsedUs !== null && clock?.elapsedUs !== undefined"> · {{ t('live.clock.elapsed', { seconds: Math.floor(clock.elapsedUs / 1_000_000) }) }}</template>
+        {{ t('live.clock.state') }}: {{ t(`live.clock.${clock?.state ?? 'not_started'}`) }}<template v-if="displayed"> · {{ t('live.clock.elapsed', { seconds: Math.floor(displayed.elapsedUs / 1_000_000) }) }}</template>
       </div>
       <div v-if="liveView.controlsEnabled" class="live-actions">
         <button v-if="shared.status === 'live'" class="button-secondary" type="button" :disabled="liveTransitions.inFlight" @click="suspendLive">{{ t('live.transition.suspend.action') }}</button>
@@ -162,6 +187,12 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
           <FormField :label="t('live.capture.eventType')" for-id="live-capture-type"><template #default="{ id }"><select :id="id" v-model="captureForm.event_type"><option v-for="option in EVENT_TYPE_OPTIONS" :key="option" :value="option">{{ t(`live.eventType.${option}`) }}</option></select></template></FormField>
           <FormField :label="t('live.capture.team')" for-id="live-capture-team"><template #default="{ id }"><select :id="id" v-model="captureForm.team_id"><option value="" disabled>{{ t('live.capture.selectTeam') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></template></FormField>
           <FormField :label="t('live.capture.player')" for-id="live-capture-player"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
+          <FormField v-if="captureForm.event_type === 'own_goal'" :label="t('live.capture.beneficiary')" for-id="live-capture-beneficiary"><template #default="{ id }"><select :id="id" v-model="captureForm.beneficiary_team_id"><option value="" disabled>{{ t('live.capture.selectTeam') }}</option><option v-if="match.home_team_id" :value="match.home_team_id">{{ match.home_team_name }}</option><option v-if="match.away_team_id" :value="match.away_team_id">{{ match.away_team_name }}</option></select></template></FormField>
+          <template v-if="captureForm.event_type === 'substitution'">
+            <FormField :label="t('live.capture.playerOut')" for-id="live-capture-out"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_out_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
+            <FormField :label="t('live.capture.playerIn')" for-id="live-capture-in"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_in_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
+          </template>
+          <FormField v-if="captureForm.event_type === 'goal' || captureForm.event_type === 'penalty_goal'" :label="t('live.capture.assist')" for-id="live-capture-assist"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.assist_player_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField :label="t('live.capture.minute')" for-id="live-capture-minute"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model.number="captureForm.minute" type="number" min="0" max="180" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField :label="t('live.capture.addedMinute')" for-id="live-capture-added"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model.number="captureForm.added_minute" type="number" min="0" max="30" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField v-if="captureForm.event_type === 'red_card'" :label="t('live.capture.redCardType')" for-id="live-capture-red"><template #default="{ id }"><select :id="id" v-model="captureForm.red_card_type"><option v-for="option in RED_CARD_OPTIONS" :key="option" :value="option">{{ t(`live.redCardType.${option}`) }}</option></select></template></FormField>

@@ -18,7 +18,8 @@ function component(globals: Record<string, unknown> = {}) {
   runInNewContext(javascript, {
     exports, ...vue,
     ref: vue.ref, reactive: vue.reactive, computed: vue.computed, toRefs: vue.toRefs,
-    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : {},
+    onMounted: vue.onMounted, onBeforeUnmount: vue.onBeforeUnmount, crypto,
+    require: (path: string) => path === 'vue' ? vue : path.endsWith('.vue') ? { __esModule: true, default: passthrough } : path.endsWith('/matchLiveClock') ? { displayedClock: (clock: { state: string; elapsed_us: number | null }) => ({ state: clock.state, elapsedUs: clock.elapsed_us ?? 0, acceptedElapsedUs: clock.elapsed_us ?? 0, computed: false }) } : {},
     useI18n: () => ({ t: (key: string) => key }),
     ...globals,
   });
