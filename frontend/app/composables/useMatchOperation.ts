@@ -15,6 +15,7 @@ import { isLiveInitialized } from '~/utils/matchLiveClose';
 import { createLocalDraftResolver } from '~/utils/matchLiveLocalDraft';
 import { createLiveCapture } from '~/utils/matchLiveCapture';
 import { createLiveEdit } from '~/utils/matchLiveEdit';
+import { deriveLiveView } from '~/utils/matchLiveAccess';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -63,6 +64,8 @@ export function useMatchOperation() {
   // T61: el editor compartido (snapshot aceptado por HTTP + capturas locales
   // pendientes) vive separado del borrador clásico local de `draftEvents`.
   const liveEditor = reactive(createLiveEditorState());
+  // T65: cada capacidad gobierna solo su superficie (detalle/controles/cierre).
+  const liveView = computed(() => deriveLiveView(liveAccess.value));
   // T62: antes de `start` el borrador clásico local exige decisión expresa —
   // nunca se importa ni se reenvía al compartido.
   const localDraftResolver = createLocalDraftResolver({
@@ -465,7 +468,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
