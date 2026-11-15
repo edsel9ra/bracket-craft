@@ -69,11 +69,10 @@ function harness(overrides: {
   const capture = createLiveCapture({
     send: async (body) => {
       sent.push(body);
-      return overrides.send ? overrides.send(body) : { command_id: COMMAND_ID, revision: 5 };
+      return overrides.send ? overrides.send(body) : { command_id: (body as Record<string, unknown>).command_id, revision: 5 };
     },
     requestSnapshot: async () => { snapshots += 1; },
     editor,
-    commandId: () => COMMAND_ID,
   });
   return { capture, editor, sent, snapshots: () => snapshots };
 }
@@ -123,6 +122,8 @@ test('validateLiveEventForm rechaza campos vacíos, catálogo inválido y reglas
   // Válidos equivalentes.
   assert.notEqual(validateLiveEventForm(eventForm({ event_type: 'substitution', player_out_id: PLAYER, player_in_id: 'ffffffff-0000-4000-8000-000000000099', player_id: PLAYER })), null);
   assert.notEqual(validateLiveEventForm(eventForm({ event_type: 'red_card', metadata: { red_card_type: 'double_yellow_red' } })), null);
+  // `{}` equivale a direct_red en el servidor: no se rechaza localmente.
+  assert.notEqual(validateLiveEventForm(eventForm({ event_type: 'red_card', metadata: {} })), null);
   assert.notEqual(validateLiveEventForm(eventForm({ event_type: 'own_goal', beneficiary_team_id: 'ffffffff-0000-4000-8000-000000000099' })), null);
 });
 
@@ -131,7 +132,8 @@ test('captura válida envía add_event, guarda ack y espera snapshot autorizado'
   assert.equal(await capture.capture(eventForm()), 'sent');
   assert.equal(sent.length, 1);
   const command = sent[0] as Record<string, unknown>;
-  assert.equal(command.command_id, COMMAND_ID);
+  // El command_id es el client_event_id: el reintento repite el mismo comando.
+  assert.equal(command.command_id, EVENT_ID);
   assert.equal(command.expected_revision, 4);
   assert.equal(command.type, 'add_event');
   // El hecho queda pendiente hasta que el snapshot lo devuelve aceptado.
@@ -164,7 +166,7 @@ test('doble activación en paralelo solo envía una vez (single-flight)', async 
   const first = capture.capture(eventForm());
   const second = capture.capture(eventForm({ client_event_id: 'abababab-0000-4000-8000-000000000005' }));
   assert.equal(await second, 'busy');
-  resolveSend?.({ command_id: COMMAND_ID, revision: 5 });
+  resolveSend?.({ command_id: EVENT_ID, revision: 5 });
   assert.equal(await first, 'sent');
   assert.equal(sent.length, 1);
 });
@@ -189,7 +191,7 @@ test('sin snapshot compartido no se captura nada', async () => {
 });
 
 test('un ack malformado o ajeno es error, no aceptación', async () => {
-  for (const ack of [null, {}, { command_id: 'otro', revision: 5 }, { command_id: COMMAND_ID, revision: 'x' }]) {
+  for (const ack of [null, {}, { command_id: 'otro', revision: 5 }, { command_id: EVENT_ID, revision: 'x' }]) {
     const { capture, editor } = harness({ revision: 4, send: async () => ack });
     assert.equal(await capture.capture(eventForm()), 'error');
     assert.equal(editor.pending.length, 0);

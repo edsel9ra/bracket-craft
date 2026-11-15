@@ -126,18 +126,56 @@ function isUuidOrNull(value: unknown): boolean {
   return value === null || (typeof value === 'string' && UUID_PATTERN.test(value));
 }
 
+function normalizeEvent(raw: unknown): SharedLiveEvent | null {
+  const shape = raw as Record<string, unknown> | null;
+  if (
+    typeof shape !== 'object' || shape === null
+    || typeof shape.client_event_id !== 'string' || !UUID_PATTERN.test(shape.client_event_id)
+    || typeof shape.event_type !== 'string'
+    || typeof shape.team_id !== 'string'
+    || typeof shape.minute !== 'number' || !Number.isInteger(shape.minute)
+    || typeof shape.added_minute !== 'number' || !Number.isInteger(shape.added_minute)
+    || typeof shape.segment_id !== 'string'
+    || !isUuidOrNull(shape.beneficiary_team_id)
+    || !isUuidOrNull(shape.player_id)
+    || !isUuidOrNull(shape.player_out_id)
+    || !isUuidOrNull(shape.player_in_id)
+    || !isUuidOrNull(shape.assist_player_id)
+  ) {
+    return null;
+  }
+  const metadata = shape.metadata;
+  if (metadata !== null && (typeof metadata !== 'object' || Array.isArray(metadata))) return null;
+  return {
+    clientEventId: shape.client_event_id,
+    eventType: shape.event_type,
+    teamId: shape.team_id,
+    beneficiaryTeamId: (shape.beneficiary_team_id ?? null) as string | null,
+    playerId: (shape.player_id ?? null) as string | null,
+    playerOutId: (shape.player_out_id ?? null) as string | null,
+    playerInId: (shape.player_in_id ?? null) as string | null,
+    assistPlayerId: (shape.assist_player_id ?? null) as string | null,
+    minute: shape.minute,
+    addedMinute: shape.added_minute,
+    segmentId: shape.segment_id,
+    metadata: (metadata ?? null) as Record<string, unknown> | null,
+  };
+}
+
 function normalizeReport(raw: unknown): LiveReviewReceipt['report'] | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const report = raw as Record<string, unknown>;
   const events = Array.isArray(report.events) ? report.events : [];
   const normalized: SharedLiveEvent[] = [];
   for (const event of events) {
-    const shape = event as Record<string, unknown> | null;
-    if (typeof shape !== 'object' || shape === null || !isUuidOrNull(shape.client_event_id)) return null;
-    normalized.push(event as SharedLiveEvent);
+    const shape = normalizeEvent(event);
+    if (shape === null) return null;
+    normalized.push(shape);
   }
-  const home = typeof report.home_score === 'number' ? report.home_score : 0;
-  const away = typeof report.away_score === 'number' ? report.away_score : 0;
+  const home = typeof report.home_score === 'number' ? report.home_score
+    : typeof report.home_score_regular === 'number' ? report.home_score_regular : 0;
+  const away = typeof report.away_score === 'number' ? report.away_score
+    : typeof report.away_score_regular === 'number' ? report.away_score_regular : 0;
   return { events: normalized, homeScore: home, awayScore: away };
 }
 
