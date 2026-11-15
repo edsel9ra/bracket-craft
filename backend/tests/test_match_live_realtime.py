@@ -761,6 +761,109 @@ async def test_multiprocess_restart_recovery_preserves_accepted_state(flow):
             if _ is not None and _.get('event_id') in lost_ids)
 
 
+# ---------------------------------------------------------------------------
+# T79: privacidad — la salida técnica/pública nunca transporta datos del borrador
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        # Datos personales/de evento del borrador: jamás en el wire privado.
+        {"player_id": str(uuid4())},
+        {"player_name": "Nombre Privado"},
+        {"assist_player_id": str(uuid4())},
+        {"events": [{"event_type": "goal", "player_id": str(uuid4())}]},
+        {"metadata": {"note": "dato privado"}},
+        {"birth_date": "2000-01-01"},
+        {"document_number": "123456789"},
+        # Identificadores internos de estado o usuario.
+        {"revision": 7},
+        {"content_revision": 3},
+        {"session_id": str(uuid4())},
+        {"user_id": str(uuid4())},
+        {"home_score": 2},
+    ],
+    ids=[
+        "player_id", "player_name", "assist", "events", "metadata",
+        "birth_date", "document", "revision", "content_revision",
+        "session_id", "user_id", "score",
+    ],
+)
+def test_privacy_live_wire_rejects_personal_or_internal_fields(extra):
+    """El catálogo privado descarta cualquier envoltura con campos ajenos a los tres ids."""
+    assert classify_organization_event(envelope(**extra)) is None
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        "VERIFICATION_OUTBOX_PROBE",
+        "SANCTION_CASE_NOTICE_INTERNAL",
+        "SANCTION_CASE_NOTICE_EMAIL",
+        "MATCH_LIVE_UNKNOWN_KIND",
+        "PLAYER_SUSPENSION_NOTICE",
+    ],
+    ids=["probe", "f9_internal", "f9_email", "unknown_live", "player_sanction"],
+)
+def test_privacy_unknown_catalog_and_f9_never_route_as_live(event_type):
+    """Catálogo desconocido, sonda de verificación y avisos F9 no son eventos live."""
+    data = envelope()
+    data["event_type"] = event_type
+    assert classify_organization_event(data) is None
+
+
+async def test_privacy_public_and_technical_output_never_carry_draft_detail(
+    live_service_db, monkeypatch
+):
+    """Wire público, outbox y auditoría solo transportan identificadores mínimos."""
+    f = live_service_db
+    await f.permissions(["OPERATE_MATCH_LIVE", "VIEW_MATCH_LIVE_DRAFT"])
+    await f.call("execute", command("start_clock", segment_id=SEGMENT_FIRST))
+    private_event = goal()
+    private_event["event_type"] = "red_card"
+    private_event["metadata"] = {"red_card_type": "direct_red"}
+    await f.call("execute", command("add_event", 1, event=private_event))
+
+    # Outbox: ambos wires solo llevan los ids acordados, nunca el hecho ni el jugador.
+    rows = await live_outbox(f)
+    assert rows
+    for row in rows:
+        payload = json.loads(row["payload"])
+        allowed = {"match_id", "tournament_id"}
+        if row["event_type"] == "MATCH_LIVE_UPDATED":
+            allowed.add("scope")
+        assert set(payload) == allowed
+        serialized = json.dumps(payload)
+        for forbidden in ("player", "Nombre", "Privado", "assist", "metadata", "goal"):
+            assert forbidden not in serialized
+
+    # Auditoría administrativa: solo tipo, comando y revisión — sin el evento.
+    audit = await f.admin.fetch(
+        "SELECT payload FROM administrative_audit_logs WHERE action='MATCH_LIVE_COMMAND'"
+    )
+    assert len(audit) == 2
+    for row in audit:
+        payload = json.loads(row["payload"])
+        assert set(payload) == {"command_id", "type", "revision"}
+        assert "event" not in payload
+
+    # Emisión pública revalidada: el emit solo lleva los tres ids del aviso.
+    main, calls, _ = dispatch_harness(f, monkeypatch)
+    await emit_envelope(main, public_envelope())
+    assert calls == [
+        (LIVE_PUBLIC, {
+            "event_id": calls[0][1]["event_id"],
+            "match_id": MATCH,
+            "tournament_id": TOURNAMENT,
+        }, {"room": f"tournament:{TOURNAMENT}"})
+    ]
+
+    # La lectura autorizada sí devuelve el detalle; la pública jamás lo contiene.
+    snapshot = await f.call("snapshot")
+    assert snapshot.events and snapshot.events[0].client_event_id == private_event["client_event_id"]
+
+
 @pytest.mark.parametrize('flow', [{'schema': 59}], indirect=True)
 async def test_multiprocess_recovery_sql_failure_suspends_and_resyncs(flow):
     """T57: fallo SQL suspende fail-closed; `recover` reanuda solo lo vigente."""
