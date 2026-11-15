@@ -19,6 +19,7 @@ import { deriveLiveView } from '~/utils/matchLiveAccess';
 import { createLiveClock } from '~/utils/matchLiveClock';
 import { createLiveTransitions } from '~/utils/matchLiveTransitions';
 import { createLiveReview } from '~/utils/matchLiveReview';
+import { createLiveClose } from '~/utils/matchLiveCloseLive';
 import { createReloadCoordinator, decideReload, resyncTrigger, type ReloadTrigger } from '~/utils/realtimeReload';
 import { buildOfficialAssignmentBody } from '~/utils/requestBodies';
 import { SUBSTITUTION_EVENT_TYPE, type SubstitutionOption } from '~/utils/substitutions';
@@ -143,6 +144,28 @@ export function useMatchOperation() {
   const liveReview = createLiveReview({
     sendReview: (body) => request(`/matches/${matchId}/live/reviews`, { method: 'POST', body }),
     editor: liveEditor,
+  });
+  // T69: el cierre live solo envía el recibo revisado; el borrador se
+  // conserva ante cualquier error y el modo provisional solo termina tras
+  // un cierre aceptado.
+  const liveClose = createLiveClose({
+    sendClose: (body) => request(`/matches/${matchId}/close`, { method: 'POST', body }),
+    review: liveReview,
+    editor: liveEditor,
+    confirm: () => confirm({
+      title: t('live.closeConfirm.title'),
+      message: t('live.closeConfirm.message'),
+      confirmLabel: t('live.closeConfirm.action'),
+      tone: 'danger',
+    }),
+    onClosed: () => {
+      liveEditor.shared = null;
+      liveEditor.pending = [];
+      liveReview.clear();
+      liveEdit.cancelEdit();
+      liveSnapshot.value = null;
+      refreshOperation();
+    },
   });
   const liveContext = createLiveContextCoordinator({
     isCurrent: canUpdate,
@@ -502,7 +525,7 @@ export function useMatchOperation() {
     realtime.disconnect();
   };
 
-  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions, liveReview };
+  return { ...state, ...closeActions, ...lineupActions, ...draftActions, ...eventsActions, failureMessage, redirectOnSessionFailure, fetchOperation, refreshOperation, requestOperationReload, retryOperation, payloadTargetsMatch, runAction, showOpeningBlocked, createSegment, interruptSegment, assignOfficial, removeOfficial, handleBeforeUnload, mountOperation, unmountOperation, liveAccess, liveSnapshot, liveContext, liveEditor, localDraftResolver, liveCapture, liveEdit, liveView, liveClock, liveTransitions, liveReview, liveClose };
 }
 
 export type MatchOperationContext = ReturnType<typeof useMatchOperation>;
