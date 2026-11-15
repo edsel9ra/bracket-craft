@@ -102,6 +102,157 @@ export interface PublicMatch {
   lineup: PublicMatchLineup | null;
   home_score_regular?: number | null;
   away_score_regular?: number | null;
+  // F1 (036): en `live` la lectura vigente añade reloj y provisionalidad.
+  is_provisional?: true;
+  clock_segment_number?: number | null;
+  clock_elapsed_seconds?: number | null;
+  clock_state?: 'not_started' | 'running' | 'paused';
+  clock_observed_at?: string | null;
+}
+
+/**
+ * Proyección cerrada del partido `suspended` (036, F1): catorce claves, sin
+ * metadatos de fase, llave, fecha, escudos ni alineación. El contexto de la
+ * consulta de fase/grupo vive fuera del objeto, en `PublicMatchEntry`.
+ */
+export interface SuspendedPublicMatch {
+  id: string;
+  tournament_id: string;
+  home_team_id: string;
+  home_team_name: string;
+  away_team_id: string;
+  away_team_name: string;
+  status: 'suspended';
+  home_score: number;
+  away_score: number;
+  is_provisional: true;
+  clock_segment_number: number | null;
+  clock_elapsed_seconds: number | null;
+  clock_state: 'not_started' | 'paused';
+  clock_observed_at: string;
+}
+
+export type PublicMatchState = PublicMatch | SuspendedPublicMatch;
+
+export function isSuspendedPublicMatch(
+  match: PublicMatchState | null | undefined,
+): match is SuspendedPublicMatch {
+  return !!match && match.status === 'suspended';
+}
+
+const SUSPENDED_CLOCK_STATES = new Set(['not_started', 'paused']);
+
+/**
+ * Valida la forma recibida sin exigir campos que el suspendido no publica:
+ * un `suspended` necesita sus catorce claves; el resto conserva la forma
+ * clásica. Un objeto inválido se descarta, no se rellena con campos inventados.
+ */
+export function normalizePublicMatchState(value: unknown): PublicMatchState | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.status === 'suspended') {
+    for (const key of [
+      'id', 'tournament_id', 'home_team_id', 'home_team_name',
+      'away_team_id', 'away_team_name',
+    ] as const) {
+      if (typeof raw[key] !== 'string' || !(raw[key] as string)) return null;
+    }
+    if (typeof raw.home_score !== 'number' || typeof raw.away_score !== 'number') return null;
+    if (raw.is_provisional !== true) return null;
+    if (typeof raw.clock_state !== 'string' || !SUSPENDED_CLOCK_STATES.has(raw.clock_state)) return null;
+    if (raw.clock_segment_number !== null && typeof raw.clock_segment_number !== 'number') return null;
+    if (raw.clock_elapsed_seconds !== null && typeof raw.clock_elapsed_seconds !== 'number') return null;
+    if (typeof raw.clock_observed_at !== 'string') return null;
+    return value as SuspendedPublicMatch;
+  }
+  if (typeof raw.id !== 'string' || typeof raw.status !== 'string') return null;
+  return value as PublicMatch;
+}
+
+export function normalizePublicMatchPage(value: unknown): PublicMatchState[] {
+  if (!Array.isArray(value)) return [];
+  const matches: PublicMatchState[] = [];
+  for (const item of value) {
+    const match = normalizePublicMatchState(item);
+    if (match) matches.push(match);
+  }
+  return matches;
+}
+
+/**
+ * Entrada de la lista de partidos: el contexto de fase/grupo procede de la
+ * consulta que lo trajo —nunca de campos fabricados sobre el objeto— y se
+ * conserva al cambiar de estado, así la misma tarjeta no se duplica ni desaparece.
+ */
+export interface PublicMatchEntry {
+  match: PublicMatchState;
+  stageId: string | null;
+  groupId: string | null;
+}
+
+/**
+ * Fusiona una página consultada con las entradas vigentes: un `id` ya presente
+ * reemplaza su dato en la posición que ocupaba (cambio de estado sin duplicar);
+ * los nuevos se anexan con el contexto de la consulta que los trajo.
+ */
+export function mergeMatchEntries(
+  existing: readonly PublicMatchEntry[],
+  page: readonly PublicMatchState[],
+  stageId: string | null,
+  groupId: string | null,
+): PublicMatchEntry[] {
+  const entries = existing.map((entry) => ({ ...entry }));
+  const indexById = new Map(entries.map((entry, index) => [entry.match.id, index]));
+  for (const match of page) {
+    const index = indexById.get(match.id);
+    if (index === undefined) {
+      indexById.set(match.id, entries.length);
+      entries.push({ match, stageId, groupId });
+    } else {
+      const entry = entries[index]!;
+      entries[index] = { match, stageId: entry.stageId, groupId: entry.groupId };
+    }
+  }
+  return entries;
+}
+
+export function matchEntriesForStage(
+  entries: readonly PublicMatchEntry[],
+  stageId: string,
+): PublicMatchState[] {
+  return entries.filter((entry) => entry.stageId === stageId).map((entry) => entry.match);
+}
+
+export function matchEntriesForGroup(
+  entries: readonly PublicMatchEntry[],
+  stageId: string,
+  groupId: string | null | undefined,
+): PublicMatchState[] {
+  return entries
+    .filter((entry) => {
+      if (entry.stageId !== stageId) return false;
+      if (groupId != null) return entry.groupId === groupId;
+      return true;
+    })
+    .map((entry) => entry.match);
+}
+
+/** El suspendido no publica llave de eliminatoria: nunca entra al bracket. */
+export function bracketEligibleMatches(
+  matches: readonly PublicMatchState[],
+): PublicMatch[] {
+  return matches.filter(
+    (match): match is PublicMatch => !isSuspendedPublicMatch(match),
+  );
+}
+
+/** Marcador/reloj del suspendido: detenido o sin iniciar, siempre provisional. */
+export function formatSuspendedClock(match: SuspendedPublicMatch): string | null {
+  const seconds = match.clock_elapsed_seconds;
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return null;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
 export type PublicStagePresentation = 'standings' | 'bracket' | 'current';
