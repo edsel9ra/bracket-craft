@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- **037-cronologia-publica-del-partido** (F13) — fase: Spec/Clarificación — estado: borrador. DA-1 tipos públicos, DA-2 identidad del jugador, DA-3 roja por doble amarilla, DA-4 presentación por segmento abiertas; sin plan ni implementación.
+- **037-cronologia-publica-del-partido** (F13) — fase: Spec — estado: borrador. 2026-11-15: DA-1 (b) goles+tarjetas+sustituciones, DA-2 (a) solo nombre y apellido, DA-3 (a) roja directa/doble amarilla, DA-4 (a) separador por segmento. Pendiente aprobación expresa de la spec; sin plan ni implementación.
 - 036-partido-en-vivo CERRADA: T1–T84 en #80–#86; F1 aceptada por el usuario el 2026-11-15 («Acepto F1»). Sin despliegue productivo acreditado; rollback post-F1 no soportado (`docs/despliegue-partido-en-vivo.md`).
 
 ## Pendiente
