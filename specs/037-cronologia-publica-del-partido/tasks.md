@@ -10,8 +10,9 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 - Hecho cuando: `cd backend && pytest -q tests/test_public_timeline.py` verde tras confirmarlo en rojo, cubriendo CL-1–CL-14 aplicables.
 - Evidencia: `pytest -q tests/test_public_timeline.py` → 34 passed (disponibilidad, tipos, orden estable, roja, autogol, sustitución, huérfanos, marcador con prórroga/penales); `ruff check` limpio.
 
-- [ ] **T3. Modelos públicos y lista cerrada.** RF-007, RF-015
+- [x] **T3. Modelos públicos y lista cerrada.** RF-007, RF-015
 - Hecho cuando: `pytest -q tests/test_public_field_allowlist.py` falla ante una clave extra y pasa con los tres modelos nuevos.
+- Evidencia: `pytest -q tests/test_public_field_allowlist.py` → 5 passed (tres modelos con `extra="forbid"`, sin asistencia/dorsal/foto/IDs internos; claves extra rechazadas).
 
 - [ ] **T4. Endpoint `GET /tournaments/public/{tournament_id}/matches/{match_id}/timeline`.** RF-001, RF-004, RF-013, RF-016
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_timeline_endpoint.py tests/test_public_access_matrix.py` verde (dos organizaciones, rectificación, anulados, 404 indistinguible); `pytest -q`, `ruff check .` y `bandit -q -r app -ll` verdes.

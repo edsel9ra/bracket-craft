@@ -3,12 +3,15 @@
 from app.modules.tournaments.schemas import (
     PublicLineupPlayerResponse,
     PublicMatchLineupResponse,
+    PublicMatchTimelineResponse,
     PublicMatchResponse,
     PublicPlayerStatsResponse,
     PublicStageResponse,
     PublicStandingResponse,
     PublicTeamLineupResponse,
     PublicTeamStatsResponse,
+    PublicTimelineEventResponse,
+    PublicTimelinePlayerResponse,
     PublicTournamentResponse,
     PublicTournamentSummaryResponse,
     PublicTournamentTeamResponse,
@@ -51,6 +54,14 @@ EXPECTED_FIELDS = {
         "rank", "team_id", "team_name", "short_code", "crest_url",
         "goals_for", "goals_against", "clean_sheets", "fair_play_points",
     },
+    "PublicTimelinePlayerResponse": {"player_id", "first_name", "last_name"},
+    "PublicTimelineEventResponse": {
+        "event_type", "minute", "added_minute", "segment_number", "team_id",
+        "beneficiary_team_id", "red_card_type", "player", "player_in",
+    },
+    "PublicMatchTimelineResponse": {
+        "match_id", "availability", "score_consistent", "segment_numbers", "events",
+    },
 }
 
 MODELS = {
@@ -65,6 +76,14 @@ MODELS = {
     "PublicMatchResponse": PublicMatchResponse,
     "PublicPlayerStatsResponse": PublicPlayerStatsResponse,
     "PublicTeamStatsResponse": PublicTeamStatsResponse,
+    "PublicTimelinePlayerResponse": PublicTimelinePlayerResponse,
+    "PublicTimelineEventResponse": PublicTimelineEventResponse,
+    "PublicMatchTimelineResponse": PublicMatchTimelineResponse,
+}
+
+TIMELINE_FORBIDDEN_FIELDS = {
+    "assist_player_id", "metadata", "dorsal_number", "photo_url", "id", "segment_id",
+    "version_id", "client_event_id", "is_voided", "void_reason", "notes",
 }
 
 SENSITIVE_FIELDS = {
@@ -106,3 +125,22 @@ def test_all_public_models_covered():
         "Modelos públicos sin cubrir o sobrantes: "
         f"{sorted(public_models ^ set(MODELS.keys()))}"
     )
+
+
+def test_timeline_models_never_expose_assist_dorsal_photo_or_internal_ids():
+    for model in (PublicTimelinePlayerResponse, PublicTimelineEventResponse, PublicMatchTimelineResponse):
+        leaked = set(model.model_fields) & TIMELINE_FORBIDDEN_FIELDS
+        assert not leaked, f"{model.__name__}: {sorted(leaked)}"
+
+
+def test_timeline_models_reject_extra_keys():
+    import pytest
+    from pydantic import ValidationError
+
+    player = {"player_id": "30000000-0000-4000-8000-000000000001", "first_name": "A", "last_name": "B"}
+    with pytest.raises(ValidationError):
+        PublicTimelinePlayerResponse(**player, dorsal_number=9)
+    with pytest.raises(ValidationError):
+        PublicMatchTimelineResponse(
+            match_id=player["player_id"], availability="pending", assist_player_id=player["player_id"]
+        )

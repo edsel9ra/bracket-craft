@@ -469,3 +469,41 @@ class PublicTeamStatsResponse(BaseModel):
     goals_against: int = 0
     clean_sheets: int = 0
     fair_play_points: int = 0
+
+
+class PublicTimelinePlayerResponse(BaseModel):
+    """Jugador de un hecho publicado (spec 037 DA-2 a): sin dorsal ni foto."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: UUID
+    first_name: str
+    last_name: str
+
+
+class PublicTimelineEventResponse(BaseModel):
+    """Hecho confirmado de la cronología pública (spec 037 RF-006–RF-008)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["goal", "penalty_goal", "own_goal", "yellow_card", "red_card", "substitution"]
+    minute: int
+    added_minute: int
+    segment_number: int
+    team_id: UUID
+    beneficiary_team_id: UUID | None = None
+    red_card_type: Literal["direct_red", "double_yellow_red"] | None = None
+    player: PublicTimelinePlayerResponse
+    player_in: PublicTimelinePlayerResponse | None = None
+
+
+class PublicMatchTimelineResponse(BaseModel):
+    """Cronología pública de un partido (spec 037)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    match_id: UUID
+    availability: Literal["pending", "not_played", "available"]
+    score_consistent: bool = True
+    segment_numbers: list[int] = Field(default_factory=list)
+    events: list[PublicTimelineEventResponse] = Field(default_factory=list)
