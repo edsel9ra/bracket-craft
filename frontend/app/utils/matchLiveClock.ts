@@ -65,7 +65,7 @@ export interface LiveClockOptions {
   commandId(): string;
 }
 
-export interface LiveClock {
+export interface LiveClockControls {
   startClock(segmentId: string): Promise<LiveClockOutcome>;
   pauseClock(): Promise<LiveClockOutcome>;
   resumeClock(): Promise<LiveClockOutcome>;
@@ -84,7 +84,7 @@ function validAck(ack: unknown, commandId: string): boolean {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createLiveClock(options: LiveClockOptions): LiveClock {
+export function createLiveClock(options: LiveClockOptions): LiveClockControls {
   let inFlight = false;
 
   async function run(command: Record<string, unknown>): Promise<LiveClockOutcome> {

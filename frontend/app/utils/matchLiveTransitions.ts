@@ -10,9 +10,7 @@
  */
 
 import { classifyCaptureFailure, type LiveCaptureOutcome } from './matchLiveCapture.ts';
-import { isDraftEditable, type LiveEditorState } from './matchLiveEditor.ts';
-
-export { isDraftEditable };
+import type { LiveEditorState } from './matchLiveEditor.ts';
 
 export type LiveTransitionOutcome =
   | Extract<LiveCaptureOutcome, 'sent' | 'conflict' | 'denied' | 'error' | 'busy'>
@@ -77,6 +75,7 @@ export function createLiveTransitions(options: LiveTransitionsOptions): LiveTran
       if (inFlight) return 'busy';
       // Solo un programado sin borrador compartido puede pasar a live.
       if (options.editor.shared !== null) return 'invalid';
+      if (options.matchStatus() === 'live' || options.matchStatus() === 'suspended') return 'invalid';
       if (options.matchStatus() !== 'scheduled' || TERMINAL_STATUSES.has(options.matchStatus())) return 'invalid';
       // El borrador clásico local exige decisión expresa antes de iniciar.
       if ((await options.resolveLocalDraft()) !== 'proceed') return 'cancelled';

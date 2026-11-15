@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createLiveTransitions, isDraftEditable } from '../app/utils/matchLiveTransitions.ts';
+import { createLiveTransitions } from '../app/utils/matchLiveTransitions.ts';
+import { isDraftEditable } from '../app/utils/matchLiveEditor.ts';
 import { applySharedSnapshot, createLiveEditorState } from '../app/utils/matchLiveEditor.ts';
 
 const SEGMENT = '11111111-2222-4333-8444-555566667777';

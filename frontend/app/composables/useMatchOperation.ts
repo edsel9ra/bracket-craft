@@ -137,7 +137,7 @@ export function useMatchOperation() {
       tone: kind === 'suspend' ? 'danger' : 'primary',
     }),
     resolveLocalDraft: () => localDraftResolver.resolveBeforeStart(),
-    matchStatus: () => operation.value?.status ?? '',
+    matchStatus: () => operation.value?.match?.status ?? '',
   });
   // T68: la revisión exige lectura autorizada del conjunto vigente completo
   // y su recibo solo sirve para el content_revision revisado.
