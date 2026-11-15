@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -111,4 +112,58 @@ test('recarga solo si cambia estado, marcador, penales o rectificación', () => 
   assert.equal(shouldReloadTimeline(match, { ...match, rectified_at: '2026-11-15T10:00:00Z' }), true);
   assert.equal(shouldReloadTimeline(match, null), true);
   assert.equal(shouldReloadTimeline(null, null), false);
+});
+
+const component = readFileSync(new URL('../app/components/public/PublicMatchTimeline.vue', import.meta.url), 'utf8');
+const i18n = readFileSync(new URL('../app/composables/useI18n.ts', import.meta.url), 'utf8');
+const TIMELINE_KEYS = [
+  'public.viewTimeline',
+  'publicTimeline.title',
+  'publicTimeline.loading',
+  'publicTimeline.error',
+  'publicTimeline.retry',
+  'publicTimeline.pending',
+  'publicTimeline.notPlayed',
+  'publicTimeline.empty',
+  'publicTimeline.scoreMismatch',
+  'publicTimeline.playerOut',
+  'publicTimeline.playerIn',
+  'publicTimeline.event.goal',
+  'publicTimeline.event.penaltyGoal',
+  'publicTimeline.event.ownGoal',
+  'publicTimeline.event.yellowCard',
+  'publicTimeline.event.redCard',
+  'publicTimeline.event.directRed',
+  'publicTimeline.event.doubleYellowRed',
+  'publicTimeline.event.substitution',
+];
+
+test('el diálogo es modal accesible con título, cierre enfocado y foco devuelto', () => {
+  assert.match(component, /<dialog[\s\S]*aria-modal="true"[\s\S]*:aria-labelledby="titleId"/);
+  assert.match(component, /showModal\(\)/);
+  assert.match(component, /@cancel="handleCancel"/);
+  assert.match(component, /autofocus[\s\S]*:aria-label="t\('common\.close'\)"/);
+  assert.match(component, /previousFocus\.value\?\.focus\?\.\(\)/);
+  assert.match(component, /role="status"/);
+  assert.match(component, /role="alert"/);
+  assert.match(component, /aria-hidden="true"/);
+});
+
+test('el componente distingue carga, error, pendiente, sin juego, vacío y descuadre', () => {
+  for (const key of ['loading', 'error', 'retry', 'pending', 'notPlayed', 'empty', 'scoreMismatch']) {
+    assert.match(component, new RegExp(`publicTimeline\\.${key}`), key);
+  }
+  assert.match(component, /emit\('retry'\)/);
+});
+
+test('el componente nunca muestra dorsal, foto ni asistencia', () => {
+  assert.doesNotMatch(component, /dorsal|photo|assist|metadata/);
+});
+
+test('cada clave de la cronología existe en ES y EN', () => {
+  const [es, en] = i18n.split(/\n {2}en: \{/);
+  for (const key of TIMELINE_KEYS) {
+    assert.match(es!, new RegExp(`'${key.replace(/\./g, '\\.')}': '`), `es ${key}`);
+    assert.match(en!, new RegExp(`'${key.replace(/\./g, '\\.')}': '`), `en ${key}`);
+  }
 });

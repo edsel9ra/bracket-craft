@@ -22,8 +22,9 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 - Hecho cuando: `cd frontend && pnpm test` incluye `public-timeline.test.ts` (minuto, separadores, clave por tipo/roja, decisión de recarga) en verde.
 - Evidencia (2026-11-15): `public-timeline.test.ts` 9 passed (apertura solo en `finished`, minuto `45+2'`, claves por tipo y roja sin inferir, nombre y apellido, lado, separadores solo con más de un segmento, recarga por estado/marcador/penales/rectificación); `pnpm test` 1095 passed/0 failed; eslint limpio.
 
-- [ ] **T6. Componente `PublicMatchTimeline.vue` e i18n ES/EN.** RF-007, RF-008, RF-012, RNF-002
+- [x] **T6. Componente `PublicMatchTimeline.vue` e i18n ES/EN.** RF-007, RF-008, RF-012, RNF-002
 - Hecho cuando: pruebas del componente (estados, nombres accesibles, foco, ambos idiomas) verdes; `pnpm run lint` y `pnpm run typecheck` verdes; `design-scales.test.ts` sin excepciones nuevas.
+- Evidencia (2026-11-15): `PublicMatchTimeline.vue` (diálogo modal nativo, cierre con foco y devolución, `role=status`/`alert`, estados de carga/error/pendiente/sin juego/vacío/descuadre, iconos `aria-hidden`, sin dorsal/foto/asistencia) y 19 claves ES/EN; `public-timeline.test.ts` 13 passed y `theme-surfaces.test.ts` cubre su backdrop claro; `pnpm test` 1099 passed/0 failed; `pnpm run lint` y `pnpm run typecheck` limpios; `design-scales.test.ts` sin excepciones nuevas.
 
 - [ ] **T7. Integración en `/tournaments/{id}` y recarga.** RF-001, RF-002, RF-013, RF-014
 - Hecho cuando: pruebas de la página verifican el disparador solo en `finished`, la carga vía `useApi` y la recarga del diálogo abierto al cambiar `status`, marcador o `rectified_at`; `pnpm test` y `pnpm run build` verdes.
