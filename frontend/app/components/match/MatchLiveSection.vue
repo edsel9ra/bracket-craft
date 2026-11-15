@@ -32,7 +32,7 @@ const displayed = computed(() => {
   return clockPresentation({
     state: value.state, segment_id: value.segmentId, segment_number: value.segmentNumber,
     elapsed_us: value.elapsedUs, anchor_at: value.anchorAt, observed_at: value.observedAt,
-  }, realtime.status, now.value);
+  }, realtime.status.value, now.value);
 });
 // El segmento del wire: el del reloj vigente o el segmento activo del partido.
 const segmentId = computed(() => clock.value?.segmentId ?? activeSegment.value?.id ?? '');
