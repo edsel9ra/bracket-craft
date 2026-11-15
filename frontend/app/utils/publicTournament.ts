@@ -205,12 +205,21 @@ export function mergeMatchEntries(
   const indexById = new Map(entries.map((entry, index) => [entry.match.id, index]));
   for (const match of page) {
     const index = indexById.get(match.id);
+    // El clásico publica su fase y grupo; el suspendido solo conserva el
+    // contexto de la consulta que lo trajo (o el que ya tenía).
+    const context = isSuspendedPublicMatch(match)
+      ? { stageId, groupId }
+      : { stageId: match.stage_id, groupId: match.group_id };
     if (index === undefined) {
       indexById.set(match.id, entries.length);
-      entries.push({ match, stageId, groupId });
+      entries.push({ match, ...context });
     } else {
       const entry = entries[index]!;
-      entries[index] = { match, stageId: entry.stageId, groupId: entry.groupId };
+      entries[index] = {
+        match,
+        stageId: isSuspendedPublicMatch(match) ? entry.stageId : match.stage_id,
+        groupId: isSuspendedPublicMatch(match) ? entry.groupId : match.group_id,
+      };
     }
   }
   return entries;

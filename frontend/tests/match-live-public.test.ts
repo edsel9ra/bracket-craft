@@ -108,6 +108,17 @@ test('consulta general renderiza el suspendido con el contexto de la consulta', 
   assert.equal(matchEntriesForGroup(entries, 'st-1', 'g-2').length, 0);
 });
 
+test('un clásico cargado sin filtro de grupo conserva su grupo publicado', () => {
+  // Sin `group_id` en la consulta, el contexto sale del objeto clásico:
+  // si luego se filtra por su grupo, el partido sigue visible.
+  const entries = mergeMatchEntries([], [classic()], 'st-1', null);
+  assert.deepEqual(matchEntriesForGroup(entries, 'st-1', 'g-1').map((m) => m.id), ['m-1']);
+  // Y una recarga bajo el grupo tampoco lo pierde.
+  const refetched = mergeMatchEntries(entries, [classic()], 'st-1', 'g-1');
+  assert.deepEqual(matchEntriesForGroup(refetched, 'st-1', 'g-1').map((m) => m.id), ['m-1']);
+  assert.equal(matchEntriesForGroup(refetched, 'st-1', 'g-2').length, 0);
+});
+
 test('al cambiar de estado la tarjeta se reconstruye sin duplicados ni omisiones', () => {
   let entries = mergeMatchEntries([], [classic({ status: 'live' })], 'st-1', null);
   // El partido pasa a suspended y la página recargada lo trae con otro objeto.
