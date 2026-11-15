@@ -483,7 +483,8 @@ Dependencia externa: C1 fusionado y sus gates verdes. Ampliar evidencias sin pos
   - Tests primero: publicación mientras se escribe, desconexión de transporte real, trim/reset y recuperación del estado autorizado en otro receptor.
   - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` comprueba hechos y marcador actuales sin botón Actualizar, conserva edición y no usa replay ni mocks de reconexión.
 
-- [ ] **T75. Ampliar regresión de revocación/cambios de contexto con respuestas en vuelo.** RF-012, RF-015, RF-016, RF-031; RNF-001, RNF-004
+- [x] **T75. Ampliar regresión de revocación/cambios de contexto con respuestas en vuelo.** RF-012, RF-015, RF-016, RF-031; RNF-001, RNF-004
+  - 2026-11-15 (rama C2): dos pruebas nuevas en `tests/match-live-context.test.ts` — (a) retirada de lectura con OPERATE vigente limpia el borrador pero conserva `can_operate` y el acceso aplicado; (b) A→B→A con respuesta vieja en vuelo: la de A no se aplica en B, volver a A reautoriza con solicitud fresca, y una denegación vieja no restaura lo revocado. `node --test --experimental-strip-types tests/match-live-context.test.ts` **9/9 pass**; `pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` **13/13** (incluye retirada de roles/membresía/sesión con sockets abiertos, contexto A→B en vuelo y expiración JWT real).
   - Tests primero: retirada de lectura con OPERATE vigente, salida de organización, sesión vencida y A→B→A, con respuesta vieja exitosa/denegada.
   - Hecho cuando: `cd frontend && pnpm exec node --test --experimental-strip-types tests/match-live-context.test.ts` y `cd frontend && pnpm exec playwright test e2e/private-realtime.spec.ts --project private-realtime` no restauran datos/reenvíos ajenos; el cliente solo recupera al reautorizar.
 
