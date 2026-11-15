@@ -1,6 +1,6 @@
 # Tareas — Spec 037: Cronología pública del partido
 
-Estado: borrador (pendiente de aprobación expresa). Un solo PR por bloque: A (T1–T4 backend) y B (T5–T10 frontend, documentación y cierre).
+Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un solo PR por bloque: A (T1–T4 backend) y B (T5–T10 frontend, documentación y cierre).
 
 - [ ] **T1. Migración 060: `segment_id` en `v_public_match_events`.** RF-005, RF-009, RF-016
 - Hecho cuando: `test_migration_060.py` en rojo y luego verde con `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_060.py`; `sh -n infra/postgres/migrate.sh`; cadena limpia 001→060 y salto 059→060 con checksums estables.

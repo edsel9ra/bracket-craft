@@ -1,6 +1,6 @@
 # Plan — Spec 037: Cronología pública del partido
 
-Estado: borrador (pendiente de aprobación expresa).
+Estado: aprobado por el usuario el 2026-11-15 («Apruebo plan y tareas»).
 
 ## 1. Alcance y dependencias
 
