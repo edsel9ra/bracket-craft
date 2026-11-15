@@ -3,11 +3,11 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en 
 
 ## Spec activa
 - 036-partido-en-vivo, fase Implementación. Spec, plan y tareas aprobados por el usuario el 2026-11-13; DA-1–DA-7 y C1–C5 confirmadas. División oficial A1 → A2 → B1 → B2 → B3 → C1 → C2.
-- #80/A1, #81/A2 y #82/B1 fusionados según el usuario. B2 T37–T48 verificadas, sin productores HTTP accesibles; T48 cerrada con G-REMOTE de f05ebf96. Rama desde main a86c6f5c: devin/1794663227-partido-en-vivo-b2. Sin aceptación F1 ni despliegue.
+- #80/A1, #81/A2, #82/B1 y #83/B2 fusionados según main 8098cf35. B3 T49–T60 en curso en devin/1794673735-partido-en-vivo-b3. Sin aceptación F1 ni despliegue.
 
 ## Pendiente
-- B2: PR #83 abierto, T48 cerrada con evidencia remota; publicar y verificar también el commit documental. Esperar fusión autorizada antes de B3; no fusionar desde esta ronda.
-- Solo después de B2 fusionado: B3 T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
+- B3: T49 cerrada en verde local (2 passed route; 3 passed 059; regresión pública limpia, Ruff OK). Desviación autorizada 2026-11-15 (Opción 1): 059 añade bracket_code al final de la vista interna de selección; público sigue con 14 claves, 001–058 intactas. test_rectification_flow fijado a schema:59 donde lee /matches. Contenedores bc-b3-db/python/redis activos, PostgreSQL 001–059.
+- Continuar T49–T60 → C1 T61–T72 → C2 T73–T84. Sin productores F1 antes de B3, sin aceptación antes de T84.
 
 ## Historial de fases 036
 - 2026-11-13 · Spec, plan C1–C5 y 84 tareas en siete PRs aprobados expresamente; #79 fusionado. Las aprobaciones no equivalen a implementación ni aceptación F1.

@@ -10,8 +10,11 @@ from app.modules.crests.resolver import (
     sign_crest_rows,
     sign_media_rows,
 )
+from app.modules.matches.live_public import (
+    PublicMatchStateResponse,
+    SuspendedPublicMatchResponse,
+)
 from app.modules.tournaments.schemas import (
-    PublicMatchResponse,
     PublicPlayerStatsResponse,
     PublicStandingResponse,
     PublicTeamStatsResponse,
@@ -130,6 +133,9 @@ async def public_standings(
     return rows
 
 
+SUSPENDED_PUBLIC_KEYS = tuple(SuspendedPublicMatchResponse.model_fields)
+
+
 @router.get("/public/{tournament_id}/matches")
 async def public_matches(
     tournament_id: UUID,
@@ -138,36 +144,77 @@ async def public_matches(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-) -> list[PublicMatchResponse]:
+) -> list[PublicMatchStateResponse]:
     # N-2: every query lives inside this read transaction; the photos are
     # signed after it closes, never while the connection is idle in transaction.
     async with db.begin():
         await _ensure_public_tournament(db, tournament_id)
         result = await db.execute(
             text("""
-                SELECT m.id, m.tournament_id, m.stage_id, m.stage_name, m.stage_order,
-                       m.group_id, m.group_name, m.bracket_code, m.matchday, m.match_date,
-                       m.home_team_id, m.home_team_name, m.home_team_short_code,
-                       m.away_team_id, m.away_team_name, m.away_team_short_code,
-                       m.home_score_regular, m.away_score_regular, m.home_score,
-                       m.away_score, m.home_penalties, m.away_penalties,
-                       m.winner_team_id, m.status, m.resolution_type, m.rectified_at,
+                -- F1 (spec 036): la página se calcula sobre la unión completa:
+                -- la proyección clásica aporta scheduled/finished/live (los live
+                -- reciben los campos de reloj de la selección interna) y la
+                -- selección interna aporta los suspendidos. El orden y los
+                -- filtros usan metadatos internos antes de serializar; la salida
+                -- del suspendido se recorta a sus 14 claves exactas.
+                SELECT u.id, u.tournament_id, u.stage_id, u.stage_name, u.stage_order,
+                       u.group_id, u.group_name, u.bracket_code, u.matchday, u.match_date,
+                       u.home_team_id, u.home_team_name, u.home_team_short_code,
+                       u.away_team_id, u.away_team_name, u.away_team_short_code,
+                       u.home_score_regular, u.away_score_regular, u.home_score,
+                       u.away_score, u.home_penalties, u.away_penalties,
+                       u.winner_team_id, u.status, u.resolution_type, u.rectified_at,
+                       u.is_provisional, u.clock_segment_number,
+                       u.clock_elapsed_seconds, u.clock_state, u.clock_observed_at,
                        ht.crest_object_key AS home_team_crest_object_key,
                        at.crest_object_key AS away_team_crest_object_key
-                FROM v_public_matches m
+                FROM (
+                    SELECT m.id, m.tournament_id, m.stage_id, m.stage_name,
+                           m.stage_order, m.group_id, m.group_name, m.bracket_code,
+                           m.matchday, m.match_date, m.home_team_id, m.home_team_name,
+                           m.home_team_short_code, m.away_team_id, m.away_team_name,
+                           m.away_team_short_code, m.home_score_regular,
+                           m.away_score_regular, m.home_score, m.away_score,
+                           m.home_penalties, m.away_penalties, m.winner_team_id,
+                           m.status, m.resolution_type, m.rectified_at,
+                           lv.is_provisional, lv.clock_segment_number,
+                           lv.clock_elapsed_seconds, lv.clock_state,
+                           lv.clock_observed_at
+                    FROM v_public_matches m
+                    LEFT JOIN v_match_live_public_selection lv
+                      ON lv.id = m.id
+                    WHERE m.tournament_id = :tournament_id
+                    UNION ALL
+                    SELECT s.id, s.tournament_id, s.stage_id, st.name, st.stage_order,
+                           s.group_id, NULL, s.bracket_code, s.matchday, s.match_date,
+                           s.home_team_id, s.home_team_name, NULL,
+                           s.away_team_id, s.away_team_name, NULL,
+                           NULL, NULL, s.home_score, s.away_score,
+                           NULL, NULL, NULL, s.status, NULL, NULL,
+                           s.is_provisional, s.clock_segment_number,
+                           s.clock_elapsed_seconds, s.clock_state,
+                           s.clock_observed_at
+                    FROM v_match_live_public_selection s
+                    JOIN v_public_stages st
+                      ON st.tournament_id = s.tournament_id
+                     AND st.id = s.stage_id
+                    WHERE s.tournament_id = :tournament_id
+                      AND s.status = 'suspended'
+                ) u
                 LEFT JOIN v_public_tournament_teams ht
-                  ON ht.tournament_id = m.tournament_id
-                 AND ht.team_id = m.home_team_id
+                  ON ht.tournament_id = u.tournament_id
+                 AND ht.team_id = u.home_team_id
+                 AND u.status <> 'suspended'
                 LEFT JOIN v_public_tournament_teams at
-                  ON at.tournament_id = m.tournament_id
-                 AND at.team_id = m.away_team_id
-                WHERE m.tournament_id = :tournament_id
-                  AND (CAST(:stage_id AS UUID) IS NULL
-                       OR m.stage_id = CAST(:stage_id AS UUID))
+                  ON at.tournament_id = u.tournament_id
+                 AND at.team_id = u.away_team_id
+                 AND u.status <> 'suspended'
+                WHERE (CAST(:stage_id AS UUID) IS NULL
+                       OR u.stage_id = CAST(:stage_id AS UUID))
                   AND (CAST(:group_id AS UUID) IS NULL
-                       OR m.group_id = CAST(:group_id AS UUID))
-                  ORDER BY m.stage_order, m.stage_id, m.matchday NULLS LAST,
-                           m.bracket_code NULLS LAST, m.match_date NULLS LAST, m.id
+                       OR u.group_id = CAST(:group_id AS UUID))
+                  ORDER BY u.stage_order, u.stage_id, u.matchday NULLS LAST,
+                           u.bracket_code NULLS LAST, u.match_date NULLS LAST, u.id
                  LIMIT :limit OFFSET :offset
             """),
             {
@@ -181,21 +228,26 @@ async def public_matches(
         matches = [dict(row) for row in result.mappings().all()]
         lineup_rows: list[dict] = []
         if matches:
-            match_ids = [str(match["id"]) for match in matches]
-            lineup_result = await db.execute(
-                text("""
-                    SELECT match_id, team_id, team_name, side, formation_code, segment_number, player_id,
-                           first_name, last_name, dorsal_number, role, position_slot, photo_url
-                    FROM v_public_match_lineups
-                    WHERE tournament_id = :tournament_id
-                      AND match_id = ANY(CAST(:match_ids AS UUID[]))
-                    ORDER BY match_id, side,
-                             CASE WHEN role = 'starter' THEN 0 ELSE 1 END,
-                             dorsal_number NULLS LAST, last_name, first_name
-                """),
-                {"tournament_id": str(tournament_id), "match_ids": match_ids},
-            )
-            lineup_rows = [dict(row) for row in lineup_result.mappings().all()]
+            match_ids = [
+                str(match["id"])
+                for match in matches
+                if match["status"] != "suspended"
+            ]
+            if match_ids:
+                lineup_result = await db.execute(
+                    text("""
+                        SELECT match_id, team_id, team_name, side, formation_code, segment_number, player_id,
+                               first_name, last_name, dorsal_number, role, position_slot, photo_url
+                        FROM v_public_match_lineups
+                        WHERE tournament_id = :tournament_id
+                          AND match_id = ANY(CAST(:match_ids AS UUID[]))
+                        ORDER BY match_id, side,
+                                 CASE WHEN role = 'starter' THEN 0 ELSE 1 END,
+                                 dorsal_number NULLS LAST, last_name, first_name
+                    """),
+                    {"tournament_id": str(tournament_id), "match_ids": match_ids},
+                )
+                lineup_rows = [dict(row) for row in lineup_result.mappings().all()]
 
     if not matches:
         return []
@@ -233,6 +285,8 @@ async def public_matches(
         team_lineup[bucket].append(player)  # type: ignore[union-attr]
 
     for match in matches:
+        if match["status"] == "suspended":
+            continue
         match_lineups = lineups_by_match.get(str(match["id"]))
         if match_lineups:
             match["lineup"] = {
@@ -270,7 +324,15 @@ async def public_matches(
             lineup["home"]["crest_url"] = match["home_team_crest_url"]
         if lineup.get("away") is not None:
             lineup["away"]["crest_url"] = match["away_team_crest_url"]
-    return matches
+
+    # El suspendido responde con sus 14 claves exactas (extra="forbid"): nada de
+    # alineaciones, escudos, metadatos de fase/grupo ni campos nulos añadidos.
+    return [
+        {key: match[key] for key in SUSPENDED_PUBLIC_KEYS}
+        if match["status"] == "suspended"
+        else match
+        for match in matches
+    ]
 
 
 @router.get("/public/{tournament_id}/player-stats", response_model=list[PublicPlayerStatsResponse])

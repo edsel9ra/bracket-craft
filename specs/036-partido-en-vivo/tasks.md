@@ -339,9 +339,12 @@ Verde posterior: `RUN_DATABASE_TESTS=1 pytest -q tests/test_match_result_immutab
 
 Dependencia externa: B2 fusionado y sus gates verdes. Público exacto, consumidores compatibles y registro del router se entregan juntos; no activar T55 sin sus precondiciones.
 
-- [ ] **T49. Integrar la unión pública en la ruta y paginación existentes.** RF-009, RF-010, RF-028; RNF-001, RNF-002, RNF-006
+Desviación autorizada el **2026-11-15**, respuesta del usuario **«Opción 1: migración 059 mínima (recomendada)»**: B3 incluye `059_live_selection_bracket_code.sql` para T49. La vista interna de selección de 056 no exponía `bracket_code` y sin él el suspendido no conserva el orden clásico antes de paginar. Solo se añade `bracket_code` al final de la vista interna; la salida pública sigue con sus 14 claves exactas, `stage_order` se resuelve con `v_public_stages` y 001–058 permanecen intactas. Diseño y alternativa descartada en plan.md. Pruebas: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_059.py`.
+
+- [x] **T49. Integrar la unión pública en la ruta y paginación existentes.** RF-009, RF-010, RF-028; RNF-001, RNF-002, RNF-006
   - Tests primero: anónimo sin organización, suspendido entre páginas, filtro de fase/grupo, invisible/cancelado y organización ajena.
   - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_match_live_public.py -k route` comprueba claves de respuesta HTTP reales, filtros/orden antes de serializar y estadísticas/actas vigentes ajenas al borrador.
+  - Evidencia: rojo funcional previo **1 failed, 1 passed, 6 deselected** (suspendido ausente). Verde **2 passed, 6 deselected in 6.75s** — respuesta HTTP con exactamente las 14 claves, paginación de frontera consistente, filtros de fase/grupo, torneo invisible/cancelado y tenant ajeno indistinguibles, estadísticas y actas sin provisionales. `tests/test_migration_059.py` **3 passed in 3.67s** (columna interna, dos tenants, limpio/incremental/idempotente y privilegios). Regresión pública `test_public_access_matrix.py` + `test_public_field_allowlist.py` + `test_public_player_views.py` + `test_crest_public.py` + `test_migration_056/057/058.py`: **134 passed**; `test_rectification_flow.py` + `test_api_access.py` + `test_tournament_routes_order.py` + `test_photo_resolution.py`: **121 passed** tras fijar el flujo que lee `/matches` a `schema: 59`. `ruff check app tests`: **All checks passed!** Migración aplicada sobre la base compartida (001→059).
 
 - [ ] **T50. Emitir el aviso público nuevo solo tras revalidar visibilidad actual.** RF-009, RF-010, RF-013, RF-014, RF-027, RF-028; RNF-002
   - Tests primero: torneo ocultado después de encolar, referencias de otro tenant, nombre privado compartiendo identificadores y fallos de consulta.
