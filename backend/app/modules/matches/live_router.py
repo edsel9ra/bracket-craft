@@ -16,8 +16,8 @@ from app.core.security import get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.matches.live_schemas import (
     LiveAccessResponse,
-    LiveCommand,
     LiveCommandAck,
+    LiveCommandRequest,
     LiveReviewRequest,
     LiveReviewResponse,
     LiveSnapshotResponse,
@@ -50,12 +50,12 @@ async def get_match_live_access(
 @router.post("/{match_id}/live/commands", response_model=LiveCommandAck)
 async def post_match_live_command(
     match_id: UUID,
-    command: LiveCommand,
+    command: LiveCommandRequest,
     context: AuthContext = Depends(get_auth_context),
     session_id: UUID = Depends(get_session_id),
     db: AsyncSession = Depends(get_db),
 ) -> LiveCommandAck:
-    return await LiveMatchService(db).execute(context, match_id, session_id, command)
+    return await LiveMatchService(db).execute(context, match_id, session_id, command.root)
 
 
 @router.post(

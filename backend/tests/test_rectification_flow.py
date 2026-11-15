@@ -14,6 +14,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database import get_db, set_rls_context
+from app.core.security import get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.matches.schemas import CloseMatchReportDTO
@@ -204,6 +205,9 @@ async def flow(database_admin_url, request):
         previous = api.dependency_overrides.copy()
         api.dependency_overrides[get_db] = db
         api.dependency_overrides[get_auth_context] = auth
+        api.dependency_overrides[get_session_id] = (
+            lambda: UUID("00000000-0000-4000-8000-000000000000")
+        )
         try:
             async with AsyncClient(transport=ASGITransport(app=api), base_url="http://test",
                                    headers={"Origin": "http://localhost:3000"}) as client:

@@ -2,12 +2,12 @@
 
 Barrido de comportamiento **puro** (sin base de datos, sin red, sin reloj; plan
 §4 y §7): recorre ``app.main.api``, deriva las operaciones con cuerpo JSON y las
-compara con el inventario literal de **44** operaciones (**38** modelos de
-primer nivel, con **8** anidados), excluyendo las **3** operaciones multipart.
+compara con el inventario literal de **46** operaciones (**40** modelos de
+primer nivel, con **17** anidados), excluyendo las **3** operaciones multipart.
 
 T4 convierte el barrido en la garantía completa: ``STRICT_MODELS`` deja de ser
 una lista escrita a mano y pasa a ser el **conjunto derivado** de los modelos
-alcanzables desde el barrido, recursivamente (**46**), y ese mismo conjunto es
+alcanzables desde el barrido, recursivamente (**57**), y ese mismo conjunto es
 el que se prueba —biyección con el inventario literal en ambos sentidos,
 bandera ``extra="forbid"`` y rechazo ``extra_forbidden`` con el valor
 conservado solo dentro del error de Pydantic—. Tres salvaguardas fallan con
@@ -36,11 +36,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.params import File as FileField
 from fastapi.params import Form as FormField
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, RootModel, ValidationError
 
 from app.core.database import get_db
 from app.core.platform import PlatformContext, get_platform_context
-from app.core.security import get_current_user_id
+from app.core.security import get_current_user_id, get_session_id
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
 from app.modules.identity.schemas import (
@@ -53,6 +53,19 @@ from app.modules.invitations.schemas import (
     CreateInvitationRequest,
     UpdateMemberActiveRequest,
     UpdateMemberRoleRequest,
+)
+from app.modules.matches.live_schemas import (
+    LiveAddEventCommand,
+    LiveCommandRequest,
+    LiveCorrectClockCommand,
+    LiveCorrectEventCommand,
+    LiveEventPayload,
+    LivePauseResumeClockCommand,
+    LiveRemoveEventCommand,
+    LiveResultDTO,
+    LiveReviewRequest,
+    LiveStartClockCommand,
+    LiveStateCommand,
 )
 from app.modules.matches.schemas import (
     CloseMatchReportDTO,
@@ -208,6 +221,16 @@ EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
         "tournaments.schemas.CreateMatchRequest",
     ),
     ("POST", "/api/v1/matches/{match_id}/close", "matches.schemas.CloseMatchReportDTO"),
+    (
+        "POST",
+        "/api/v1/matches/{match_id}/live/commands",
+        "matches.live_schemas.LiveCommandRequest",
+    ),
+    (
+        "POST",
+        "/api/v1/matches/{match_id}/live/reviews",
+        "matches.live_schemas.LiveReviewRequest",
+    ),
     ("POST", "/api/v1/matches/{match_id}/rectifications", "rectifications.schemas.CreateRectificationRequest"),
     ("POST", "/api/v1/rectifications/{request_id}/decision", "rectifications.schemas.RectificationDecisionRequest"),
     ("POST", "/api/v1/competitive-impacts/{procedure_id}/close", "rectifications.schemas.CloseCompetitiveImpactRequest"),
@@ -248,6 +271,15 @@ MULTIPART_OPERATIONS: list[tuple[str, str]] = [
 
 # Los ocho modelos que solo aparecen dentro de otro cuerpo.
 EXPECTED_NESTED_MODELS: set[str] = {
+    "matches.live_schemas.LiveAddEventCommand",
+    "matches.live_schemas.LiveCorrectClockCommand",
+    "matches.live_schemas.LiveCorrectEventCommand",
+    "matches.live_schemas.LiveEventPayload",
+    "matches.live_schemas.LivePauseResumeClockCommand",
+    "matches.live_schemas.LiveRemoveEventCommand",
+    "matches.live_schemas.LiveResultDTO",
+    "matches.live_schemas.LiveStartClockCommand",
+    "matches.live_schemas.LiveStateCommand",
     "matches.schemas.MatchEventPayload",
     "matches.schemas.MatchLineupEntry",
     "matches.schemas.MatchTeamLineupConfig",
@@ -258,8 +290,8 @@ EXPECTED_NESTED_MODELS: set[str] = {
     "sanction_appeals.schemas.PrejudiceRequest",
 }
 
-# Ancla literal de las 46 referencias alcanzables desde el inventario: las 38
-# de primer nivel (las de EXPECTED_OPERATIONS) más las 8 anidadas. Contra este
+# Ancla literal de las 57 referencias alcanzables desde el inventario: las 40
+# de primer nivel (las de EXPECTED_OPERATIONS) más las 17 anidadas. Contra este
 # conjunto se contrasta, en ambos sentidos, el conjunto **derivado** del barrido
 # (T4): la lista de modelos que se prueba no se escribe a mano.
 EXPECTED_MODEL_REFS: set[str] = (
@@ -375,6 +407,88 @@ MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
         "resolution_type": "regular",
         "home_score_regular": 0,
         "away_score_regular": 0,
+    },
+    LiveCommandRequest: {
+        "type": "start",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+    },
+    LiveStateCommand: {
+        "type": "start",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+    },
+    LiveStartClockCommand: {
+        "type": "start_clock",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+        "segment_id": "00000000-0000-0000-0000-000000000001",
+    },
+    LivePauseResumeClockCommand: {
+        "type": "pause_clock",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+    },
+    LiveCorrectClockCommand: {
+        "type": "correct_clock",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+        "segment_id": "00000000-0000-0000-0000-000000000001",
+        "elapsed_us": 0,
+    },
+    LiveEventPayload: {
+        "client_event_id": "00000000-0000-0000-0000-000000000004",
+        "event_type": "goal",
+        "team_id": "00000000-0000-0000-0000-000000000002",
+        "player_id": "00000000-0000-0000-0000-000000000003",
+        "minute": 10,
+        "segment_id": "00000000-0000-0000-0000-000000000001",
+    },
+    LiveAddEventCommand: {
+        "type": "add_event",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+        "event": {
+            "client_event_id": "00000000-0000-0000-0000-000000000004",
+            "event_type": "goal",
+            "team_id": "00000000-0000-0000-0000-000000000002",
+            "player_id": "00000000-0000-0000-0000-000000000003",
+            "minute": 10,
+            "segment_id": "00000000-0000-0000-0000-000000000001",
+        },
+    },
+    LiveCorrectEventCommand: {
+        "type": "correct_event",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+        "event_id": "00000000-0000-0000-0000-000000000005",
+        "event": {
+            "client_event_id": "00000000-0000-0000-0000-000000000004",
+            "event_type": "goal",
+            "team_id": "00000000-0000-0000-0000-000000000002",
+            "player_id": "00000000-0000-0000-0000-000000000003",
+            "minute": 10,
+            "segment_id": "00000000-0000-0000-0000-000000000001",
+        },
+    },
+    LiveRemoveEventCommand: {
+        "type": "remove_event",
+        "command_id": "00000000-0000-0000-0000-000000000010",
+        "expected_revision": 0,
+        "event_id": "00000000-0000-0000-0000-000000000005",
+    },
+    LiveResultDTO: {
+        "resolution_type": "regular",
+        "home_score_regular": 0,
+        "away_score_regular": 0,
+    },
+    LiveReviewRequest: {
+        "expected_content_revision": 0,
+        "result": {
+            "resolution_type": "regular",
+            "home_score_regular": 0,
+            "away_score_regular": 0,
+        },
     },
     MatchTeamLineupConfig: {
         "team_id": "00000000-0000-0000-0000-000000000002",
@@ -563,9 +677,9 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 # ---------------------------------------------------------------------------
 
 
-def test_inventory_has_44_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 44
-    assert len(set(EXPECTED_OPERATIONS)) == 44
+def test_inventory_has_46_literal_operations():
+    assert len(EXPECTED_OPERATIONS) == 46
+    assert len(set(EXPECTED_OPERATIONS)) == 46
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -579,23 +693,23 @@ def test_json_operations_match_the_literal_inventory():
     extra = sorted((actual - expected).elements())
     assert not missing and not extra, (
         "El barrido de app.main.api no coincide con el inventario literal de "
-        f"44 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
+        f"46 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 44
+    assert len(derived) == 46
 
 
-def test_inventory_declares_38_top_level_models():
+def test_inventory_declares_40_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 38
+    assert len(refs) == 40
 
 
-def test_app_yields_38_top_level_and_8_nested_models():
+def test_app_yields_40_top_level_and_17_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 38, sorted(model_ref(m) for m in top_level)
-    assert len(nested) == 8, sorted(model_ref(m) for m in nested)
+    assert len(top_level) == 40, sorted(model_ref(m) for m in top_level)
+    assert len(nested) == 17, sorted(model_ref(m) for m in nested)
 
 
 def test_nested_models_match_the_literal_inventory():
@@ -655,7 +769,7 @@ def test_json_operation_without_pydantic_model_fails_with_explicit_message():
 # ---------------------------------------------------------------------------
 
 
-def test_strict_models_are_exactly_the_46_models_of_the_literal_inventory():
+def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
     """T4: lo que se prueba es exactamente lo que sirve la app, y viceversa.
 
     El conjunto sale **del barrido** (no de una lista escrita a mano) y se
@@ -669,11 +783,11 @@ def test_strict_models_are_exactly_the_46_models_of_the_literal_inventory():
     missing = sorted(EXPECTED_MODEL_REFS - derived_refs)
     extra = sorted(derived_refs - EXPECTED_MODEL_REFS)
     assert not missing and not extra, (
-        "El conjunto derivado del barrido no coincide con las 46 referencias "
+        "El conjunto derivado del barrido no coincide con las 57 referencias "
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 46, f"el barrido deriva {len(derived)} modelos, no 46"
+    assert len(derived) == 57, f"el barrido deriva {len(derived)} modelos, no 57"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."
@@ -708,6 +822,18 @@ def test_strict_model_forbids_extra(model):
     """
 
     role = "de primer nivel" if model in TOP_LEVEL_MODELS else "anidado"
+    if issubclass(model, RootModel):
+        # Un RootModel no admite la bandera: el envoltorio es puro y el rechazo
+        # lo ejercen las variantes de la raíz, todas con extra="forbid".
+        variants = collect_nested_models({model})
+        missing = [
+            model_ref(m) for m in variants if m.model_config.get("extra") != "forbid"
+        ]
+        assert variants and not missing, (
+            f"El modelo raíz {role} {model_ref(model)} delega en variantes sin "
+            f'extra="forbid": {missing or "ninguna"} (RF-005).'
+        )
+        return
     assert model.model_config.get("extra") == "forbid", (
         f"El modelo {role} {model_ref(model)} no declara "
         'model_config = ConfigDict(extra="forbid") (RF-005).'
@@ -735,9 +861,9 @@ def test_strict_model_rejects_extra_key(model):
             'model_config = ConfigDict(extra="forbid") la tolera en silencio '
             "(RF-005)."
         )
-    extra_errors = [e for e in errors if list(e["loc"])[:1] == ["extra"]]
+    extra_errors = [e for e in errors if list(e["loc"])[-1:] == ["extra"]]
     assert extra_errors, (
-        f"{model_ref(model)} rechazó 'extra' pero la ubicación no empieza por "
+        f"{model_ref(model)} rechazó 'extra' pero la ubicación no termina en "
         f"'extra': {[(e['type'], list(e['loc'])) for e in errors]}"
     )
     error = extra_errors[0]
@@ -1359,6 +1485,9 @@ async def test_match_event_extra_key_is_sanitized_422(overrides):
 
     sessions = install_fake_db(overrides)
     overrides[get_auth_context] = authenticated_member
+    overrides[get_session_id] = (
+        lambda: UUID("00000000-0000-0000-0000-000000000001")
+    )
 
     response = await asgi_request(
         "POST", _CLOSE_PATH, json=invalid_close_report_with_extra_event_key()
