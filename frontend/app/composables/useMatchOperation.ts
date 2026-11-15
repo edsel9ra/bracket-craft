@@ -288,6 +288,7 @@ export function useMatchOperation() {
     if (!disposed && key === mountedContextKey) {
       contextIsCurrent = realtime.captureContext();
       void operationReload.request();
+      void liveContext.request();
     }
   }, { flush: 'sync' });
 
@@ -389,6 +390,9 @@ export function useMatchOperation() {
     const restored = restoreResolution(operation.value?.limits ?? null);
     resolutionFallback.value = restored.fellBack;
     window.addEventListener('beforeunload', handleBeforeUnload);
+    // F1 (036): el contexto live se pide con la carga inicial, no solo ante
+    // eventos; el guard del cierre clásico lo necesita desde el primer acceso.
+    void liveContext.request();
     realtime.connect({
       onEvent: (event, payload) => {
         if (['MATCH_CLOSED', 'MATCH_UPDATED'].includes(event)) requestOperationReload('event', payload);
