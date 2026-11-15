@@ -18,8 +18,9 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_timeline_endpoint.py tests/test_public_access_matrix.py` verde (dos organizaciones, rectificación, anulados, 404 indistinguible); `pytest -q`, `ruff check .` y `bandit -q -r app -ll` verdes.
 - Evidencia (2026-11-15): `test_public_timeline_endpoint.py` 3 passed (dos organizaciones con lista cerrada y sin mezcla; versión rectificada vigente sin anulados; `live` → `pending`, acta confirmada sin hechos → vacío con segmentos 1–2; cancelado, inexistente, de otro torneo u otra organización → 404 indistinguible) y `test_public_access_matrix.py` con la ruta nueva en los tres grupos de 404; suite con PostgreSQL 17 y Redis 4154 passed (el único fallo, el recuento de rutas, se corrigió a 33 operaciones); `pytest -q` 2969 passed/1190 skipped, `ruff check .` y `bandit -q -r app -ll` limpios.
 
-- [ ] **T5. Utilidades frontend `utils/publicTimeline.ts`.** RF-008, RF-009, RF-014
+- [x] **T5. Utilidades frontend `utils/publicTimeline.ts`.** RF-008, RF-009, RF-014
 - Hecho cuando: `cd frontend && pnpm test` incluye `public-timeline.test.ts` (minuto, separadores, clave por tipo/roja, decisión de recarga) en verde.
+- Evidencia (2026-11-15): `public-timeline.test.ts` 9 passed (apertura solo en `finished`, minuto `45+2'`, claves por tipo y roja sin inferir, nombre y apellido, lado, separadores solo con más de un segmento, recarga por estado/marcador/penales/rectificación); `pnpm test` 1095 passed/0 failed; eslint limpio.
 
 - [ ] **T6. Componente `PublicMatchTimeline.vue` e i18n ES/EN.** RF-007, RF-008, RF-012, RNF-002
 - Hecho cuando: pruebas del componente (estados, nombres accesibles, foco, ambos idiomas) verdes; `pnpm run lint` y `pnpm run typecheck` verdes; `design-scales.test.ts` sin excepciones nuevas.
