@@ -27,7 +27,7 @@ const CHANGE = read('../app/pages/account/password.vue');
 const LOGIN = read('../app/pages/login.vue');
 const SHELL = read('../app/components/WorkspaceShell.vue');
 const COMPOSABLE = read('../app/composables/usePasswordAccount.ts');
-const TOKEN = 'Abc_def-0123456789abcdefghijklmnopqrstuvwxy';
+const TOKEN = 'fragmento-de-prueba-'.repeat(2);
 
 test('039 RF-005: el token se lee solo del fragmento y con forma base64url', () => {
   assert.equal(resetTokenFromHash(`#${TOKEN}`), TOKEN);
