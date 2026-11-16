@@ -1,6 +1,6 @@
 # Spec 038 — Fichas públicas de jugador
 
-Estado: aprobada por el usuario el 2026-11-16 («Apruebo la spec 038»); aclaración CL-11 y tope de RNF-001 añadidos en la fase Plan, pendientes de confirmar con el plan
+Estado: aprobada por el usuario el 2026-11-16 («Apruebo la spec 038»); aclaraciones CL-11 y tope de RNF-001 aprobadas con el plan («Apruebo plan, tareas y aclaraciones»)
 
 Fecha: 2026-11-16. Corresponde a F16 del informe de funciones adicionales (`docs/informe-funciones-adicionales.md`, tabla §3 y decisión §6.5; orden revisado §6.6, punto 5). Las specs 033–037 están implementadas y aceptadas. Fase Spec: DA-1–DA-4 decididas por el usuario el 2026-11-16 (ver «Decisiones del usuario»).
 

@@ -1,6 +1,6 @@
 # Tareas — Spec 038: Fichas públicas de jugador
 
-Estado: borrador, pendiente de aprobación. Un PR documental y un PR por bloque: A (T1–T5 backend) y B (T6–T10 frontend, documentación y cierre).
+Estado: aprobadas por el usuario el 2026-11-16 («Apruebo plan, tareas y aclaraciones»). Un PR documental y un PR por bloque: A (T1–T5 backend) y B (T6–T10 frontend, documentación y cierre).
 
 - [ ] **T1. Migración 061: `v_public_player_profile_rosters`.** RF-002, RF-003, RF-006, RF-007
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_061.py` en rojo y luego verde; `sh -n infra/postgres/migrate.sh`; cadena limpia 001→061 y salto 060→061 con checksums estables.
