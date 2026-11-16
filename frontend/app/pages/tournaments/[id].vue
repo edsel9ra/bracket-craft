@@ -111,7 +111,8 @@ const timelineLoading = ref(false);
 const timelineError = ref(false);
 let timelineGeneration = 0;
 // Último estado conocido del partido abierto: el refresco público vacía y rellena la lista.
-const timelineMatchCache = shallowRef<Exclude<PublicMatchState, SuspendedPublicMatch> | null>(null);
+type OpenTimelineMatch = Exclude<PublicMatchState, SuspendedPublicMatch>;
+const timelineMatchCache = shallowRef<OpenTimelineMatch | null>(null);
 let timelineSnapshot: TimelineSnapshot | null = null;
 const selectedTimelineMatch = computed(() => {
   const match = matchList.value.find((item) => item.id === selectedTimelineMatchId.value) ?? null;
@@ -335,11 +336,11 @@ function closeTimeline() {
 }
 
 type TimelineSnapshot = Pick<
-  PublicMatchState,
+  OpenTimelineMatch,
   'id' | 'status' | 'home_score' | 'away_score' | 'home_penalties' | 'away_penalties' | 'rectified_at'
 >;
 
-function timelineSnapshotOf(match: PublicMatchState): TimelineSnapshot {
+function timelineSnapshotOf(match: OpenTimelineMatch): TimelineSnapshot {
   return {
     id: match.id,
     status: match.status,
