@@ -252,6 +252,7 @@ async def test_public_reads_are_anonymous(db_session, tenant_factory):
             f"/api/v1/tournaments/public/{missing}/matches",
             f"/api/v1/tournaments/public/{missing}/player-stats",
             f"/api/v1/tournaments/public/{missing}/team-stats",
+            f"/api/v1/tournaments/public/{missing}/matches/{uuid4()}/timeline",
         ):
             response = await client.get(path)
             _assert_404_indistinguishable(response)
@@ -281,6 +282,7 @@ async def test_non_public_tournaments_are_indistinguishable_404(db_session, tena
                 f"/api/v1/tournaments/public/{tid}/matches",
                 f"/api/v1/tournaments/public/{tid}/player-stats",
                 f"/api/v1/tournaments/public/{tid}/team-stats",
+                f"/api/v1/tournaments/public/{tid}/matches/{uuid4()}/timeline",
             ):
                 response = await client.get(path)
                 _assert_404_indistinguishable(response)
@@ -321,6 +323,7 @@ async def test_inactive_organization_tournament_is_404():
                 f"/api/v1/tournaments/public/{tournament_id}/matches",
                 f"/api/v1/tournaments/public/{tournament_id}/player-stats",
                 f"/api/v1/tournaments/public/{tournament_id}/team-stats",
+                f"/api/v1/tournaments/public/{tournament_id}/matches/{uuid4()}/timeline",
             ):
                 response = await client.get(path)
                 _assert_404_indistinguishable(response)

@@ -3,7 +3,13 @@ import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
 import PublicRectifiedMark from '~/components/public/PublicRectifiedMark.vue';
 import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
-import { nextTick } from 'vue';
+import PublicMatchTimeline from '~/components/public/PublicMatchTimeline.vue';
+import { nextTick, shallowRef, watch } from 'vue';
+import {
+  canOpenTimeline,
+  shouldReloadTimeline,
+  type PublicMatchTimeline as PublicMatchTimelineData,
+} from '~/utils/publicTimeline';
 import { useRealtime } from '~/composables/useRealtime';
 import {
   appendedPageSlice,
@@ -98,6 +104,23 @@ const selectedLineupMatch = computed(() => {
   const match = matchList.value.find((item) => item.id === selectedLineupMatchId.value) ?? null;
   return match && !isSuspendedPublicMatch(match) && match.lineup ? match : null;
 });
+const selectedTimelineMatchId = ref<string | null>(null);
+const timelineTrigger = ref<HTMLButtonElement | null>(null);
+const timelineData = ref<PublicMatchTimelineData | null>(null);
+const timelineLoading = ref(false);
+const timelineError = ref(false);
+let timelineGeneration = 0;
+// Último estado conocido del partido abierto: el refresco público vacía y rellena la lista.
+type OpenTimelineMatch = Exclude<PublicMatchState, SuspendedPublicMatch>;
+const timelineMatchCache = shallowRef<OpenTimelineMatch | null>(null);
+let timelineSnapshot: TimelineSnapshot | null = null;
+const selectedTimelineMatch = computed(() => {
+  const match = matchList.value.find((item) => item.id === selectedTimelineMatchId.value) ?? null;
+  return match && !isSuspendedPublicMatch(match) ? match : null;
+});
+const timelineMatch = computed(() =>
+  selectedTimelineMatchId.value ? (selectedTimelineMatch.value ?? timelineMatchCache.value) : null,
+);
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
 const standingsOffsets = ref(new Map<string, number>());
@@ -270,6 +293,77 @@ function closeLineup() {
   void nextTick(() => trigger?.focus());
 }
 
+async function loadTimeline() {
+  const matchId = selectedTimelineMatchId.value;
+  if (!matchId) return;
+  const generation = ++timelineGeneration;
+  timelineLoading.value = true;
+  timelineError.value = false;
+  try {
+    const data = await request<PublicMatchTimelineData>(`/tournaments/public/${tournamentId}/matches/${matchId}/timeline`);
+    if (generation === timelineGeneration) timelineData.value = data;
+  } catch {
+    if (generation === timelineGeneration) {
+      timelineData.value = null;
+      timelineError.value = true;
+    }
+  } finally {
+    if (generation === timelineGeneration) timelineLoading.value = false;
+  }
+}
+
+function openTimeline(match: PublicMatchState, event: MouseEvent) {
+  if (isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
+  selectedTimelineMatchId.value = match.id;
+  timelineTrigger.value = event.currentTarget as HTMLButtonElement;
+  timelineMatchCache.value = match;
+  timelineSnapshot = timelineSnapshotOf(match);
+  timelineData.value = null;
+  void loadTimeline();
+}
+
+function closeTimeline() {
+  const trigger = timelineTrigger.value;
+  timelineGeneration += 1;
+  selectedTimelineMatchId.value = null;
+  timelineTrigger.value = null;
+  timelineMatchCache.value = null;
+  timelineSnapshot = null;
+  timelineData.value = null;
+  timelineLoading.value = false;
+  timelineError.value = false;
+  void nextTick(() => trigger?.focus());
+}
+
+type TimelineSnapshot = Pick<
+  OpenTimelineMatch,
+  'id' | 'status' | 'home_score' | 'away_score' | 'home_penalties' | 'away_penalties' | 'rectified_at'
+>;
+
+function timelineSnapshotOf(match: OpenTimelineMatch): TimelineSnapshot {
+  return {
+    id: match.id,
+    status: match.status,
+    home_score: match.home_score,
+    away_score: match.away_score,
+    home_penalties: match.home_penalties,
+    away_penalties: match.away_penalties,
+    rectified_at: match.rectified_at,
+  };
+}
+
+// RF-014: el refresco público existente recarga el diálogo abierto si cambia su partido.
+// Se compara con el último estado conocido, porque el refresco quita el partido de la lista
+// mientras espera la nueva página (viejo → ausente → nuevo).
+watch(selectedTimelineMatch, (match) => {
+  if (!match) return;
+  const previous = timelineSnapshot;
+  const next = timelineSnapshotOf(match);
+  timelineMatchCache.value = match;
+  timelineSnapshot = next;
+  if (previous && previous.id === next.id && shouldReloadTimeline(previous, next)) void loadTimeline();
+});
+
 function payloadTargetsTournament(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return true;
   const value = payload as { tournament_id?: unknown };
@@ -398,6 +492,8 @@ const publicReload = createReloadCoordinator(async () => {
     await refresh();
     if (requestGeneration.isCurrent(generation) && tournament.value) {
       await resetActiveCombination();
+      // Un partido abierto desde una página posterior ya no está en la lista: no hay con qué comparar.
+      if (selectedTimelineMatchId.value && !selectedTimelineMatch.value) void loadTimeline();
       await loadStatsFirstPage(statsScope.value);
     }
   } catch (cause) {
@@ -647,6 +743,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                  >
                    {{ t('public.viewLineup') }}
                  </button>
+                 <button
+                   v-if="canOpenTimeline(match)"
+                   class="lineup-trigger timeline-trigger"
+                   type="button"
+                   aria-controls="public-timeline-dialog"
+                   aria-haspopup="dialog"
+                   :aria-expanded="selectedTimelineMatchId === match.id"
+                   @click="openTimeline(match, $event)"
+                 >
+                   {{ t('public.viewTimeline') }}
+                 </button>
                </article>
              </TransitionGroup>
              <Button variant="secondary" v-if="activeMatchesHasMore" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches')">
@@ -723,6 +830,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                          >
                            {{ t('public.viewLineup') }}
                          </button>
+                         <button
+                           v-if="canOpenTimeline(match)"
+                           class="lineup-trigger timeline-trigger"
+                           type="button"
+                           aria-controls="public-timeline-dialog"
+                           aria-haspopup="dialog"
+                           :aria-expanded="selectedTimelineMatchId === match.id"
+                           @click="openTimeline(match, $event)"
+                         >
+                           {{ t('public.viewTimeline') }}
+                         </button>
                        </article>
                      </TransitionGroup>
                     <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, group.groupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, group.groupId)">
@@ -771,6 +889,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                        >
                          {{ t('public.viewLineup') }}
                        </button>
+                       <button
+                         v-if="canOpenTimeline(match)"
+                         class="lineup-trigger timeline-trigger"
+                         type="button"
+                         aria-controls="public-timeline-dialog"
+                         aria-haspopup="dialog"
+                         :aria-expanded="selectedTimelineMatchId === match.id"
+                         @click="openTimeline(match, $event)"
+                       >
+                         {{ t('public.viewTimeline') }}
+                       </button>
                      </article>
                    </TransitionGroup>
                  <Button variant="secondary" v-if="comboHasMore('matches', selectedStage.id, selectedGroupId)" class="button-secondary load-more" type="button" :disabled="loadingMore !== null" @click="loadMore('matches', selectedStage.id, selectedGroupId)">
@@ -783,7 +912,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              <template v-else-if="stagePresentation(selectedStage) === 'bracket'">
                <PublicBracket
                  :matches="bracketEligibleMatches(matchesForGroup(selectedStage.id, selectedGroupId))"
+                 :open-timeline-id="selectedTimelineMatchId"
                  @open-lineup="openLineup"
+                 @open-timeline="openTimeline"
                />
                <TransitionGroup
                  v-if="suspendedMatchesForSelection.length"
@@ -840,6 +971,17 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                      @click="openLineup(match, $event)"
                    >
                      {{ t('public.viewLineup') }}
+                   </button>
+                   <button
+                     v-if="canOpenTimeline(match)"
+                     class="lineup-trigger timeline-trigger"
+                     type="button"
+                     aria-controls="public-timeline-dialog"
+                     aria-haspopup="dialog"
+                     :aria-expanded="selectedTimelineMatchId === match.id"
+                     @click="openTimeline(match, $event)"
+                   >
+                     {{ t('public.viewTimeline') }}
                    </button>
                  </article>
                </TransitionGroup>
@@ -910,6 +1052,15 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       :open="Boolean(selectedLineupMatch)"
       :match="selectedLineupMatch"
       @close="closeLineup"
+    />
+    <PublicMatchTimeline
+      :open="Boolean(timelineMatch)"
+      :match="timelineMatch"
+      :timeline="timelineData"
+      :loading="timelineLoading"
+      :error="timelineError"
+      @close="closeTimeline"
+      @retry="loadTimeline"
     />
   </main>
 </template>

@@ -24,7 +24,7 @@ test('disabled consumers override opacity locally only in explicit light and sys
 });
 
 test('clear dialog backdrops use one alpha layer and preserve native modal cancellation', () => {
-  for (const path of ['components/ui/ConfirmDialog.vue', 'components/public/PublicLineupModal.vue']) {
+  for (const path of ['components/ui/ConfirmDialog.vue', 'components/public/PublicLineupModal.vue', 'components/public/PublicMatchTimeline.vue']) {
     const source = read(path);
     assert.match(source, /:root\[data-theme="light"\]/, path);
     assert.match(source, /:root\[data-theme="system"\]/, path);
@@ -45,7 +45,7 @@ test('clear initials retain the mirrored avatar role and remote images are never
 });
 
 test('compiled conditional surface rules retain their consumer instead of styling html', () => {
-  for (const path of [...disabledConsumers, 'components/ui/ConfirmDialog.vue', 'components/public/PublicLineupModal.vue']) {
+  for (const path of [...disabledConsumers, 'components/ui/ConfirmDialog.vue', 'components/public/PublicLineupModal.vue', 'components/public/PublicMatchTimeline.vue']) {
     const source = read(path).match(/<style[^>]*>([\s\S]*?)<\/style>/)![1]!;
     const result = compileStyle({ source, filename: path, id: 'data-v-theme', scoped: true });
     assert.deepEqual(result.errors, []);
