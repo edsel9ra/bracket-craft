@@ -1,6 +1,6 @@
 # Plan — Spec 039: Recuperar y cambiar la contraseña
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-16 («Apruebo plan, tareas y aclaraciones»).
 
 ## 1. Alcance y dependencias
 

@@ -1,6 +1,6 @@
 # Tareas — Spec 039: Recuperar y cambiar la contraseña
 
-Estado: borrador, pendiente de aprobación. PR documental y un PR por bloque: A (T1–T6, backend) y B (T7–T10, frontend, E2E, documentación y cierre).
+Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque: A (T1–T6, backend) y B (T7–T10, frontend, E2E, documentación y cierre).
 
 - [ ] **T1. Migración 062: tablas y funciones de recuperación.** RF-002–RF-005, RF-008, RF-012, RNF-002, RNF-003
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_062.py` en rojo y luego verde (sin privilegios directos, `EXECUTE` solo para `bracket_app`, un solo uso concurrente, revocación de sesiones); `sh -n infra/postgres/migrate.sh`; cadena limpia 001→062 y salto 061→062.
