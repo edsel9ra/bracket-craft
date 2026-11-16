@@ -419,3 +419,9 @@ test('RF-022: the position heading exists in Spanish and English', () => {
   assert.ok(I18N.includes("'public.position': 'Posición'"), 'Spanish heading missing');
   assert.ok(I18N.includes("'public.position': 'Position'"), 'English heading missing');
 });
+
+test('038 RF-009: el nombre enlaza a la ficha solo con profile_available', () => {
+  assert.match(PLAYER_TABLE, /profile_available\?: boolean;/);
+  assert.match(PLAYER_TABLE, /<NuxtLink v-if="profileLinkFor\(row\)" class="stats-player-link" :to="profileLinkFor\(row\) \?\? undefined">\{\{ row\.first_name \}\} \{\{ row\.last_name \}\}<\/NuxtLink><template v-else>\{\{ row\.first_name \}\} \{\{ row\.last_name \}\}<\/template>/);
+  assert.match(PLAYER_TABLE, /\.stats-player-link:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
+});

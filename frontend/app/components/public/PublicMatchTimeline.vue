@@ -10,6 +10,7 @@ import {
   type PublicMatchTimeline,
   type PublicTimelineEvent,
 } from '~/utils/publicTimeline';
+import { profileLinkFor } from '~/utils/publicPlayerProfile';
 
 interface TimelineMatch {
   id: string;
@@ -182,10 +183,10 @@ function formatScore(match: TimelineMatch): string {
                   <span class="timeline-body">
                     <strong>{{ t(timelineEventKey(event)) }}</strong>
                     <template v-if="event.event_type === 'substitution'">
-                      <span>{{ t('publicTimeline.playerOut') }}: {{ timelinePlayerName(event.player) }}</span>
-                      <span v-if="event.player_in">{{ t('publicTimeline.playerIn') }}: {{ timelinePlayerName(event.player_in) }}</span>
+                      <span>{{ t('publicTimeline.playerOut') }}: <NuxtLink v-if="profileLinkFor(event.player)" class="timeline-player-link" :to="profileLinkFor(event.player) ?? undefined" @click="close">{{ timelinePlayerName(event.player) }}</NuxtLink><template v-else>{{ timelinePlayerName(event.player) }}</template></span>
+                      <span v-if="event.player_in">{{ t('publicTimeline.playerIn') }}: <NuxtLink v-if="profileLinkFor(event.player_in)" class="timeline-player-link" :to="profileLinkFor(event.player_in) ?? undefined" @click="close">{{ timelinePlayerName(event.player_in) }}</NuxtLink><template v-else>{{ timelinePlayerName(event.player_in) }}</template></span>
                     </template>
-                    <span v-else>{{ timelinePlayerName(event.player) }}</span>
+                    <span v-else><NuxtLink v-if="profileLinkFor(event.player)" class="timeline-player-link" :to="profileLinkFor(event.player) ?? undefined" @click="close">{{ timelinePlayerName(event.player) }}</NuxtLink><template v-else>{{ timelinePlayerName(event.player) }}</template></span>
                     <small>{{ eventTeam(match, event) }}</small>
                     <small v-if="beneficiaryTeam(match, event)">{{ t('publicTimeline.beneficiary') }}: {{ beneficiaryTeam(match, event) }}</small>
                   </span>
@@ -208,6 +209,8 @@ function formatScore(match: TimelineMatch): string {
 .timeline-dialog-title h2 { margin: var(--space-2) 0 0; font-size: var(--text-lg); letter-spacing: -0.05em; line-height: 1.1; overflow-wrap: anywhere; }
 .timeline-dialog-title h2 b { color: var(--color-accent); }
 .timeline-close, .timeline-retry { flex: 0 0 auto; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font-size: var(--text-xs); font-weight: 800; text-transform: uppercase; }
+.timeline-player-link { color: var(--color-accent); text-underline-offset: var(--space-1); }
+.timeline-player-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .timeline-close:hover, .timeline-retry:hover { border-color: var(--color-accent); color: var(--color-accent); }
 .timeline-dialog-content { min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-6) var(--space-7); }
 .timeline-state { color: var(--color-muted); font-size: var(--text-sm); }
