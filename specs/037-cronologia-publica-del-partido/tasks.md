@@ -64,4 +64,4 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
   - No ejecutado:
     - CL-9 (cierre de un partido en vivo con el diálogo abierto) y RF-014 contra la pila real con Socket.IO: cubiertos por pruebas unitarias/estructurales y por el E2E con contrato ficticio, no por una sesión con backend real.
     - Lector de pantalla real: no se ha probado; la accesibilidad se verificó por roles y foco.
-  - Aceptación de la spec: pendiente de confirmación expresa del usuario.
+  - Aceptación de la spec: aceptada por el usuario el 2026-11-15 («Acepto la spec 037»), con autorización para fusionar #90 → #91 → #92.

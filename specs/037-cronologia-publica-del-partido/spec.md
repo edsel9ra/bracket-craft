@@ -1,6 +1,6 @@
 # Spec 037 — Cronología pública del partido
 
-Estado: aprobada
+Estado: implementada y aceptada (2026-11-15); spec cerrada
 
 Fecha: 2026-11-15. Corresponde a F13 del informe de funciones adicionales (`docs/informe-funciones-adicionales.md`, §3 P3 y orden revisado §6.6, punto 4: F8 → F1 → F13). F8 (spec 035) y F1 (spec 036) están implementadas y aceptadas. Fase Spec abierta: DA-1 (b), DA-2 (a), DA-3 (a) y DA-4 (a) cerradas por el usuario el 2026-11-15; Spec aprobada expresamente por el usuario el 2026-11-15 («Apruebo la spec 037»).
 

@@ -2,7 +2,8 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- **037-cronologia-publica-del-partido** (F13) — fase: Implementación — estado: spec aprobada por el usuario el 2026-11-15 («Apruebo la spec 037»); plan y tareas (T1–T10, migración 060) aprobados el 2026-11-15 («Apruebo plan y tareas»); bloque A (T1–T4) en #91 y bloque B (T5–T10) en #92, apilados sobre #90, con CI 7/7 en verde; T10 con evidencia completa y la llave también con cronología (RF-001). 2026-11-15: DA-1 (b) goles+tarjetas+sustituciones, DA-2 (a) solo nombre y apellido, DA-3 (a) roja directa/doble amarilla, DA-4 (a) separador por segmento. Siguiente: aceptación expresa de la spec por el usuario y fusión en orden #90 → #91 → #92, solo con su autorización.
+- Ninguna spec activa. Siguiente según el informe: F16 (fichas de jugador e históricos), que exige decidir antes qué significa «autorizada».
+- 037-cronologia-publica-del-partido (F13) CERRADA: T1–T10 en #90–#92; aceptada por el usuario el 2026-11-15 («Acepto la spec 037»). DA-1 (b), DA-2 (a), DA-3 (a), DA-4 (a). Migración 060 antes del código. No ejecutado: CL-9/RF-014 contra la pila real con Socket.IO y lector de pantalla real (ver tasks.md T10).
 - 036-partido-en-vivo CERRADA: T1–T84 en #80–#86; F1 aceptada por el usuario el 2026-11-15 («Acepto F1»). Sin despliegue productivo acreditado; rollback post-F1 no soportado (`docs/despliegue-partido-en-vivo.md`).
 
 ## Pendiente
