@@ -4,7 +4,7 @@ import Surface from '~/components/ui/Surface.vue';
 import PublicRectifiedMark from '~/components/public/PublicRectifiedMark.vue';
 import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
 import PublicMatchTimeline from '~/components/public/PublicMatchTimeline.vue';
-import { nextTick, watch } from 'vue';
+import { nextTick, shallowRef, watch } from 'vue';
 import {
   canOpenTimeline,
   shouldReloadTimeline,
@@ -110,10 +110,16 @@ const timelineData = ref<PublicMatchTimelineData | null>(null);
 const timelineLoading = ref(false);
 const timelineError = ref(false);
 let timelineGeneration = 0;
+// Último estado conocido del partido abierto: el refresco público vacía y rellena la lista.
+const timelineMatchCache = shallowRef<PublicMatchState | null>(null);
+let timelineSnapshot: TimelineSnapshot | null = null;
 const selectedTimelineMatch = computed(() => {
   const match = matchList.value.find((item) => item.id === selectedTimelineMatchId.value) ?? null;
   return match && !isSuspendedPublicMatch(match) ? match : null;
 });
+const timelineMatch = computed(() =>
+  selectedTimelineMatchId.value ? (selectedTimelineMatch.value ?? timelineMatchCache.value) : null,
+);
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
 const standingsOffsets = ref(new Map<string, number>());
@@ -309,6 +315,8 @@ function openTimeline(match: PublicMatchState, event: MouseEvent) {
   if (isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
   selectedTimelineMatchId.value = match.id;
   timelineTrigger.value = event.currentTarget as HTMLButtonElement;
+  timelineMatchCache.value = match;
+  timelineSnapshot = timelineSnapshotOf(match);
   timelineData.value = null;
   void loadTimeline();
 }
@@ -318,32 +326,42 @@ function closeTimeline() {
   timelineGeneration += 1;
   selectedTimelineMatchId.value = null;
   timelineTrigger.value = null;
+  timelineMatchCache.value = null;
+  timelineSnapshot = null;
   timelineData.value = null;
   timelineLoading.value = false;
   timelineError.value = false;
   void nextTick(() => trigger?.focus());
 }
 
+type TimelineSnapshot = Pick<
+  PublicMatchState,
+  'id' | 'status' | 'home_score' | 'away_score' | 'home_penalties' | 'away_penalties' | 'rectified_at'
+>;
+
+function timelineSnapshotOf(match: PublicMatchState): TimelineSnapshot {
+  return {
+    id: match.id,
+    status: match.status,
+    home_score: match.home_score,
+    away_score: match.away_score,
+    home_penalties: match.home_penalties,
+    away_penalties: match.away_penalties,
+    rectified_at: match.rectified_at,
+  };
+}
+
 // RF-014: el refresco público existente recarga el diálogo abierto si cambia su partido.
-watch(
-  () => {
-    const match = selectedTimelineMatch.value;
-    return match
-      ? {
-          id: match.id,
-          status: match.status,
-          home_score: match.home_score,
-          away_score: match.away_score,
-          home_penalties: match.home_penalties,
-          away_penalties: match.away_penalties,
-          rectified_at: match.rectified_at,
-        }
-      : null;
-  },
-  (next, previous) => {
-    if (next && previous && next.id === previous.id && shouldReloadTimeline(previous, next)) void loadTimeline();
-  },
-);
+// Se compara con el último estado conocido, porque el refresco quita el partido de la lista
+// mientras espera la nueva página (viejo → ausente → nuevo).
+watch(selectedTimelineMatch, (match) => {
+  if (!match) return;
+  const previous = timelineSnapshot;
+  const next = timelineSnapshotOf(match);
+  timelineMatchCache.value = match;
+  timelineSnapshot = next;
+  if (previous && previous.id === next.id && shouldReloadTimeline(previous, next)) void loadTimeline();
+});
 
 function payloadTargetsTournament(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return true;
@@ -1031,8 +1049,8 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       @close="closeLineup"
     />
     <PublicMatchTimeline
-      :open="Boolean(selectedTimelineMatch)"
-      :match="selectedTimelineMatch"
+      :open="Boolean(timelineMatch)"
+      :match="timelineMatch"
       :timeline="timelineData"
       :loading="timelineLoading"
       :error="timelineError"
