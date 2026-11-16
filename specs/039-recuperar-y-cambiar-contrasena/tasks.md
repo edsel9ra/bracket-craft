@@ -54,9 +54,9 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
   - RF-012: `account_security_events` con cuenta, tipo y fecha, sin correo ni hash (migración).
   - RF-013: enlace en el login, tres pantallas y entrada en el menú de cuenta de escritorio y móvil, ES/EN, ambos temas, axe sin violaciones (unit + E2E).
   - RNF-003: dos resets simultáneos producen un solo cambio y recuperación/cambio concurrentes no se interbloquean (migración).
-  - RNF-004: Argon2 vía `asyncio.to_thread` en reset y cambio (endpoints).
+  - RNF-004: Argon2 vía `asyncio.to_thread` en reset y cambio (revisión de `password_router.py`; sin prueba dedicada).
   - RNF-005: suites backend y frontend completas y E2E en verde; CI de #99–#101.
   - CL-5: el enlace actúa sobre su propia cuenta; la respuesta del reset borra la cookie del navegador y el cliente limpia su estado, así que la sesión abierta nunca pasa a la cuenta del enlace (endpoints + unit).
   - CL-7: si SMTP falla, el worker invalida el enlace antes de reintentar (worker).
-  - CL-8: el correo se normaliza igual que en el login (puras + worker).
+  - CL-8: `enqueue_password_reset_request` normaliza espacios y mayúsculas como el login (`test_062_request_does_not_resolve_the_account`).
 - No ejecutado: el flujo completo contra la pila real con SMTP real (el E2E usa un contrato ficticio y el worker se prueba con SMTP simulado) y un lector de pantalla real.
