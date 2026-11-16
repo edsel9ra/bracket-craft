@@ -492,6 +492,8 @@ const publicReload = createReloadCoordinator(async () => {
     await refresh();
     if (requestGeneration.isCurrent(generation) && tournament.value) {
       await resetActiveCombination();
+      // Un partido abierto desde una página posterior ya no está en la lista: no hay con qué comparar.
+      if (selectedTimelineMatchId.value && !selectedTimelineMatch.value) void loadTimeline();
       await loadStatsFirstPage(statsScope.value);
     }
   } catch (cause) {
