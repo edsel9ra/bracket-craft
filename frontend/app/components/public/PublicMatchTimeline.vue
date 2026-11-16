@@ -98,6 +98,11 @@ function eventTeam(match: TimelineMatch, event: PublicTimelineEvent): string {
   return teamName(match, timelineEventSide(event, match));
 }
 
+function beneficiaryTeam(match: TimelineMatch, event: PublicTimelineEvent): string | null {
+  if (event.event_type !== 'own_goal' || !event.beneficiary_team_id) return null;
+  return teamName(match, timelineEventSide({ team_id: event.beneficiary_team_id }, match));
+}
+
 function eventIcon(event: PublicTimelineEvent): string {
   if (event.event_type === 'yellow_card') return 'yellow';
   if (event.event_type === 'red_card') return 'red';
@@ -181,6 +186,7 @@ function formatScore(match: TimelineMatch): string {
                     </template>
                     <span v-else>{{ timelinePlayerName(event.player) }}</span>
                     <small>{{ eventTeam(match, event) }}</small>
+                    <small v-if="beneficiaryTeam(match, event)">{{ t('publicTimeline.beneficiary') }}: {{ beneficiaryTeam(match, event) }}</small>
                   </span>
                 </li>
               </ol>

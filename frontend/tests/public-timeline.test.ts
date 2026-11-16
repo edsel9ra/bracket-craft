@@ -128,6 +128,7 @@ const TIMELINE_KEYS = [
   'publicTimeline.scoreMismatch',
   'publicTimeline.playerOut',
   'publicTimeline.playerIn',
+  'publicTimeline.beneficiary',
   'publicTimeline.event.goal',
   'publicTimeline.event.penaltyGoal',
   'publicTimeline.event.ownGoal',
@@ -197,4 +198,10 @@ test('el diálogo abierto se recarga con el refresco público, sin evento nuevo'
   }
   assert.match(page, /\['MATCH_CLOSED', 'MATCH_UPDATED', 'STANDINGS_UPDATED'\]/);
   assert.doesNotMatch(page, /TIMELINE_UPDATED|MATCH_TIMELINE/);
+});
+
+test('el autogol muestra el equipo beneficiado (RF-007)', () => {
+  assert.match(component, /event\.event_type !== 'own_goal' \|\| !event\.beneficiary_team_id/);
+  assert.match(component, /timelineEventSide\(\{ team_id: event\.beneficiary_team_id \}, match\)/);
+  assert.match(component, /t\('publicTimeline\.beneficiary'\)/);
 });

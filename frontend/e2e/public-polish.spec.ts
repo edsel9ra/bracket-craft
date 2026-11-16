@@ -120,6 +120,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await expect(dialog.locator('.timeline-separator')).toHaveText(['Segmento 1', 'Segmento 2']);
       expect(await dialog.locator('.timeline-minute').allTextContents()).toEqual(["23'", "45+2'", "52'", "60'", "88'"]);
       await expect(dialog).toContainText('Gol en propia meta');
+  await expect(dialog.locator('.timeline-event').nth(2)).toContainText('A favor de: ');
       await expect(dialog).toContainText('Roja por doble amarilla');
       await expect(dialog).toContainText('Sale: Nombre Apellido Extremadamente Largo Que Sale Del Campo');
       await expect(dialog).toContainText('Entra: Nombre Apellido Extremadamente Largo Que Entra Al Campo');
