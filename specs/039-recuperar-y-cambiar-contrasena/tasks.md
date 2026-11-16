@@ -38,7 +38,7 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 - Hecho cuando: `pnpm exec playwright test e2e/password-recovery.spec.ts --project public --no-deps` verde a 1440/390 px en ambos temas con contratos ficticios; `pnpm run typecheck:e2e` y `pnpm run build` verdes.
 - Evidencia (2026-11-16): `e2e/password-recovery.spec.ts` (proyecto `public`, contrato ficticio de `/auth/password*`) `16 passed` a 1440/390 px en tema oscuro y claro: enlace del login, confirmación genérica con foco, validación local sin llamadas, token leído del fragmento y retirado de la URL, `PASSWORD_REUSED` y `PASSWORD_RESET_INVALID`, vuelta al login con aviso, cambio con actual incorrecta (foco en su campo), éxito y cuenta solo-Google sin formulario; axe sin violaciones en las tres pantallas y sin desbordamiento horizontal. `pnpm run typecheck:e2e` verde.
 
-- [ ] **T10. Documentación y cierre.** Todos
+- [x] **T10. Documentación y cierre.** Todos
 - Hecho cuando: README (rutas, runbook de la 062, límites), AGENTS, manual de usuario y MEMORY actualizados; trazabilidad de cada RF, RNF y CL con su evidencia en esta tarea; CI 7/7 en los PR.
 - Documentación (2026-11-16): README (runbook de la 062 con rutas, respuestas, orden 062 → API/worker y `FRONTEND_BASE_URL`; límites en la sección de rate limit), AGENTS (F3), manual §1 y MEMORY.
 - Trazabilidad (pruebas backend en `backend/tests/`: `test_migration_062.py` con base real, `test_password_recovery.py` puras/esquemas/correos, `test_password_recovery_endpoints.py`, `test_account_email_worker.py`; frontend `tests/password-recovery.test.ts` y `e2e/password-recovery.spec.ts`):
@@ -59,4 +59,5 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
   - CL-5: el enlace actúa sobre su propia cuenta; la respuesta del reset borra la cookie del navegador y el cliente limpia su estado, así que la sesión abierta nunca pasa a la cuenta del enlace (endpoints + unit).
   - CL-7: si SMTP falla, el worker invalida el enlace antes de reintentar (worker).
   - CL-8: `enqueue_password_reset_request` normaliza espacios y mayúsculas como el login (`test_062_request_does_not_resolve_the_account`).
+- CI (2026-11-16): 7/7 en #99, #100 y #101 (GitGuardian omitido en los PR de código, como en las specs anteriores).
 - No ejecutado: el flujo completo contra la pila real con SMTP real (el E2E usa un contrato ficticio y el worker se prueba con SMTP simulado) y un lector de pantalla real.
