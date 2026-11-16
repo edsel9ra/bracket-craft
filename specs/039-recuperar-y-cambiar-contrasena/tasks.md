@@ -40,3 +40,23 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 
 - [ ] **T10. Documentación y cierre.** Todos
 - Hecho cuando: README (rutas, runbook de la 062, límites), AGENTS, manual de usuario y MEMORY actualizados; trazabilidad de cada RF, RNF y CL con su evidencia en esta tarea; CI 7/7 en los PR.
+- Documentación (2026-11-16): README (runbook de la 062 con rutas, respuestas, orden 062 → API/worker y `FRONTEND_BASE_URL`; límites en la sección de rate limit), AGENTS (F3), manual §1 y MEMORY.
+- Trazabilidad (pruebas backend en `backend/tests/`: `test_migration_062.py` con base real, `test_password_recovery.py` puras/esquemas/correos, `test_password_recovery_endpoints.py`, `test_account_email_worker.py`; frontend `tests/password-recovery.test.ts` y `e2e/password-recovery.spec.ts`):
+  - RF-001/RNF-001/CL-1: `forgot` responde `202 {}` en los cuatro casos sin leer `users`, sin Argon2 ni SMTP (endpoints); la pantalla muestra la misma confirmación (unit + E2E).
+  - RF-002/RF-002b/CL-6: el worker envía el enlace `/password/reset#<token>` a cuentas locales, el recordatorio sin enlace a solo-Google y nada a inexistentes/desactivadas; sin SMTP no se registra el enlace (worker).
+  - RF-003/CL-2: emitir invalida los pendientes (migración + worker).
+  - RF-004/RF-005/CL-3: reset válido cambia el hash, marca usado y revoca todas las sesiones; usado, caducado, sustituido, desconocido o cuenta desactivada → `400 PASSWORD_RESET_INVALID` (migración + endpoints); la pantalla ofrece pedir otro enlace (E2E).
+  - RF-006/RF-007: el cambio conserva la sesión del `jti` y revoca las demás; actual incorrecta → `400 CURRENT_PASSWORD_INVALID` sin cambios y con el límite del login (endpoints); foco en su campo (E2E).
+  - RF-008/CL-4: recuperar o cambiar invalida los enlaces pendientes y encola el aviso sin enlaces; un fallo del aviso no revierte (migración + worker).
+  - RF-009: 8–128 puntos de código y distinta de la actual (`PASSWORD_REUSED`) en esquemas y en el cliente (unit, incluido el caso Unicode fuera del BMP).
+  - RF-010: 429 con `Retry-After` por IP+correo, IP+hash de enlace e IP+cuenta; Redis caído → 503 (endpoints); el cliente los traduce (unit).
+  - RF-011/RNF-002: token de 256 bits, solo su SHA-256 en base; logs del worker solo con id y tipo de excepción; el cliente no registra ni envía el token por la ruta (worker + unit + E2E).
+  - RF-012: `account_security_events` con cuenta, tipo y fecha, sin correo ni hash (migración).
+  - RF-013: enlace en el login, tres pantallas y entrada en el menú de cuenta de escritorio y móvil, ES/EN, ambos temas, axe sin violaciones (unit + E2E).
+  - RNF-003: dos resets simultáneos producen un solo cambio y recuperación/cambio concurrentes no se interbloquean (migración).
+  - RNF-004: Argon2 vía `asyncio.to_thread` en reset y cambio (endpoints).
+  - RNF-005: suites backend y frontend completas y E2E en verde; CI de #99–#101.
+  - CL-5: el enlace actúa sobre su propia cuenta; la respuesta del reset borra la cookie del navegador y el cliente limpia su estado, así que la sesión abierta nunca pasa a la cuenta del enlace (endpoints + unit).
+  - CL-7: si SMTP falla, el worker invalida el enlace antes de reintentar (worker).
+  - CL-8: el correo se normaliza igual que en el login (puras + worker).
+- No ejecutado: el flujo completo contra la pila real con SMTP real (el E2E usa un contrato ficticio y el worker se prueba con SMTP simulado) y un lector de pantalla real.
