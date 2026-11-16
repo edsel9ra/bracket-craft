@@ -46,6 +46,9 @@ const googleRedirect = computed(() => {
   return safeInternalRedirect(raw, '') || null;
 });
 
+// Spec 039: tras recuperar la contraseña se vuelve aquí con un aviso fijo.
+const passwordResetNotice = computed(() => route.query.notice === 'password-reset');
+
 const needsOrganization = computed(() => Boolean(auth.userId && !auth.organizationId));
 
 function failureCode(cause: unknown): string | null {
@@ -132,6 +135,8 @@ async function submit() {
          {{ isRegister ? t('auth.registerCopy') : t('auth.loginCopy') }}
       </p>
 
+      <p v-if="passwordResetNotice" class="form-notice" role="status">{{ t('password.reset.done') }}</p>
+
       <div v-if="googleEnabled" class="google-access">
         <button
           class="button-secondary auth-secondary-action google-button"
@@ -207,6 +212,7 @@ async function submit() {
             </label>
           </div>
         </Transition>
+        <NuxtLink v-if="!isRegister" to="/password/forgot" class="forgot-link">{{ t('password.forgotLink') }}</NuxtLink>
         <div v-if="queryError || googleError || auth.error" id="auth-error" class="field-error" role="alert">
           {{ queryError || googleError || auth.error }}
         </div>
@@ -256,6 +262,9 @@ button:disabled { cursor: wait; opacity: 0.6; }
  .auth-secondary-actions { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
  .auth-secondary-action { width: 100%; justify-content: center; min-height: 44px; font-size: var(--text-md); }
  .back-link { text-decoration: none; }
+.forgot-link { justify-self: end; color: var(--color-muted); font-size: var(--text-sm); text-decoration: underline; }
+.forgot-link:hover { color: var(--color-accent); }
+.form-notice { margin-top: var(--space-5); padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-ink); font-size: var(--text-md); line-height: 1.6; }
 @media (max-width: 760px) { .auth-card { padding: var(--space-6); } }
 :root[data-theme="light"] button:disabled { opacity: 1; }
 @media (prefers-color-scheme: light) {

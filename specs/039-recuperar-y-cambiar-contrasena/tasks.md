@@ -26,11 +26,13 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 - Hecho cuando: `pytest -q tests/test_retention.py` verde con la purga de recuperación; `.env.example` y `config.py` con `AUTH_PASSWORD_RESET_RATE_LIMIT`; suite completa con PostgreSQL 17 y Redis, `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes.
 - Evidencia (2026-11-16): `tests/test_retention.py` verde con la purga de recuperación (lotes de 500, corte de 7 días, eventos de seguridad conservados) y los correos de cuenta en un bucle propio del worker; `AUTH_PASSWORD_RESET_RATE_LIMIT` en `config.py`, `.env.example`, compose y contrato de entorno, y `FRONTEND_BASE_URL` en el worker; suite completa con PostgreSQL 17 y Redis `4240 passed, 4 skipped` (antes de los arreglos de revisión; tras ellos, los seis archivos afectados `66 passed`), `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes. Revisión de #100: orden de bloqueo usuario → enlace en `complete_password_reset` y revalidación del hash en el login tras crear la sesión.
 
-- [ ] **T7. Pantallas `/password/forgot` y `/password/reset` y enlace en el login.** RF-001, RF-005, RF-013
+- [x] **T7. Pantallas `/password/forgot` y `/password/reset` y enlace en el login.** RF-001, RF-005, RF-013
 - Hecho cuando: `pnpm test -- password-recovery` verde (confirmación genérica, token leído y retirado del fragmento, errores, ES/EN, foco); `pnpm run lint` y `pnpm run typecheck` verdes.
+- Evidencia (2026-11-16): `tests/password-recovery.test.ts` (token solo del fragmento y retirado con `history.replaceState`, confirmación genérica, catálogo cerrado de errores ES/EN, foco en confirmación y errores; el éxito cierra la sesión local y vuelve al login con aviso); `pnpm test` 1124 pass, `pnpm run lint` y `pnpm run typecheck` verdes.
 
-- [ ] **T8. Pantalla `/account/password` y menú de cuenta.** RF-006, RF-007, RF-013, DA-1
+- [x] **T8. Pantalla `/account/password` y menú de cuenta.** RF-006, RF-007, RF-013, DA-1
 - Hecho cuando: `pnpm test -- password-recovery` verde también para el cambio (actual incorrecta, solo-Google sin formulario, éxito) y la entrada del menú en escritorio y móvil.
+- Evidencia (2026-11-16): `tests/password-recovery.test.ts` cubre `/account/password` con middleware `session`, actual incorrecta con foco en su campo, aviso solo-Google sin formulario, éxito y la entrada «Cambiar la contraseña» del menú de escritorio y móvil del `WorkspaceShell`.
 
 - [ ] **T9. E2E de las tres pantallas.** RF-013
 - Hecho cuando: `pnpm exec playwright test e2e/password-recovery.spec.ts --project public --no-deps` verde a 1440/390 px en ambos temas con contratos ficticios; `pnpm run typecheck:e2e` y `pnpm run build` verdes.
