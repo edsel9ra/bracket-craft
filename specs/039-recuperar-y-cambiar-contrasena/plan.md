@@ -18,7 +18,7 @@ Estado: borrador, pendiente de aprobación.
   - `account_security_events`: `id`, `user_id`, `event_type` (`password_reset` | `password_changed`), `created_at`. Sin correo ni secretos (RF-012).
   - Las tres son tablas de cuenta, no de tenant (como `users` y `user_sessions`): sin `organization_id`. `bracket_app` no recibe privilegios directos sobre ellas; todo pasa por funciones `SECURITY DEFINER` con `search_path` fijo y `GRANT EXECUTE` solo a `bracket_app`:
     - `enqueue_password_reset_request(p_email)`: inserta el trabajo; no consulta `users` (RNF-001).
-    - `claim_account_email_jobs(p_limit)`: `FOR UPDATE SKIP LOCKED`, como `claim_outbox_events`.
+    - `claim_account_email_jobs(p_limit)`: `FOR UPDATE SKIP LOCKED`, como el reclamo del outbox (migración 010).
     - `issue_password_reset(p_job_id, p_token_hash, p_expires_at)`: resuelve el correo (comparación `LOWER`, CL-8). Cuenta activa con contraseña: invalida pendientes, guarda el hash y devuelve `('reset', correo)`. Activa sin contraseña: `('google_reminder', correo)`. Inexistente o desactivada: `('none', NULL)` (RF-002, RF-002b, RF-003).
     - `password_reset_target(p_token_hash)`: devuelve `user_id` y `password_hash` actual solo si el token es válido (RF-004, RF-005).
     - `complete_password_reset(p_token_hash, p_new_hash)`: bloquea el token `FOR UPDATE`, revalida, fija la contraseña, marca usado, invalida los demás, revoca **todas** las sesiones, encola el aviso y registra el evento. Devuelve `NULL` si ya no es válido (RNF-003).
