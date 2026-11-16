@@ -5,6 +5,9 @@ from app.modules.tournaments.schemas import (
     PublicMatchLineupResponse,
     PublicMatchTimelineResponse,
     PublicMatchResponse,
+    PublicPlayerProfileResponse,
+    PublicPlayerProfileTotalsResponse,
+    PublicPlayerProfileTournamentResponse,
     PublicPlayerStatsResponse,
     PublicStageResponse,
     PublicStandingResponse,
@@ -48,19 +51,29 @@ EXPECTED_FIELDS = {
     "PublicPlayerStatsResponse": {
         "rank", "player_id", "first_name", "last_name", "team_name", "team_id",
         "goals", "yellow_cards", "red_cards", "clean_sheets", "matches_played",
-        "photo_url",
+        "photo_url", "profile_available",
     },
     "PublicTeamStatsResponse": {
         "rank", "team_id", "team_name", "short_code", "crest_url",
         "goals_for", "goals_against", "clean_sheets", "fair_play_points",
     },
-    "PublicTimelinePlayerResponse": {"player_id", "first_name", "last_name"},
+    "PublicTimelinePlayerResponse": {"player_id", "first_name", "last_name", "profile_available"},
     "PublicTimelineEventResponse": {
         "event_type", "minute", "added_minute", "segment_number", "team_id",
         "beneficiary_team_id", "red_card_type", "player", "player_in",
     },
     "PublicMatchTimelineResponse": {
         "match_id", "availability", "score_consistent", "segment_numbers", "events",
+    },
+    "PublicPlayerProfileResponse": {
+        "player_id", "first_name", "last_name", "photo_url", "totals", "tournaments",
+    },
+    "PublicPlayerProfileTournamentResponse": {
+        "tournament_id", "tournament_name", "team_id", "team_name",
+        "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets",
+    },
+    "PublicPlayerProfileTotalsResponse": {
+        "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets",
     },
 }
 
@@ -79,6 +92,14 @@ MODELS = {
     "PublicTimelinePlayerResponse": PublicTimelinePlayerResponse,
     "PublicTimelineEventResponse": PublicTimelineEventResponse,
     "PublicMatchTimelineResponse": PublicMatchTimelineResponse,
+    "PublicPlayerProfileResponse": PublicPlayerProfileResponse,
+    "PublicPlayerProfileTournamentResponse": PublicPlayerProfileTournamentResponse,
+    "PublicPlayerProfileTotalsResponse": PublicPlayerProfileTotalsResponse,
+}
+
+PROFILE_FORBIDDEN_FIELDS = {
+    "dorsal_number", "position", "position_slot", "role", "photo_consent", "is_active",
+    "valid_from", "rank", "assists", "assist_player_id",
 }
 
 TIMELINE_FORBIDDEN_FIELDS = {
@@ -144,3 +165,38 @@ def test_timeline_models_reject_extra_keys():
         PublicMatchTimelineResponse(
             match_id=player["player_id"], availability="pending", assist_player_id=player["player_id"]
         )
+
+
+def test_profile_models_never_expose_dorsal_position_or_consent():
+    for model in (
+        PublicPlayerProfileResponse, PublicPlayerProfileTournamentResponse, PublicPlayerProfileTotalsResponse,
+    ):
+        leaked = set(model.model_fields) & PROFILE_FORBIDDEN_FIELDS
+        assert not leaked, f"{model.__name__}: {sorted(leaked)}"
+
+
+def test_profile_models_reject_extra_keys():
+    import pytest
+    from pydantic import ValidationError
+
+    ident = "30000000-0000-4000-8000-000000000001"
+    totals = {"matches_played": 0, "goals": 0, "yellow_cards": 0, "red_cards": 0, "clean_sheets": 0}
+    row = {"tournament_id": ident, "tournament_name": "T", "team_id": ident, "team_name": "E", **totals}
+    profile = {"player_id": ident, "first_name": "A", "last_name": "B", "photo_url": None,
+               "totals": totals, "tournaments": [row]}
+    assert PublicPlayerProfileResponse(**profile).tournaments[0].team_name == "E"
+    with pytest.raises(ValidationError):
+        PublicPlayerProfileResponse(**profile, organization_id=ident)
+    with pytest.raises(ValidationError):
+        PublicPlayerProfileTournamentResponse(**row, dorsal_number=9)
+    with pytest.raises(ValidationError):
+        PublicPlayerProfileTotalsResponse(**totals, assists=1)
+    with pytest.raises(ValidationError):
+        PublicTimelinePlayerResponse(player_id=ident, first_name="A", last_name="B", profile_available="yes")
+
+
+def test_profile_available_defaults_to_closed_false():
+    ident = "30000000-0000-4000-8000-000000000001"
+    assert PublicTimelinePlayerResponse(player_id=ident, first_name="A", last_name="B").profile_available is False
+    stats = PublicPlayerStatsResponse(rank=1, player_id=ident, first_name="A", last_name="B")
+    assert stats.profile_available is False
