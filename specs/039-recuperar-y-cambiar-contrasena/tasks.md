@@ -22,8 +22,9 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_password_recovery_endpoints.py -k change` verde (actual incorrecta, solo-Google 409, se mantiene solo la sesión actual, enlaces pendientes invalidados, límite).
 - Evidencia: `-k change` 6 passed: `GET /auth/password` devuelve `has_password`; el cambio mantiene solo la sesión actual (`jti`), invalida los enlaces pendientes y encola el aviso; actual incorrecta `400 CURRENT_PASSWORD_INVALID` y repetida `400 PASSWORD_REUSED` sin cambios; solo-Google `409 PASSWORD_NOT_SET`; sin sesión 401; límite `password-change` con `AUTH_LOGIN_RATE_LIMIT`/60 s por cuenta.
 
-- [ ] **T6. Retención y configuración.** RF-011, RF-012
+- [x] **T6. Retención y configuración.** RF-011, RF-012
 - Hecho cuando: `pytest -q tests/test_retention.py` verde con la purga de recuperación; `.env.example` y `config.py` con `AUTH_PASSWORD_RESET_RATE_LIMIT`; suite completa con PostgreSQL 17 y Redis, `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes.
+- Evidencia (2026-11-16): `tests/test_retention.py` verde con la purga de recuperación (lotes de 500, corte de 7 días, eventos de seguridad conservados) y los correos de cuenta en un bucle propio del worker; `AUTH_PASSWORD_RESET_RATE_LIMIT` en `config.py`, `.env.example`, compose y contrato de entorno, y `FRONTEND_BASE_URL` en el worker; suite completa con PostgreSQL 17 y Redis `4240 passed, 4 skipped` (antes de los arreglos de revisión; tras ellos, los seis archivos afectados `66 passed`), `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes. Revisión de #100: orden de bloqueo usuario → enlace en `complete_password_reset` y revalidación del hash en el login tras crear la sesión.
 
 - [ ] **T7. Pantallas `/password/forgot` y `/password/reset` y enlace en el login.** RF-001, RF-005, RF-013
 - Hecho cuando: `pnpm test -- password-recovery` verde (confirmación genérica, token leído y retirado del fragmento, errores, ES/EN, foco); `pnpm run lint` y `pnpm run typecheck` verdes.
