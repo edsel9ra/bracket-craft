@@ -2,17 +2,21 @@
 
 Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un solo PR por bloque: A (T1–T4 backend) y B (T5–T10 frontend, documentación y cierre).
 
-- [ ] **T1. Migración 060: `segment_id` en `v_public_match_events`.** RF-005, RF-009, RF-016
+- [x] **T1. Migración 060: `segment_id` en `v_public_match_events`.** RF-005, RF-009, RF-016
 - Hecho cuando: `test_migration_060.py` en rojo y luego verde con `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_060.py`; `sh -n infra/postgres/migrate.sh`; cadena limpia 001→060 y salto 059→060 con checksums estables.
+- Evidencia: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_060.py tests/test_migration_030.py` → 11 passed (PostgreSQL 17); `infra/scripts/test_migrate_target.sh` OK; `sh -n infra/postgres/migrate.sh` OK; `pytest -q` → 2933 passed, 1188 skipped; `ruff check .` limpio.
 
-- [ ] **T2. Funciones puras de la cronología.** RF-002, RF-003, RF-005–RF-012
+- [x] **T2. Funciones puras de la cronología.** RF-002, RF-003, RF-005–RF-012
 - Hecho cuando: `cd backend && pytest -q tests/test_public_timeline.py` verde tras confirmarlo en rojo, cubriendo CL-1–CL-14 aplicables.
+- Evidencia: `pytest -q tests/test_public_timeline.py` → 34 passed (disponibilidad, tipos, orden estable, roja, autogol, sustitución, huérfanos, marcador con prórroga/penales); `ruff check` limpio.
 
-- [ ] **T3. Modelos públicos y lista cerrada.** RF-007, RF-015
+- [x] **T3. Modelos públicos y lista cerrada.** RF-007, RF-015
 - Hecho cuando: `pytest -q tests/test_public_field_allowlist.py` falla ante una clave extra y pasa con los tres modelos nuevos.
+- Evidencia: `pytest -q tests/test_public_field_allowlist.py` → 5 passed (tres modelos con `extra="forbid"`, sin asistencia/dorsal/foto/IDs internos; claves extra rechazadas).
 
-- [ ] **T4. Endpoint `GET /tournaments/public/{tournament_id}/matches/{match_id}/timeline`.** RF-001, RF-004, RF-013, RF-016
+- [x] **T4. Endpoint `GET /tournaments/public/{tournament_id}/matches/{match_id}/timeline`.** RF-001, RF-004, RF-013, RF-016
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_timeline_endpoint.py tests/test_public_access_matrix.py` verde (dos organizaciones, rectificación, anulados, 404 indistinguible); `pytest -q`, `ruff check .` y `bandit -q -r app -ll` verdes.
+- Evidencia (2026-11-15): `test_public_timeline_endpoint.py` 3 passed (dos organizaciones con lista cerrada y sin mezcla; versión rectificada vigente sin anulados; `live` → `pending`, acta confirmada sin hechos → vacío con segmentos 1–2; cancelado, inexistente, de otro torneo u otra organización → 404 indistinguible) y `test_public_access_matrix.py` con la ruta nueva en los tres grupos de 404; suite con PostgreSQL 17 y Redis 4154 passed (el único fallo, el recuento de rutas, se corrigió a 33 operaciones); `pytest -q` 2969 passed/1190 skipped, `ruff check .` y `bandit -q -r app -ll` limpios.
 
 - [ ] **T5. Utilidades frontend `utils/publicTimeline.ts`.** RF-008, RF-009, RF-014
 - Hecho cuando: `cd frontend && pnpm test` incluye `public-timeline.test.ts` (minuto, separadores, clave por tipo/roja, decisión de recarga) en verde.
