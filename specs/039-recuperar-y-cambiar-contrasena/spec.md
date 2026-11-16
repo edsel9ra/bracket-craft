@@ -1,6 +1,6 @@
 # Spec 039 — Recuperar y cambiar la contraseña
 
-Estado: borrador
+Estado: borrador; DA-1–DA-4 decididas por el usuario el 2026-11-16, pendiente de aprobación
 
 Fecha: 2026-11-16. Corresponde a F3 del informe de funciones adicionales (`docs/informe-funciones-adicionales.md`, tabla §3 y corto plazo §6). La spec 013 dejó expresamente fuera de alcance la recuperación, el establecimiento y el cambio de contraseña.
 
@@ -20,7 +20,7 @@ Fuentes y límites: constitución 2.0.0 (§2.6 ningún secreto por defecto fuera
 ## Usuarios
 
 - Persona con cuenta local (correo y contraseña) que olvidó su contraseña o quiere cambiarla.
-- Persona con cuenta solo-Google (013): no tiene contraseña (ver DA-1).
+- Persona con cuenta solo-Google (013): no tiene contraseña y sigue sin tenerla; si pide la recuperación recibe un recordatorio de entrar con Google (DA-1).
 - Administrador de plataforma: sin cambios en sus pantallas; una cuenta desactivada sigue sin poder entrar.
 
 ## Roles y visibilidad
@@ -44,13 +44,14 @@ Fuentes y límites: constitución 2.0.0 (§2.6 ningún secreto por defecto fuera
 ## Requisitos funcionales
 
 - **RF-001.** CUANDO alguien pida la recuperación indicando un correo, EL SISTEMA responderá siempre la misma respuesta genérica, exista o no una cuenta, esté activa o desactivada y tenga o no contraseña.
-- **RF-002.** CUANDO el correo corresponda a una cuenta local activa, EL SISTEMA enviará a ese correo un enlace de recuperación con la caducidad de DA-3. El envío no se hace dentro de la petición: la respuesta no espera al correo.
+- **RF-002.** CUANDO el correo corresponda a una cuenta local activa, EL SISTEMA enviará a ese correo un enlace de recuperación que caduca a los 30 minutos (DA-3). El envío no se hace dentro de la petición: la respuesta no espera al correo.
+- **RF-002b.** CUANDO el correo corresponda a una cuenta activa sin contraseña (solo-Google), EL SISTEMA no emitirá enlace y enviará a ese correo un recordatorio de que la cuenta entra con Google, sin enlaces de acción (DA-1). A una cuenta desactivada o a un correo sin cuenta no se envía nada.
 - **RF-003.** CUANDO se emita un enlace nuevo para una cuenta, EL SISTEMA invalidará los enlaces anteriores de esa cuenta que sigan pendientes.
-- **RF-004.** CUANDO se presente un enlace válido (no usado, no caducado, no invalidado, de una cuenta local activa) con una contraseña nueva que cumpla RF-009, EL SISTEMA fijará la contraseña nueva, marcará el enlace como usado y aplicará DA-2 a las sesiones.
+- **RF-004.** CUANDO se presente un enlace válido (no usado, no caducado, no invalidado, de una cuenta local activa) con una contraseña nueva que cumpla RF-009, EL SISTEMA fijará la contraseña nueva, marcará el enlace como usado y cerrará todas las sesiones de la cuenta (DA-2); la persona entra después con la contraseña nueva.
 - **RF-005.** SI el enlace no existe, está usado, caducado o invalidado, o la cuenta ya no está activa, ENTONCES EL SISTEMA rechazará el cambio con un único error genérico «enlace no válido o caducado», sin distinguir el motivo y sin cambiar nada.
-- **RF-006.** CUANDO un usuario con sesión cambie su contraseña indicando la actual correcta y una nueva que cumpla RF-009, EL SISTEMA la cambiará y aplicará DA-2.
+- **RF-006.** CUANDO un usuario con sesión cambie su contraseña indicando la actual correcta y una nueva que cumpla RF-009, EL SISTEMA la cambiará, cerrará todas las demás sesiones de la cuenta y mantendrá la sesión desde la que se hizo el cambio (DA-2).
 - **RF-007.** SI la contraseña actual no es correcta, ENTONCES EL SISTEMA rechazará el cambio sin modificar nada, con el mismo límite de intentos que el login.
-- **RF-008.** CUANDO se cambie o recupere la contraseña, EL SISTEMA invalidará todos los enlaces de recuperación pendientes de esa cuenta y aplicará DA-4 (aviso por correo).
+- **RF-008.** CUANDO se cambie o recupere la contraseña, EL SISTEMA invalidará todos los enlaces de recuperación pendientes de esa cuenta y enviará al correo de la cuenta un aviso de que la contraseña cambió, con la fecha y sin enlaces de acción (DA-4). Un fallo del aviso no revierte el cambio.
 - **RF-009.** EL SISTEMA exigirá para la contraseña nueva la misma política que el registro (8 a 128 caracteres) y rechazará que sea igual a la actual.
 - **RF-010.** EL SISTEMA limitará por IP y por correo las peticiones de recuperación, y por IP y por enlace los intentos de usarlo, con 429 y `Retry-After`; si el limitador no está disponible, fallará cerrado (503), como el login.
 - **RF-011.** EL SISTEMA no incluirá el token, el enlace, la contraseña ni su hash en logs, auditorías, respuestas de error ni respuestas de la petición de recuperación, tampoco en desarrollo.
@@ -73,7 +74,7 @@ Fuentes y límites: constitución 2.0.0 (§2.6 ningún secreto por defecto fuera
 
 ## Casos límite
 
-- **CL-1.** Correo inexistente, de cuenta desactivada o de cuenta solo-Google: misma respuesta genérica (RF-001); qué se envía a una cuenta solo-Google depende de DA-1.
+- **CL-1.** Correo inexistente, de cuenta desactivada o de cuenta solo-Google: misma respuesta genérica (RF-001); solo la cuenta solo-Google recibe el recordatorio de RF-002b.
 - **CL-2.** Varias peticiones seguidas: solo el último enlace es válido (RF-003), dentro del límite de RF-010.
 - **CL-3.** Cuenta desactivada entre la emisión y el uso del enlace: el enlace se rechaza (RF-005).
 - **CL-4.** Contraseña cambiada desde la cuenta mientras hay un enlace pendiente: el enlace queda invalidado (RF-008).
@@ -84,7 +85,7 @@ Fuentes y límites: constitución 2.0.0 (§2.6 ningún secreto por defecto fuera
 
 ## Fuera de alcance
 
-- Establecer contraseña en cuentas solo-Google, salvo que DA-1 decida lo contrario.
+- Establecer contraseña en cuentas solo-Google (DA-1): siguen siendo solo-Google, como en la 013.
 - Cambiar el correo de la cuenta, verificación del correo de cuentas locales y borrado de cuentas.
 - Segundo factor, inicio de sesión sin contraseña por correo y preguntas de seguridad.
 - Reglas de complejidad más allá de la longitud, listas de contraseñas filtradas y caducidad periódica de contraseñas.
@@ -95,15 +96,20 @@ Fuentes y límites: constitución 2.0.0 (§2.6 ningún secreto por defecto fuera
 1. La petición de recuperación responde igual para cuenta local, inexistente, desactivada y solo-Google (RF-001, RNF-001).
 2. Un enlace válido fija la contraseña nueva y queda usado; reutilizarlo, usar uno caducado o uno anterior da el error genérico (RF-003–RF-005, RNF-003).
 3. El cambio desde la cuenta exige la contraseña actual (RF-006, RF-007).
-4. Tras recuperar o cambiar, las sesiones quedan según DA-2 y los enlaces pendientes invalidados (RF-008).
+4. Tras recuperar o cambiar, las sesiones quedan cerradas según DA-2 (todas al recuperar, todas salvo la actual al cambiar), las de Socket.IO incluidas en su siguiente revalidación, y los enlaces pendientes invalidados (RF-008).
 5. Ni el token ni la contraseña aparecen en logs, auditoría ni respuestas (RF-011, RF-012).
-6. Límites de RF-010 con 429 y 503.
-7. Pantallas ES/EN, accesibles y en ambos temas (RF-013).
-8. Pasan los cinco jobs de CI.
+6. La cuenta solo-Google recibe el recordatorio y ningún enlace (RF-002b); se envía el aviso de cambio (RF-008).
+7. Límites de RF-010 con 429 y 503.
+8. Pantallas ES/EN, accesibles y en ambos temas (RF-013).
+9. Pasan los cinco jobs de CI.
+
+## Decisiones del usuario (2026-11-16)
+
+- **DA-1 (a):** las cuentas solo-Google siguen sin contraseña; si piden la recuperación reciben un recordatorio de entrar con Google (RF-002b).
+- **DA-2 (a):** recuperar cierra todas las sesiones; cambiar desde la cuenta cierra las demás y mantiene la actual (RF-004, RF-006).
+- **DA-3 (a):** el enlace caduca a los 30 minutos (RF-002).
+- **DA-4 (a):** al recuperar o cambiar la contraseña se envía un aviso sin enlaces de acción (RF-008).
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-1. Cuentas solo-Google.** ¿La recuperación permite que una cuenta creada con Google fije una contraseña? (a) No: siguen solo-Google y reciben un correo que les recuerda entrar con Google (recomendada; respeta 013 y no abre una segunda vía de acceso). (b) No y no se les envía nada. (c) Sí: el enlace les permite fijar una contraseña además de Google.
-- [NECESITA ACLARACIÓN] **DA-2. Sesiones tras el cambio.** (a) Recuperar cierra todas las sesiones de la cuenta; cambiar desde la cuenta cierra todas las demás y mantiene la actual (recomendada). (b) Ambas cierran todas, también la actual. (c) Ninguna cierra sesiones.
-- [NECESITA ACLARACIÓN] **DA-3. Caducidad del enlace.** (a) 30 minutos (recomendada). (b) 1 hora. (c) 24 horas.
-- [NECESITA ACLARACIÓN] **DA-4. Aviso por correo tras el cambio.** (a) Sí: al recuperar o cambiar la contraseña se envía un aviso sin enlaces de acción (recomendada). (b) No.
+Ninguna.
