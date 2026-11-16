@@ -1,6 +1,6 @@
 # Spec 038 — Fichas públicas de jugador
 
-Estado: borrador — clarificaciones cerradas (DA-1–DA-4 decididas el 2026-11-16), pendiente de aprobación
+Estado: aprobada por el usuario el 2026-11-16 («Apruebo la spec 038»); aclaración CL-11 y tope de RNF-001 añadidos en la fase Plan, pendientes de confirmar con el plan
 
 Fecha: 2026-11-16. Corresponde a F16 del informe de funciones adicionales (`docs/informe-funciones-adicionales.md`, tabla §3 y decisión §6.5; orden revisado §6.6, punto 5). Las specs 033–037 están implementadas y aceptadas. Fase Spec: DA-1–DA-4 decididas por el usuario el 2026-11-16 (ver «Decisiones del usuario»).
 
@@ -70,7 +70,7 @@ Fuentes y límites: constitución 2.0.0 (§1.3 privacidad con base y consentimie
 
 ## Requisitos no funcionales
 
-- **RNF-001 (rendimiento acotado).** La ficha está acotada por un tope de torneos y su número de consultas a la base no crece con el número de torneos ni de partidos. Las fotos se firman en un solo lote, fuera de la transacción de lectura.
+- **RNF-001 (rendimiento acotado).** La ficha está acotada a los 50 torneos autorizados más recientes y su número de consultas a la base no crece con el número de torneos ni de partidos. Las fotos se firman en un solo lote, fuera de la transacción de lectura.
 - **RNF-002 (accesibilidad).** La ficha es navegable con teclado, tiene nombres accesibles y cumple el contraste de los temas oscuro y claro (029/032).
 - **RNF-003 (idiomas y diseño).** Textos en español e inglés; usa los tokens y componentes del sistema de diseño.
 - **RNF-004 (privacidad en registros).** Ningún registro contiene nombres, fotos, claves de objeto ni datos personales por estas lecturas.
@@ -96,6 +96,7 @@ Fuentes y límites: constitución 2.0.0 (§1.3 privacidad con base y consentimie
 - **CL-8.** Fallo de firma de la foto: iniciales, sin imagen rota (RF-007).
 - **CL-9.** En torneos distintos con equipos distintos, cada fila de la trayectoria muestra el equipo de esa inscripción.
 - **CL-10.** Si la inscripción vigente más reciente no tiene foto pero otra vigente anterior sí, se usa la siguiente vigente con foto (RF-007).
+- **CL-11.** Varias inscripciones del jugador en un mismo torneo (una vigente como máximo y otras retiradas): el torneo se representa por la inscripción vigente o, si no hay, por la retirada más reciente. El torneo está autorizado solo si esa inscripción representativa tiene consentimiento de imagen; una inscripción retirada con consentimiento no autoriza un torneo cuya inscripción vigente no lo tiene.
 
 ## Fuera de alcance
 
