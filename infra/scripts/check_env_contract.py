@@ -66,6 +66,7 @@ API_ENV = frozenset(
         "AUTH_COOKIE_SAMESITE",
         "AUTH_COOKIE_SECURE",
         "AUTH_LOGIN_RATE_LIMIT",
+        "AUTH_PASSWORD_RESET_RATE_LIMIT",
         "AUTH_REGISTER_RATE_LIMIT",
         "CORS_ALLOWED_ORIGINS",
         "CSRF_COOKIE_NAME",
@@ -107,8 +108,8 @@ API_ENV = frozenset(
     }
 )
 
-#: Variables del outbox: datos, Redis y correo de decisiones de rectificación.
-WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "REDIS_URL"}) | frozenset(
+#: Variables del outbox: datos, Redis, correo y enlaces de recuperación de contraseña.
+WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "FRONTEND_BASE_URL", "REDIS_URL"}) | frozenset(
     variable for variable in API_ENV if variable.startswith("SMTP_")
 )
 

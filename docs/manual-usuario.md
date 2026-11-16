@@ -5,6 +5,8 @@ Manual operativo alineado con el comportamiento real del producto. Complementa `
 ## 1. Acceso y organización
 
 - Inicia sesión con email/contraseña o con Google (redirección). Si tu cuenta no tiene organización, se te ofrece crearla en `/organization` (nombre e identificador explícitos; «Ahora no» conserva la cuenta).
+- ¿Olvidaste tu contraseña? Desde el login, «¿Olvidaste tu contraseña?» lleva a `/password/forgot`. Escribe tu correo: la respuesta es siempre la misma, tengas cuenta o no. Si tu cuenta tiene contraseña recibirás un enlace válido 30 minutos y de un solo uso (pedir otro anula el anterior); si entras solo con Google, recibirás un recordatorio para seguir entrando con Google. Al fijar la contraseña nueva se cierran todas tus sesiones y vuelves al login.
+- Para cambiar la contraseña con sesión iniciada, abre el menú de cuenta → «Cambiar la contraseña» (`/account/password`): indica la actual y la nueva (8 a 128 caracteres, distinta de la actual). Se cierran tus demás sesiones y la actual sigue abierta. Tras recuperar o cambiar la contraseña recibirás un aviso por correo, sin enlaces.
 - El Workspace (`/workspace`) solo está disponible con sesión y una organización activa validada.
 - La administración global vive en `/admin` y es independiente; no edita resultados ni versiones publicadas.
 - La portada y el detalle de torneo son públicos: `/` y `/tournaments/{id}`. No requieren sesión.

@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     csrf_token_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
     auth_login_rate_limit: int = Field(default=10, ge=1, le=1000)
     auth_register_rate_limit: int = Field(default=5, ge=1, le=1000)
+    auth_password_reset_rate_limit: int = Field(default=5, ge=1, le=1000)
     storage_provider: Literal["s3", "gcs"] = "s3"
     storage_endpoint_url: str | None = None
     storage_signing_endpoint_url: str | None = None

@@ -296,6 +296,17 @@ async def login(
         ordered = ordered_organizations(organizations.mappings().all())
         organization_id = ordered[0]["id"] if ordered else None
         access_token = await create_user_session(db, user["id"])
+        # La FK de la sesión bloquea al usuario (KEY SHARE) hasta el commit, así
+        # que una recuperación o un cambio de contraseña posteriores verán y
+        # revocarán esta sesión. Si uno se confirmó durante la verificación
+        # Argon2, el hash ya no coincide y la sesión se descarta (spec 039, DA-2).
+        current = await db.execute(
+            text("SELECT password_hash FROM users WHERE id = :id AND is_active = TRUE"),
+            {"id": user["id"]},
+        )
+        current_row = current.mappings().one_or_none()
+        if current_row is None or current_row["password_hash"] != stored_hash:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
     set_auth_cookie(response, access_token)
     return TokenResponse(

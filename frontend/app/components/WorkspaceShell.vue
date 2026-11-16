@@ -218,6 +218,7 @@ onMounted(() => {
             </button>
             <div v-if="accountMenuOpen" class="workspace-account-menu" role="menu">
               <NuxtLink to="/account/google" role="menuitem" @click="accountMenuOpen = false">{{ t('google.link.title') }}</NuxtLink>
+              <NuxtLink to="/account/password" role="menuitem" @click="accountMenuOpen = false">{{ t('password.change.title') }}</NuxtLink>
               <button type="button" role="menuitem" @click="logout">{{ t('common.logout') }}</button>
             </div>
           </div>
@@ -271,6 +272,7 @@ onMounted(() => {
             <div class="workspace-mobile-account">
               <span>{{ t('shell.account') }}</span>
               <NuxtLink to="/account/google" class="workspace-mobile-account-link">{{ t('google.link.title') }}</NuxtLink>
+              <NuxtLink to="/account/password" class="workspace-mobile-account-link">{{ t('password.change.title') }}</NuxtLink>
               <button class="workspace-mobile-logout" type="button" @click="logout">{{ t('common.logout') }}</button>
             </div>
             <p v-if="organizationError" class="workspace-organization-error" role="alert">{{ organizationError }}</p>
