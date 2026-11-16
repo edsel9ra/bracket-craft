@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- **039-recuperar-y-cambiar-contrasena** (F3) — fase: implementada, T1–T10 cerradas — spec, plan y tareas aprobados el 2026-11-16; DA-1–DA-4 (a). PR #99 (docs), #100 (A T1–T6 backend, migración 062 antes de API/worker), #101 (B T7–T10 frontend, E2E y documentación). Fusión de #99 → #100 → #101 autorizada por el usuario. Pendiente: aceptación. No ejecutado: pila real con SMTP real y lector de pantalla real.
+- 039-recuperar-y-cambiar-contrasena (F3) CERRADA: T1–T10 en #99–#101; aceptada por el usuario el 2026-11-16 («Acepto la spec 039»). DA-1–DA-4 (a). Migración 062 antes de API y worker; el worker requiere `FRONTEND_BASE_URL`. No ejecutado: pila real con SMTP real y lector de pantalla real.
 - 038-fichas-de-jugador (F16) CERRADA: T1–T10 en #93–#95; aceptada por el usuario el 2026-11-16 («Acepto la spec 038»). DA-1–DA-4 (a); «autorizada» = consentimiento de imagen de la inscripción. Migración 061 antes del código. No ejecutado: ficha contra la pila real y lector de pantalla real (ver tasks.md T10).
 - 037-cronologia-publica-del-partido (F13) CERRADA: T1–T10 en #90–#92; aceptada por el usuario el 2026-11-15 («Acepto la spec 037»). DA-1 (b), DA-2 (a), DA-3 (a), DA-4 (a). Migración 060 antes del código. No ejecutado: CL-9/RF-014 contra la pila real con Socket.IO y lector de pantalla real (ver tasks.md T10).
 - 036-partido-en-vivo CERRADA: T1–T84 en #80–#86; F1 aceptada por el usuario el 2026-11-15 («Acepto F1»). Sin despliegue productivo acreditado; rollback post-F1 no soportado (`docs/despliegue-partido-en-vivo.md`).
