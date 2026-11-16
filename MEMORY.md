@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- **038-fichas-de-jugador** (F16) — fase: Spec — estado: borrador; «autorizada» = consentimiento de imagen de la inscripción (decisión del usuario, 2026-11-16); DA-1–DA-4 abiertas.
+- **038-fichas-de-jugador** (F16) — fase: Spec — estado: borrador; «autorizada» = consentimiento de imagen de la inscripción (decisión del usuario, 2026-11-16); DA-1–DA-4 decididas (todas (a)); pendiente de aprobación.
 - 037-cronologia-publica-del-partido (F13) CERRADA: T1–T10 en #90–#92; aceptada por el usuario el 2026-11-15 («Acepto la spec 037»). DA-1 (b), DA-2 (a), DA-3 (a), DA-4 (a). Migración 060 antes del código. No ejecutado: CL-9/RF-014 contra la pila real con Socket.IO y lector de pantalla real (ver tasks.md T10).
 - 036-partido-en-vivo CERRADA: T1–T84 en #80–#86; F1 aceptada por el usuario el 2026-11-15 («Acepto F1»). Sin despliegue productivo acreditado; rollback post-F1 no soportado (`docs/despliegue-partido-en-vivo.md`).
 
