@@ -2,8 +2,9 @@
 
 Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque: A (T1–T6, backend) y B (T7–T10, frontend, E2E, documentación y cierre).
 
-- [ ] **T1. Migración 062: tablas y funciones de recuperación.** RF-002–RF-005, RF-008, RF-012, RNF-002, RNF-003
+- [x] **T1. Migración 062: tablas y funciones de recuperación.** RF-002–RF-005, RF-008, RF-012, RNF-002, RNF-003
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_062.py` en rojo y luego verde (sin privilegios directos, `EXECUTE` solo para `bracket_app`, un solo uso concurrente, revocación de sesiones); `sh -n infra/postgres/migrate.sh`; cadena limpia 001→062 y salto 061→062.
+- Evidencia: `test_migration_062.py` en rojo (`UndefinedTableError`) y luego 11 passed contra PostgreSQL 17: tablas sin privilegios para `bracket_app` y con RLS activada, 11 funciones `SECURITY DEFINER` con `search_path` fijo y `EXECUTE` solo para `bracket_app`; la petición no resuelve la cuenta; resultado `reset`/`google_reminder`/`none`; el enlace nuevo invalida el anterior; un solo uso con revocación de todas las sesiones; caducado, hash cambiado o cuenta desactivada rechazados; dos usos concurrentes producen un cambio; el cambio mantiene solo la sesión actual; reintento, fallo definitivo, aviso y purga. `sh -n infra/postgres/migrate.sh` correcto.
 
 - [ ] **T2. Funciones puras, esquemas y plantillas de correo.** RF-002, RF-002b, RF-008, RF-009, RNF-002
 - Hecho cuando: `pytest -q tests/test_password_recovery.py` verde tras confirmarlo en rojo (caducidad, token, hash, URL con fragmento, política, correos sin enlaces de acción en el aviso).
