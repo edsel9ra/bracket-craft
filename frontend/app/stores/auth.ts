@@ -296,6 +296,7 @@ export const useAuthStore = defineStore('auth', () => {
     loadAccess,
     hasPermission,
     logout,
+    clearSession,
     adoptSession,
   };
 });

@@ -100,6 +100,8 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
     monkeypatch.setattr(outbox, "time", SimpleNamespace(monotonic=lambda: clock.now))
     monkeypatch.setattr(outbox, "process_once", process)
     monkeypatch.setattr(outbox, "purge_once", purge)
+    recovery_purge = AsyncMock(side_effect=[RuntimeError("recovery purge unavailable"), (0, 0)])
+    monkeypatch.setattr(outbox, "purge_account_recovery_once", recovery_purge)
     monkeypatch.setattr(outbox, "publish_heartbeat", lambda: None)
 
     class StopLoop(Exception):
@@ -118,8 +120,78 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
         await outbox._run_loop(AsyncMock())
     assert process.await_count == 3
     assert purge.await_count == 2
+    assert recovery_purge.await_count == 2
     assert "No se pudo completar la purga periódica" in caplog.text
+    assert "No se pudo completar la purga de recuperación de contraseña" in caplog.text
 
+
+
+@pytest.mark.asyncio
+async def test_account_emails_run_in_their_own_loop_and_survive_failures(monkeypatch, caplog):
+    account_jobs = AsyncMock(side_effect=[RuntimeError("smtp down"), 0, 0])
+    monkeypatch.setattr(outbox, "process_account_email_jobs", account_jobs)
+
+    class StopLoop(Exception):
+        pass
+
+    async def advance(_seconds):
+        if account_jobs.await_count == 3:
+            raise StopLoop
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", advance)
+    with pytest.raises(StopLoop):
+        await outbox._run_account_email_loop()
+    assert account_jobs.await_count == 3
+    assert "Error procesando correos de cuenta" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_outbox_loop_does_not_wait_for_account_emails(monkeypatch):
+    process = AsyncMock(return_value=0)
+    account_jobs = AsyncMock(return_value=0)
+    monkeypatch.setattr(outbox, "process_once", process)
+    monkeypatch.setattr(outbox, "process_account_email_jobs", account_jobs)
+    monkeypatch.setattr(outbox, "purge_is_due", lambda *_args: False)
+    monkeypatch.setattr(outbox, "publish_heartbeat", lambda: None)
+
+    class StopLoop(Exception):
+        pass
+
+    async def stop(_seconds):
+        raise StopLoop
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", stop)
+    with pytest.raises(StopLoop):
+        await outbox._run_loop(AsyncMock())
+    assert process.await_count == 1
+    assert account_jobs.await_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batches,totals", [([(2, 3)], (2, 3)), ([(500, 0), (1, 500), (0, 4)], (501, 504))])
+async def test_purge_account_recovery_uses_seven_days_and_bounded_batches(monkeypatch, caplog, batches, totals):
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    db.begin = MagicMock(side_effect=[AsyncMock() for _ in batches])
+    results = []
+    for counts in batches:
+        result = MagicMock()
+        result.one.return_value = counts
+        results.append(result)
+    db.execute.side_effect = results
+    monkeypatch.setattr(retention, "SessionFactory", lambda: db)
+    caplog.set_level("INFO", logger=retention.__name__)
+    assert await retention.purge_account_recovery_once(NOW) == totals
+    assert db.execute.await_count == len(batches)
+    assert "purge_account_recovery_records" in str(db.execute.await_args.args[0])
+    assert db.execute.await_args.args[1] == {"cutoff": NOW - timedelta(days=7), "batch_limit": 500}
+    assert f"enlaces={totals[0]}, correos de cuenta={totals[1]}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_purge_account_recovery_rejects_a_naive_timestamp():
+    with pytest.raises(ValueError):
+        await retention.purge_account_recovery_once(NOW.replace(tzinfo=None))
 
 async def _seed_retention(connection):
     user_id = uuid4()

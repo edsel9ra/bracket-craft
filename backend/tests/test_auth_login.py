@@ -213,3 +213,43 @@ async def test_dummy_hash_match_can_never_create_a_session(client, monkeypatch, 
     assert response.status_code == 401
     assert response.headers.get_list("set-cookie") == []
     assert len(database.statements) == 1
+
+
+class PasswordChangedDuringLogin(FakeDatabase):
+    """La primera lectura ve el hash antiguo; la revalidación, el nuevo."""
+
+    def __init__(self) -> None:
+        super().__init__([{"id": USER_ID, "password_hash": "$argon2id$antiguo"}])
+        self.user_reads = 0
+
+    async def execute(self, statement, params=None, *args, **kwargs):
+        sql = str(statement)
+        if "FROM users" in sql:
+            self.statements.append((sql, dict(params or {})))
+            self.user_reads += 1
+            if self.user_reads == 2:
+                return FakeResult([{"password_hash": "$argon2id$nuevo"}])
+            return FakeResult(self.rows)
+        return await super().execute(statement, params, *args, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_login_discards_the_session_if_the_password_changed_meanwhile(client, monkeypatch):
+    database = PasswordChangedDuringLogin()
+
+    async def fake_database():
+        yield database
+
+    async def no_rate_limit(*args, **kwargs):
+        return None
+
+    api.dependency_overrides[get_db] = fake_database
+    monkeypatch.setattr(identity_router, "enforce_rate_limit", no_rate_limit)
+    monkeypatch.setattr(identity_router, "verify_password", lambda value, hashed: True)
+    response = await client.post(
+        "/api/v1/auth/login", json={"email": "nadia@example.com", "password": "prueba-contraseña"},
+        headers=await csrf_headers(client),
+    )
+    assert response.status_code == 401
+    assert response.headers.get_list("set-cookie") == []
+    assert database.user_reads == 2

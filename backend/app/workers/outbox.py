@@ -20,7 +20,8 @@ from app.workers.heartbeat import (
     heartbeat_is_fresh,
     publish_heartbeat,
 )
-from app.workers.retention import purge_is_due, purge_once
+from app.workers.account_email import process_account_email_jobs
+from app.workers.retention import purge_account_recovery_once, purge_is_due, purge_once
 
 # ``heartbeat_is_fresh`` se reexporta desde aquí porque el plan de la spec lo
 # documenta en este módulo; el healthcheck importa ``app.workers.heartbeat``
@@ -139,9 +140,20 @@ async def main():
         await validate_application_role()
     redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
     try:
-        await _run_loop(redis)
+        await asyncio.gather(_run_loop(redis), _run_account_email_loop())
     finally:
         await redis.aclose()
+
+
+async def _run_account_email_loop() -> None:
+    # Bucle aparte: un SMTP lento o caído no retrasa la publicación de eventos
+    # en tiempo real ni el latido del bucle del outbox (spec 039).
+    while True:
+        try:
+            await process_account_email_jobs()
+        except Exception:
+            logger.exception("Error procesando correos de cuenta")
+        await asyncio.sleep(1)
 
 
 async def _run_loop(redis: Redis) -> None:
@@ -169,6 +181,10 @@ async def _run_loop(redis: Redis) -> None:
                 await purge_once(datetime.now(timezone.utc))
             except Exception:
                 logger.exception("No se pudo completar la purga periódica")
+            try:
+                await purge_account_recovery_once(datetime.now(timezone.utc))
+            except Exception:
+                logger.exception("No se pudo completar la purga de recuperación de contraseña")
         await asyncio.sleep(1)
 
 
