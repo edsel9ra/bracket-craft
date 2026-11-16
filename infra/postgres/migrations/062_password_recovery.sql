@@ -253,14 +253,28 @@ BEGIN
     IF p_new_hash IS NULL OR p_new_hash NOT LIKE '$argon2%' THEN
         RAISE EXCEPTION 'invalid password hash';
     END IF;
-    SELECT t.id, u.id INTO v_token_id, v_user_id
+    -- Orden de bloqueo usuario → enlace, el mismo que change_account_password
+    -- e issue_password_reset, para que dos operaciones simultáneas no se
+    -- bloqueen mutuamente.
+    SELECT t.user_id INTO v_user_id
     FROM public.password_reset_tokens t
-    JOIN public.users u ON u.id = t.user_id
+    WHERE t.token_hash = p_token_hash;
+    IF v_user_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    PERFORM 1
+    FROM public.users u
+    WHERE u.id = v_user_id AND u.is_active = TRUE AND u.password_hash = p_current_hash
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    SELECT t.id INTO v_token_id
+    FROM public.password_reset_tokens t
     WHERE t.token_hash = p_token_hash
       AND t.used_at IS NULL AND t.invalidated_at IS NULL
       AND t.expires_at > CURRENT_TIMESTAMP
-      AND u.is_active = TRUE AND u.password_hash = p_current_hash
-    FOR UPDATE OF t, u;
+    FOR UPDATE;
     IF v_token_id IS NULL THEN
         RETURN NULL;
     END IF;

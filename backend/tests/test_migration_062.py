@@ -184,6 +184,65 @@ async def test_062_concurrent_uses_change_the_password_once(database_admin_url):
         assert await db.fetchval("SELECT count(*) FROM account_security_events") == 1
 
 
+async def test_062_reset_locks_the_account_before_the_link(database_admin_url):
+    async with throwaway_database(database_admin_url, last=62) as db:
+        await db.execute(SEED_SQL)
+        await issue(db, "local@example.test", "order")
+        database = await db.fetchval("SELECT current_database()")
+        change = await connect(database_admin_url, database)
+        reset = await connect(database_admin_url, database)
+        try:
+            tx1, tx2 = change.transaction(), reset.transaction()
+            await tx1.start()
+            await tx2.start()
+            await change.execute("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", LOCAL)
+            pending = asyncio.create_task(
+                reset.fetchval("SELECT complete_password_reset($1, $2, $3)", digest("order"), OLD_HASH, NEW_HASH)
+            )
+            await asyncio.sleep(0.2)
+            assert not pending.done()
+            await change.execute("SET LOCAL lock_timeout = '2s'")
+            await change.execute(
+                "UPDATE password_reset_tokens SET invalidated_at = CURRENT_TIMESTAMP WHERE user_id = $1", LOCAL
+            )
+            await tx1.commit()
+            assert await pending is None
+            await tx2.commit()
+        finally:
+            await change.close()
+            await reset.close()
+
+
+async def test_062_reset_revokes_a_session_created_by_an_overlapping_login(database_admin_url):
+    async with throwaway_database(database_admin_url, last=62) as db:
+        await db.execute(SEED_SQL)
+        await issue(db, "local@example.test", "overlap")
+        database = await db.fetchval("SELECT current_database()")
+        login = await connect(database_admin_url, database)
+        reset = await connect(database_admin_url, database)
+        late = "f0000000-0000-4000-8000-0000000000c1"
+        try:
+            tx1, tx2 = login.transaction(), reset.transaction()
+            await tx1.start()
+            await tx2.start()
+            await login.execute(
+                "INSERT INTO user_sessions (id, user_id, expires_at) VALUES ($1, $2, CURRENT_TIMESTAMP + INTERVAL '1 day')",
+                late, LOCAL,
+            )
+            pending = asyncio.create_task(
+                reset.fetchval("SELECT complete_password_reset($1, $2, $3)", digest("overlap"), OLD_HASH, NEW_HASH)
+            )
+            await asyncio.sleep(0.2)
+            assert not pending.done()
+            await tx1.commit()
+            assert str(await pending) == LOCAL
+            await tx2.commit()
+        finally:
+            await login.close()
+            await reset.close()
+        assert await active_sessions(db) == set()
+
+
 async def test_062_change_keeps_only_the_current_session(database_admin_url):
     async with throwaway_database(database_admin_url, last=62) as db:
         await db.execute(SEED_SQL)
