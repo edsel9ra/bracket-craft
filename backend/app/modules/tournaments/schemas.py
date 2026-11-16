@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 
 StageType = Literal[
@@ -457,6 +457,9 @@ class PublicPlayerStatsResponse(BaseModel):
     clean_sheets: int = 0
     matches_played: int = 0
     photo_url: str | None = None
+    # Spec 038 RF-009: el nombre enlaza a la ficha solo si la inscripción en
+    # este torneo tiene consentimiento de imagen.
+    profile_available: StrictBool = False
 
 
 class PublicTeamStatsResponse(BaseModel):
@@ -479,6 +482,7 @@ class PublicTimelinePlayerResponse(BaseModel):
     player_id: UUID
     first_name: str
     last_name: str
+    profile_available: StrictBool = False
 
 
 class PublicTimelineEventResponse(BaseModel):
@@ -507,3 +511,37 @@ class PublicMatchTimelineResponse(BaseModel):
     score_consistent: bool = True
     segment_numbers: list[int] = Field(default_factory=list)
     events: list[PublicTimelineEventResponse] = Field(default_factory=list)
+
+
+class PublicPlayerProfileTotalsResponse(BaseModel):
+    """Totales de la ficha pública: suma de las filas por torneo (spec 038 RF-006)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    matches_played: int = 0
+    goals: int = 0
+    yellow_cards: int = 0
+    red_cards: int = 0
+    clean_sheets: int = 0
+
+
+class PublicPlayerProfileTournamentResponse(PublicPlayerProfileTotalsResponse):
+    """Torneo autorizado de la ficha con las cifras de la 022 (spec 038 RF-005)."""
+
+    tournament_id: UUID
+    tournament_name: str
+    team_id: UUID
+    team_name: str
+
+
+class PublicPlayerProfileResponse(BaseModel):
+    """Ficha pública del jugador (spec 038): sin dorsal, posición ni consentimiento."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: UUID
+    first_name: str
+    last_name: str
+    photo_url: str | None = None
+    totals: PublicPlayerProfileTotalsResponse
+    tournaments: list[PublicPlayerProfileTournamentResponse] = Field(default_factory=list)
