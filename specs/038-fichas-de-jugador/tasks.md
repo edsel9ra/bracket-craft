@@ -32,7 +32,7 @@ Estado: aprobadas por el usuario el 2026-11-16 («Apruebo plan, tareas y aclarac
 
 - [x] **T8. Aviso del consentimiento en el Workspace.** RF-012
 - Hecho cuando: test de la plantilla verde con el texto ES/EN junto al control de consentimiento.
-  - Evidencia (2026-11-16): `roster-lock.test.ts` verde: `setup.photoConsentProfileNote` junto al control de consentimiento de `rosters.vue`, en ES y EN.
+  - Evidencia (2026-11-16): `roster-lock.test.ts` verde: `setup.photoConsentProfileNote` junto a los dos controles de consentimiento de `rosters.vue` (alta del jugador, enlazado con `aria-describedby`, y tarjeta de la inscripción), en ES y EN.
 
 - [x] **T9. E2E de la ficha.** RNF-002, RNF-003
 - Hecho cuando: `pnpm exec playwright test e2e/public-polish.spec.ts --project public --no-deps` verde con la ficha a 1440/390/800 px en ambos temas y el enlace desde estadísticas; `pnpm run build` verde.

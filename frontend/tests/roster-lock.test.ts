@@ -162,6 +162,7 @@ test('does not duplicate the stage inscription or the schedule generator', () =>
 test('038 RF-012: el control de consentimiento avisa de que también publica la ficha (ES/EN)', () => {
   const i18n = readFileSync(new URL('../app/composables/useI18n.ts', import.meta.url), 'utf8');
   assert.match(rostersPage, /@click="toggleRosterPhotoConsent\(roster\)">[\s\S]{0,200}<\/button>\s*<p class="photo-consent-note">\{\{ t\('setup\.photoConsentProfileNote'\) \}\}<\/p>/);
+  assert.match(rostersPage, /<input v-model="playerForm\.photo_consent" type="checkbox" aria-describedby="player-consent-note" \/>[\s\S]{0,120}<\/label>\s*<p id="player-consent-note" class="photo-consent-note photo-consent-note--form">\{\{ t\('setup\.photoConsentProfileNote'\) \}\}<\/p>/);
   assert.match(i18n, /'setup\.photoConsentProfileNote': 'El consentimiento también publica este torneo, con sus estadísticas, en la ficha pública del jugador\.'/);
   assert.match(i18n, /'setup\.photoConsentProfileNote': 'Consent also publishes this tournament, with its statistics, on the player’s public profile\.'/);
 });
