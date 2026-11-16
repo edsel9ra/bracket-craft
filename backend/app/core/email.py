@@ -85,3 +85,48 @@ async def send_sanction_notice_email(recipient: str, case_id: str, notification_
     message.set_content(f"Expediente {case_id}: {act}.\n\nMotivo: {reason}\n")
     await asyncio.to_thread(_send_message, message, settings.smtp_host, settings.smtp_port,
         settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)
+
+
+async def _send_account_email(recipient: str, subject: str, body: str) -> None:
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise RuntimeError("SMTP no configurado")
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from
+    message["To"] = recipient
+    message.set_content(body)
+    await asyncio.to_thread(_send_message, message, settings.smtp_host, settings.smtp_port,
+        settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)
+
+
+async def send_password_reset_email(recipient: str, reset_url: str, expires_at: datetime) -> None:
+    await _send_account_email(
+        recipient,
+        "Recupera tu contraseña de Bracket Craft",
+        "Alguien pidió recuperar la contraseña de tu cuenta de Bracket Craft.\n\n"
+        f"Para elegir una contraseña nueva abre este enlace, válido durante 30 minutos "
+        f"(hasta {expires_at.isoformat()}) y un solo uso:\n{reset_url}\n\n"
+        "Si no lo pediste, ignora este mensaje: tu contraseña no cambia.",
+    )
+
+
+async def send_google_sign_in_reminder_email(recipient: str) -> None:
+    await _send_account_email(
+        recipient,
+        "Tu cuenta de Bracket Craft entra con Google",
+        "Alguien pidió recuperar la contraseña de tu cuenta de Bracket Craft.\n\n"
+        "Tu cuenta no tiene contraseña: entra con el botón «Continuar con Google» "
+        "de la pantalla de acceso.\n\n"
+        "Si no lo pediste, ignora este mensaje.",
+    )
+
+
+async def send_password_changed_email(recipient: str, changed_at: datetime) -> None:
+    await _send_account_email(
+        recipient,
+        "Tu contraseña de Bracket Craft ha cambiado",
+        f"La contraseña de tu cuenta de Bracket Craft cambió el {changed_at.isoformat()}.\n\n"
+        "Si no fuiste tú, recupera la contraseña desde la pantalla de acceso y avisa "
+        "a la administración de tu organización.",
+    )
