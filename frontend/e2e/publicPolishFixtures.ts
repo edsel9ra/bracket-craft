@@ -66,7 +66,22 @@ export function publicContract(size = 8) {
   }, away: null };
   const players = Array.from({ length: 53 }, (_, i) => ({ rank: i < 2 ? 1 : i + 1, player_id: uuid(2000 + i), first_name: 'Global', last_name: `Apellido Extenso ${i}`, team_id: uuid(101), team_name: teamName(1), goals: i < 2 ? 53 : 53 - i, yellow_cards: 0, red_cards: 0, clean_sheets: 0, matches_played: 2, photo_url: i === 0 ? '/031-missing-photo.png' : null }));
   const teams = Array.from({ length: 53 }, (_, i) => ({ rank: i < 2 ? 1 : i + 1, team_id: uuid(101 + i), team_name: teamName(i + 1), short_code: `C${i + 1}`, crest_url: null, goals_for: i < 2 ? 53 : 53 - i, goals_against: 0, clean_sheets: 1, fair_play_points: 0 }));
-  return { tournament, standings, matches: [published, ...bracketMatches(size)], players, teams };
+  const player = (n: number, last = `Publicado ${n}`) => ({ player_id: uuid(3000 + n), first_name: 'Nombre', last_name: last });
+  const event = (type: string, minute: number, added: number, segment: number, team: number, extra: Record<string, unknown> = {}) => ({
+    event_type: type, minute, added_minute: added, segment_number: segment, team_id: uuid(team),
+    beneficiary_team_id: null, red_card_type: null, player: player(minute), player_in: null, ...extra,
+  });
+  const timeline = {
+    match_id: published.id, availability: 'available', score_consistent: true, segment_numbers: [1, 2],
+    events: [
+      event('goal', 23, 0, 1, 101),
+      event('yellow_card', 45, 2, 1, 102),
+      event('own_goal', 52, 0, 2, 101, { beneficiary_team_id: uuid(102) }),
+      event('substitution', 60, 0, 2, 101, { player: player(60, 'Apellido Extremadamente Largo Que Sale Del Campo'), player_in: player(61, 'Apellido Extremadamente Largo Que Entra Al Campo') }),
+      event('red_card', 88, 0, 2, 102, { red_card_type: 'double_yellow_red' }),
+    ],
+  };
+  return { tournament, standings, matches: [published, ...bracketMatches(size)], players, teams, timeline };
 }
 
 export async function installPublicContract(page: Page, size = 8) {
@@ -91,6 +106,7 @@ export async function installPublicContract(page: Page, size = 8) {
       const rows = endpoint === 'player-stats' ? data.players : data.teams;
       body = state.mode === 'empty' || scope === bracketId ? [] : (scope ? rows.slice(0, 3) : rows).slice(offset, offset + 50);
     } else if (endpoint === 'standings') body = scope === bracketId ? [] : data.standings;
+    else if (endpoint === 'timeline') body = data.timeline;
     else if (endpoint === 'matches') body = data.matches.filter(row => !scope || row.stage_id === scope);
     else if (endpoint === 'public') body = [data.tournament];
     else body = { ...data.tournament, id: endpoint };

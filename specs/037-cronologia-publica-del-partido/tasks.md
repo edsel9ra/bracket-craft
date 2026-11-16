@@ -18,20 +18,50 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_timeline_endpoint.py tests/test_public_access_matrix.py` verde (dos organizaciones, rectificación, anulados, 404 indistinguible); `pytest -q`, `ruff check .` y `bandit -q -r app -ll` verdes.
 - Evidencia (2026-11-15): `test_public_timeline_endpoint.py` 3 passed (dos organizaciones con lista cerrada y sin mezcla; versión rectificada vigente sin anulados; `live` → `pending`, acta confirmada sin hechos → vacío con segmentos 1–2; cancelado, inexistente, de otro torneo u otra organización → 404 indistinguible) y `test_public_access_matrix.py` con la ruta nueva en los tres grupos de 404; suite con PostgreSQL 17 y Redis 4154 passed (el único fallo, el recuento de rutas, se corrigió a 33 operaciones); `pytest -q` 2969 passed/1190 skipped, `ruff check .` y `bandit -q -r app -ll` limpios.
 
-- [ ] **T5. Utilidades frontend `utils/publicTimeline.ts`.** RF-008, RF-009, RF-014
+- [x] **T5. Utilidades frontend `utils/publicTimeline.ts`.** RF-008, RF-009, RF-014
 - Hecho cuando: `cd frontend && pnpm test` incluye `public-timeline.test.ts` (minuto, separadores, clave por tipo/roja, decisión de recarga) en verde.
+- Evidencia (2026-11-15): `public-timeline.test.ts` 9 passed (apertura solo en `finished`, minuto `45+2'`, claves por tipo y roja sin inferir, nombre y apellido, lado, separadores solo con más de un segmento, recarga por estado/marcador/penales/rectificación); `pnpm test` 1095 passed/0 failed; eslint limpio.
 
-- [ ] **T6. Componente `PublicMatchTimeline.vue` e i18n ES/EN.** RF-007, RF-008, RF-012, RNF-002
+- [x] **T6. Componente `PublicMatchTimeline.vue` e i18n ES/EN.** RF-007, RF-008, RF-012, RNF-002
 - Hecho cuando: pruebas del componente (estados, nombres accesibles, foco, ambos idiomas) verdes; `pnpm run lint` y `pnpm run typecheck` verdes; `design-scales.test.ts` sin excepciones nuevas.
+- Evidencia (2026-11-15): `PublicMatchTimeline.vue` (diálogo modal nativo, cierre con foco y devolución, `role=status`/`alert`, estados de carga/error/pendiente/sin juego/vacío/descuadre, iconos `aria-hidden`, sin dorsal/foto/asistencia) y 19 claves ES/EN; `public-timeline.test.ts` 13 passed y `theme-surfaces.test.ts` cubre su backdrop claro; `pnpm test` 1099 passed/0 failed; `pnpm run lint` y `pnpm run typecheck` limpios; `design-scales.test.ts` sin excepciones nuevas.
 
-- [ ] **T7. Integración en `/tournaments/{id}` y recarga.** RF-001, RF-002, RF-013, RF-014
+- [x] **T7. Integración en `/tournaments/{id}` y recarga.** RF-001, RF-002, RF-013, RF-014
 - Hecho cuando: pruebas de la página verifican el disparador solo en `finished`, la carga vía `useApi` y la recarga del diálogo abierto al cambiar `status`, marcador o `rectified_at`; `pnpm test` y `pnpm run build` verdes.
+- Evidencia (2026-11-15): `[id].vue` añade el disparador junto a cada «Ver formación» de las tarjetas y, por RF-001, también en `PublicBracket` (evento `openTimeline`), solo con `canOpenTimeline`; carga bajo demanda con `request` de `useApi`, generación para descartar respuestas tardías y reintento; un `watch` del partido abierto recarga con `shouldReloadTimeline` sobre el refresco público existente, sin evento nuevo. `public-timeline.test.ts` 16 passed; `pnpm test` 1102 passed/0 failed; lint, typecheck y `pnpm run build` limpios.
 
-- [ ] **T8. E2E público de la cronología.** RNF-002, CL-9, CL-13
+- [x] **T8. E2E público de la cronología.** RNF-002, CL-9, CL-13
 - Hecho cuando: `pnpm run typecheck:e2e` verde y `public-polish.spec.ts` ejecutado con el diálogo a 1440/390 px en ambos temas, sin desbordamiento (en CI o en contenedor Playwright 1.65).
+- Evidencia (2026-11-15): `pnpm run typecheck:e2e` y eslint limpios; `public-polish.spec.ts` ejecutado en el contenedor `mcr.microsoft.com/playwright:v1.65.0-noble` contra `pnpm run build` + un stub local que solo sirve el listado SSR (el resto lo intercepta el contrato ficticio): 27 passed, incluidas las 6 de la cronología (1440/390/800 px × oscuro/claro: orden, `45+2'`, separadores, roja por doble amarilla, sale/entra con nombres largos, sin `#`, diálogo dentro del viewport, sin scroll horizontal, una sola petición `/timeline`, Escape devuelve el foco). En CI queda pendiente su ejecución en el job `e2e`.
 
-- [ ] **T9. Documentación: matriz de acceso, AGENTS, manual y 020.** RF-017
+- [x] **T9. Documentación: matriz de acceso, AGENTS, manual y 020.** RF-017
 - Hecho cuando: README (matriz y runbook 060), `AGENTS.md`, `docs/manual-usuario.md` y la referencia en la spec 020 describen la ruta, la lista cerrada y el cambio no aditivo; pruebas de coherencia documental verdes.
+- Evidencia (2026-11-15): README (fila de la matriz, viñeta con la lista cerrada y el cambio no aditivo, verificación y runbook 060), `AGENTS.md` (viñeta F13), `docs/manual-usuario.md` (consulta pública) y `specs/020/spec.md` (ampliación F13). Pruebas de coherencia documental: `test_version_sources.py`/`test_migration_030.py` 25 passed (7 opt-in omitidas) y `pnpm test` 1102 passed/0 failed.
 
-- [ ] **T10. Validación y cierre.** Criterios de finalización 1–8
+- [x] **T10. Validación y cierre.** Criterios de finalización 1–8
 - Hecho cuando: los cinco jobs de CI pasan en el PR, cada RF/CL tiene evidencia citada en este archivo, la verificación de constitución está confirmada y `MEMORY.md` actualizado; lo no ejecutado se declara.
+- Evidencia (2026-11-15):
+  - CI: #91 7/7 en verde; #92 7/7 en verde (`pull_request` run 43779881766 y `push` run 43779876633 sobre `c154d5c6`, con `e2e` incluido).
+  - Trazabilidad:
+    - RF-001: endpoint, botón en tarjetas y llave (`public-timeline.test.ts`).
+    - RF-002, RF-003, CL-2, CL-9: `timeline_availability` en `test_public_timeline.py` y `pending` en el endpoint.
+    - RF-004, RF-016, CL-10: `test_public_access_matrix.py` y casos 404 de `test_public_timeline_endpoint.py`.
+    - RF-005, RF-013, CL-3: versión rectificada vigente sin anulados (endpoint) y `PublicRectifiedMark` en el diálogo.
+    - RF-006, RF-012, CL-1, CL-14: tipos cerrados y acta vacía.
+    - RF-007, CL-5, CL-11, CL-12: proyección de nombres, beneficiado del autogol (componente y E2E) y jugador que entra.
+    - RF-008, CL-4: `public_red_card_type`, incluido `red_card_type` no textual.
+    - RF-009, CL-6, CL-13: `timeline_sort_key`, `timelineGroups` con segmentos vacíos y E2E.
+    - RF-010, RF-011, CL-7, CL-8: `timeline_matches_score` y `score_consistent`.
+    - RF-014: `shouldReloadTimeline`, `watch` con instantánea y recarga tras `publicReload`.
+    - RF-015: `test_public_field_allowlist.py`.
+    - RF-017: T9.
+    - RNF-001: dos organizaciones en el endpoint.
+    - RNF-002: E2E en 1440/390/800 px y ambos temas, ES/EN y foco.
+    - RNF-003: `PublicMatchResponse` sin cambios y suite completa en verde.
+    - RNF-004: carga bajo demanda.
+    - RNF-005: orden estable.
+  - Constitución: RLS sin `BYPASSRLS`, migración 060 append-only, sin escrituras públicas y acciones CI sin cambios.
+  - No ejecutado:
+    - CL-9 (cierre de un partido en vivo con el diálogo abierto) y RF-014 contra la pila real con Socket.IO: cubiertos por pruebas unitarias/estructurales y por el E2E con contrato ficticio, no por una sesión con backend real.
+    - Lector de pantalla real: no se ha probado; la accesibilidad se verificó por roles y foco.
+  - Aceptación de la spec: aceptada por el usuario el 2026-11-15 («Acepto la spec 037»), con autorización para fusionar #90 → #91 → #92.
