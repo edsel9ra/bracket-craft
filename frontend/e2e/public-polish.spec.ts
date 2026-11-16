@@ -136,6 +136,46 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await saveMeasurements(info, `timeline-measurements-${theme}`, { theme, dialog: box });
     });
 
+    for (const theme of ['dark', 'light'] as const) test(`ficha pública ${theme}: enlace desde estadísticas, cabecera, totales, trayectoria y foco`, async ({ page }, info) => {
+      const contract = await installPublicContract(page);
+      await openPublicContract(page);
+      await chooseTheme(page, theme);
+      const links = page.locator('.player-stats-panel .stats-player-link');
+      await expect(links).toHaveCount(1);
+      await links.click();
+      await expect(page).toHaveURL(/\/players\/03100000-0000-4000-8000-000000002001$/);
+      await expect(page.getByRole('heading', { level: 1, name: 'Global Apellido Extenso 1' })).toBeVisible();
+      await expect(page.locator('.profile-photo--initials')).toHaveText('GA');
+      await expect(page.locator('.profile-total dd')).toHaveText(['6', '12', '3', '0', '0']);
+      await expect(page.locator('.profile-content tbody tr')).toHaveCount(3);
+      await expect(page.locator('.profile-content')).not.toContainText('#');
+      const tournamentLink = page.locator('.profile-content tbody .profile-link').first();
+      await tournamentLink.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(tournamentLink).toBeFocused();
+      expect(await tournamentLink.evaluate(e => getComputedStyle(e).outlineStyle)).toBe('solid');
+      const hero = (await page.locator('.profile-hero').boundingBox())!;
+      expect(hero.width).toBeLessThanOrEqual(viewport.width);
+      await assertNoDocumentOverflow(page);
+      expect(contract.requests.filter(row => row.path.includes('/public/players/'))).toHaveLength(1);
+      await saveMeasurements(info, `profile-measurements-${theme}`, { theme, hero });
+    });
+
+    test('ficha pública desde la cronología: navegar cierra el diálogo', async ({ page }) => {
+      await installPublicContract(page);
+      await openPublicContract(page);
+      await page.locator('.timeline-trigger').first().click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.timeline-player-link')).toHaveCount(1);
+      await dialog.locator('.timeline-player-link').click();
+      await expect(page).toHaveURL(/\/players\/03100000-0000-4000-8000-000000003023$/);
+      await expect(dialog).not.toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'Nombre Publicado 23' })).toBeVisible();
+      await assertNoDocumentOverflow(page);
+    });
+
     test('ganador repetido o destino ambiguo no inventa conectores', async ({ page }) => {
       const { data } = await installPublicContract(page);
       const rows = data.matches.filter(row => row.stage_id === bracketId);

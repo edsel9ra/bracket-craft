@@ -48,7 +48,6 @@ useHead(() => ({
   <main id="main-content" class="public-shell">
     <header class="container detail-topbar">
       <NuxtLink to="/" class="brand-mark"><span class="brand-dot" aria-hidden="true" /> BRACKET CRAFT</NuxtLink>
-      <NuxtLink to="/login" class="button-secondary">{{ t('common.login') }}</NuxtLink>
     </header>
 
     <div v-if="loading" class="container profile-state" role="status">{{ t('publicPlayer.loading') }}</div>
