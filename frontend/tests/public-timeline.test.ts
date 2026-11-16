@@ -193,7 +193,7 @@ test('la página carga la cronología bajo demanda mediante useApi', () => {
 test('el diálogo abierto se recarga con el refresco público, sin evento nuevo', () => {
   assert.match(page, /shouldReloadTimeline\(previous, next\)\) void loadTimeline\(\)/);
   // Viejo → ausente → nuevo: compara con el último estado conocido y mantiene el diálogo abierto.
-  assert.match(page, /watch\(selectedTimelineMatch, \(match\) => \{\n  if \(!match\) return;\n  const previous = timelineSnapshot;/);
+  assert.match(page, /watch\(selectedTimelineMatch, \(match\) => \{\n {2}if \(!match\) return;\n {2}const previous = timelineSnapshot;/);
   assert.match(page, /selectedTimelineMatchId\.value \? \(selectedTimelineMatch\.value \?\? timelineMatchCache\.value\) : null/);
   assert.match(page, /:open="Boolean\(timelineMatch\)"/);
   for (const field of ['status', 'home_score', 'away_score', 'home_penalties', 'away_penalties', 'rectified_at']) {

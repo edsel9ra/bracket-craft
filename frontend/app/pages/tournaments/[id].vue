@@ -111,7 +111,7 @@ const timelineLoading = ref(false);
 const timelineError = ref(false);
 let timelineGeneration = 0;
 // Último estado conocido del partido abierto: el refresco público vacía y rellena la lista.
-const timelineMatchCache = shallowRef<PublicMatchState | null>(null);
+const timelineMatchCache = shallowRef<Exclude<PublicMatchState, SuspendedPublicMatch> | null>(null);
 let timelineSnapshot: TimelineSnapshot | null = null;
 const selectedTimelineMatch = computed(() => {
   const match = matchList.value.find((item) => item.id === selectedTimelineMatchId.value) ?? null;
