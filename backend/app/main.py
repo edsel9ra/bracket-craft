@@ -43,6 +43,7 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.modules.crests.errors import CrestError
 from app.modules.crests.router import router as crests_router
 from app.modules.identity.errors import GoogleAuthError, google_error_body
+from app.modules.identity.password_router import router as password_router
 from app.modules.identity.router import router as identity_router
 from app.modules.invitations.errors import InvitationConflict, conflict_body
 from app.modules.invitations.router import router as invitations_router
@@ -1051,6 +1052,7 @@ async def readiness() -> dict[str, object]:
 
 
 api.include_router(identity_router, prefix="/api/v1")
+api.include_router(password_router, prefix="/api/v1")
 api.include_router(invitations_router, prefix="/api/v1")
 api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
