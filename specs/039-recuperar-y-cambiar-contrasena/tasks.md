@@ -34,8 +34,9 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 - Hecho cuando: `pnpm test -- password-recovery` verde también para el cambio (actual incorrecta, solo-Google sin formulario, éxito) y la entrada del menú en escritorio y móvil.
 - Evidencia (2026-11-16): `tests/password-recovery.test.ts` cubre `/account/password` con middleware `session`, actual incorrecta con foco en su campo, aviso solo-Google sin formulario, éxito y la entrada «Cambiar la contraseña» del menú de escritorio y móvil del `WorkspaceShell`.
 
-- [ ] **T9. E2E de las tres pantallas.** RF-013
+- [x] **T9. E2E de las tres pantallas.** RF-013
 - Hecho cuando: `pnpm exec playwright test e2e/password-recovery.spec.ts --project public --no-deps` verde a 1440/390 px en ambos temas con contratos ficticios; `pnpm run typecheck:e2e` y `pnpm run build` verdes.
+- Evidencia (2026-11-16): `e2e/password-recovery.spec.ts` (proyecto `public`, contrato ficticio de `/auth/password*`) `16 passed` a 1440/390 px en tema oscuro y claro: enlace del login, confirmación genérica con foco, validación local sin llamadas, token leído del fragmento y retirado de la URL, `PASSWORD_REUSED` y `PASSWORD_RESET_INVALID`, vuelta al login con aviso, cambio con actual incorrecta (foco en su campo), éxito y cuenta solo-Google sin formulario; axe sin violaciones en las tres pantallas y sin desbordamiento horizontal. `pnpm run typecheck:e2e` verde.
 
 - [ ] **T10. Documentación y cierre.** Todos
 - Hecho cuando: README (rutas, runbook de la 062, límites), AGENTS, manual de usuario y MEMORY actualizados; trazabilidad de cada RF, RNF y CL con su evidencia en esta tarea; CI 7/7 en los PR.
