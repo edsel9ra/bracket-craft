@@ -2,20 +2,25 @@
 
 Estado: aprobadas por el usuario el 2026-11-16 («Apruebo plan, tareas y aclaraciones»). Un PR documental y un PR por bloque: A (T1–T5 backend) y B (T6–T10 frontend, documentación y cierre).
 
-- [ ] **T1. Migración 061: `v_public_player_profile_rosters`.** RF-002, RF-003, RF-006, RF-007
+- [x] **T1. Migración 061: `v_public_player_profile_rosters`.** RF-002, RF-003, RF-006, RF-007
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_061.py` en rojo y luego verde; `sh -n infra/postgres/migrate.sh`; cadena limpia 001→061 y salto 060→061 con checksums estables.
+  - Evidencia (2026-11-16): `test_migration_061.py` rojo sin la migración y verde después (columnas y orden, `security_barrier`, `SELECT` solo para `bracket_app`, torneo no visible excluido, clave de foto anulada sin consentimiento, organización inactiva excluida, salto 060→061 e idempotencia); `sh -n infra/postgres/migrate.sh` verde. `infra/scripts/test_migrate_target.sh` no se ejecutó en local (sin `psql` en la VM): lo cubre el job `infrastructure` de CI.
 
-- [ ] **T2. Funciones puras de la ficha.** RF-003, RF-007, RF-009, RF-010, CL-1–CL-11
+- [x] **T2. Funciones puras de la ficha.** RF-003, RF-007, RF-009, RF-010, CL-1–CL-11
 - Hecho cuando: `pytest -q tests/test_public_player_profile.py` verde tras confirmarlo en rojo.
+  - Evidencia (2026-11-16): `pytest -q tests/test_public_player_profile.py` rojo (módulo inexistente) y luego verde: CL-11, desempates deterministas, consentimiento, orden reciente, tope de 50, foto de la vigente autorizada más reciente y totales.
 
-- [ ] **T3. Modelos públicos, `profile_available` y lista cerrada.** RF-005, RF-006
+- [x] **T3. Modelos públicos, `profile_available` y lista cerrada.** RF-005, RF-006
 - Hecho cuando: `pytest -q tests/test_public_field_allowlist.py` falla ante una clave extra y pasa con los tres modelos nuevos y el campo en los dos existentes.
+  - Evidencia (2026-11-16): `pytest -q tests/test_public_field_allowlist.py` rojo sin los modelos y verde con los tres modelos `extra="forbid"`, `profile_available: StrictBool = False` en `PublicPlayerStatsResponse` y `PublicTimelinePlayerResponse`.
 
-- [ ] **T4. Endpoint `GET /tournaments/public/players/{player_id}`.** RF-001, RF-002, RF-004, RF-007, RF-008, RF-011, RNF-001
+- [x] **T4. Endpoint `GET /tournaments/public/players/{player_id}`.** RF-001, RF-002, RF-004, RF-007, RF-008, RF-011, RNF-001
 - Hecho cuando: `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_player_profile_endpoint.py tests/test_public_access_matrix.py` verde (dos organizaciones, cifras iguales a `player-stats`, rectificación, retiro de consentimiento, inscripción retirada, 404 indistinguible); recuento de rutas 34.
+  - Evidencia (2026-11-16): `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_player_profile_endpoint.py tests/test_public_access_matrix.py` verde (14): dos organizaciones, varios torneos de una organización con solo los autorizados y totales, cifras iguales a `player-stats` (también tras rectificación), retiro de consentimiento, inscripción retirada sin foto, torneo no visible y el mismo 404 `Torneo público no encontrado`; `test_tournament_routes_order.py` con 34 rutas.
 
-- [ ] **T5. `profile_available` en `player-stats` y `timeline`.** RF-009, CL-1, CL-11
+- [x] **T5. `profile_available` en `player-stats` y `timeline`.** RF-009, CL-1, CL-11
 - Hecho cuando: tests de endpoint de ambas rutas verdes con inscripciones con y sin consentimiento; suite completa con PostgreSQL 17 y Redis, `ruff check .` y `bandit -q -r app -ll` verdes.
+  - Evidencia (2026-11-16): `test_public_player_profile_endpoint.py` cubre `profile_available` en `player-stats` y `timeline` por torneo (con y sin consentimiento, retirado tras revocarlo, sin filtrarse a otro torneo) y `test_public_timeline.py` el indicador puro; suite completa con PostgreSQL 17 y Redis: 4181 passed, 4 skipped (la única falla, `test_match_live_public.py`, usaba una base desechable hasta la 059 y pasa a la 061); `ruff check .` y `bandit -q -r app -ll` verdes.
 
 - [ ] **T6. Página pública `/players/[id]`.** RF-001, RF-002, RF-005, RF-007, RNF-002, RNF-003
 - Hecho cuando: `pnpm test -- public-player-profile` verde (cabecera, totales, trayectoria, no encontrado, error, ES/EN, foco); lint y typecheck verdes.

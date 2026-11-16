@@ -9,7 +9,7 @@ visibilidad del torneo se resuelven en el endpoint.
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, Literal, Mapping
+from typing import Any, Collection, Iterable, Literal, Mapping
 
 Availability = Literal["pending", "not_played", "available"]
 RedCardType = Literal["direct_red", "double_yellow_red"]
@@ -109,12 +109,21 @@ def timeline_matches_score(events: Iterable[Mapping[str, Any]], match: Any) -> b
     return counted[home_id] == home and counted[away_id] == away
 
 
-def _player(names: Mapping[str, tuple[str, str]], player_id: Any) -> dict[str, Any] | None:
+def _player(
+    names: Mapping[str, tuple[str, str]],
+    player_id: Any,
+    profiles: Collection[str] = frozenset(),
+) -> dict[str, Any] | None:
     key = _key(player_id)
     if key is None or key not in names:
         return None
     first, last = names[key]
-    return {"player_id": player_id, "first_name": first, "last_name": last}
+    return {
+        "player_id": player_id,
+        "first_name": first,
+        "last_name": last,
+        "profile_available": key in profiles,
+    }
 
 
 def _public_event(
@@ -122,6 +131,7 @@ def _public_event(
     segment_numbers: Mapping[str, int],
     teams: tuple[str | None, str | None],
     names: Mapping[str, tuple[str, str]],
+    profiles: Collection[str] = frozenset(),
 ) -> dict[str, Any] | None:
     """Proyección mínima de un hecho, o ``None`` si es huérfano (RF-011)."""
 
@@ -142,12 +152,12 @@ def _public_event(
 
     player_in = None
     if event_type == "substitution":
-        player = _player(names, _v(event, "player_out_id") or _v(event, "player_id"))
-        player_in = _player(names, _v(event, "player_in_id"))
+        player = _player(names, _v(event, "player_out_id") or _v(event, "player_id"), profiles)
+        player_in = _player(names, _v(event, "player_in_id"), profiles)
         if player_in is None:
             return None
     else:
-        player = _player(names, _v(event, "player_id"))
+        player = _player(names, _v(event, "player_id"), profiles)
     if player is None:
         return None
 
@@ -170,8 +180,12 @@ def build_public_timeline(
     events: Iterable[Any],
     segments: Iterable[Any],
     names: Mapping[str, tuple[str, str]],
+    profiles: Collection[str] = frozenset(),
 ) -> dict[str, Any]:
-    """Cronología pública de un partido (RF-001–RF-013), sin campos internos."""
+    """Cronología pública de un partido (RF-001–RF-013), sin campos internos.
+
+    ``profiles``: jugadores con ficha pública en este torneo (spec 038, RF-009).
+    """
 
     availability = timeline_availability(_v(match, "status"), _v(match, "resolution_type"))
     result: dict[str, Any] = {
@@ -195,7 +209,7 @@ def build_public_timeline(
         item
         for event in events or []
         if _key(_v(event, "match_id")) in (None, match_id)
-        and (item := _public_event(event, segment_numbers, teams, names)) is not None
+        and (item := _public_event(event, segment_numbers, teams, names, profiles)) is not None
     ]
     published.sort(key=timeline_sort_key)
     for item in published:

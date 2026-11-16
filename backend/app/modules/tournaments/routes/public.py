@@ -14,6 +14,12 @@ from app.modules.matches.live_public import (
     PublicMatchStateResponse,
     SuspendedPublicMatchResponse,
 )
+from app.modules.tournaments.public_player_profile import (
+    authorized_tournaments,
+    build_player_profile,
+    profile_available_ids,
+    profile_photo_candidate,
+)
 from app.modules.tournaments.public_timeline import (
     build_public_timeline,
     public_player_names,
@@ -21,6 +27,7 @@ from app.modules.tournaments.public_timeline import (
 )
 from app.modules.tournaments.schemas import (
     PublicMatchTimelineResponse,
+    PublicPlayerProfileResponse,
     PublicPlayerStatsResponse,
     PublicStandingResponse,
     PublicTeamStatsResponse,
@@ -51,6 +58,196 @@ async def list_public_tournaments(
         {"limit": limit, "offset": offset},
     )
     return [dict(row) for row in result.mappings().all()]
+
+
+async def _profile_available(
+    db: AsyncSession, tournament_id: UUID, player_ids: list[str] | None = None
+) -> set[str]:
+    """Spec 038 RF-009: jugadores cuya inscripción representativa en **este** torneo
+    tiene consentimiento; nunca mira otros torneos."""
+
+    query = """
+        SELECT tournament_id, team_id, player_id, is_active, valid_from, photo_consent
+        FROM v_public_player_profile_rosters
+        WHERE tournament_id = :tournament_id
+    """
+    params: dict[str, object] = {"tournament_id": str(tournament_id)}
+    if player_ids is not None:
+        if not player_ids:
+            return set()
+        query += " AND player_id = ANY(CAST(:player_ids AS UUID[]))"
+        params["player_ids"] = player_ids
+    rows = (await db.execute(text(query), params)).mappings().all()
+    return profile_available_ids(rows)
+
+
+@router.get("/public/players/{player_id}", response_model=PublicPlayerProfileResponse)
+async def public_player_profile(
+    player_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PublicPlayerProfileResponse:
+    """Ficha pública del jugador (spec 038).
+
+    Solo torneos visibles de su organización cuya inscripción representativa
+    tiene consentimiento de imagen (DA-1, CL-11); sin ninguno, el mismo 404
+    que el resto de lecturas públicas (RF-002). Número de consultas fijo
+    (RNF-001) y cifras de ``compute_player_stats`` torneo a torneo (RF-006).
+    """
+
+    from app.modules.tournaments.public_stats import compute_player_stats
+
+    params = {"player_id": str(player_id)}
+    async with db.begin():
+        org_id = (
+            await db.execute(
+                text("""
+                    SELECT organization_id FROM v_public_player_profile_rosters
+                    WHERE player_id = :player_id AND photo_consent
+                    LIMIT 1
+                """),
+                params,
+            )
+        ).scalar_one_or_none()
+        if org_id is None:
+            raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+        await set_rls_context(db, org_id, None)
+
+        inscriptions = [
+            dict(row)
+            for row in (
+                await db.execute(
+                    text("""
+                        SELECT tournament_id, tournament_name, start_date, team_id, team_name,
+                               player_id, first_name, last_name, is_active, valid_from,
+                               photo_consent, photo_object_key
+                        FROM v_public_player_profile_rosters
+                        WHERE organization_id = :organization_id AND player_id = :player_id
+                    """),
+                    {**params, "organization_id": str(org_id)},
+                )
+            ).mappings().all()
+        ]
+        tournaments = authorized_tournaments(inscriptions)
+        if not tournaments:
+            raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+
+        tournament_ids = [str(row["tournament_id"]) for row in tournaments]
+        team_ids = sorted({
+            str(row["team_id"]) for row in inscriptions if str(row["tournament_id"]) in tournament_ids
+        })
+        scope = {"tournament_ids": tournament_ids, "team_ids": team_ids, **params}
+        matches = [
+            dict(row)
+            for row in (
+                await db.execute(
+                    text("""
+                        SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
+                               home_team_id, away_team_id, home_score, away_score, home_score_regular,
+                               away_score_regular, status, resolution_type, home_penalties, away_penalties,
+                               winner_team_id
+                        FROM v_public_matches
+                        WHERE tournament_id = ANY(CAST(:tournament_ids AS UUID[]))
+                          AND (home_team_id = ANY(CAST(:team_ids AS UUID[]))
+                               OR away_team_id = ANY(CAST(:team_ids AS UUID[])))
+                    """),
+                    scope,
+                )
+            ).mappings().all()
+        ]
+        # La inscripción del jugador en cada torneo, como en `player-stats`,
+        # sin columnas de foto ni dorsal.
+        rosters = [
+            dict(row)
+            for row in (
+                await db.execute(
+                    text("""
+                        SELECT tournament_id, team_id, player_id, is_active, first_name, last_name, team_name
+                        FROM v_public_tournament_rosters
+                        WHERE tournament_id = ANY(CAST(:tournament_ids AS UUID[]))
+                          AND player_id = :player_id
+                        ORDER BY tournament_id, is_active DESC
+                    """),
+                    scope,
+                )
+            ).mappings().all()
+        ]
+        match_ids = [str(match["id"]) for match in matches]
+        events: list[dict] = []
+        segments: list[dict] = []
+        formations: list[dict] = []
+        if match_ids:
+            ids = {"match_ids": match_ids}
+            events = [
+                dict(row)
+                for row in (
+                    await db.execute(
+                        text("""
+                            SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
+                                   player_out_id, player_in_id, beneficiary_team_id, metadata
+                            FROM v_public_match_events
+                            WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
+                              AND (is_voided IS FALSE OR is_voided IS NULL)
+                        """),
+                        ids,
+                    )
+                ).mappings().all()
+            ]
+            segments = [
+                dict(row)
+                for row in (
+                    await db.execute(
+                        text("""
+                            SELECT id, match_id, segment_number, minute_start, minute_end, status
+                            FROM v_public_match_segments
+                            WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
+                        """),
+                        ids,
+                    )
+                ).mappings().all()
+            ]
+            formations = [
+                dict(row)
+                for row in (
+                    await db.execute(
+                        text("""
+                            SELECT match_id, tournament_id, segment_id, segment_number, team_id,
+                                   player_id, position_slot, is_starter, is_public, formation_code
+                            FROM v_public_match_formations
+                            WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
+                            ORDER BY match_id, team_id, segment_number, player_id
+                        """),
+                        ids,
+                    )
+                ).mappings().all()
+            ]
+
+    match_tournament = {str(match["id"]): str(match["tournament_id"]) for match in matches}
+    stats_by_tournament: dict[str, dict] = {}
+    for tournament_id in tournament_ids:
+        own = {match_id for match_id, owner in match_tournament.items() if owner == tournament_id}
+        rows = compute_player_stats(
+            [m for m in matches if str(m["id"]) in own],
+            [e for e in events if str(e["match_id"]) in own],
+            [f for f in formations if str(f["match_id"]) in own],
+            [s for s in segments if str(s["match_id"]) in own],
+            [r for r in rosters if str(r["tournament_id"]) == tournament_id],
+        )
+        mine = next((row for row in rows if str(row["player_id"]) == str(player_id)), None)
+        if mine is not None:
+            stats_by_tournament[tournament_id] = mine
+
+    profile = build_player_profile(tournaments, stats_by_tournament)
+    candidate = profile_photo_candidate(tournaments)
+    photo = [{
+        "photo_url": candidate["photo_object_key"] if candidate else None,
+        "photo_consent": bool(candidate),
+    }]
+    # N-2: una sola firma, con la transacción de lectura ya cerrada (RNF-001).
+    await sign_media_rows(
+        [MediaGroup(rows=photo, key_field="photo_url", value_field="photo_url", consent_field="photo_consent")],
+        policy="null",
+    )
+    return PublicPlayerProfileResponse(**profile, photo_url=photo[0]["photo_url"])
 
 
 @router.get("/public/{tournament_id}", response_model=PublicTournamentResponse)
@@ -454,6 +651,7 @@ async def public_player_stats(
         for row in rosters_result.mappings().all():
             item = dict(row)
             rosters.append(item)
+        profiles = await _profile_available(db, tournament_id)
 
     from app.modules.tournaments.public_stats import (
         assign_ranks,
@@ -474,6 +672,7 @@ async def public_player_stats(
     )
     for row in page:
         row.pop("photo_consent", None)
+        row["profile_available"] = str(row["player_id"]) in profiles
     return page
 
 
@@ -642,6 +841,7 @@ async def public_match_timeline(
         events: list[dict] = []
         segments: list[dict] = []
         names: dict[str, tuple[str, str]] = {}
+        profiles: set[str] = set()
         if timeline_availability(match["status"], match["resolution_type"]) == "available":
             events = [
                 dict(row)
@@ -695,5 +895,6 @@ async def public_match_timeline(
                     )
                 ).mappings().all()
                 names = public_player_names(rosters)
+                profiles = await _profile_available(db, tournament_id, player_ids)
 
-    return PublicMatchTimelineResponse(**build_public_timeline(match, events, segments, names))
+    return PublicMatchTimelineResponse(**build_public_timeline(match, events, segments, names, profiles))

@@ -83,7 +83,7 @@ def test_only_public_types_and_exact_event_keys():
         "beneficiary_team_id", "red_card_type", "player", "player_in",
     }
     assert result["events"][0]["player"] == {"player_id": "p1", "first_name": "Nombre1",
-                                             "last_name": "Apellido1"}
+                                             "last_name": "Apellido1", "profile_available": False}
     assert "p2" not in repr(result)
 
 
@@ -150,7 +150,20 @@ def test_substitution_publishes_player_out_and_in():
     result = build([sub])
     item = result["events"][0]
     assert item["player"]["player_id"] == "p1"
-    assert item["player_in"] == {"player_id": "p8", "first_name": "Nombre8", "last_name": "Apellido8"}
+    assert item["player_in"] == {"player_id": "p8", "first_name": "Nombre8", "last_name": "Apellido8",
+                                 "profile_available": False}
+
+
+def test_profile_available_marks_only_listed_players():
+    """Spec 038 RF-009: el indicador sale del conjunto del torneo, sin inferirlo."""
+
+    sub = event("e1", "substitution", player="p1", player_out_id="p1", player_in_id="p8")
+    goal = event("e2", "goal", minute=30)
+    result = build_public_timeline(match(1, 0), [sub, goal], SEGMENTS, NAMES, {"p8"})
+    by_type = {item["event_type"]: item for item in result["events"]}
+    assert by_type["substitution"]["player"]["profile_available"] is False
+    assert by_type["substitution"]["player_in"]["profile_available"] is True
+    assert by_type["goal"]["player"]["profile_available"] is False
 
 
 @pytest.mark.parametrize(
