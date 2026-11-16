@@ -28,7 +28,7 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 
 - [x] **T7. Integración en `/tournaments/{id}` y recarga.** RF-001, RF-002, RF-013, RF-014
 - Hecho cuando: pruebas de la página verifican el disparador solo en `finished`, la carga vía `useApi` y la recarga del diálogo abierto al cambiar `status`, marcador o `rectified_at`; `pnpm test` y `pnpm run build` verdes.
-- Evidencia (2026-11-15): `[id].vue` añade el disparador junto a cada «Ver formación» de las tarjetas (no en la llave, que no tiene ese botón propio en la página), solo con `canOpenTimeline`; carga bajo demanda con `request` de `useApi`, generación para descartar respuestas tardías y reintento; un `watch` del partido abierto recarga con `shouldReloadTimeline` sobre el refresco público existente, sin evento nuevo. `public-timeline.test.ts` 16 passed; `pnpm test` 1102 passed/0 failed; lint, typecheck y `pnpm run build` limpios.
+- Evidencia (2026-11-15): `[id].vue` añade el disparador junto a cada «Ver formación» de las tarjetas y, por RF-001, también en `PublicBracket` (evento `openTimeline`), solo con `canOpenTimeline`; carga bajo demanda con `request` de `useApi`, generación para descartar respuestas tardías y reintento; un `watch` del partido abierto recarga con `shouldReloadTimeline` sobre el refresco público existente, sin evento nuevo. `public-timeline.test.ts` 16 passed; `pnpm test` 1102 passed/0 failed; lint, typecheck y `pnpm run build` limpios.
 
 - [x] **T8. E2E público de la cronología.** RNF-002, CL-9, CL-13
 - Hecho cuando: `pnpm run typecheck:e2e` verde y `public-polish.spec.ts` ejecutado con el diálogo a 1440/390 px en ambos temas, sin desbordamiento (en CI o en contenedor Playwright 1.65).

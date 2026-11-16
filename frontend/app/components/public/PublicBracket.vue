@@ -4,14 +4,17 @@ import PublicRectifiedMark from './PublicRectifiedMark.vue';
 import PublicBracketConnections from '~/components/public/PublicBracketConnections.vue';
 import { groupPublicRounds, inferPublicAdvances, publicRoundLabel } from '~/utils/publicBracket';
 import { resolveMatchOutcomeLabel } from '~/utils/publicTournament';
+import { canOpenTimeline } from '~/utils/publicTimeline';
 import type { PublicMatch } from '~/utils/publicTournament';
 
 const props = defineProps<{
   matches: PublicMatch[];
+  openTimelineId?: string | null;
 }>();
 
 const emit = defineEmits<{
   openLineup: [match: PublicMatch, event: MouseEvent];
+  openTimeline: [match: PublicMatch, event: MouseEvent];
 }>();
 
 const { t, statusLabel } = useI18n();
@@ -96,6 +99,18 @@ function resolutionLabel(match: PublicMatch): string {
               @click="emit('openLineup', match, $event)"
             >
               {{ t('public.viewLineup') }}
+            </button>
+            <button
+              v-if="canOpenTimeline(match)"
+              class="lineup-trigger timeline-trigger"
+              type="button"
+              aria-controls="public-timeline-dialog"
+              aria-haspopup="dialog"
+              :aria-expanded="openTimelineId === match.id"
+              :aria-label="`${t('public.viewTimeline')}: ${teamLabel(match.home_team_name, match.home_team_short_code)} vs ${teamLabel(match.away_team_name, match.away_team_short_code)}`"
+              @click="emit('openTimeline', match, $event)"
+            >
+              {{ t('public.viewTimeline') }}
             </button>
           </article>
         </div>

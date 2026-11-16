@@ -208,3 +208,10 @@ test('el autogol muestra el equipo beneficiado (RF-007)', () => {
   assert.match(component, /timelineEventSide\(\{ team_id: event\.beneficiary_team_id \}, match\)/);
   assert.match(component, /t\('publicTimeline\.beneficiary'\)/);
 });
+
+test('la llave eliminatoria ofrece la cronología de sus partidos finalizados (RF-001)', () => {
+  const bracket = readFileSync(new URL('../app/components/public/PublicBracket.vue', import.meta.url), 'utf8');
+  assert.match(bracket, /v-if="canOpenTimeline\(match\)"[\s\S]*@click="emit\('openTimeline', match, \$event\)"/);
+  assert.match(bracket, /openTimeline: \[match: PublicMatch, event: MouseEvent\]/);
+  assert.match(page, /<PublicBracket[\s\S]*:open-timeline-id="selectedTimelineMatchId"[\s\S]*@open-timeline="openTimeline"/);
+});

@@ -909,7 +909,9 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
              <template v-else-if="stagePresentation(selectedStage) === 'bracket'">
                <PublicBracket
                  :matches="bracketEligibleMatches(matchesForGroup(selectedStage.id, selectedGroupId))"
+                 :open-timeline-id="selectedTimelineMatchId"
                  @open-lineup="openLineup"
+                 @open-timeline="openTimeline"
                />
                <TransitionGroup
                  v-if="suspendedMatchesForSelection.length"
