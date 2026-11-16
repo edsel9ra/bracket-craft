@@ -18,6 +18,7 @@ export interface PublicTimelinePlayer {
   player_id: string;
   first_name: string;
   last_name: string;
+  profile_available?: boolean;
 }
 
 export interface PublicTimelineEvent {

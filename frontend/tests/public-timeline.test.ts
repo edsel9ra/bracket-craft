@@ -216,3 +216,17 @@ test('la llave eliminatoria ofrece la cronología de sus partidos finalizados (R
   assert.match(bracket, /openTimeline: \[match: PublicMatch, event: MouseEvent\]/);
   assert.match(page, /<PublicBracket[\s\S]*:open-timeline-id="selectedTimelineMatchId"[\s\S]*@open-timeline="openTimeline"/);
 });
+
+test('038 RF-009/CL-1: jugador y entrante enlazan solo con profile_available y navegar cierra el diálogo', () => {
+  assert.match(component, /import \{ profileLinkFor \} from '~\/utils\/publicPlayerProfile';/);
+  for (const field of ['event.player', 'event.player_in']) {
+    const escaped = field.replace('.', '\\.');
+    assert.match(
+      component,
+      new RegExp(`<NuxtLink v-if="profileLinkFor\\(${escaped}\\)" class="timeline-player-link" :to="profileLinkFor\\(${escaped}\\) \\?\\? undefined" @click="close">\\{\\{ timelinePlayerName\\(${escaped}\\) \\}\\}</NuxtLink><template v-else>\\{\\{ timelinePlayerName\\(${escaped}\\) \\}\\}</template>`),
+      field,
+    );
+  }
+  assert.equal([...component.matchAll(/class="timeline-player-link"/g)].length, 3);
+  assert.match(component, /\.timeline-player-link:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
+});

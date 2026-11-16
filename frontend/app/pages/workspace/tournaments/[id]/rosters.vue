@@ -566,6 +566,7 @@ await loadPage();
                     <button class="photo-consent" type="button" :disabled="photoBusyRosterId === roster.roster_id" @click="toggleRosterPhotoConsent(roster)">
                       {{ roster.photo_consent ? t('setup.revokePhotoConsent') : t('setup.grantPhotoConsent') }}
                     </button>
+                    <p class="photo-consent-note">{{ t('setup.photoConsentProfileNote') }}</p>
                     <label v-if="roster.photo_consent" class="photo-picker">{{ roster.photo_url ? t('setup.replacePhoto') : t('setup.uploadPhoto') }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="photoBusyRosterId === roster.roster_id" @change="uploadRosterPhoto($event, roster.roster_id)" /></label>
                   </div>
                 </div>
@@ -608,7 +609,8 @@ await loadPage();
                     </template>
                   </FormField>
                 </div>
-                <label class="checkbox-label"><input v-model="playerForm.photo_consent" type="checkbox" /> {{ t('match.imageConsent') }}</label>
+                <label class="checkbox-label"><input v-model="playerForm.photo_consent" type="checkbox" aria-describedby="player-consent-note" /> {{ t('match.imageConsent') }}</label>
+                <p id="player-consent-note" class="photo-consent-note photo-consent-note--form">{{ t('setup.photoConsentProfileNote') }}</p>
                 <Button variant="primary" class="button-primary" type="submit" :disabled="busy">{{ busy ? t('common.saving') : t('match.addPlayer') }}</Button>
               </form>
 
@@ -667,6 +669,8 @@ await loadPage();
 .roster-card-info { display: grid; gap: var(--space-1); min-width: 0; }
 .roster-card-info strong { overflow: hidden; font-size: var(--text-sm); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .roster-card-info small { color: var(--color-muted); font-size: var(--text-xs); }
+.photo-consent-note { flex-basis: 100%; margin: 0; color: var(--color-muted); font-size: var(--text-xs); text-align: right; }
+.photo-consent-note--form { text-align: left; }
 .photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: var(--space-2); }
 .template-download { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .checkbox-label { display: flex; align-items: center; gap: var(--space-2); color: var(--color-ink); font-size: var(--text-sm); cursor: pointer; }

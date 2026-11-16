@@ -5,6 +5,7 @@ import StateMessage from '~/components/ui/StateMessage.vue';
 import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 import { playerInitials } from '~/utils/publicLineup';
 import { playerPhotoSource } from '~/utils/publicStats';
+import { profileLinkFor } from '~/utils/publicPlayerProfile';
 
 interface PlayerStatRow {
   rank: number;
@@ -19,6 +20,7 @@ interface PlayerStatRow {
   clean_sheets: number;
   matches_played: number;
   photo_url: string | null;
+  profile_available?: boolean;
 }
 
 const props = withDefaults(defineProps<{
@@ -105,7 +107,7 @@ function initials(row: PlayerStatRow): string {
                   @error="markPhotoFailed(row)"
                 >
                 <span v-else class="player-photo player-photo--initials" role="img" :aria-label="`${row.first_name} ${row.last_name}`">{{ initials(row) }}</span>
-                <strong>{{ row.first_name }} {{ row.last_name }}</strong>
+                <strong><NuxtLink v-if="profileLinkFor(row)" class="stats-player-link" :to="profileLinkFor(row) ?? undefined">{{ row.first_name }} {{ row.last_name }}</NuxtLink><template v-else>{{ row.first_name }} {{ row.last_name }}</template></strong>
               </div>
             </td>
             <td>{{ row.goals }}</td>
@@ -131,6 +133,8 @@ function initials(row: PlayerStatRow): string {
 </template>
 
 <style scoped>
+.stats-player-link { color: var(--color-accent); text-underline-offset: var(--space-1); }
+.stats-player-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .player-stats-panel { min-width: 0; }
 .empty-state :deep(p) { margin: 0; }
 thead th:nth-child(2), tbody td:nth-child(2) { position: sticky; left: 0; z-index: 1; min-width: 145px; max-width: 180px; background: var(--color-surface); box-shadow: 5px 0 8px color-mix(in srgb, var(--color-shadow) 30%, transparent); }
