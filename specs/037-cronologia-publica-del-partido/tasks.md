@@ -30,11 +30,13 @@ Estado: aprobadas por el usuario el 2026-11-15 («Apruebo plan y tareas»). Un s
 - Hecho cuando: pruebas de la página verifican el disparador solo en `finished`, la carga vía `useApi` y la recarga del diálogo abierto al cambiar `status`, marcador o `rectified_at`; `pnpm test` y `pnpm run build` verdes.
 - Evidencia (2026-11-15): `[id].vue` añade el disparador junto a cada «Ver formación» de las tarjetas (no en la llave, que no tiene ese botón propio en la página), solo con `canOpenTimeline`; carga bajo demanda con `request` de `useApi`, generación para descartar respuestas tardías y reintento; un `watch` del partido abierto recarga con `shouldReloadTimeline` sobre el refresco público existente, sin evento nuevo. `public-timeline.test.ts` 16 passed; `pnpm test` 1102 passed/0 failed; lint, typecheck y `pnpm run build` limpios.
 
-- [ ] **T8. E2E público de la cronología.** RNF-002, CL-9, CL-13
+- [x] **T8. E2E público de la cronología.** RNF-002, CL-9, CL-13
 - Hecho cuando: `pnpm run typecheck:e2e` verde y `public-polish.spec.ts` ejecutado con el diálogo a 1440/390 px en ambos temas, sin desbordamiento (en CI o en contenedor Playwright 1.65).
+- Evidencia (2026-11-15): `pnpm run typecheck:e2e` y eslint limpios; `public-polish.spec.ts` ejecutado en el contenedor `mcr.microsoft.com/playwright:v1.65.0-noble` contra `pnpm run build` + un stub local que solo sirve el listado SSR (el resto lo intercepta el contrato ficticio): 27 passed, incluidas las 6 de la cronología (1440/390/800 px × oscuro/claro: orden, `45+2'`, separadores, roja por doble amarilla, sale/entra con nombres largos, sin `#`, diálogo dentro del viewport, sin scroll horizontal, una sola petición `/timeline`, Escape devuelve el foco). En CI queda pendiente su ejecución en el job `e2e`.
 
-- [ ] **T9. Documentación: matriz de acceso, AGENTS, manual y 020.** RF-017
+- [x] **T9. Documentación: matriz de acceso, AGENTS, manual y 020.** RF-017
 - Hecho cuando: README (matriz y runbook 060), `AGENTS.md`, `docs/manual-usuario.md` y la referencia en la spec 020 describen la ruta, la lista cerrada y el cambio no aditivo; pruebas de coherencia documental verdes.
+- Evidencia (2026-11-15): README (fila de la matriz, viñeta con la lista cerrada y el cambio no aditivo, verificación y runbook 060), `AGENTS.md` (viñeta F13), `docs/manual-usuario.md` (consulta pública) y `specs/020/spec.md` (ampliación F13). Pruebas de coherencia documental: `test_version_sources.py`/`test_migration_030.py` 25 passed (7 opt-in omitidas) y `pnpm test` 1102 passed/0 failed.
 
 - [ ] **T10. Validación y cierre.** Criterios de finalización 1–8
 - Hecho cuando: los cinco jobs de CI pasan en el PR, cada RF/CL tiene evidencia citada en este archivo, la verificación de constitución está confirmada y `MEMORY.md` actualizado; lo no ejecutado se declara.

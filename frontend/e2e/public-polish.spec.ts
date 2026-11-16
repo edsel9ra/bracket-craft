@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bracketId, installPublicContract, leagueId } from './publicPolishFixtures.ts';
+import { chooseTheme } from './themeChecks.ts';
 import { assertNoDocumentOverflow, measureBracket, measureColumns, measureSticky, openPublicContract, saveMeasurements } from './publicPolishChecks.ts';
 
 test.use({ storageState: { cookies: [], origins: [] }, reducedMotion: 'reduce', trace: 'off' });
@@ -104,6 +105,34 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       expect(await page.locator('.phase-selected .match-card').count()).toBeGreaterThan(0);
       await assertNoDocumentOverflow(page);
       await saveMeasurements(info, 'navigation-measurements', { sticky, dialog: box });
+    });
+
+    for (const theme of ['dark', 'light'] as const) test(`cronología pública ${theme}: orden, segmentos, foco y sin desbordamiento`, async ({ page }, info) => {
+      const contract = await installPublicContract(page);
+      await openPublicContract(page);
+      await chooseTheme(page, theme);
+      const trigger = page.locator('.timeline-trigger').first();
+      await trigger.click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.timeline-close')).toBeFocused();
+      await expect(dialog.locator('.timeline-event')).toHaveCount(5);
+      await expect(dialog.locator('.timeline-separator')).toHaveText(['Segmento 1', 'Segmento 2']);
+      expect(await dialog.locator('.timeline-minute').allTextContents()).toEqual(["23'", "45+2'", "52'", "60'", "88'"]);
+      await expect(dialog).toContainText('Gol en propia meta');
+      await expect(dialog).toContainText('Roja por doble amarilla');
+      await expect(dialog).toContainText('Sale: Nombre Apellido Extremadamente Largo Que Sale Del Campo');
+      await expect(dialog).toContainText('Entra: Nombre Apellido Extremadamente Largo Que Entra Al Campo');
+      await expect(dialog).not.toContainText('#');
+      const box = (await dialog.boundingBox())!;
+      expect(box.width).toBeLessThanOrEqual(viewport.width); expect(box.height).toBeLessThanOrEqual(viewport.height);
+      expect(await dialog.locator('.timeline-dialog-content').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
+      expect(contract.requests.filter(row => row.path.endsWith('/timeline'))).toHaveLength(1);
+      await page.keyboard.press('Escape');
+      await expect(dialog).not.toBeVisible();
+      await expect(trigger).toBeFocused();
+      await assertNoDocumentOverflow(page);
+      await saveMeasurements(info, `timeline-measurements-${theme}`, { theme, dialog: box });
     });
 
     test('ganador repetido o destino ambiguo no inventa conectores', async ({ page }) => {
