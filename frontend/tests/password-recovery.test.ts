@@ -52,6 +52,12 @@ test('039 RF-009: validación local de la política de contraseña', () => {
   assert.equal(newPasswordError('12345678'), null);
   assert.equal(newPasswordError('a'.repeat(128)), null);
   assert.deepEqual(newPasswordError('a'.repeat(129)), { key: 'validation.maxLength', params: { max: 128 } });
+  assert.equal(newPasswordError('😀'.repeat(128)), null);
+  assert.deepEqual(newPasswordError('😀'.repeat(129)), { key: 'validation.maxLength', params: { max: 128 } });
+  assert.deepEqual(newPasswordError('😀'.repeat(7)), { key: 'validation.minLength', params: { min: 8 } });
+  for (const page of ['app/pages/password/reset.vue', 'app/pages/account/password.vue']) {
+    assert.doesNotMatch(read(`../${page}`), /maxlength/, `${page} no trunca en unidades UTF-16`);
+  }
   assert.deepEqual(confirmationError('secret-pass', ''), { key: 'validation.required' });
   assert.deepEqual(confirmationError('secret-pass', 'secret-pas'), { key: 'password.error.mismatch' });
   assert.equal(confirmationError('secret-pass', 'secret-pass'), null);

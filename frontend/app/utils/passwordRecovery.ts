@@ -53,8 +53,9 @@ export function emailError(value: string): ValidationMessage | null {
 
 export function newPasswordError(value: string): ValidationMessage | null {
   if (!value) return { key: 'validation.required' };
-  if (value.length < PASSWORD_MIN_LENGTH) return { key: 'validation.minLength', params: { min: PASSWORD_MIN_LENGTH } };
-  if (value.length > PASSWORD_MAX_LENGTH) return { key: 'validation.maxLength', params: { max: PASSWORD_MAX_LENGTH } };
+  const length = [...value].length;
+  if (length < PASSWORD_MIN_LENGTH) return { key: 'validation.minLength', params: { min: PASSWORD_MIN_LENGTH } };
+  if (length > PASSWORD_MAX_LENGTH) return { key: 'validation.maxLength', params: { max: PASSWORD_MAX_LENGTH } };
   return null;
 }
 

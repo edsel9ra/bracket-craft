@@ -98,7 +98,6 @@ async function submit() {
                 v-model="password"
                 type="password"
                 autocomplete="new-password"
-                :maxlength="PASSWORD_MAX_LENGTH"
                 :aria-describedby="ariaDescribedby"
                 :aria-invalid="ariaInvalid ? true : undefined"
                 required
@@ -112,7 +111,6 @@ async function submit() {
                 v-model="confirmation"
                 type="password"
                 autocomplete="new-password"
-                :maxlength="PASSWORD_MAX_LENGTH"
                 :aria-describedby="ariaDescribedby"
                 :aria-invalid="ariaInvalid ? true : undefined"
                 required
