@@ -1,6 +1,6 @@
 # Spec 039 — Recuperar y cambiar la contraseña
 
-Estado: aprobada por el usuario el 2026-11-16 («Apruebo la spec 039»); DA-1–DA-4 decididas el mismo día
+Estado: implementada (2026-11-16), pendiente de aceptación. Aprobada por el usuario el 2026-11-16 («Apruebo la spec 039»); DA-1–DA-4 decididas el mismo día
 
 Fecha: 2026-11-16. Corresponde a F3 del informe de funciones adicionales (`docs/informe-funciones-adicionales.md`, tabla §3 y corto plazo §6). La spec 013 dejó expresamente fuera de alcance la recuperación, el establecimiento y el cambio de contraseña.
 

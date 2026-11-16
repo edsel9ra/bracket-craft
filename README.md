@@ -643,6 +643,19 @@ La **060** reemplaza `public.v_public_match_events` añadiendo solo `segment_id`
 
 La **061** crea solo la vista interna `public.v_public_player_profile_rosters` (`security_barrier`, `REVOKE` de `PUBLIC`, `GRANT SELECT` a `bracket_app`): inscripciones de torneos visibles de organizaciones activas con su consentimiento de imagen, la fecha de inicio del torneo y la de la inscripción, y la clave de foto anulada sin consentimiento. No toca `v_public_tournament_rosters` ni ninguna migración anterior. **Orden: 061 → código**, porque `GET /api/v1/tournaments/public/players/{player_id}` y el indicador `profile_available` de `player-stats` y `timeline` leen la vista nueva. Verificación: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_061.py tests/test_public_player_profile_endpoint.py`. Smoke: la ficha de un jugador con consentimiento responde `200` y la de uno sin consentimiento el mismo `404` que un torneo no visible.
 
+## Migración 062: recuperación y cambio de contraseña (runbook)
+
+La **062** crea tres tablas de cuenta sin `organization_id` (`account_email_jobs`, `password_reset_tokens` con solo el SHA-256 del enlace y `account_security_events`), con RLS activada y **sin privilegios directos** para `bracket_app`. Todo pasa por funciones `SECURITY DEFINER` (`search_path = pg_catalog, public`, `EXECUTE` solo a `bracket_app`): encolar, emitir/invalidar enlaces, completar la recuperación (revoca todas las sesiones), cambiar desde la cuenta (conserva la sesión del `jti` actual), avisos y purga. Recuperación, cambio y emisión bloquean usuario → enlace en el mismo orden. **Orden: 062 → API y worker**; el worker necesita además `FRONTEND_BASE_URL`. Rollback: retirar primero la imagen nueva; las tablas pueden quedarse (la imagen anterior no las lee).
+
+| Ruta | Sesión | Respuestas |
+|---|---|---|
+| `POST /api/v1/auth/password/forgot` `{email}` | No | siempre `202 {}`; 422; 429/503 |
+| `POST /api/v1/auth/password/reset` `{token,new_password}` | No | `204` (cierra todas las sesiones); `400 PASSWORD_RESET_INVALID`/`PASSWORD_REUSED`; 422; 429/503 |
+| `GET /api/v1/auth/password` | Sí | `200 {has_password}`; 401 |
+| `POST /api/v1/auth/password/change` `{current_password,new_password}` | Sí | `204` (cierra las demás); `400 CURRENT_PASSWORD_INVALID`/`PASSWORD_REUSED`; `409 PASSWORD_NOT_SET`; 422; 429/503 |
+
+Pantallas: `/password/forgot`, `/password/reset#<token>` (el token va en el fragmento, nunca llega al SSR ni al proxy, y el cliente lo retira de la URL al leerlo) y `/account/password`. Los enlaces caducan a los 30 minutos y la purga elimina a los 7 días enlaces y trabajos terminados; la auditoría técnica se conserva y no lleva correo, token ni hash. En desarrollo sin SMTP el enlace no se muestra ni se registra.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.

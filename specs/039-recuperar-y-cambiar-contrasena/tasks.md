@@ -26,14 +26,38 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 - Hecho cuando: `pytest -q tests/test_retention.py` verde con la purga de recuperación; `.env.example` y `config.py` con `AUTH_PASSWORD_RESET_RATE_LIMIT`; suite completa con PostgreSQL 17 y Redis, `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes.
 - Evidencia (2026-11-16): `tests/test_retention.py` verde con la purga de recuperación (lotes de 500, corte de 7 días, eventos de seguridad conservados) y los correos de cuenta en un bucle propio del worker; `AUTH_PASSWORD_RESET_RATE_LIMIT` en `config.py`, `.env.example`, compose y contrato de entorno, y `FRONTEND_BASE_URL` en el worker; suite completa con PostgreSQL 17 y Redis `4240 passed, 4 skipped` (antes de los arreglos de revisión; tras ellos, los seis archivos afectados `66 passed`), `ruff check .`, `bandit -q -r app -ll` y `python -m compileall -q app` verdes. Revisión de #100: orden de bloqueo usuario → enlace en `complete_password_reset` y revalidación del hash en el login tras crear la sesión.
 
-- [ ] **T7. Pantallas `/password/forgot` y `/password/reset` y enlace en el login.** RF-001, RF-005, RF-013
+- [x] **T7. Pantallas `/password/forgot` y `/password/reset` y enlace en el login.** RF-001, RF-005, RF-013
 - Hecho cuando: `pnpm test -- password-recovery` verde (confirmación genérica, token leído y retirado del fragmento, errores, ES/EN, foco); `pnpm run lint` y `pnpm run typecheck` verdes.
+- Evidencia (2026-11-16): `tests/password-recovery.test.ts` (token solo del fragmento y retirado con `history.replaceState`, confirmación genérica, catálogo cerrado de errores ES/EN, foco en confirmación y errores; el éxito cierra la sesión local y vuelve al login con aviso); `pnpm test` 1124 pass, `pnpm run lint` y `pnpm run typecheck` verdes.
 
-- [ ] **T8. Pantalla `/account/password` y menú de cuenta.** RF-006, RF-007, RF-013, DA-1
+- [x] **T8. Pantalla `/account/password` y menú de cuenta.** RF-006, RF-007, RF-013, DA-1
 - Hecho cuando: `pnpm test -- password-recovery` verde también para el cambio (actual incorrecta, solo-Google sin formulario, éxito) y la entrada del menú en escritorio y móvil.
+- Evidencia (2026-11-16): `tests/password-recovery.test.ts` cubre `/account/password` con middleware `session`, actual incorrecta con foco en su campo, aviso solo-Google sin formulario, éxito y la entrada «Cambiar la contraseña» del menú de escritorio y móvil del `WorkspaceShell`.
 
-- [ ] **T9. E2E de las tres pantallas.** RF-013
+- [x] **T9. E2E de las tres pantallas.** RF-013
 - Hecho cuando: `pnpm exec playwright test e2e/password-recovery.spec.ts --project public --no-deps` verde a 1440/390 px en ambos temas con contratos ficticios; `pnpm run typecheck:e2e` y `pnpm run build` verdes.
+- Evidencia (2026-11-16): `e2e/password-recovery.spec.ts` (proyecto `public`, contrato ficticio de `/auth/password*`) `16 passed` a 1440/390 px en tema oscuro y claro: enlace del login, confirmación genérica con foco, validación local sin llamadas, token leído del fragmento y retirado de la URL, `PASSWORD_REUSED` y `PASSWORD_RESET_INVALID`, vuelta al login con aviso, cambio con actual incorrecta (foco en su campo), éxito y cuenta solo-Google sin formulario; axe sin violaciones en las tres pantallas y sin desbordamiento horizontal. `pnpm run typecheck:e2e` verde.
 
-- [ ] **T10. Documentación y cierre.** Todos
+- [x] **T10. Documentación y cierre.** Todos
 - Hecho cuando: README (rutas, runbook de la 062, límites), AGENTS, manual de usuario y MEMORY actualizados; trazabilidad de cada RF, RNF y CL con su evidencia en esta tarea; CI 7/7 en los PR.
+- Documentación (2026-11-16): README (runbook de la 062 con rutas, respuestas, orden 062 → API/worker y `FRONTEND_BASE_URL`; límites en la sección de rate limit), AGENTS (F3), manual §1 y MEMORY.
+- Trazabilidad (pruebas backend en `backend/tests/`: `test_migration_062.py` con base real, `test_password_recovery.py` puras/esquemas/correos, `test_password_recovery_endpoints.py`, `test_account_email_worker.py`; frontend `tests/password-recovery.test.ts` y `e2e/password-recovery.spec.ts`):
+  - RF-001/RNF-001/CL-1: `forgot` responde `202 {}` en los cuatro casos sin leer `users`, sin Argon2 ni SMTP (endpoints); la pantalla muestra la misma confirmación (unit + E2E).
+  - RF-002/RF-002b/CL-6: el worker envía el enlace `/password/reset#<token>` a cuentas locales, el recordatorio sin enlace a solo-Google y nada a inexistentes/desactivadas; sin SMTP no se registra el enlace (worker).
+  - RF-003/CL-2: emitir invalida los pendientes (migración + worker).
+  - RF-004/RF-005/CL-3: reset válido cambia el hash, marca usado y revoca todas las sesiones; usado, caducado, sustituido, desconocido o cuenta desactivada → `400 PASSWORD_RESET_INVALID` (migración + endpoints); la pantalla ofrece pedir otro enlace (E2E).
+  - RF-006/RF-007: el cambio conserva la sesión del `jti` y revoca las demás; actual incorrecta → `400 CURRENT_PASSWORD_INVALID` sin cambios y con el límite del login (endpoints); foco en su campo (E2E).
+  - RF-008/CL-4: recuperar o cambiar invalida los enlaces pendientes y encola el aviso sin enlaces; un fallo del aviso no revierte (migración + worker).
+  - RF-009: 8–128 puntos de código y distinta de la actual (`PASSWORD_REUSED`) en esquemas y en el cliente (unit, incluido el caso Unicode fuera del BMP).
+  - RF-010: 429 con `Retry-After` por IP+correo, IP+hash de enlace e IP+cuenta; Redis caído → 503 (endpoints); el cliente los traduce (unit).
+  - RF-011/RNF-002: token de 256 bits, solo su SHA-256 en base; logs del worker solo con id y tipo de excepción; el cliente no registra ni envía el token por la ruta (worker + unit + E2E).
+  - RF-012: `account_security_events` con cuenta, tipo y fecha, sin correo ni hash (migración).
+  - RF-013: enlace en el login, tres pantallas y entrada en el menú de cuenta de escritorio y móvil, ES/EN, ambos temas, axe sin violaciones (unit + E2E).
+  - RNF-003: dos resets simultáneos producen un solo cambio y recuperación/cambio concurrentes no se interbloquean (migración).
+  - RNF-004: Argon2 vía `asyncio.to_thread` en reset y cambio (revisión de `password_router.py`; sin prueba dedicada).
+  - RNF-005: suites backend y frontend completas y E2E en verde; CI de #99–#101.
+  - CL-5: el enlace actúa sobre su propia cuenta; la respuesta del reset borra la cookie del navegador y el cliente limpia su estado, así que la sesión abierta nunca pasa a la cuenta del enlace (endpoints + unit).
+  - CL-7: si SMTP falla, el worker invalida el enlace antes de reintentar (worker).
+  - CL-8: `enqueue_password_reset_request` normaliza espacios y mayúsculas como el login (`test_062_request_does_not_resolve_the_account`).
+- CI (2026-11-16): 7/7 en #99, #100 y #101 (GitGuardian omitido en los PR de código, como en las specs anteriores).
+- No ejecutado: el flujo completo contra la pila real con SMTP real (el E2E usa un contrato ficticio y el worker se prueba con SMTP simulado) y un lector de pantalla real.

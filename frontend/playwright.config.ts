@@ -42,7 +42,7 @@ export default defineConfig({
     },
     {
       name: 'public',
-      testMatch: /(?:realtime-public|public-polish|theme-public)\.spec\.ts/,
+      testMatch: /(?:realtime-public|public-polish|theme-public|password-recovery)\.spec\.ts/,
       dependencies: ['setup'],
       use: { storageState },
     },
