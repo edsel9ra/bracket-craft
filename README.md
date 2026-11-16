@@ -638,6 +638,10 @@ $COMPOSE up -d api worker
 ## Migración 060: segmentos en eventos públicos (runbook)
 
 La **060** reemplaza `public.v_public_match_events` añadiendo solo `segment_id` al final; conserva la selección de la versión vigente del acta, `security_barrier`, el `REVOKE` de `PUBLIC` y el `GRANT SELECT` a `bracket_app`. Es aditiva: las lecturas existentes (estadísticas de la 022) no cambian y la imagen anterior convive con ella. **Orden: 060 → código**, porque `GET /api/v1/tournaments/public/{id}/matches/{match_id}/timeline` lee la columna nueva. No edita la 035. Verificación: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_060.py tests/test_public_timeline_endpoint.py`. Smoke: la cronología de un partido finalizado responde `available` y la de un torneo no visible `404`.
+## Migración 061: inscripciones de la ficha pública (runbook)
+
+La **061** crea solo la vista interna `public.v_public_player_profile_rosters` (`security_barrier`, `REVOKE` de `PUBLIC`, `GRANT SELECT` a `bracket_app`): inscripciones de torneos visibles de organizaciones activas con su consentimiento de imagen, la fecha de inicio del torneo y la de la inscripción, y la clave de foto anulada sin consentimiento. No toca `v_public_tournament_rosters` ni ninguna migración anterior. **Orden: 061 → código**, porque `GET /api/v1/tournaments/public/players/{player_id}` y el indicador `profile_available` de `player-stats` y `timeline` leen la vista nueva. Verificación: `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_061.py tests/test_public_player_profile_endpoint.py`. Smoke: la ficha de un jugador con consentimiento responde `200` y la de uno sin consentimiento el mismo `404` que un torneo no visible.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
@@ -661,6 +665,7 @@ Lecturas anónimas sobre torneos **visibles públicamente** (versión publicada,
 | Clasificación (filtrable por `stage_id`, `group_id`) | `GET /api/v1/tournaments/public/{id}/standings` |
 | Partidos (con alineaciones publicadas) | `GET /api/v1/tournaments/public/{id}/matches` |
 | Cronología de un partido (spec 037, F13) | `GET /api/v1/tournaments/public/{id}/matches/{match_id}/timeline` |
+| Ficha pública de jugador (spec 038, F16): torneos con consentimiento de imagen de una sola organización | `GET /api/v1/tournaments/public/players/{player_id}` |
 | Estadísticas de jugadores (goles, amarillas, rojas, porterías imbatidas) | `GET /api/v1/tournaments/public/{id}/player-stats` |
 | Estadísticas de equipos (goles a favor/en contra, porterías imbatidas, fair play) | `GET /api/v1/tournaments/public/{id}/team-stats` |
 
@@ -685,6 +690,7 @@ Documentos de identidad, fecha de nacimiento, edad y año de referencia de la ed
 - `backend/tests/test_public_field_allowlist.py` — lista cerrada de campos públicos (RF-015) y ausencia de campos sensibles (RF-016).
 - `backend/tests/test_public_access_matrix.py` — lecturas anónimas, `404` indistinguible, aislamiento entre dos organizaciones y parámetros de consulta fuera de rango → `422` con `detail` en lista y sin `code`. **Cubre el listado, el detalle, la clasificación, los partidos y, desde la spec 022 (T18), las dos tablas de estadísticas** (`player-stats` y `team-stats`) en la lectura anónima, el `404` indistinguible y el `422` de parámetros; el aislamiento **con datos** y la lista cerrada de esas dos rutas se verifican en `test_public_stats_endpoints.py`.
 - `backend/tests/test_public_timeline_endpoint.py` (opt-in con PostgreSQL) — cronología de la spec 037: dos organizaciones sin mezcla, versión rectificada vigente sin anulados, `pending`/`available`, acta vacía y `404` indistinguible; la matriz anónima la cubre `test_public_access_matrix.py` y la lista cerrada `test_public_field_allowlist.py`.
+- `backend/tests/test_public_player_profile.py` (puro) y `backend/tests/test_public_player_profile_endpoint.py` (opt-in con PostgreSQL) — ficha de la spec 038: inscripción representativa (CL-11), tope de 50 torneos, foto de la vigente autorizada, cifras iguales a `player-stats` (también tras rectificación), retiro de consentimiento, dos organizaciones sin mezcla, `404` indistinguible y `profile_available` por torneo.
 - `backend/tests/test_public_stats_endpoints.py` (opt-in con PostgreSQL) — es donde vive la verificación de las dos rutas de estadísticas: torneo no visible → `404` indistinguible, aislamiento entre dos organizaciones con datos reales, `422` de parámetros fuera de rango y lista cerrada de campos de las dos respuestas.
 - `backend/tests/test_public_stats.py` (puro, sin base) — cálculo de las estadísticas y definición de la portería imbatida, con 58 pruebas (incluidas las tres estáticas que comprueban que la ruta de jugadores lee `v_public_match_formations` y no `v_public_match_lineups`); que haya **una prueba identificable por cada caso límite `CL-1` a `CL-12`** sigue pendiente en esta ronda (spec 022, T19).
 
