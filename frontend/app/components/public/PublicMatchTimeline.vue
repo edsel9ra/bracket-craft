@@ -169,7 +169,8 @@ function formatScore(match: TimelineMatch): string {
               class="timeline-group"
             >
               <h3 v-if="group.showSeparator" class="timeline-separator">{{ t('public.segment', { n: group.segmentNumber }) }}</h3>
-              <ol class="timeline-list">
+              <p v-if="!group.events.length" class="timeline-segment-empty">{{ t('publicTimeline.segmentEmpty') }}</p>
+              <ol v-else class="timeline-list">
                 <li
                   v-for="(event, index) in group.events"
                   :key="`${group.segmentNumber}-${index}`"
@@ -213,6 +214,7 @@ function formatScore(match: TimelineMatch): string {
 .timeline-note { margin: 0 0 var(--space-4); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-accent); border-radius: var(--radius-sm); color: var(--color-ink); font-size: var(--text-xs); }
 .timeline-group + .timeline-group { margin-top: var(--space-5); }
 .timeline-separator { margin: 0 0 var(--space-2); color: var(--color-muted); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.timeline-segment-empty { margin: 0; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: var(--text-sm); }
 .timeline-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .timeline-event { display: grid; grid-template-columns: 56px 16px minmax(0, 1fr); align-items: start; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-line); }
 .timeline-minute { color: var(--color-accent); font-size: var(--text-sm); font-variant-numeric: tabular-nums; font-weight: 800; }

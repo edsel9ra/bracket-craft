@@ -88,15 +88,17 @@ test('un solo segmento no muestra separador', () => {
   assert.deepEqual(groups[0].events.map((e) => e.minute), [10, 30]);
 });
 
-test('varios segmentos muestran separador y omiten los vacíos', () => {
+test('varios segmentos muestran separador, también en los vacíos (CL-13)', () => {
   const groups = timelineGroups({
     segment_numbers: [1, 2, 3],
     events: [event({ minute: 5 }), event({ segment_number: 3, minute: 95 })],
   });
   assert.deepEqual(groups.map((g) => [g.segmentNumber, g.showSeparator, g.events.length]), [
     [1, true, 1],
+    [2, true, 0],
     [3, true, 1],
   ]);
+  assert.match(component, /v-if="!group\.events\.length" class="timeline-segment-empty"/);
 });
 
 test('sin hechos no hay grupos', () => {
@@ -129,6 +131,7 @@ const TIMELINE_KEYS = [
   'publicTimeline.playerOut',
   'publicTimeline.playerIn',
   'publicTimeline.beneficiary',
+  'publicTimeline.segmentEmpty',
   'publicTimeline.event.goal',
   'publicTimeline.event.penaltyGoal',
   'publicTimeline.event.ownGoal',

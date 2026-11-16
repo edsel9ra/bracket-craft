@@ -106,12 +106,15 @@ export function timelineEventSide(
 
 /**
  * Lista única agrupada por segmento; el separador solo aparece con más de un
- * segmento (DA-4). Conserva el orden del servidor dentro de cada segmento.
+ * segmento (DA-4), también en los segmentos sin hechos (CL-13). Sin ningún
+ * hecho no hay grupos: el componente muestra el estado vacío. Conserva el
+ * orden del servidor dentro de cada segmento.
  */
 export function timelineGroups(timeline: Pick<PublicMatchTimeline, 'segment_numbers' | 'events'>): PublicTimelineGroup[] {
   const events = Array.isArray(timeline.events) ? timeline.events : [];
   const numbers = new Set<number>(Array.isArray(timeline.segment_numbers) ? timeline.segment_numbers : []);
   for (const event of events) numbers.add(event.segment_number);
+  if (!events.length) return [];
   const showSeparator = numbers.size > 1;
   return [...numbers]
     .sort((a, b) => a - b)
@@ -119,8 +122,7 @@ export function timelineGroups(timeline: Pick<PublicMatchTimeline, 'segment_numb
       segmentNumber,
       showSeparator,
       events: events.filter((event) => event.segment_number === segmentNumber),
-    }))
-    .filter((group) => group.events.length > 0);
+    }));
 }
 
 /** El diálogo abierto se recarga si el refresco público cambia el partido (RF-014). */
