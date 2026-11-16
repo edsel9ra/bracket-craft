@@ -140,9 +140,20 @@ async def main():
         await validate_application_role()
     redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
     try:
-        await _run_loop(redis)
+        await asyncio.gather(_run_loop(redis), _run_account_email_loop())
     finally:
         await redis.aclose()
+
+
+async def _run_account_email_loop() -> None:
+    # Bucle aparte: un SMTP lento o caído no retrasa la publicación de eventos
+    # en tiempo real ni el latido del bucle del outbox (spec 039).
+    while True:
+        try:
+            await process_account_email_jobs()
+        except Exception:
+            logger.exception("Error procesando correos de cuenta")
+        await asyncio.sleep(1)
 
 
 async def _run_loop(redis: Redis) -> None:
@@ -164,10 +175,6 @@ async def _run_loop(redis: Redis) -> None:
             await process_once(redis)
         except Exception:
             logger.exception("Error procesando outbox")
-        try:
-            await process_account_email_jobs()
-        except Exception:
-            logger.exception("Error procesando correos de cuenta")
         if purge_is_due(last_purge, now):
             last_purge = now
             try:

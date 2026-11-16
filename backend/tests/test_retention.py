@@ -100,9 +100,7 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
     monkeypatch.setattr(outbox, "time", SimpleNamespace(monotonic=lambda: clock.now))
     monkeypatch.setattr(outbox, "process_once", process)
     monkeypatch.setattr(outbox, "purge_once", purge)
-    account_jobs = AsyncMock(side_effect=[RuntimeError("smtp down"), 0, 0])
     recovery_purge = AsyncMock(side_effect=[RuntimeError("recovery purge unavailable"), (0, 0)])
-    monkeypatch.setattr(outbox, "process_account_email_jobs", account_jobs)
     monkeypatch.setattr(outbox, "purge_account_recovery_once", recovery_purge)
     monkeypatch.setattr(outbox, "publish_heartbeat", lambda: None)
 
@@ -122,12 +120,51 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
         await outbox._run_loop(AsyncMock())
     assert process.await_count == 3
     assert purge.await_count == 2
-    assert account_jobs.await_count == 3
     assert recovery_purge.await_count == 2
     assert "No se pudo completar la purga periódica" in caplog.text
-    assert "Error procesando correos de cuenta" in caplog.text
     assert "No se pudo completar la purga de recuperación de contraseña" in caplog.text
 
+
+
+@pytest.mark.asyncio
+async def test_account_emails_run_in_their_own_loop_and_survive_failures(monkeypatch, caplog):
+    account_jobs = AsyncMock(side_effect=[RuntimeError("smtp down"), 0, 0])
+    monkeypatch.setattr(outbox, "process_account_email_jobs", account_jobs)
+
+    class StopLoop(Exception):
+        pass
+
+    async def advance(_seconds):
+        if account_jobs.await_count == 3:
+            raise StopLoop
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", advance)
+    with pytest.raises(StopLoop):
+        await outbox._run_account_email_loop()
+    assert account_jobs.await_count == 3
+    assert "Error procesando correos de cuenta" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_outbox_loop_does_not_wait_for_account_emails(monkeypatch):
+    process = AsyncMock(return_value=0)
+    account_jobs = AsyncMock(return_value=0)
+    monkeypatch.setattr(outbox, "process_once", process)
+    monkeypatch.setattr(outbox, "process_account_email_jobs", account_jobs)
+    monkeypatch.setattr(outbox, "purge_is_due", lambda *_args: False)
+    monkeypatch.setattr(outbox, "publish_heartbeat", lambda: None)
+
+    class StopLoop(Exception):
+        pass
+
+    async def stop(_seconds):
+        raise StopLoop
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", stop)
+    with pytest.raises(StopLoop):
+        await outbox._run_loop(AsyncMock())
+    assert process.await_count == 1
+    assert account_jobs.await_count == 0
 
 
 @pytest.mark.asyncio
