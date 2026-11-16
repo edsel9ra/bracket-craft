@@ -43,6 +43,19 @@ def representative_inscriptions(rows: Iterable[Any]) -> dict[tuple[str, str], An
     return reps
 
 
+def representative_first(rosters: Iterable[Any], rows: Iterable[Any]) -> list[Any]:
+    """RF-004: la inscripción representativa (CL-11) de cada jugador va primero, para
+    que el equipo que atribuye ``compute_player_stats`` (la primera) coincida con la ficha."""
+
+    teams = {key: _key(_v(row, "team_id")) for key, row in representative_inscriptions(rows).items()}
+
+    def rank(roster: Any) -> int:
+        key = (_key(_v(roster, "tournament_id")), _key(_v(roster, "player_id")))
+        return 0 if teams.get(key) is not None and teams[key] == _key(_v(roster, "team_id")) else 1
+
+    return sorted(rosters or [], key=rank)
+
+
 def _recent_first(row: Any) -> tuple[int, str]:
     start = _v(row, "start_date")
     ordinal = start.toordinal() if isinstance(start, date) else 0

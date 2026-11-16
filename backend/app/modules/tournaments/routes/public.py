@@ -19,6 +19,7 @@ from app.modules.tournaments.public_player_profile import (
     build_player_profile,
     profile_available_ids,
     profile_photo_candidate,
+    representative_first,
 )
 from app.modules.tournaments.public_timeline import (
     build_public_timeline,
@@ -60,11 +61,11 @@ async def list_public_tournaments(
     return [dict(row) for row in result.mappings().all()]
 
 
-async def _profile_available(
+async def _profile_rows(
     db: AsyncSession, tournament_id: UUID, player_ids: list[str] | None = None
-) -> set[str]:
-    """Spec 038 RF-009: jugadores cuya inscripción representativa en **este** torneo
-    tiene consentimiento; nunca mira otros torneos."""
+) -> list:
+    """Spec 038 RF-009: inscripciones públicas de **este** torneo, nunca de otros,
+    para calcular `profile_available` y la inscripción representativa."""
 
     query = """
         SELECT tournament_id, team_id, player_id, is_active, valid_from, photo_consent
@@ -74,11 +75,10 @@ async def _profile_available(
     params: dict[str, object] = {"tournament_id": str(tournament_id)}
     if player_ids is not None:
         if not player_ids:
-            return set()
+            return []
         query += " AND player_id = ANY(CAST(:player_ids AS UUID[]))"
         params["player_ids"] = player_ids
-    rows = (await db.execute(text(query), params)).mappings().all()
-    return profile_available_ids(rows)
+    return list((await db.execute(text(query), params)).mappings().all())
 
 
 @router.get("/public/players/{player_id}", response_model=PublicPlayerProfileResponse)
@@ -230,7 +230,7 @@ async def public_player_profile(
             [e for e in events if str(e["match_id"]) in own],
             [f for f in formations if str(f["match_id"]) in own],
             [s for s in segments if str(s["match_id"]) in own],
-            [r for r in rosters if str(r["tournament_id"]) == tournament_id],
+            representative_first([r for r in rosters if str(r["tournament_id"]) == tournament_id], tournaments),
         )
         mine = next((row for row in rows if str(row["player_id"]) == str(player_id)), None)
         if mine is not None:
@@ -651,7 +651,9 @@ async def public_player_stats(
         for row in rosters_result.mappings().all():
             item = dict(row)
             rosters.append(item)
-        profiles = await _profile_available(db, tournament_id)
+        profile_rows = await _profile_rows(db, tournament_id)
+        profiles = profile_available_ids(profile_rows)
+        rosters = representative_first(rosters, profile_rows)
 
     from app.modules.tournaments.public_stats import (
         assign_ranks,
@@ -895,6 +897,6 @@ async def public_match_timeline(
                     )
                 ).mappings().all()
                 names = public_player_names(rosters)
-                profiles = await _profile_available(db, tournament_id, player_ids)
+                profiles = profile_available_ids(await _profile_rows(db, tournament_id, player_ids))
 
     return PublicMatchTimelineResponse(**build_public_timeline(match, events, segments, names, profiles))

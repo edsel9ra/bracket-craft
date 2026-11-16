@@ -112,3 +112,25 @@ def test_build_profile_rows_and_totals_cl7_cl9():
     assert profile["totals"] == {
         "matches_played": 3, "goals": 2, "yellow_cards": 1, "red_cards": 0, "clean_sheets": 1,
     }
+
+
+def test_representative_first_puts_the_cl11_team_first_for_compute_player_stats():
+    from app.modules.tournaments.public_player_profile import representative_first
+
+    older, newer = datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 3, 1, tzinfo=timezone.utc)
+    profile_rows = [
+        {"tournament_id": "t1", "player_id": "p1", "team_id": "a", "is_active": False, "valid_from": older},
+        {"tournament_id": "t1", "player_id": "p1", "team_id": "b", "is_active": False, "valid_from": newer},
+        {"tournament_id": "t1", "player_id": "p2", "team_id": "c", "is_active": True, "valid_from": older},
+    ]
+    rosters = [
+        {"tournament_id": "t1", "player_id": "p1", "team_id": "a"},
+        {"tournament_id": "t1", "player_id": "p2", "team_id": "c"},
+        {"tournament_id": "t1", "player_id": "p1", "team_id": "b"},
+    ]
+    ordered = representative_first(rosters, profile_rows)
+    first_team = {}
+    for row in ordered:
+        first_team.setdefault(row["player_id"], row["team_id"])
+    assert first_team == {"p1": "b", "p2": "c"}
+    assert representative_first([], profile_rows) == []
