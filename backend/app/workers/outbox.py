@@ -20,7 +20,8 @@ from app.workers.heartbeat import (
     heartbeat_is_fresh,
     publish_heartbeat,
 )
-from app.workers.retention import purge_is_due, purge_once
+from app.workers.account_email import process_account_email_jobs
+from app.workers.retention import purge_account_recovery_once, purge_is_due, purge_once
 
 # ``heartbeat_is_fresh`` se reexporta desde aquí porque el plan de la spec lo
 # documenta en este módulo; el healthcheck importa ``app.workers.heartbeat``
@@ -163,12 +164,20 @@ async def _run_loop(redis: Redis) -> None:
             await process_once(redis)
         except Exception:
             logger.exception("Error procesando outbox")
+        try:
+            await process_account_email_jobs()
+        except Exception:
+            logger.exception("Error procesando correos de cuenta")
         if purge_is_due(last_purge, now):
             last_purge = now
             try:
                 await purge_once(datetime.now(timezone.utc))
             except Exception:
                 logger.exception("No se pudo completar la purga periódica")
+            try:
+                await purge_account_recovery_once(datetime.now(timezone.utc))
+            except Exception:
+                logger.exception("No se pudo completar la purga de recuperación de contraseña")
         await asyncio.sleep(1)
 
 
