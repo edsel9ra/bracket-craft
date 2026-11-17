@@ -101,3 +101,42 @@ export function stageAdvancementErrorCode(cause: unknown): string | null {
   const code = (detail as { code?: unknown }).code;
   return typeof code === 'string' ? code : null;
 }
+
+export interface SlotPreview extends SlotOrigin {
+  seed: number;
+  team_id: string | null;
+  team_name: string | null;
+  reason: string | null;
+}
+
+export interface ResolutionPreview {
+  stage_id: string;
+  fingerprint: string;
+  resolvable: boolean;
+  slots: SlotPreview[];
+  source_stages: Array<{ id: string; finished: boolean }>;
+}
+
+export const PREVIEW_REASONS = [
+  'invalid_source_stage', 'source_stage_unfinished', 'group_not_found', 'position_missing',
+  'unresolved_tie', 'team_ineligible', 'duplicate_team',
+] as const;
+
+export const RESOLUTION_ERROR_CODES = [
+  'stale_fingerprint', 'already_resolved', 'version_not_published', 'not_resolvable', 'no_slot_origins',
+] as const;
+
+export function previewReasonKey(reason: string): string {
+  return (PREVIEW_REASONS as readonly string[]).includes(reason)
+    ? `stageAdvancement.reason.${reason}`
+    : 'stageAdvancement.reason.unknown';
+}
+
+export function resolutionErrorKey(code: string | null): string | null {
+  return code && (RESOLUTION_ERROR_CODES as readonly string[]).includes(code) ? `stageAdvancement.resolutionError.${code}` : null;
+}
+
+/** Un 409 de huella obsoleta exige una vista previa nueva antes de volver a confirmar (RF-008). */
+export function needsNewPreview(code: string | null): boolean {
+  return code === 'stale_fingerprint' || code === 'not_resolvable';
+}

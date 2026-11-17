@@ -1,4 +1,4 @@
-import type { SlotOrigin, SlotOriginsState } from '~/utils/stageAdvancement';
+import type { ResolutionPreview, SlotOrigin, SlotOriginsState } from '~/utils/stageAdvancement';
 
 export interface SaveSlotOriginsBody {
   origins: SlotOrigin[];
@@ -31,5 +31,15 @@ export function useStageAdvancement() {
     await request(path(tournamentId, stageId), { method: 'DELETE' });
   }
 
-  return { load, template, save, remove };
+  const resolutionPath = (tournamentId: string, stageId: string) => `/tournaments/${tournamentId}/stages/${stageId}/resolution`;
+
+  async function preview(tournamentId: string, stageId: string): Promise<ResolutionPreview> {
+    return await request<ResolutionPreview>(`${resolutionPath(tournamentId, stageId)}/preview`);
+  }
+
+  async function confirmResolution(tournamentId: string, stageId: string, fingerprint: string): Promise<ResolutionPreview> {
+    return await request<ResolutionPreview>(resolutionPath(tournamentId, stageId), { method: 'POST', body: { fingerprint } });
+  }
+
+  return { load, template, save, remove, preview, confirmResolution };
 }

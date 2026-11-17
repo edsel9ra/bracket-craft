@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import StageTeamsWizard from '~/components/StageTeamsWizard.vue';
 import StageSlotOriginsEditor from './StageSlotOriginsEditor.vue';
+import StageResolutionPanel from './StageResolutionPanel.vue';
 import { isEliminationStage } from '~/utils/stageAdvancement';
 import type { RosterLimits } from '~/utils/rosterLimits';
 import type { StageSummary, TeamSummary, VersionSummary } from './types';
@@ -35,13 +36,22 @@ const eliminationStages = computed(() => props.selectedVersionStages.filter((sta
               @reload="refreshConfiguration"
               @dirty-change="emit('dirty-change', $event)"
             />
+<template v-for="stage in eliminationStages" :key="`${selectedVersionId}:${stage.id}`">
 <StageSlotOriginsEditor
-              v-for="stage in eliminationStages"
-              :key="`${selectedVersionId}:${stage.id}`"
+              v-if="stage.version_status === 'draft'"
               class="panel-wide"
               :tournament-id="tournamentId"
               :stage="stage"
               :can-manage="canManageTournaments"
               @saved="refreshConfiguration"
             />
+<StageResolutionPanel
+              v-else
+              class="panel-wide"
+              :tournament-id="tournamentId"
+              :stage="stage"
+              :can-manage="canManageTournaments"
+              @resolved="refreshConfiguration"
+            />
+</template>
 </template>

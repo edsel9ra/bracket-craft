@@ -4,6 +4,11 @@ import test from 'node:test';
 
 import {
   ORIGIN_ERROR_CODES,
+  PREVIEW_REASONS,
+  RESOLUTION_ERROR_CODES,
+  needsNewPreview,
+  previewReasonKey,
+  resolutionErrorKey,
   emptyOrigin,
   isEliminationStage,
   originLabel,
@@ -23,6 +28,7 @@ const ENGLISH_KEYS = new Set(catalogKeys(I18N.slice(ENGLISH_START)));
 const EDITOR = read('../app/components/workspace/setup/StageSlotOriginsEditor.vue');
 const STAGES = read('../app/components/workspace/setup/SetupStages.vue');
 const COMPOSABLE = read('../app/composables/useStageAdvancement.ts');
+const PANEL = read('../app/components/workspace/setup/StageResolutionPanel.vue');
 
 const GROUPS: SourceStage = {
   id: 'g', name: 'Grupos', stage_type: 'custom_group',
@@ -98,10 +104,14 @@ test('040 RF-002: los errores del 422 se leen por plaza, sin valores enviados', 
 
 test('040 RNF-004: cada clave usada existe en ES y EN', () => {
   const used = new Set<string>();
-  for (const source of [EDITOR, read('../app/utils/stageAdvancement.ts')]) {
+  for (const source of [EDITOR, PANEL, read('../app/utils/stageAdvancement.ts')]) {
     for (const match of source.matchAll(/'(stageAdvancement\.[A-Za-z0-9_.]+)'/g)) used.add(match[1]!);
   }
   for (const code of ORIGIN_ERROR_CODES) used.add(`stageAdvancement.error.${code}`);
+  for (const reason of PREVIEW_REASONS) used.add(`stageAdvancement.reason.${reason}`);
+  for (const code of RESOLUTION_ERROR_CODES) used.add(`stageAdvancement.resolutionError.${code}`);
+  for (const status of ['editable', 'frozen', 'resolved']) used.add(`stageAdvancement.status.${status}`);
+  for (const code of ['not_enough_teams', 'unequal_groups', 'invalid_source_stage', 'invalid_slots_count']) used.add(`stageAdvancement.templateError.${code}`);
   used.delete('stageAdvancement.error.');
   assert.ok(used.size > 20);
   for (const key of used) {
@@ -128,4 +138,27 @@ test('040 RF-003: el editor solo es editable en borrador y aparece para cada eli
   assert.match(EDITOR, /status === 'editable'/);
   assert.match(STAGES, /StageSlotOriginsEditor/);
   assert.match(STAGES, /isEliminationStage\(stage\.stage_type\)/);
+});
+
+test('040 RF-005/RF-006: motivos de bloqueo por plaza y errores de confirmación', () => {
+  for (const reason of PREVIEW_REASONS) assert.equal(previewReasonKey(reason), `stageAdvancement.reason.${reason}`);
+  assert.equal(previewReasonKey('otro'), 'stageAdvancement.reason.unknown');
+  for (const code of RESOLUTION_ERROR_CODES) assert.equal(resolutionErrorKey(code), `stageAdvancement.resolutionError.${code}`);
+  assert.equal(resolutionErrorKey(null), null);
+  assert.equal(resolutionErrorKey('otro'), null);
+  assert.equal(needsNewPreview('stale_fingerprint'), true);
+  assert.equal(needsNewPreview('not_resolvable'), true);
+  assert.equal(needsNewPreview('already_resolved'), false);
+});
+
+test('040 RF-007/RF-008: el panel confirma con la huella de la vista previa y pide otra ante un 409', () => {
+  assert.match(COMPOSABLE, /\/preview`/);
+  assert.match(COMPOSABLE, /method: 'POST', body: \{ fingerprint \}/);
+  assert.match(PANEL, /useConfirm\(\{ singleFlight: true \}\)/);
+  assert.match(PANEL, /api\.confirmResolution\(props\.tournamentId, props\.stage\.id, current\.fingerprint\)/);
+  assert.match(PANEL, /if \(needsNewPreview\(code\)\) await loadPreview\(\)/);
+  assert.match(PANEL, /:disabled="busy \|\| !preview\.resolvable"/);
+  assert.match(PANEL, /role="alert"/);
+  assert.match(STAGES, /StageResolutionPanel/);
+  assert.match(STAGES, /stage\.version_status === 'draft'/);
 });
