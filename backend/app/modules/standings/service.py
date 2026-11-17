@@ -5,8 +5,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.locking import lock_stage_and_version
-from app.modules.rules_engine.engine import deterministic_tie_value, validate_rules_config
-from app.modules.standings.head_to_head import MatchRecord, calculate_head_to_head_stats
+from app.modules.rules_engine.engine import validate_rules_config
+from app.modules.standings.head_to_head import MatchRecord
+from app.modules.standings.ranking import rank_buckets
 
 
 class StandingsService:
@@ -243,41 +244,6 @@ class StandingsService:
             persisted_rows = [dict(row) for row in result.mappings().all()]
             table = {(row["team_id"], row["group_id"]): row for row in persisted_rows}
 
-        def ranking_value(item, criterion):
-            if criterion == "goals_against":
-                return -int(item["goals_against"])
-            if criterion == "random_draw":
-                return deterministic_tie_value(f"{tournament_id}:{stage_id}", item["team_id"])
-            return item.get(criterion, 0)
-
-        def split_bucket(bucket, step):
-            if len(bucket) < 2:
-                return [bucket]
-
-            criterion = step["criterion"]
-            if criterion == "head_to_head":
-                team_ids = {item["team_id"] for item in bucket}
-                h2h_stats = calculate_head_to_head_stats(
-                    team_ids,
-                    match_records_by_group[bucket[0]["group_id"]],
-                    step["params"]["total_rounds_expected"],
-                    points_system,
-                )
-                if h2h_stats is None:
-                    return [bucket]
-
-                def key_for(item):
-                    stats = h2h_stats[item["team_id"]]
-                    return (stats.points, stats.goal_diff, stats.goals_for)
-            else:
-                def key_for(item):
-                    return ranking_value(item, criterion)
-
-            buckets_by_key = defaultdict(list)
-            for item in bucket:
-                buckets_by_key[key_for(item)].append(item)
-            return [buckets_by_key[key] for key in sorted(buckets_by_key, reverse=True)]
-
         ranked = []
         draw_groups = []
         teams_by_group: defaultdict[UUID | None, list[dict]] = defaultdict(list)
@@ -285,15 +251,16 @@ class StandingsService:
             teams_by_group[item["group_id"]].append(item)
 
         for group_id, group_items in teams_by_group.items():
-            buckets = [group_items]
-            for step in pipeline:
-                next_buckets = []
-                for bucket in buckets:
-                    if step["criterion"] == "random_draw" and len(bucket) > 1:
-                        draw_groups.append({"group_id": str(group_id) if group_id is not None else None,
-                            "team_ids": sorted(str(item["team_id"]) for item in bucket)})
-                    next_buckets.extend(split_bucket(bucket, step))
-                buckets = next_buckets
+            buckets, drawn = rank_buckets(
+                group_items,
+                pipeline,
+                points_system=points_system,
+                tie_seed=f"{tournament_id}:{stage_id}",
+                match_records=match_records_by_group[group_id],
+            )
+            for bucket in drawn:
+                draw_groups.append({"group_id": str(group_id) if group_id is not None else None,
+                    "team_ids": sorted(str(item["team_id"]) for item in bucket)})
 
             rank = 1
             for bucket in buckets:
