@@ -4,8 +4,9 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 
 ## Bloque A
 
-- [ ] **T1. Migración 063.** RF-003, RF-007, RNF-002, RNF-003
+- [x] **T1. Migración 063.** RF-003, RF-007, RNF-002, RNF-003
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_063.py` en rojo y luego verde (CHECK con `stage_rank`, RLS/FORCE y políticas, `UNIQUE (stage_id)`, append-only, excepción solo para `INSERT` en `stage_teams` con resolución válida, rechazo con resolución de otra fase u organización); cadena limpia 001→063 y salto 062→063; `sh -n infra/postgres/migrate.sh`.
+- Evidencia: sin la 063, `test_migration_063.py` en rojo (14 failed); con ella, 14 passed contra PostgreSQL 17: RLS `ENABLE`+`FORCE` con una política, `bracket_app` solo `SELECT, INSERT`, trigger sin `SECURITY DEFINER`, vista `security_barrier` solo para `bracket_app`; ocho referencias `stage_rank` mal formadas rechazadas (el primer verde destapó que un CHECK con `NULL` pasaba: se envolvió en `COALESCE(..., FALSE)`); en lo publicado `stage_teams` solo admite, con `app.stage_slot_resolution_id`, equipos de esa resolución y fase, sin grupo y sin duplicar; `DELETE` sigue en 409; segunda resolución rechazada por `UNIQUE`; resolución solo para llaves de versión publicada; asignación `stage_rank` exige su resolución; la vista solo etiqueta plazas sin resolver de torneos visibles; salto 062→063 aplicado dos veces. `sh -n infra/postgres/migrate.sh` correcto. Regresión 019, 035, 038 y 062 en verde.
 
 - [ ] **T2. Funciones puras.** RF-002, RF-006, RF-008, RF-012, RF-013, CL-1, CL-2, CL-7, CL-8
 - Hecho cuando: `cd backend && pytest -q tests/test_stage_slot_origins.py` en rojo y luego verde (validación, plantilla clásica, cabezas de serie y pases libres, mejores N.º sin enfrentamiento directo, empates no resolubles, huella estable, fase terminada).
