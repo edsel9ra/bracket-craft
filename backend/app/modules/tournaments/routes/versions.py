@@ -359,8 +359,10 @@ async def _create_draft_version_record(
     source_matches = match_result.mappings().all()
     match_map: dict[str, UUID] = {str(row["id"]): uuid4() for row in source_matches}
     for match in source_matches:
-        home_team_id = None if str(match["home_slot_id"]) in stage_rank_slots else match["home_team_id"]
-        away_team_id = None if str(match["away_slot_id"]) in stage_rank_slots else match["away_team_id"]
+        # Toda la llave de una fase stage_rank queda vacía: también los equipos ya avanzados.
+        unresolved = str(match["stage_id"]) in stage_rank_stages
+        home_team_id = None if unresolved or str(match["home_slot_id"]) in stage_rank_slots else match["home_team_id"]
+        away_team_id = None if unresolved or str(match["away_slot_id"]) in stage_rank_slots else match["away_team_id"]
         await db.execute(
             text("""
                 INSERT INTO matches
