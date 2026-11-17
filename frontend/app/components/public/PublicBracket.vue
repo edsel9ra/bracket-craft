@@ -5,7 +5,8 @@ import PublicBracketConnections from '~/components/public/PublicBracketConnectio
 import { groupPublicRounds, inferPublicAdvances, publicRoundLabel } from '~/utils/publicBracket';
 import { resolveMatchOutcomeLabel } from '~/utils/publicTournament';
 import { canOpenTimeline } from '~/utils/publicTimeline';
-import type { PublicMatch } from '~/utils/publicTournament';
+import type { PublicMatch, PublicSlotOrigin } from '~/utils/publicTournament';
+import { publicOriginLabel } from '~/utils/stageAdvancement';
 
 const props = defineProps<{
   matches: PublicMatch[];
@@ -34,8 +35,8 @@ function roundLabel(round: ReturnType<typeof groupPublicRounds>[number]): string
   return t(label.key, label.value === undefined ? undefined : { value: label.value });
 }
 
-function teamLabel(teamName: string | null, shortCode: string | null): string {
-  return teamName || shortCode || t('public.toDefine');
+function teamLabel(teamName: string | null, shortCode: string | null, origin?: PublicSlotOrigin | null): string {
+  return teamName || shortCode || publicOriginLabel(origin, t) || t('public.toDefine');
 }
 
 function scoreLabel(score: number | null): string {
@@ -73,12 +74,12 @@ function resolutionLabel(match: PublicMatch): string {
               <span>{{ match.group_name || t('public.bracket') }}</span>
             </div>
             <div class="bracket-team" :class="{ winner: isWinner(match, match.home_team_id) }">
-              <span>{{ teamLabel(match.home_team_name, match.home_team_short_code) }}</span>
+              <span>{{ teamLabel(match.home_team_name, match.home_team_short_code, match.home_origin) }}</span>
               <span v-if="isWinner(match, match.home_team_id)" class="visually-hidden">{{ t('public.winner') }}</span>
               <strong>{{ scoreLabel(match.home_score) }}</strong>
             </div>
             <div class="bracket-team" :class="{ winner: isWinner(match, match.away_team_id) }">
-              <span>{{ teamLabel(match.away_team_name, match.away_team_short_code) }}</span>
+              <span>{{ teamLabel(match.away_team_name, match.away_team_short_code, match.away_origin) }}</span>
               <span v-if="isWinner(match, match.away_team_id)" class="visually-hidden">{{ t('public.winner') }}</span>
               <strong>{{ scoreLabel(match.away_score) }}</strong>
             </div>
@@ -95,7 +96,7 @@ function resolutionLabel(match: PublicMatch): string {
               v-if="match.lineup"
               class="lineup-trigger"
               type="button"
-              :aria-label="`${t('public.viewLineup')}: ${teamLabel(match.home_team_name, match.home_team_short_code)} vs ${teamLabel(match.away_team_name, match.away_team_short_code)}`"
+              :aria-label="`${t('public.viewLineup')}: ${teamLabel(match.home_team_name, match.home_team_short_code, match.home_origin)} vs ${teamLabel(match.away_team_name, match.away_team_short_code, match.away_origin)}`"
               @click="emit('openLineup', match, $event)"
             >
               {{ t('public.viewLineup') }}
@@ -107,7 +108,7 @@ function resolutionLabel(match: PublicMatch): string {
               aria-controls="public-timeline-dialog"
               aria-haspopup="dialog"
               :aria-expanded="openTimelineId === match.id"
-              :aria-label="`${t('public.viewTimeline')}: ${teamLabel(match.home_team_name, match.home_team_short_code)} vs ${teamLabel(match.away_team_name, match.away_team_short_code)}`"
+              :aria-label="`${t('public.viewTimeline')}: ${teamLabel(match.home_team_name, match.home_team_short_code, match.home_origin)} vs ${teamLabel(match.away_team_name, match.away_team_short_code, match.away_origin)}`"
               @click="emit('openTimeline', match, $event)"
             >
               {{ t('public.viewTimeline') }}

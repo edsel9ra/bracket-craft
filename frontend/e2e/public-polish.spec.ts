@@ -176,6 +176,26 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await assertNoDocumentOverflow(page);
     });
 
+    test('plazas sin resolver muestran su origen y el equipo al llenarse (040)', async ({ page }, info) => {
+      const { data } = await installPublicContract(page);
+      const rows = data.matches.filter(row => row.stage_id === bracketId);
+      Object.assign(rows[2]!, {
+        home_team_id: null, home_team_name: null, home_team_short_code: null, status: 'scheduled', home_score: null, away_score: null,
+        winner_team_id: null, resolution_type: null, away_team_id: null, away_team_name: null, away_team_short_code: null,
+        home_origin: { kind: 'group_position', group_name: 'A', position: 1, ordinal: null },
+        away_origin: { kind: 'best_of_position', group_name: null, position: 3, ordinal: 1 },
+      });
+      await openPublicContract(page);
+      await page.locator('.phase-chip').filter({ hasText: 'Eliminatoria' }).click();
+      await expect(page.locator('.bracket-grid.measured')).toBeVisible();
+      const slot = page.locator('.bracket-match').nth(2);
+      await expect(slot).toContainText('1.º del grupo A');
+      await expect(slot).toContainText('Mejor 3.º n.º 1');
+      await expect(page.locator('.bracket-match').first()).not.toContainText('del grupo');
+      await assertNoDocumentOverflow(page);
+      await saveMeasurements(info, 'bracket-origins', { width: viewport.width });
+    });
+
     test('ganador repetido o destino ambiguo no inventa conectores', async ({ page }) => {
       const { data } = await installPublicContract(page);
       const rows = data.matches.filter(row => row.stage_id === bracketId);

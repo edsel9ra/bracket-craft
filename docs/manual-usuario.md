@@ -69,6 +69,13 @@ En el modo «fase existente» con **0 equipos seleccionados** la acción princip
 - Tipos soportados: Round Robin, grupos, playoffs, Swiss (acotado: ≤64 equipos, presupuesto 50 000 evaluaciones, timeout 10 s).
 - Las vueltas de liga/grupos se persisten (`schedule_legs`: 1 o 2).
 
+### Avance automático entre fases (spec 040)
+
+- **En el borrador**, cada fase de eliminación simple o doble muestra «Orígenes de las plazas». Indica el número de plazas y la fase de origen y pulsa «Proponer la plantilla clásica» (cruces 1.º A contra 2.º B, evitando el mismo grupo en la primera ronda; los pases libres van a los mejor clasificados). La plantilla solo rellena el formulario: edita cada plaza («N.º del grupo» o «Mejor N.º n.º X») y pulsa «Guardar orígenes y generar la llave». Si alguna plaza no es válida se marca en esa fila y no se guarda nada. «Mejores N.º» solo se admite si todos los grupos tienen el mismo tamaño. En doble eliminación solo se declaran las plazas del cuadro de ganadores.
+- Una llave con orígenes no admite asignación manual, sorteo ni alta directa de equipos; «Quitar orígenes» la devuelve al modo manual (solo en borrador).
+- **En la versión publicada**, «Resolución de las plazas» muestra para cada plaza el equipo que la ocuparía o el motivo del bloqueo (fase sin terminar, empate sin resolver, equipo retirado o grupos de distinto tamaño). «Confirmar y llenar la llave» llena todas las plazas a la vez y no se puede deshacer. Si la clasificación cambió desde la vista previa, la app pide revisar la nueva antes de volver a confirmar.
+- El público ve «1.º del grupo A» o «Mejor 3.º n.º 1» en las plazas sin resolver, y el equipo en cuanto se confirma. Una rectificación posterior de la fase de origen abre un impacto competitivo y no cambia las plazas ya llenas.
+
 ### Cifra de composición (spec 026)
 
 El paso de composición y el resumen de revisión muestran **un solo total** de equipos **inscritos + seleccionados** (equipos distintos), en el patrón «N de 64 equipos» mientras el total no supere 64 y el **total real** por encima de 64. La cifra no inscribe, no desinscribe ni envía ninguna petición. En el modo «fase existente» no se muestra ninguna cifra mientras la lista de inscritos no haya cargado (se ve el estado de carga del asistente); en el alta de una fase nueva aparece con los seleccionados en cuanto hay lista de equipos. `64` es el máximo **por petición de inscripción**, no un tope total de la fase: una fase puede acumular más de 64 en varias visitas. Los avisos de composición vacía, de equipos disponibles y el bloqueo por límites de plantilla no cambian. (Spec 026, RF-010 a RF-014.)

@@ -80,6 +80,7 @@ export function useTournamentSetup(tournamentId: string) {
   // cuando la modalidad declarada no es la planilla de once.
   const declaredGameFormat = computed(() => gameFormatOf(activeVersion.value?.rules_config ?? null));
   const selectedVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === selectedVersionId.value));
+  const stageIdsWithMatches = computed(() => new Set(matches.value.map((match) => match.stage_id)));
   const selectedVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === selectedVersionId.value));
   const draftVersionStages = computed(() => stages.value.filter((stage) => stage.tournament_version_id === draftVersion.value?.id));
   const draftVersionMatches = computed(() => matches.value.filter((match) => match.tournament_version_id === draftVersion.value?.id));
@@ -588,7 +589,7 @@ export function useTournamentSetup(tournamentId: string) {
   }
   return { auth, tournamentId, t, statusLabel, tournamentName, tournamentLabel, loading, loadError, error, saving,
   versions, selectedVersionId, draftVersion, activeVersion, canManageTournaments, canPublish, configurationReadOnly,
-  rulesEditable, declaredGameFormat, setupChecks, rulesConfig, serverRulesConfig, selectedVersionStages,
+  rulesEditable, declaredGameFormat, setupChecks, rulesConfig, serverRulesConfig, selectedVersionStages, stageIdsWithMatches,
   rulesServerDetail, rulesError, rulesMinutesNotice, wizardResetToken, wizardDirty, rulesTitle, teamsTitle,
   teams, selectedVersionRosterLimits, rosterCountsByTeam, rosterLockActive,
   onVersionChange, publishVersion, createDraftVersion, retryConfiguration, useDefaultRules,
