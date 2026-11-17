@@ -26,7 +26,7 @@ OTHER_STAGE = "31000000-0000-4000-8000-000000000061"
 
 @pytest.fixture
 async def public_live_db(database_admin_url):
-    async with throwaway_database(database_admin_url, last=61) as admin:
+    async with throwaway_database(database_admin_url, last=63) as admin:
         sql = SEED_SQL.replace(
             "1, '{}'::jsonb, '{}'::jsonb,",
             f"1, '{json.dumps(rules_config())}'::jsonb, '{{}}'::jsonb,",

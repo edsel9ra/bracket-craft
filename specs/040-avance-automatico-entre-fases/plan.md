@@ -21,7 +21,7 @@ Estado: aprobado por el usuario el 2026-11-16 («Apruebo plan y tareas»).
 ### Backend
 - `modules/stage_advancement/` (nuevo): `origins.py` (funciones puras), `service.py` (declarar, previsualizar, confirmar), `schemas.py` (`extra="forbid"`, `hide_input_in_errors=True`), `router.py`.
 - `tournaments/scheduling.py`: `build_seeded_single_elimination_bracket` y `build_seeded_double_elimination_bracket`, que reciben plazas ordenadas por cabeza de serie en lugar de barajar. Las funciones actuales no cambian.
-- `tournaments/routes/versions.py`: el clonado reasigna en `source_reference` los IDs de fase y grupo de las plazas `stage_rank` (CL-6).
+- `tournaments/routes/versions.py`: el clonado reasigna en `source_reference` los IDs de fase y grupo de las plazas `stage_rank` (CL-6) y deja esas plazas sin resolver: no copia los equipos de la fase destino ni los de los partidos con plazas `stage_rank`, porque la resolución pertenece a la versión de la que se confirmó y la nueva confirma la suya.
 - `tournaments/routes/stages.py`: `POST/DELETE .../teams` y el sorteo responden 409 en una llave con orígenes (RF-011).
 - `tournaments/routes/public.py`: `home_origin`/`away_origin` nulos salvo en plazas sin resolver.
 - `main.py`: registro del router.

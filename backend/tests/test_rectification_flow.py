@@ -778,8 +778,8 @@ async def test_concurrent_approvals_publish_once(flow):
     assert await flow.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == 2
 
 
-# La lectura pública al final consulta la unión F1, que existe desde la 059.
-@pytest.mark.parametrize("flow", [{"schema": 59}], indirect=True)
+# La lectura pública al final consulta la unión F1 (059) y los orígenes de plaza (063).
+@pytest.mark.parametrize("flow", [{"schema": 63}], indirect=True)
 async def test_publication_and_preview_share_hook_and_versions_2_3_preserve_original(flow, monkeypatch):
     from app.modules.rectifications import service
 
