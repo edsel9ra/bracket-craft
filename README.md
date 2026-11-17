@@ -656,6 +656,21 @@ La **062** crea tres tablas de cuenta sin `organization_id` (`account_email_jobs
 
 Pantallas: `/password/forgot`, `/password/reset#<token>` (el token va en el fragmento, nunca llega al SSR ni al proxy, y el cliente lo retira de la URL al leerlo) y `/account/password`. Los enlaces caducan a los 30 minutos y la purga elimina a los 7 días enlaces y trabajos terminados; la auditoría técnica se conserva y no lleva correo, token ni hash. En desarrollo sin SMTP el enlace no se muestra ni se registra.
 
+## Migración 063: avance automático entre fases (runbook)
+
+La **063** (spec 040, F2) vuelve a admitir `phase_slots.source_type = 'stage_rank'` con una referencia cerrada (`group_position` o `best_of_position`), crea `stage_slot_resolutions` (una resolución append-only por llave, con gestor, huella de la clasificación y equipos; RLS activada y forzada con `tenant_isolation_policy`), liga `match_slot_assignments` con `origin = 'stage_rank'` a su resolución y añade la vista interna `v_public_match_slot_origins`. La única excepción a la inmutabilidad de lo publicado es un `INSERT` en `stage_teams`, sin grupo, de un equipo que figure en la resolución confirmada de esa fase. Todo es `SECURITY INVOKER`, sin privilegios nuevos para `bracket_app`. **Aplicar la 063 antes que la API.**
+
+| Ruta (bajo `/api/v1/tournaments/{tournament_id}/stages/{stage_id}`) | Versión | Respuestas |
+|---|---|---|
+| `GET /slot-origins` | cualquiera | `200 {status: editable\|frozen\|resolved, origins, source_stages}` |
+| `GET /slot-origins/template?source_stage_id=…&slots_count=N` | borrador | `200 {origins}` (no escribe) |
+| `PUT /slot-origins` `{origins, start_date, round_interval_days, match_interval_hours, replace_existing}` | borrador | `200`; `422 invalid_slot_origins` con `errors[{seed, code}]`; `409` en publicada |
+| `DELETE /slot-origins` | borrador | `204`; solo vacía la llave si tenía orígenes |
+| `GET /resolution/preview` | publicada | `200 {fingerprint, resolvable, slots[{seed, team_id, reason}], source_stages}`; `409 already_resolved`; `422 no_slot_origins` (no escribe) |
+| `POST /resolution` `{fingerprint}` | publicada | `201`; `409 stale_fingerprint`/`not_resolvable`/`already_resolved`/`version_not_published` |
+
+Una llave con orígenes rechaza la asignación manual, el sorteo y el alta directa de equipos (409). Clonar una versión copia los orígenes con las fases y grupos nuevos y deja la llave vacía. Una rectificación posterior de la fase de origen abre un impacto `later_phase` y nunca reasigna plazas confirmadas. El Workspace usa `StageSlotOriginsEditor` (borrador) y `StageResolutionPanel` (publicada) en `#fases`.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
@@ -667,6 +682,8 @@ Pantallas: `/password/forgot`, `/password/reset#<token>` (el token va en el frag
 ## Matriz de acceso (público vs. privado)
 
 Spec 020 audita y documenta qué es público: la consulta pública es de **solo lectura**, no escribe datos y **no añade campos públicos nuevos** (RNF-001) en esa spec; solo reorganiza la navegación por fases y grupos y deja constancia de lo que ya se publica. La spec 021 añade aditivamente un único campo nuevo al contrato público: `segment_number` (entero, nullable) en `PublicTeamLineupResponse`, para etiquetar la formación con su segmento (RF-007, RF-015); no cambia permisos ni la matriz de acceso. La spec 022 añade **dos lecturas públicas** —`player-stats` y `team-stats`— y **un solo cambio no aditivo** (publicar el nombre de jugadores que participaron en partidos con resultado confirmado aunque no figuren en una alineación publicada, RF-033); no añade escrituras, permisos ni rutas nuevas fuera de esas dos lecturas.
+
+La spec 040 (F2) añade a cada partido público de llave `home_origin`/`away_origin` (`kind`, `group_name`, `position`, `ordinal`), presentes solo mientras la plaza no tiene equipo y en `null` al confirmar la resolución. Es un cambio no aditivo declarado en la matriz de la 020; no publica clasificación nueva, gestor ni huella.
 
 ### Público (sin sesión, sin organización activa, sin credenciales)
 
