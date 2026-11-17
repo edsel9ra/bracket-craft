@@ -628,3 +628,99 @@ async def test_resolution_body_is_strict_and_does_not_echo_input(stack):
         assert response.status_code == 422
         assert "secreto" not in response.text
     assert await admin.fetchval("SELECT count(*) FROM stage_slot_resolutions") == 0
+
+
+async def publish_tournament(admin) -> None:
+    await admin.execute(
+        "UPDATE tournaments SET status = 'published', published_version_id = $1 WHERE id = $2", VERSION, TOURNAMENT,
+    )
+
+
+PUBLIC_KO = f"/api/v1/tournaments/public/{TOURNAMENT}/matches?stage_id={KO_STAGE}"
+
+
+def origin(kind: str, group_name: str | None, position: int, ordinal: int | None) -> dict:
+    return {"kind": kind, "group_name": group_name, "position": position, "ordinal": ordinal}
+
+
+@pytest.mark.asyncio
+async def test_public_bracket_labels_only_unresolved_slots(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin, SIX)
+    await publish_tournament(admin)
+    response = await client.get(PUBLIC_KO)
+    assert response.status_code == 200, response.text
+    labels = [match[f"{side}_origin"] for match in response.json() for side in ("home", "away")]
+    assert sorted((label for label in labels if label), key=json.dumps) == sorted([
+        origin("group_position", "Grupo A", 1, None), origin("group_position", "Grupo B", 1, None),
+        origin("group_position", "Grupo A", 2, None), origin("group_position", "Grupo B", 2, None),
+        origin("best_of_position", None, 3, 1), origin("best_of_position", None, 3, 2),
+    ], key=json.dumps)
+    groups = (await client.get(f"/api/v1/tournaments/public/{TOURNAMENT}/matches?stage_id={GROUP_STAGE}")).json()
+    assert groups and all(match["home_origin"] is None and match["away_origin"] is None for match in groups)
+
+    assert (await client.post(RESOLUTION, json={"fingerprint": fingerprint})).status_code == 201
+    filled = (await client.get(PUBLIC_KO)).json()
+    first_round = [match for match in filled if match["home_team_id"] or match["away_team_id"]]
+    assert len(first_round) >= 3
+    assert all(match["home_origin"] is None and match["away_origin"] is None for match in filled)
+
+
+@pytest.mark.asyncio
+async def test_clone_remaps_origin_references_and_leaves_slots_unresolved(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin)
+    assert (await client.post(RESOLUTION, json={"fingerprint": fingerprint})).status_code == 201
+    await publish_tournament(admin)
+    response = await client.post(f"/api/v1/tournaments/{TOURNAMENT}/versions")
+    assert response.status_code == 201, response.text
+    new_version = response.json()["id"]
+    stages = {row["name"]: str(row["id"]) for row in await admin.fetch(
+        "SELECT id, name FROM stages WHERE tournament_version_id = $1", new_version)}
+    groups = {str(row["id"]) for row in await admin.fetch(
+        "SELECT id FROM groups WHERE tournament_version_id = $1", new_version)}
+    references = [json.loads(row["source_reference"]) for row in await admin.fetch(
+        """SELECT ps.source_reference::text FROM phase_slots ps
+           WHERE ps.tournament_version_id = $1 AND ps.source_type = 'stage_rank'""", new_version)]
+    assert len(references) == 4
+    assert all(reference["source_stage_id"] == stages["Grupos"] for reference in references)
+    assert {reference["group_id"] for reference in references} == groups
+    assert await admin.fetchval(
+        "SELECT count(*) FROM stage_teams WHERE stage_id = $1", UUID(stages["Llave"])) == 0
+    assert await admin.fetchval(
+        """SELECT count(*) FROM matches WHERE stage_id = $1
+           AND (home_team_id IS NOT NULL OR away_team_id IS NOT NULL)""", UUID(stages["Llave"])) == 0
+    assert await admin.fetchval(
+        "SELECT count(*) FROM stage_teams WHERE stage_id = $1", UUID(stages["Grupos"])) == len(TEAMS)
+
+
+@pytest.mark.asyncio
+async def test_rectification_after_resolution_opens_later_phase_without_moving_slots(stack):
+    from uuid import uuid4
+
+    from app.core.database import set_rls_context
+    from app.modules.rectifications.advancement import advancement_changes
+
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin)
+    assert (await client.post(RESOLUTION, json={"fingerprint": fingerprint})).status_code == 201
+    before = await bracket_teams(admin)
+    source = await admin.fetchrow(
+        "SELECT id, home_team_id, away_team_id FROM matches WHERE stage_id = $1 ORDER BY id LIMIT 1", GROUP_STAGE)
+    context = AuthContext(user_id=UUID(USER), organization_id=UUID(ORG), organization_user_id=UUID(MEMBER))
+    version = {
+        "id": uuid4(), "match_id": source["id"], "stage_id": UUID(GROUP_STAGE),
+        "winner_team_id": source["home_team_id"],
+        "advancement_before": {"tournament_version_id": UUID(VERSION), "bracket_code": None,
+                               "winner_team_id": source["home_team_id"], "home_team_id": source["home_team_id"],
+                               "away_team_id": source["away_team_id"]},
+        "standings_before": {"rows": [{"group_id": GROUP_A, "team_id": TEAMS[0], "rank": 1},
+                                      {"group_id": GROUP_A, "team_id": TEAMS[1], "rank": 2}]},
+    }
+    rows = [{"group_id": GROUP_A, "team_id": TEAMS[1], "rank": 1}, {"group_id": GROUP_A, "team_id": TEAMS[0], "rank": 2}]
+    async with AsyncSession(ENGINES["current"], expire_on_commit=False) as db, db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        effects, candidates = await advancement_changes(db, context, version, rows)
+    assert effects == []
+    assert [(item.reason, item.stage_id, item.match_id) for item in candidates] == [("later_phase", UUID(KO_STAGE), None)]
+    assert await bracket_teams(admin) == before
