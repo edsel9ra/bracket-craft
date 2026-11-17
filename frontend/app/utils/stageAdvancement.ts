@@ -1,5 +1,7 @@
 /** Modelo puro del editor de orígenes de plaza (spec 040, F2). */
 
+import type { PublicSlotOrigin } from './publicTournament';
+
 export type OriginKind = 'group_position' | 'best_of_position';
 
 export interface SlotOrigin {
@@ -139,4 +141,15 @@ export function resolutionErrorKey(code: string | null): string | null {
 /** Un 409 de huella obsoleta exige una vista previa nueva antes de volver a confirmar (RF-008). */
 export function needsNewPreview(code: string | null): boolean {
   return code === 'stale_fingerprint' || code === 'not_resolvable';
+}
+
+/** Etiqueta pública de una plaza sin resolver (RF-009); sin origen, `null` y la llave usa «Por definir». */
+export function publicOriginLabel(origin: PublicSlotOrigin | null | undefined, t: Translate): string | null {
+  if (!origin) return null;
+  if (origin.kind === 'best_of_position') {
+    return t('stageAdvancement.origin.bestOfPosition', { position: origin.position, ordinal: origin.ordinal ?? 0 });
+  }
+  return origin.group_name
+    ? t('stageAdvancement.origin.groupPosition', { position: origin.position, group: origin.group_name })
+    : t('stageAdvancement.origin.publicTablePosition', { position: origin.position });
 }

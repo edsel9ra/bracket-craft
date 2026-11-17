@@ -73,6 +73,13 @@ export interface PublicMatchLineup {
   away: PublicTeamLineup | null;
 }
 
+export interface PublicSlotOrigin {
+  kind: 'group_position' | 'best_of_position';
+  group_name: string | null;
+  position: number;
+  ordinal: number | null;
+}
+
 export interface PublicMatch {
   rectified_at: string | null;
   id: string;
@@ -100,6 +107,9 @@ export interface PublicMatch {
   resolution_type: string | null;
   winner_team_id: string | null;
   lineup: PublicMatchLineup | null;
+  // F2 (040): etiqueta de origen solo en plazas de la llave aún sin resolver.
+  home_origin?: PublicSlotOrigin | null;
+  away_origin?: PublicSlotOrigin | null;
   home_score_regular?: number | null;
   away_score_regular?: number | null;
   // F1 (036): en `live` la lectura vigente añade reloj y provisionalidad.

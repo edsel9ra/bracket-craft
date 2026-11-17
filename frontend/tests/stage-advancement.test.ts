@@ -8,6 +8,7 @@ import {
   RESOLUTION_ERROR_CODES,
   needsNewPreview,
   previewReasonKey,
+  publicOriginLabel,
   resolutionErrorKey,
   emptyOrigin,
   isEliminationStage,
@@ -104,7 +105,7 @@ test('040 RF-002: los errores del 422 se leen por plaza, sin valores enviados', 
 
 test('040 RNF-004: cada clave usada existe en ES y EN', () => {
   const used = new Set<string>();
-  for (const source of [EDITOR, PANEL, read('../app/utils/stageAdvancement.ts')]) {
+  for (const source of [EDITOR, PANEL, read('../app/utils/stageAdvancement.ts'), read('../app/components/public/PublicBracket.vue')]) {
     for (const match of source.matchAll(/'(stageAdvancement\.[A-Za-z0-9_.]+)'/g)) used.add(match[1]!);
   }
   for (const code of ORIGIN_ERROR_CODES) used.add(`stageAdvancement.error.${code}`);
@@ -161,4 +162,19 @@ test('040 RF-007/RF-008: el panel confirma con la huella de la vista previa y pi
   assert.match(PANEL, /role="alert"/);
   assert.match(STAGES, /StageResolutionPanel/);
   assert.match(STAGES, /stage\.version_status === 'draft'/);
+});
+
+test('040 RF-009: la llave pública etiqueta las plazas sin resolver y deja de hacerlo al llenarse', () => {
+  assert.equal(publicOriginLabel({ kind: 'group_position', group_name: 'A', position: 1, ordinal: null }, fake),
+    'stageAdvancement.origin.groupPosition{"position":1,"group":"A"}');
+  assert.equal(publicOriginLabel({ kind: 'group_position', group_name: null, position: 2, ordinal: null }, fake),
+    'stageAdvancement.origin.publicTablePosition{"position":2}');
+  assert.equal(publicOriginLabel({ kind: 'best_of_position', group_name: null, position: 3, ordinal: 1 }, fake),
+    'stageAdvancement.origin.bestOfPosition{"position":3,"ordinal":1}');
+  assert.equal(publicOriginLabel(null, fake), null);
+  assert.equal(publicOriginLabel(undefined, fake), null);
+  const bracket = read('../app/components/public/PublicBracket.vue');
+  assert.match(bracket, /teamName \|\| shortCode \|\| publicOriginLabel\(origin, t\) \|\| t\('public\.toDefine'\)/);
+  assert.match(bracket, /match\.home_origin/);
+  assert.match(bracket, /match\.away_origin/);
 });
