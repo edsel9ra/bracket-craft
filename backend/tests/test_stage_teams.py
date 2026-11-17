@@ -66,6 +66,9 @@ class Result:
     def scalar_one_or_none(self):
         return self._scalar
 
+    def scalar_one(self):
+        return self._scalar
+
 
 class StageTeamsSession:
     def __init__(
@@ -475,6 +478,8 @@ class AssignmentSession:
                     if team_id in self.existing_ids
                 ]
             )
+        if "FROM phase_slots" in sql and "stage_rank" in sql:
+            return Result(scalar=getattr(self, "has_slot_origins", False))
         if sql.startswith("INSERT INTO stage_teams"):
             self.writes.append((sql, params))
             if self.fail_on_team is not None and params["team_id"] == str(
@@ -832,7 +837,9 @@ async def test_assignment_does_not_touch_calendar_groups_slots_or_matches():
     assert "INSERT INTO matches" not in joined
     assert "UPDATE matches" not in joined
     assert "DELETE FROM matches" not in joined
-    assert "phase_slots" not in joined
+    assert not any(
+        "phase_slots" in sql and not sql.startswith("SELECT EXISTS") for sql in session.statements
+    )
     assert "groups" not in joined
     assert not any(
         sql.startswith(("UPDATE ", "DELETE FROM")) for sql in session.statements
@@ -1153,3 +1160,18 @@ async def test_delete_locks_stage_then_version_before_reading_or_writing():
     assert stage_lock < version_lock < registered < matches < standings < delete
     assert "FOR UPDATE" in session.statements[stage_lock]
     assert "FOR UPDATE" in session.statements[version_lock]
+
+
+@pytest.mark.asyncio
+async def test_assignment_to_a_bracket_with_slot_origins_is_409_without_writes():
+    """RF-011 (spec 040): a bracket with declared origins takes no manual teams."""
+
+    session = AssignmentSession(registered_ids={TEAM_FREE})
+    session.has_slot_origins = True
+
+    with pytest.raises(HTTPException) as error:
+        await post_assignment(session, [TEAM_FREE])
+
+    assert error.value.status_code == 409
+    assert "orígenes" in error.value.detail
+    assert session.writes == []

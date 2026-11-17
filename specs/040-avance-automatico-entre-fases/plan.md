@@ -52,8 +52,9 @@ Todas bajo `/api/v1/tournaments/{tournament_id}/stages/{stage_id}/`, con RLS y `
 | Método y ruta | Respuesta |
 |---|---|
 | `GET slot-origins` | `200` plazas, orígenes, estado (`editable`, `frozen`, `resolved`) |
-| `GET slot-origins/template?slots_count=N` | `200` propuesta, sin escribir |
+| `GET slot-origins/template?source_stage_id=…&slots_count=N` | `200` propuesta, sin escribir; `422` fase de origen inválida o sin equipos suficientes |
 | `PUT slot-origins` | `200`; solo borrador; valida y regenera la llave con plazas `stage_rank` (`replace_existing` como hoy); `409` publicado, `422` origen inválido |
+| `DELETE slot-origins` | `204`; solo borrador; quita orígenes y llave para volver al avance manual (RF-011); `409` publicado |
 | `GET resolution/preview` | `200` por plaza: origen, equipo propuesto o motivo de bloqueo; `resolvable`, `fingerprint` |
 | `POST resolution` `{fingerprint}` | `201` llena todo; `409` huella obsoleta, ya resuelta o versión no publicada; `422` no resoluble |
 

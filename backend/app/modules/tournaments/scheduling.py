@@ -57,6 +57,7 @@ class BracketEntrant:
     team_id: UUID | None = None
     source_match_code: str | None = None
     source_outcome: str = "winner"
+    slot_seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -554,13 +555,65 @@ def build_single_elimination_bracket(
         raise ValueError("El intervalo entre partidos debe ser positivo")
 
     bracket_size = _next_power_of_two(len(team_ids))
-    round_count = bracket_size.bit_length() - 1
     shuffled_team_ids = list(team_ids)
     Random(seed).shuffle(shuffled_team_ids)
     entries: list[BracketEntrant | None] = [
         *(BracketEntrant(team_id=team_id) for team_id in shuffled_team_ids),
         *([None] * (bracket_size - len(shuffled_team_ids))),
     ]
+    return _single_elimination_from_entries(
+        entries,
+        seed=seed,
+        start_date=start_date,
+        round_interval_days=round_interval_days,
+        match_interval_hours=match_interval_hours,
+    )
+
+
+def _check_bracket_schedule(round_interval_days: int, match_interval_hours: int) -> None:
+    if round_interval_days < 1:
+        raise ValueError("El intervalo entre rondas debe ser de al menos un día")
+    if match_interval_hours < 1:
+        raise ValueError("El intervalo entre partidos debe ser positivo")
+
+
+def build_seeded_single_elimination_bracket(
+    slots_count: int,
+    *,
+    start_date: datetime,
+    round_interval_days: int,
+    match_interval_hours: int,
+) -> SingleEliminationBracket:
+    """Llave con plazas por cabeza de serie (1 contra N…), sin equipos ni barajado (spec 040)."""
+
+    from app.modules.stage_advancement.origins import MAX_SLOTS, MIN_SLOTS, seed_order
+
+    if not MIN_SLOTS <= slots_count <= MAX_SLOTS:
+        raise ValueError(f"La llave admite entre {MIN_SLOTS} y {MAX_SLOTS} plazas")
+    _check_bracket_schedule(round_interval_days, match_interval_hours)
+    entries = [
+        BracketEntrant(slot_seed=slot_seed) if slot_seed is not None else None
+        for slot_seed in seed_order(slots_count)
+    ]
+    return _single_elimination_from_entries(
+        entries,
+        seed=0,
+        start_date=start_date,
+        round_interval_days=round_interval_days,
+        match_interval_hours=match_interval_hours,
+    )
+
+
+def _single_elimination_from_entries(
+    entries: list[BracketEntrant | None],
+    *,
+    seed: int,
+    start_date: datetime,
+    round_interval_days: int,
+    match_interval_hours: int,
+) -> SingleEliminationBracket:
+    bracket_size = len(entries)
+    round_count = bracket_size.bit_length() - 1
     matches: list[GeneratedMatch] = []
     advancement_links: list[AdvancementLinkSpec] = []
 
@@ -631,7 +684,47 @@ def build_double_elimination_bracket(
 
     shuffled = list(team_ids)
     Random(seed).shuffle(shuffled)
-    round_count = len(shuffled).bit_length() - 1
+    return _double_elimination_from_entries(
+        [BracketEntrant(team_id=team_id) for team_id in shuffled],
+        seed=seed,
+        start_date=start_date,
+        round_interval_days=round_interval_days,
+        match_interval_hours=match_interval_hours,
+    )
+
+
+def build_seeded_double_elimination_bracket(
+    slots_count: int,
+    *,
+    start_date: datetime,
+    round_interval_days: int,
+    match_interval_hours: int,
+) -> SingleEliminationBracket:
+    """Doble eliminación con plazas por cabeza de serie solo en el cuadro de ganadores (CL-5)."""
+
+    from app.modules.stage_advancement.origins import MAX_SLOTS, seed_order
+
+    if slots_count < 4 or slots_count > MAX_SLOTS or slots_count & (slots_count - 1):
+        raise ValueError("La doble eliminación necesita una cantidad de plazas potencia de dos")
+    _check_bracket_schedule(round_interval_days, match_interval_hours)
+    return _double_elimination_from_entries(
+        [BracketEntrant(slot_seed=slot_seed) for slot_seed in seed_order(slots_count)],
+        seed=0,
+        start_date=start_date,
+        round_interval_days=round_interval_days,
+        match_interval_hours=match_interval_hours,
+    )
+
+
+def _double_elimination_from_entries(
+    initial_entries: list[BracketEntrant],
+    *,
+    seed: int,
+    start_date: datetime,
+    round_interval_days: int,
+    match_interval_hours: int,
+) -> SingleEliminationBracket:
+    round_count = len(initial_entries).bit_length() - 1
     matches: list[GeneratedMatch] = []
     advancement_links: list[AdvancementLinkSpec] = []
 
@@ -662,7 +755,7 @@ def build_double_elimination_bracket(
         return match
 
     winners_rounds: list[list[GeneratedMatch]] = []
-    entries: list[BracketEntrant] = [BracketEntrant(team_id=team_id) for team_id in shuffled]
+    entries: list[BracketEntrant] = list(initial_entries)
     for round_number in range(1, round_count + 1):
         current_round: list[GeneratedMatch] = []
         for match_number in range(0, len(entries), 2):
@@ -733,7 +826,7 @@ def build_double_elimination_bracket(
     reset_round = grand_final_round + 1
     return SingleEliminationBracket(
         seed=seed,
-        bracket_size=len(team_ids),
+        bracket_size=len(initial_entries),
         round_count=reset_round,
         matches=tuple(matches),
         advancement_links=tuple(advancement_links),

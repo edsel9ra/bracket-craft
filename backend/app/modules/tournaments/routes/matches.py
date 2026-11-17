@@ -10,6 +10,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.stage_advancement.service import (
+    ELIMINATION_STAGE_TYPES,
+    SLOT_ORIGINS_CONFLICT,
+    stage_has_slot_origins,
+)
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version
 from app.core.tenancy import AuthContext, get_auth_context
@@ -636,6 +641,7 @@ async def _persist_bracket_schedule(
     version_id: UUID,
     stage_id: UUID,
     bracket,
+    slot_origins=None,
 ) -> int:
     match_ids = {match.code: uuid4() for match in bracket.matches}
     slot_ids: dict[tuple[str, str], UUID] = {}
@@ -647,6 +653,12 @@ async def _persist_bracket_schedule(
                 if entrant.team_id is not None:
                     source_type = "direct_team"
                     source_reference = {"team_id": str(entrant.team_id)}
+                elif entrant.slot_seed is not None:
+                    source_type = "stage_rank"
+                    source_reference = {
+                        **slot_origins[entrant.slot_seed - 1].to_reference(),
+                        "seed": entrant.slot_seed,
+                    }
                 else:
                     if entrant.source_match_code is None:
                         raise ValueError(f"El slot {match.code}_{side.upper()} no tiene origen")
@@ -1384,6 +1396,10 @@ async def draw_stage_schedule(
                 raise HTTPException(status_code=404, detail="Fase no encontrada en la versión indicada")
             if locked_status != "draft":
                 raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
+            if stage_type in ELIMINATION_STAGE_TYPES and not payload.replace_existing and await stage_has_slot_origins(
+                db, context.organization_id, payload.stage_id
+            ):
+                raise HTTPException(status_code=409, detail=SLOT_ORIGINS_CONFLICT)
         team_rows = await _load_registered_stage_teams(
             db,
             context.organization_id,
