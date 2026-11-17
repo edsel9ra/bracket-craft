@@ -11,6 +11,7 @@ const props = defineProps<{
   teams: TeamSummary[]; selectedVersionRosterLimits: RosterLimits;
   rosterCountsByTeam: Record<string, number>; rosterLockActive: boolean;
   canManageTournaments: boolean; activeVersion?: VersionSummary; saving: boolean; wizardResetToken: number;
+  stageIdsWithMatches?: ReadonlySet<string>;
 }>();
 const emit = defineEmits<{ saved: []; confirmed: []; reload: []; 'dirty-change': [value: boolean] }>();
 const refreshConfiguration = () => emit('reload');
@@ -43,6 +44,7 @@ const eliminationStages = computed(() => props.selectedVersionStages.filter((sta
               :tournament-id="tournamentId"
               :stage="stage"
               :can-manage="canManageTournaments"
+              :has-matches="stageIdsWithMatches?.has(stage.id) ?? false"
               @saved="refreshConfiguration"
             />
 <StageResolutionPanel

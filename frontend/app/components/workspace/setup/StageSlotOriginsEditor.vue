@@ -6,7 +6,7 @@ import {
 } from '~/utils/stageAdvancement';
 import type { StageSummary } from './types';
 
-const props = defineProps<{ tournamentId: string; stage: StageSummary; canManage: boolean }>();
+const props = defineProps<{ tournamentId: string; stage: StageSummary; canManage: boolean; hasMatches?: boolean }>();
 const emit = defineEmits<{ saved: [] }>();
 
 const { t, errorMessage } = useI18n();
@@ -113,7 +113,7 @@ async function save() {
     error.value = t('setup.scheduleStartRequired');
     return;
   }
-  const replaceExisting = Boolean(state.value?.origins.length);
+  const replaceExisting = Boolean(state.value?.origins.length) || props.hasMatches;
   if (replaceExisting && !(await confirm({
     title: t('stageAdvancement.confirmReplace.title'), message: t('stageAdvancement.confirmReplace.message'),
     confirmLabel: t('stageAdvancement.confirmReplace.action'), tone: 'danger',

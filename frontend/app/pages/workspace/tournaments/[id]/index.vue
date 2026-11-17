@@ -15,7 +15,7 @@ await redirectLegacyTournamentHash();
 const {
   auth, tournamentId, t, statusLabel, tournamentName, tournamentLabel, loading, loadError, error, saving,
   versions, selectedVersionId, draftVersion, activeVersion, canManageTournaments, canPublish, configurationReadOnly,
-  rulesEditable, declaredGameFormat, setupChecks, rulesConfig, serverRulesConfig, selectedVersionStages,
+  rulesEditable, declaredGameFormat, setupChecks, rulesConfig, serverRulesConfig, selectedVersionStages, stageIdsWithMatches,
   rulesServerDetail, rulesError, rulesMinutesNotice, wizardResetToken, wizardDirty, rulesTitle, teamsTitle,
   teams, selectedVersionRosterLimits, rosterCountsByTeam, rosterLockActive,
   onVersionChange, publishVersion, createDraftVersion, retryConfiguration, useDefaultRules,
@@ -89,6 +89,7 @@ loading.value = false;
             />
             <SetupStages
               :tournament-id="tournamentId" :selected-version-id="selectedVersionId" :selected-version-stages="selectedVersionStages"
+              :stage-ids-with-matches="stageIdsWithMatches"
               :teams="teams" :selected-version-roster-limits="selectedVersionRosterLimits" :roster-counts-by-team="rosterCountsByTeam"
               :roster-lock-active="rosterLockActive" :can-manage-tournaments="canManageTournaments" :active-version="activeVersion"
               :saving="saving" :wizard-reset-token="wizardResetToken"

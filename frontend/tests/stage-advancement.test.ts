@@ -135,6 +135,14 @@ test('040 RF-001b: la plantilla rellena el borrador local y no se guarda sin acc
   assert.match(EDITOR, /role="alert"/);
 });
 
+test('040 RF-011: una llave con partidos y sin orígenes pide confirmar el reemplazo antes de guardar', () => {
+  assert.match(EDITOR, /const replaceExisting = Boolean\(state\.value\?\.origins\.length\) \|\| props\.hasMatches;/);
+  assert.match(EDITOR, /replace_existing: replaceExisting/);
+  assert.match(read('../app/components/workspace/setup/SetupStages.vue'), /:has-matches="stageIdsWithMatches\?\.has\(stage\.id\) \?\? false"/);
+  assert.match(read('../app/composables/useTournamentSetup.ts'), /stageIdsWithMatches = computed\(\(\) => new Set\(matches\.value\.map\(\(match\) => match\.stage_id\)\)\)/);
+  assert.match(read('../app/pages/workspace/tournaments/[id]/index.vue'), /:stage-ids-with-matches="stageIdsWithMatches"/);
+});
+
 test('040 RF-003: el editor solo es editable en borrador y aparece para cada eliminatoria', () => {
   assert.match(EDITOR, /status === 'editable'/);
   assert.match(STAGES, /StageSlotOriginsEditor/);
