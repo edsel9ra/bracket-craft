@@ -30,8 +30,9 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
 
 ## Bloque B
 
-- [ ] **T7. Editor de orígenes en el borrador.** RF-001, RF-001b, RF-002, RNF-004
+- [x] **T7. Editor de orígenes en el borrador.** RF-001, RF-001b, RF-002, RNF-004
 - Hecho cuando: `cd frontend && pnpm test -- stage-advancement` en rojo y luego verde (modelo puro, etiquetas ES/EN, aceptar/editar la plantilla, errores por plaza del 422, sin guardar sin acción del gestor); `pnpm run typecheck` y `pnpm run lint` en verde.
+- Evidencia: `tests/stage-advancement.test.ts` falló al principio (no existían `utils/stageAdvancement.ts`, `useStageAdvancement` ni `StageSlotOriginsEditor.vue`) y ahora pasa 8/8; la suite frontend pasa entera (1133 tests, 0 fallos), con `pnpm run typecheck` y `pnpm run lint` en verde. El editor aparece en `SetupStages.vue` para cada fase eliminatoria; la plantilla clásica solo rellena el borrador local y nada se guarda sin pulsar «Guardar orígenes» (con `useConfirm` y `singleFlight` al regenerar o quitar). Los errores 422 `invalid_slot_origins` se muestran en su plaza con `aria-describedby`; en una versión publicada o resuelta los orígenes se listan en solo lectura.
 
 - [ ] **T8. Panel de resolución en lo publicado.** RF-004–RF-008, RNF-004
 - Hecho cuando: `cd frontend && pnpm test -- stage-advancement` verde con los casos del panel (vista previa por plaza, motivos de bloqueo, confirmación con `useConfirm` y `singleFlight`, 409 que pide una nueva vista previa); `pnpm run typecheck` y `pnpm run lint` en verde.
