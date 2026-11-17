@@ -2,12 +2,12 @@
 
 Barrido de comportamiento **puro** (sin base de datos, sin red, sin reloj; plan
 §4 y §7): recorre ``app.main.api``, deriva las operaciones con cuerpo JSON y las
-compara con el inventario literal de **49** operaciones (**43** modelos de
-primer nivel, con **17** anidados), excluyendo las **3** operaciones multipart.
+compara con el inventario literal de **50** operaciones (**44** modelos de
+primer nivel, con **18** anidados), excluyendo las **3** operaciones multipart.
 
 T4 convierte el barrido en la garantía completa: ``STRICT_MODELS`` deja de ser
 una lista escrita a mano y pasa a ser el **conjunto derivado** de los modelos
-alcanzables desde el barrido, recursivamente (**60**), y ese mismo conjunto es
+alcanzables desde el barrido, recursivamente (**62**), y ese mismo conjunto es
 el que se prueba —biyección con el inventario literal en ambos sentidos,
 bandera ``extra="forbid"`` y rechazo ``extra_forbidden`` con el valor
 conservado solo dentro del error de Pydantic—. Tres salvaguardas fallan con
@@ -51,6 +51,7 @@ from app.modules.identity.schemas import (
     RegisterRequest,
     ResetPasswordRequest,
 )
+from app.modules.stage_advancement.schemas import ResolutionConfirmRequest, SlotOriginIn, SlotOriginsUpdateRequest
 from app.modules.invitations.schemas import (
     AcceptInvitationRequest,
     CreateInvitationRequest,
@@ -265,6 +266,16 @@ EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
     ("POST", "/api/v1/sanction-cases/{case_id}/decision", "sanction_appeals.schemas.DecisionRequest"),
     ("POST", "/api/v1/sanction-cases/{case_id}/platform-authorizations", "sanction_appeals.schemas.AuthorizationRequest"),
     ("POST", "/api/v1/platform/sanction-cases/{case_id}/decision", "sanction_appeals.schemas.DecisionRequest"),
+    (
+        "PUT",
+        "/api/v1/tournaments/{tournament_id}/stages/{stage_id}/slot-origins",
+        "stage_advancement.schemas.SlotOriginsUpdateRequest",
+    ),
+    (
+        "POST",
+        "/api/v1/tournaments/{tournament_id}/stages/{stage_id}/resolution",
+        "stage_advancement.schemas.ResolutionConfirmRequest",
+    ),
 ]
 
 # Las tres operaciones multipart quedan fuera de alcance (RF-003, RF-006,
@@ -294,10 +305,11 @@ EXPECTED_NESTED_MODELS: set[str] = {
     "rules_engine.schemas.TournamentRulesConfig",
     "tournaments.schemas.BulkTournamentTeamItem",
     "sanction_appeals.schemas.PrejudiceRequest",
+    "stage_advancement.schemas.SlotOriginIn",
 }
 
-# Ancla literal de las 60 referencias alcanzables desde el inventario: las 43
-# de primer nivel (las de EXPECTED_OPERATIONS) más las 17 anidadas. Contra este
+# Ancla literal de las 62 referencias alcanzables desde el inventario: las 44
+# de primer nivel (las de EXPECTED_OPERATIONS) más las 18 anidadas. Contra este
 # conjunto se contrasta, en ambos sentidos, el conjunto **derivado** del barrido
 # (T4): la lista de modelos que se prueba no se escribe a mano.
 EXPECTED_MODEL_REFS: set[str] = (
@@ -338,6 +350,19 @@ MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
     ForgotPasswordRequest: {"email": "nadia@example.com"},
     ResetPasswordRequest: {"token": "t" * 43, "new_password": "secret-pass-2"},
     ChangePasswordRequest: {"current_password": "secret-pass", "new_password": "secret-pass-2"},
+    SlotOriginIn: {
+        "kind": "group_position",
+        "source_stage_id": "00000000-0000-0000-0000-000000000001",
+        "position": 1,
+    },
+    ResolutionConfirmRequest: {"fingerprint": "0" * 64},
+    SlotOriginsUpdateRequest: {
+        "origins": [
+            {"kind": "group_position", "source_stage_id": "00000000-0000-0000-0000-000000000001", "position": 1},
+            {"kind": "group_position", "source_stage_id": "00000000-0000-0000-0000-000000000001", "position": 2},
+        ],
+        "start_date": "2026-12-01T10:00:00Z",
+    },
     CreateInvitationRequest: {
         "email": "nadia@example.com",
         "role_code": "viewer",
@@ -674,7 +699,7 @@ def derive_strict_models() -> tuple[list[type[BaseModel]], set[type[BaseModel]]]
     return sorted(served, key=model_ref), top_level
 
 
-# Los 43 modelos que se prueban: **derivados del barrido**, no escritos a mano,
+# Los 44 modelos que se prueban: **derivados del barrido**, no escritos a mano,
 # de modo que una operación o un modelo nuevo entra solo en el conjunto probado
 # (biyección con EXPECTED_MODEL_REFS más abajo) y una desviación futura se
 # detecta aquí. `TOP_LEVEL_MODELS` solo distingue el rol para los mensajes.
@@ -687,8 +712,8 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 
 
 def test_inventory_has_46_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 49
-    assert len(set(EXPECTED_OPERATIONS)) == 49
+    assert len(EXPECTED_OPERATIONS) == 51
+    assert len(set(EXPECTED_OPERATIONS)) == 51
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -702,23 +727,23 @@ def test_json_operations_match_the_literal_inventory():
     extra = sorted((actual - expected).elements())
     assert not missing and not extra, (
         "El barrido de app.main.api no coincide con el inventario literal de "
-        f"49 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
+        f"50 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 49
+    assert len(derived) == 51
 
 
 def test_inventory_declares_40_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 43
+    assert len(refs) == 45
 
 
 def test_app_yields_40_top_level_and_17_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 43, sorted(model_ref(m) for m in top_level)
-    assert len(nested) == 17, sorted(model_ref(m) for m in nested)
+    assert len(top_level) == 45, sorted(model_ref(m) for m in top_level)
+    assert len(nested) == 18, sorted(model_ref(m) for m in nested)
 
 
 def test_nested_models_match_the_literal_inventory():
@@ -774,7 +799,7 @@ def test_json_operation_without_pydantic_model_fails_with_explicit_message():
 
 
 # ---------------------------------------------------------------------------
-# (b) Conjunto derivado de los 49 modelos: biyección, bandera y rechazo
+# (b) Conjunto derivado de los 62 modelos: biyección, bandera y rechazo
 # ---------------------------------------------------------------------------
 
 
@@ -782,7 +807,7 @@ def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
     """T4: lo que se prueba es exactamente lo que sirve la app, y viceversa.
 
     El conjunto sale **del barrido** (no de una lista escrita a mano) y se
-    contrasta con las 49 referencias literales en ambos sentidos: un modelo o
+    contrasta con las 62 referencias literales en ambos sentidos: un modelo o
     una operación que aparezca sin entrada literal, o una entrada sin operación,
     falla aquí con mensaje explícito (RF-002, RF-005, RNF-001).
     """
@@ -792,11 +817,11 @@ def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
     missing = sorted(EXPECTED_MODEL_REFS - derived_refs)
     extra = sorted(derived_refs - EXPECTED_MODEL_REFS)
     assert not missing and not extra, (
-        "El conjunto derivado del barrido no coincide con las 60 referencias "
+        "El conjunto derivado del barrido no coincide con las 62 referencias "
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 60, f"el barrido deriva {len(derived)} modelos, no 60"
+    assert len(derived) == 63, f"el barrido deriva {len(derived)} modelos, no 63"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."
@@ -851,7 +876,7 @@ def test_strict_model_forbids_extra(model):
 
 @pytest.mark.parametrize("model", STRICT_MODELS, ids=lambda m: m.__name__)
 def test_strict_model_rejects_extra_key(model):
-    """T4: rechazo parametrizado en los 43 modelos derivados del barrido.
+    """T4: rechazo parametrizado en los 44 modelos derivados del barrido.
 
     ``model_validate(minimal_valid_body(model) | {"extra": 1})`` lanza
     ``ValidationError`` con ``type == "extra_forbidden"`` y ``loc`` apuntando a

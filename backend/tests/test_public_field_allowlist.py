@@ -9,6 +9,7 @@ from app.modules.tournaments.schemas import (
     PublicPlayerProfileTotalsResponse,
     PublicPlayerProfileTournamentResponse,
     PublicPlayerStatsResponse,
+    PublicSlotOriginResponse,
     PublicStageResponse,
     PublicStandingResponse,
     PublicTeamLineupResponse,
@@ -47,7 +48,10 @@ EXPECTED_FIELDS = {
         "home_score_regular", "away_score_regular", "home_score", "away_score",
         "home_penalties", "away_penalties", "winner_team_id", "status",
         "resolution_type", "lineup", "rectified_at",
+        # Spec 040 §8: cambio no aditivo declarado; nulos en plazas resueltas.
+        "home_origin", "away_origin",
     },
+    "PublicSlotOriginResponse": {"kind", "group_name", "position", "ordinal"},
     "PublicPlayerStatsResponse": {
         "rank", "player_id", "first_name", "last_name", "team_name", "team_id",
         "goals", "yellow_cards", "red_cards", "clean_sheets", "matches_played",
@@ -87,6 +91,7 @@ MODELS = {
     "PublicTeamLineupResponse": PublicTeamLineupResponse,
     "PublicMatchLineupResponse": PublicMatchLineupResponse,
     "PublicMatchResponse": PublicMatchResponse,
+    "PublicSlotOriginResponse": PublicSlotOriginResponse,
     "PublicPlayerStatsResponse": PublicPlayerStatsResponse,
     "PublicTeamStatsResponse": PublicTeamStatsResponse,
     "PublicTimelinePlayerResponse": PublicTimelinePlayerResponse,

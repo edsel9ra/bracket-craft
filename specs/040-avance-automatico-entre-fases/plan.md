@@ -21,7 +21,7 @@ Estado: aprobado por el usuario el 2026-11-16 («Apruebo plan y tareas»).
 ### Backend
 - `modules/stage_advancement/` (nuevo): `origins.py` (funciones puras), `service.py` (declarar, previsualizar, confirmar), `schemas.py` (`extra="forbid"`, `hide_input_in_errors=True`), `router.py`.
 - `tournaments/scheduling.py`: `build_seeded_single_elimination_bracket` y `build_seeded_double_elimination_bracket`, que reciben plazas ordenadas por cabeza de serie en lugar de barajar. Las funciones actuales no cambian.
-- `tournaments/routes/versions.py`: el clonado reasigna en `source_reference` los IDs de fase y grupo de las plazas `stage_rank` (CL-6).
+- `tournaments/routes/versions.py`: el clonado reasigna en `source_reference` los IDs de fase y grupo de las plazas `stage_rank` (CL-6) y deja esas plazas sin resolver: no copia los equipos de la fase destino ni los de los partidos con plazas `stage_rank`, porque la resolución pertenece a la versión de la que se confirmó y la nueva confirma la suya.
 - `tournaments/routes/stages.py`: `POST/DELETE .../teams` y el sorteo responden 409 en una llave con orígenes (RF-011).
 - `tournaments/routes/public.py`: `home_origin`/`away_origin` nulos salvo en plazas sin resolver.
 - `main.py`: registro del router.
@@ -52,10 +52,11 @@ Todas bajo `/api/v1/tournaments/{tournament_id}/stages/{stage_id}/`, con RLS y `
 | Método y ruta | Respuesta |
 |---|---|
 | `GET slot-origins` | `200` plazas, orígenes, estado (`editable`, `frozen`, `resolved`) |
-| `GET slot-origins/template?slots_count=N` | `200` propuesta, sin escribir |
+| `GET slot-origins/template?source_stage_id=…&slots_count=N` | `200` propuesta, sin escribir; `422` fase de origen inválida o sin equipos suficientes |
 | `PUT slot-origins` | `200`; solo borrador; valida y regenera la llave con plazas `stage_rank` (`replace_existing` como hoy); `409` publicado, `422` origen inválido |
-| `GET resolution/preview` | `200` por plaza: origen, equipo propuesto o motivo de bloqueo; `resolvable`, `fingerprint` |
-| `POST resolution` `{fingerprint}` | `201` llena todo; `409` huella obsoleta, ya resuelta o versión no publicada; `422` no resoluble |
+| `DELETE slot-origins` | `204`; solo borrador; quita orígenes y llave para volver al avance manual (RF-011); `409` publicado |
+| `GET resolution/preview` | `200` por plaza: origen, equipo propuesto o motivo de bloqueo (un equipo retirado o descalificado se muestra con `team_ineligible`); `resolvable`, `fingerprint`, estado de cada fase de origen. Transacción `READ ONLY`; `422 no_slot_origins` sin orígenes o destino no eliminatorio; `409 already_resolved` |
+| `POST resolution` `{fingerprint}` | `201` llena todo y devuelve la resolución; `409` `stale_fingerprint`, `already_resolved` o `version_not_published`; `422` `not_resolvable` con el motivo de cada plaza bloqueada; `404` fase o torneo de otra organización |
 
 Confirmación: bloqueo fase → versión (`lock_stage_and_version`) → partidos de la llave; recalcula la vista previa, compara la huella, inserta la resolución (la `UNIQUE` corta la carrera), fija `app.stage_slot_resolution_id`, inserta `stage_teams`, llena `home_team_id`/`away_team_id` de las plazas (también las de segunda ronda tras pase libre), registra `match_slot_assignments` con `origin='stage_rank'`, audita en `administrative_audit_logs` (`STAGE_SLOTS_RESOLVED`, solo IDs) y encola `MATCH_UPDATED` por partido.
 

@@ -432,6 +432,7 @@ async def public_matches(
         )
         matches = [dict(row) for row in result.mappings().all()]
         lineup_rows: list[dict] = []
+        origin_rows: list[dict] = []
         if matches:
             match_ids = [
                 str(match["id"])
@@ -453,6 +454,17 @@ async def public_matches(
                     {"tournament_id": str(tournament_id), "match_ids": match_ids},
                 )
                 lineup_rows = [dict(row) for row in lineup_result.mappings().all()]
+                # Spec 040 §8: etiqueta de origen solo en plazas de la llave sin resolver.
+                origin_result = await db.execute(
+                    text("""
+                        SELECT match_id, side, origin_kind, group_name, position, ordinal
+                        FROM v_public_match_slot_origins
+                        WHERE tournament_id = :tournament_id
+                          AND match_id = ANY(CAST(:match_ids AS UUID[]))
+                    """),
+                    {"tournament_id": str(tournament_id), "match_ids": match_ids},
+                )
+                origin_rows = [dict(row) for row in origin_result.mappings().all()]
 
     if not matches:
         return []
@@ -489,9 +501,20 @@ async def public_matches(
         bucket = "starters" if row["role"] == "starter" else "substitutes"
         team_lineup[bucket].append(player)  # type: ignore[union-attr]
 
+    origins = {
+        (str(row["match_id"]), row["side"]): {
+            "kind": row["origin_kind"],
+            "group_name": row["group_name"],
+            "position": row["position"],
+            "ordinal": row["ordinal"],
+        }
+        for row in origin_rows
+    }
     for match in matches:
         if match["status"] == "suspended":
             continue
+        match["home_origin"] = origins.get((str(match["id"]), "home"))
+        match["away_origin"] = origins.get((str(match["id"]), "away"))
         match_lineups = lineups_by_match.get(str(match["id"]))
         if match_lineups:
             match["lineup"] = {

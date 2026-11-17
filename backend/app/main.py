@@ -66,6 +66,7 @@ from app.modules.rectifications.router import router as rectifications_router
 from app.modules.sanction_appeals.router import router as sanction_appeals_router
 from app.modules.rectifications.service import RectificationConflict, RectificationSelfApproval
 from app.modules.tournaments.roster_status import RosterSizeOutOfRange
+from app.modules.stage_advancement.router import router as stage_advancement_router
 from app.modules.tournaments.router import router as tournaments_router
 
 
@@ -1057,6 +1058,7 @@ api.include_router(invitations_router, prefix="/api/v1")
 api.include_router(organizations_router, prefix="/api/v1")
 api.include_router(platform_router, prefix="/api/v1")
 api.include_router(tournaments_router, prefix="/api/v1")
+api.include_router(stage_advancement_router, prefix="/api/v1")
 api.include_router(matches_router, prefix="/api/v1")
 api.include_router(match_live_router, prefix="/api/v1")
 api.include_router(rectifications_router, prefix="/api/v1")

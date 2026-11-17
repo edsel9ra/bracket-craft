@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.stage_advancement.service import SLOT_ORIGINS_CONFLICT, stage_has_slot_origins
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version, lock_version
 from app.core.tenancy import AuthContext, get_auth_context
@@ -329,6 +330,8 @@ async def assign_stage_teams(
             raise HTTPException(
                 status_code=409, detail="La versión publicada es inmutable"
             )
+        if await stage_has_slot_origins(db, context.organization_id, stage_id):
+            raise HTTPException(status_code=409, detail=SLOT_ORIGINS_CONFLICT)
 
         team_ids = [str(team_id) for team_id in payload.team_ids]
         registered_result = await db.execute(

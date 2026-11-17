@@ -412,6 +412,17 @@ class PublicMatchLineupResponse(BaseModel):
     away: PublicTeamLineupResponse | None = None
 
 
+class PublicSlotOriginResponse(BaseModel):
+    """Etiqueta pública de una plaza de la llave aún sin resolver (spec 040 §8)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["group_position", "best_of_position"]
+    group_name: str | None = None
+    position: int
+    ordinal: int | None = None
+
+
 class PublicMatchResponse(BaseModel):
     id: UUID
     tournament_id: UUID
@@ -442,6 +453,8 @@ class PublicMatchResponse(BaseModel):
     resolution_type: str | None = None
     lineup: PublicMatchLineupResponse | None = None
     rectified_at: datetime | None = None
+    home_origin: PublicSlotOriginResponse | None = None
+    away_origin: PublicSlotOriginResponse | None = None
 
 
 class PublicPlayerStatsResponse(BaseModel):

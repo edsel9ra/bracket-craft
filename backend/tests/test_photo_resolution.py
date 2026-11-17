@@ -452,6 +452,8 @@ class FakeSession:
             return FakeResult([1] if self.tournament_exists else [])
         if "v_public_match_lineups" in sql:
             return FakeResult(self.lineups)
+        if "v_public_match_slot_origins" in sql:
+            return FakeResult([])
         if "v_public_matches" in sql:
             return FakeResult(self.matches)
         raise AssertionError(f"consulta inesperada: {sql}")
@@ -534,7 +536,7 @@ async def test_public_matches_signs_after_the_read_transaction_closes(monkeypatc
     response = await get_public_matches(session)
 
     assert response.status_code == 200
-    assert session.query_transaction_states == [True, True, True]
+    assert session.query_transaction_states == [True, True, True, True]
     assert storage.transaction_states == [False]
     assert session.in_transaction() is False
 
@@ -552,6 +554,8 @@ async def test_public_matches_keeps_the_reference_payload(monkeypatch):
             **{key: _json(value) for key, value in match_row().items()},
             "home_team_crest_url": None,
             "away_team_crest_url": None,
+            "home_origin": None,
+            "away_origin": None,
             "lineup": {
                 "home": {
                     "team_id": str(HOME_TEAM_ID),

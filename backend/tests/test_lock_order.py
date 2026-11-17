@@ -196,6 +196,9 @@ class RecordingSession:
                     }
                 ]
             )
+        # stage_has_slot_origins (spec 040): la fase no declara orígenes.
+        if "FROM phase_slots" in sql and "source_type = 'stage_rank'" in sql:
+            return Result(scalar=False)
         if self.stop_on is not None and self.stop_on in sql:
             raise StopExecution(sql)
         if "FROM stage_teams st" in sql:

@@ -270,9 +270,23 @@ async def _create_draft_version_record(
         },
     )
     slot_map: dict[str, UUID] = {}
+    # Spec 040: los orígenes apuntan a fases y grupos de la versión nueva y sus
+    # plazas quedan sin resolver; la nueva versión confirma su propia resolución.
+    stage_rank_slots: set[str] = set()
+    stage_rank_stages: set[str] = set()
     for slot in slot_result.mappings().all():
         new_slot_id = uuid4()
         slot_map[str(slot["id"])] = new_slot_id
+        source_reference = slot["source_reference"]
+        if slot["source_type"] == "stage_rank":
+            stage_rank_slots.add(str(slot["id"]))
+            stage_rank_stages.add(str(slot["stage_id"]))
+            source_reference = {
+                **source_reference,
+                "source_stage_id": str(stage_map[source_reference["source_stage_id"]]),
+            }
+            if source_reference.get("group_id"):
+                source_reference["group_id"] = str(group_map[source_reference["group_id"]])
         await db.execute(
             text("""
                 INSERT INTO phase_slots
@@ -289,7 +303,7 @@ async def _create_draft_version_record(
                 "stage_id": str(stage_map[str(slot["stage_id"])]),
                 "slot_code": slot["slot_code"],
                 "source_type": slot["source_type"],
-                "source_reference": json.dumps(slot["source_reference"]),
+                "source_reference": json.dumps(source_reference),
             },
         )
 
@@ -308,6 +322,8 @@ async def _create_draft_version_record(
         },
     )
     for stage_team in stage_team_result.mappings().all():
+        if str(stage_team["stage_id"]) in stage_rank_stages:
+            continue
         await db.execute(
             text("""
                 INSERT INTO stage_teams
@@ -343,6 +359,10 @@ async def _create_draft_version_record(
     source_matches = match_result.mappings().all()
     match_map: dict[str, UUID] = {str(row["id"]): uuid4() for row in source_matches}
     for match in source_matches:
+        # Toda la llave de una fase stage_rank queda vacía: también los equipos ya avanzados.
+        unresolved = str(match["stage_id"]) in stage_rank_stages
+        home_team_id = None if unresolved or str(match["home_slot_id"]) in stage_rank_slots else match["home_team_id"]
+        away_team_id = None if unresolved or str(match["away_slot_id"]) in stage_rank_slots else match["away_team_id"]
         await db.execute(
             text("""
                 INSERT INTO matches
@@ -365,8 +385,8 @@ async def _create_draft_version_record(
                 "bracket_code": match["bracket_code"],
                 "home_slot_id": str(slot_map[str(match["home_slot_id"])]) if match["home_slot_id"] else None,
                 "away_slot_id": str(slot_map[str(match["away_slot_id"])]) if match["away_slot_id"] else None,
-                "home_team_id": str(match["home_team_id"]) if match["home_team_id"] else None,
-                "away_team_id": str(match["away_team_id"]) if match["away_team_id"] else None,
+                "home_team_id": str(home_team_id) if home_team_id else None,
+                "away_team_id": str(away_team_id) if away_team_id else None,
                 "match_date": match["match_date"],
             },
         )
