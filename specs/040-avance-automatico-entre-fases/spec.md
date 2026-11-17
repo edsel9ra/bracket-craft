@@ -1,6 +1,6 @@
 # Spec 040 — Avance automático entre fases (F2)
 
-Estado: aprobada por el usuario (2026-11-16, «Apruebo la spec 040»). DA-1–DA-4 resueltas. Implementada (T1–T11, #103–#105); pendiente de aceptación del usuario.
+Estado: aprobada por el usuario (2026-11-16, «Apruebo la spec 040»). DA-1–DA-4 resueltas. Implementada y aceptada (2026-11-17, T1–T11, #103–#105); spec cerrada.
 
 ## Decisiones del usuario (2026-11-16)
 
