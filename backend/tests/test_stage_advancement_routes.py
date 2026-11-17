@@ -286,7 +286,30 @@ async def test_origins_block_manual_assignment_and_random_draw(stack):
     )
     assert draw.status_code == 409
     assert "orígenes" in draw.json()["detail"]
+    created = await client.post(
+        f"/api/v1/tournaments/{TOURNAMENT}/teams",
+        json={"name": "Equipo nuevo", "short_code": "NEW01", "stage_id": KO_STAGE},
+    )
+    assert created.status_code == 409
+    assert "orígenes" in created.json()["detail"]
+    bulk = await client.post(
+        f"/api/v1/tournaments/{TOURNAMENT}/teams/bulk",
+        json={"teams": [{"name": "Equipo masivo", "short_code": "NEW02"}], "stage_id": KO_STAGE},
+    )
+    assert bulk.status_code == 409
+    assert "orígenes" in bulk.json()["detail"]
+    assert await admin.fetchval("SELECT count(*) FROM teams WHERE short_code LIKE 'NEW%'") == 0
     assert await admin.fetchval("SELECT count(*) FROM stage_teams WHERE stage_id = $1", KO_STAGE) == 0
+
+
+@pytest.mark.asyncio
+async def test_origins_delete_without_origins_keeps_a_manual_bracket(stack):
+    client, admin = stack
+    await admin.execute(
+        """INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id)
+           VALUES ($1, $2, $3, $4)""", UUID(ORG), UUID(TOURNAMENT), UUID(VERSION), UUID(KO_STAGE))
+    assert (await client.delete(url(KO_STAGE))).status_code == 204
+    assert await admin.fetchval("SELECT count(*) FROM matches WHERE stage_id = $1", KO_STAGE) == 1
 
 
 @pytest.mark.asyncio
@@ -671,6 +694,11 @@ async def test_clone_remaps_origin_references_and_leaves_slots_unresolved(stack)
     client, admin = stack
     fingerprint = await published_bracket(client, admin)
     assert (await client.post(RESOLUTION, json={"fingerprint": fingerprint})).status_code == 201
+    advanced = await admin.fetchval(
+        "SELECT home_team_id FROM matches WHERE stage_id = $1 AND home_team_id IS NOT NULL LIMIT 1", KO_STAGE)
+    await admin.execute(
+        "UPDATE matches SET home_team_id = $2 WHERE stage_id = $1 AND home_team_id IS NULL AND away_team_id IS NULL",
+        KO_STAGE, advanced)
     await publish_tournament(admin)
     response = await client.post(f"/api/v1/tournaments/{TOURNAMENT}/versions")
     assert response.status_code == 201, response.text
