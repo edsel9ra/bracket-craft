@@ -61,3 +61,4 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
   - CL-8: `enqueue_password_reset_request` normaliza espacios y mayúsculas como el login (`test_062_request_does_not_resolve_the_account`).
 - CI (2026-11-16): 7/7 en #99, #100 y #101 (GitGuardian omitido en los PR de código, como en las specs anteriores).
 - No ejecutado: el flujo completo contra la pila real con SMTP real (el E2E usa un contrato ficticio y el worker se prueba con SMTP simulado) y un lector de pantalla real.
+  - Aceptación de la spec: aceptada por el usuario el 2026-11-16 («Acepto la spec 039»), tras fusionar #99 → #100 → #101 con su autorización.
