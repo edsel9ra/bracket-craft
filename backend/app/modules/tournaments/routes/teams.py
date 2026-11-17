@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.stage_advancement.service import SLOT_ORIGINS_CONFLICT, stage_has_slot_origins
 from app.modules.crests.resolver import (
     sign_crest_rows,
 )
@@ -156,6 +157,8 @@ async def create_tournament_team(
                 raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo") from exc
             if locked_status != "draft":
                 raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
+            if await stage_has_slot_origins(db, context.organization_id, payload.stage_id):
+                raise HTTPException(status_code=409, detail=SLOT_ORIGINS_CONFLICT)
         elif payload.group_id is not None:
             raise HTTPException(status_code=422, detail="group_id requiere stage_id")
 
@@ -319,6 +322,8 @@ async def create_tournament_teams_bulk(
                 raise HTTPException(status_code=404, detail="Fase no encontrada en el torneo") from exc
             if locked_status != "draft":
                 raise HTTPException(status_code=409, detail="La fase publicada es inmutable")
+            if await stage_has_slot_origins(db, context.organization_id, payload.stage_id):
+                raise HTTPException(status_code=409, detail=SLOT_ORIGINS_CONFLICT)
             if payload.group_id is not None:
                 group_result = await db.execute(
                     text("""
