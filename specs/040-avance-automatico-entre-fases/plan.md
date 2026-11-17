@@ -83,10 +83,26 @@ Confirmación: bloqueo fase → versión (`lock_stage_and_version`) → partidos
 
 ## 9. Verificación de constitución
 
-- RLS + `FORCE` + políticas en la 063; `set_rls_context()` en toda transacción; sin `BYPASSRLS` ni `SECURITY DEFINER`.
-- Lo publicado no se edita: la excepción solo inserta asignaciones derivadas de una regla publicada y una resolución append-only.
-- Actas corregidas solo por la 033; partidos posteriores no se modifican automáticamente.
-- Migración nueva y numerada; `useApi` en el frontend; tests en todas las tareas.
+| Principio o criterio | Aplica | Cómo se cumple |
+|---|---|---|
+| 2.1 Aislamiento por RLS | Sí | `stage_slot_resolutions` con RLS `ENABLE`+`FORCE` y política de tenant en la 063; `set_rls_context()` en cada transacción; 404 entre organizaciones en T5 |
+| 2.2 Sin `BYPASSRLS` | Sí | Trigger y vista `SECURITY INVOKER`; ninguna función `SECURITY DEFINER` ni privilegio especial para `bracket_app` |
+| 2.3 Lo publicado es inmutable | Sí | Orígenes y cruces se congelan al publicar con los triggers actuales; la excepción solo permite `INSERT` en `stage_teams` respaldado por una resolución append-only de esa fase, aplicando una regla publicada (§2, §5) |
+| 2.4 Migraciones append-only | Sí | Migración 063 nueva; CHECK descubierto por catálogo como la 019; ninguna migración aplicada se edita |
+| 2.5 Proyección pública mínima | Sí | Solo `home_origin`/`away_origin` con lista cerrada (`kind`, `group_name`, `position`, `ordinal`); sin documentos, fechas de nacimiento ni fotos; vista previa, huella y auditoría privadas (§8) |
+| 2.6 Sin secretos por defecto | No | Sin variables ni secretos nuevos |
+| 2.7 Administración global | No | Sin cambios en `/admin` |
+| 2.8 Verificación | Sí | Tests en rojo y luego verde en cada tarea (§6) y cinco jobs de CI |
+| 2.9 Código de desarrollo | No | Sin seeds ni rutas de desarrollo nuevas |
+| 3.1 Rectificaciones append-only | Sí | Las plazas `stage_rank` nunca se sustituyen; una rectificación posterior abre el impacto `later_phase` de la 038 (RF-010) |
+| 3.2 Efectos por worker | Sí | `MATCH_UPDATED` por outbox dentro de la transacción de confirmación; sin efectos síncronos |
+| 3.3 `useApi.ts` | Sí | `useStageAdvancement` |
+| 3.4 Seguridad | Sí | `MANAGE_TOURNAMENTS` para escribir; esquemas `extra="forbid"` y `hide_input_in_errors=True`; auditoría solo con IDs |
+| §4 BD | Sí | Volumen limpio 001→063 y salto 062→063 en `test_migration_063.py`; `sh -n infra/postgres/migrate.sh` |
+| §4 Backend | Sí | Router registrado en `main.py`; `pytest -q`, `python -m compileall -q app`, ruff y bandit |
+| §4 Frontend | Sí | `pnpm test`, `pnpm run typecheck`, `pnpm run build`, `pnpm run lint` |
+| §4 Infraestructura | No | Sin cambios de Compose; `docker compose config -q` sigue en CI |
+| §4 Documentación | Sí | README (runbook de la 063), AGENTS, manual, matriz de la 020 y MEMORY en T11 |
 
 ## 10. Notas de despliegue
 
