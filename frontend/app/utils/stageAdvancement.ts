@@ -121,7 +121,7 @@ export interface ResolutionPreview {
 
 export const PREVIEW_REASONS = [
   'invalid_source_stage', 'source_stage_unfinished', 'group_not_found', 'position_missing',
-  'unresolved_tie', 'team_ineligible', 'duplicate_team',
+  'unresolved_tie', 'unequal_groups', 'team_ineligible', 'duplicate_team',
 ] as const;
 
 export const RESOLUTION_ERROR_CODES = [

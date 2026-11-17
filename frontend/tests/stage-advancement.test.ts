@@ -166,6 +166,11 @@ test('040 RF-003: sin permiso de gestión el panel publicado muestra los orígen
   assert.match(PANEL, /originLabel\(origin, sources, t\)/);
 });
 
+test('040 RF-013: grupos que dejan de ser iguales explican el bloqueo de «mejores N.º»', () => {
+  assert.match(read('../app/utils/stageAdvancement.ts'), /PREVIEW_REASONS = \[[^\]]*'unequal_groups'/);
+  assert.equal(read('../app/composables/useI18n.ts').split("'stageAdvancement.reason.unequal_groups'").length - 1, 2);
+});
+
 test('040 RF-007/RF-008: el panel confirma con la huella de la vista previa y pide otra ante un 409', () => {
   assert.match(COMPOSABLE, /\/preview`/);
   assert.match(COMPOSABLE, /method: 'POST', body: \{ fingerprint \}/);
