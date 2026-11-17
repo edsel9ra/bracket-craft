@@ -33,6 +33,7 @@ from app.modules.stage_advancement.service import (
     origin_payload,
     require_elimination,
     slot_errors_exception,
+    stage_has_slot_origins,
     stage_is_resolved,
 )
 from app.modules.tournaments.access import _ensure_tournament, _require_tournament_management
@@ -206,7 +207,7 @@ async def delete_slot_origins(
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
         stage = await _lock_draft_destination(db, context, tournament_id, stage_id)
-        if await _has_matches(db, context.organization_id, stage_id):
+        if await stage_has_slot_origins(db, context.organization_id, stage_id):
             await _clear_stage_schedule(
                 db, context.organization_id, tournament_id, stage["tournament_version_id"], stage_id
             )
