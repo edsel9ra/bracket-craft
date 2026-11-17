@@ -160,6 +160,12 @@ test('040 RF-005/RF-006: motivos de bloqueo por plaza y errores de confirmación
   assert.equal(needsNewPreview('already_resolved'), false);
 });
 
+test('040 RF-003: sin permiso de gestión el panel publicado muestra los orígenes sin pedir la vista previa', () => {
+  assert.match(PANEL, /if \(hasOrigins\.value && !resolved\.value && props\.canManage\) await loadPreview\(\);/);
+  assert.match(PANEL, /<ul v-else-if="origins\.length" class="stage-resolution-origins">/);
+  assert.match(PANEL, /originLabel\(origin, sources, t\)/);
+});
+
 test('040 RF-007/RF-008: el panel confirma con la huella de la vista previa y pide otra ante un 409', () => {
   assert.match(COMPOSABLE, /\/preview`/);
   assert.match(COMPOSABLE, /method: 'POST', body: \{ fingerprint \}/);

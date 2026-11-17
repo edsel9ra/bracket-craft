@@ -2,7 +2,7 @@
 import Button from '~/components/ui/Button.vue';
 import {
   needsNewPreview, originLabel, previewReasonKey, resolutionErrorKey, stageAdvancementErrorCode,
-  type ResolutionPreview, type SourceStage,
+  type ResolutionPreview, type SlotOrigin, type SourceStage,
 } from '~/utils/stageAdvancement';
 import type { StageSummary } from './types';
 
@@ -17,6 +17,7 @@ const uid = useId();
 const preview = ref<ResolutionPreview | null>(null);
 const sources = ref<SourceStage[]>([]);
 const hasOrigins = ref(false);
+const origins = ref<SlotOrigin[]>([]);
 const resolved = ref(false);
 const loading = ref(true);
 const busy = ref(false);
@@ -43,9 +44,10 @@ async function reload() {
   try {
     const state = await api.load(props.tournamentId, props.stage.id);
     sources.value = state.source_stages;
+    origins.value = state.origins;
     hasOrigins.value = state.origins.length > 0;
     resolved.value = state.status === 'resolved';
-    if (hasOrigins.value && !resolved.value) await loadPreview();
+    if (hasOrigins.value && !resolved.value && props.canManage) await loadPreview();
   } catch (cause) {
     error.value = errorMessage(cause, t('stageAdvancement.noLoad'));
   } finally {
@@ -122,6 +124,9 @@ onMounted(reload);
         <Button variant="primary" type="button" :disabled="busy || !preview.resolvable" @click="confirmFill">{{ t('stageAdvancement.confirmFill') }}</Button>
       </div>
     </template>
+    <ul v-else-if="origins.length" class="stage-resolution-origins">
+      <li v-for="origin in origins" :key="origin.seed">{{ t('stageAdvancement.slot') }} {{ origin.seed }}: {{ originLabel(origin, sources, t) }}</li>
+    </ul>
     <p v-if="notice" class="muted-note" role="status">{{ notice }}</p>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
   </section>
