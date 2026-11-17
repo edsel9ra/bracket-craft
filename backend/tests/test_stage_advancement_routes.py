@@ -5,16 +5,19 @@ equipos en una fase de grupos (orden 1), una llave de eliminación simple
 (orden 2) y una de doble eliminación (orden 3), en una versión en borrador.
 """
 
+import json
 from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
+from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from db_helpers import application_database_url
 from migration_helpers import throwaway_database
 
@@ -31,6 +34,8 @@ GROUP_A = f"{PREFIX}0000000000a1"
 GROUP_B = f"{PREFIX}0000000000b1"
 TEAMS = [f"{PREFIX}0000000001{index:02d}" for index in range(8)]
 START = "2026-12-01T10:00:00Z"
+ENGINES: dict = {}
+RULES = json.dumps(DEFAULT_RULES_CONFIG)
 
 
 def seed_sql() -> str:
@@ -57,7 +62,7 @@ def seed_sql() -> str:
     VALUES ('{TOURNAMENT}', '{ORG}', 'Copa 040', '2026', DATE '2026-12-01', 'draft', '{{}}'::jsonb);
     INSERT INTO tournament_versions (id, organization_id, tournament_id, version_number, rules_config,
         phase_config, status, created_by_member_id)
-    VALUES ('{VERSION}', '{ORG}', '{TOURNAMENT}', 1, '{{}}'::jsonb, '{{}}'::jsonb, 'draft', '{MEMBER}');
+    VALUES ('{VERSION}', '{ORG}', '{TOURNAMENT}', 1, '{RULES}'::jsonb, '{{}}'::jsonb, 'draft', '{MEMBER}');
     INSERT INTO stages (id, organization_id, tournament_id, tournament_version_id, name, stage_type, stage_order)
     VALUES ('{GROUP_STAGE}', '{ORG}', '{TOURNAMENT}', '{VERSION}', 'Grupos', 'custom_group', 1),
            ('{KO_STAGE}', '{ORG}', '{TOURNAMENT}', '{VERSION}', 'Llave', 'single_elimination', 2),
@@ -77,6 +82,7 @@ async def stack(database_admin_url):
         await admin.execute(seed_sql())
         name = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(application_database_url()).set(database=name))
+        ENGINES["current"] = engine
 
         async def database():
             async with AsyncSession(engine, expire_on_commit=False) as session:
@@ -312,3 +318,150 @@ async def test_origins_stage_that_is_not_a_bracket_is_422_and_unknown_stage_404(
     client, _ = stack
     assert (await client.get(url(GROUP_STAGE))).status_code == 422
     assert (await client.get(url(f"{PREFIX}0000000000ff"))).status_code == 404
+
+
+async def play_groups(admin, *, group_a_score: int = 1, group_b_score: int = 2, skip: int | None = None) -> None:
+    """Todos contra todos: en cada grupo gana siempre el de menor índice."""
+
+    for offset, group, score in ((0, GROUP_A, group_a_score), (4, GROUP_B, group_b_score)):
+        teams = [team for team in TEAMS[offset:offset + 4] if team != (TEAMS[skip] if skip is not None else None)]
+        for home_index, home in enumerate(teams):
+            for away in teams[home_index + 1:]:
+                await admin.execute(
+                    """INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id, group_id,
+                           home_team_id, away_team_id, status, matchday, home_score_regular, away_score_regular,
+                           home_score, away_score, resolution_type, result_confirmed)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, 'finished', 1, $8, 0, $8, 0, 'regular', TRUE)""",
+                    ORG, TOURNAMENT, VERSION, GROUP_STAGE, group, home, away, score,
+                )
+
+
+PREVIEW = f"/api/v1/tournaments/{TOURNAMENT}/stages/{KO_STAGE}/resolution/preview"
+SIX = CLASSIC_FOUR + [best(3, 1), best(3, 2)]
+
+
+async def table_counts(admin) -> list:
+    return [
+        await admin.fetchval(f"SELECT count(*) FROM {table}")
+        for table in ("standings", "stage_teams", "stage_slot_resolutions", "match_slot_assignments",
+                      "administrative_audit_logs", "outbox_events", "phase_slots", "matches")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_preview_proposes_every_slot_without_writes(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(SIX))).status_code == 200
+    await play_groups(admin)
+    before = await table_counts(admin)
+
+    response = await client.get(PREVIEW)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["resolvable"] is True
+    assert len(payload["fingerprint"]) == 64
+    assert [(slot["seed"], slot["team_id"], slot["reason"]) for slot in payload["slots"]] == [
+        (1, TEAMS[0], None), (2, TEAMS[4], None), (3, TEAMS[1], None),
+        (4, TEAMS[5], None), (5, TEAMS[2], None), (6, TEAMS[6], None),
+    ]
+    assert payload["slots"][0]["team_name"] == "Equipo 0"
+    assert payload["source_stages"] == [{"id": GROUP_STAGE, "finished": True}]
+    assert await table_counts(admin) == before
+    assert (await client.get(PREVIEW)).json()["fingerprint"] == payload["fingerprint"]
+
+
+@pytest.mark.asyncio
+async def test_preview_blocks_every_slot_while_the_source_stage_is_unfinished(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))).status_code == 200
+    await play_groups(admin)
+    first = (await client.get(PREVIEW)).json()["fingerprint"]
+    await admin.execute(
+        """INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id, group_id,
+               home_team_id, away_team_id, status, matchday)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 2)""",
+        ORG, TOURNAMENT, VERSION, GROUP_STAGE, GROUP_A, TEAMS[0], TEAMS[1],
+    )
+
+    payload = (await client.get(PREVIEW)).json()
+    assert payload["resolvable"] is False
+    assert {slot["reason"] for slot in payload["slots"]} == {"source_stage_unfinished"}
+    assert all(slot["team_id"] is None for slot in payload["slots"])
+    assert payload["source_stages"] == [{"id": GROUP_STAGE, "finished": False}]
+    assert payload["fingerprint"] != first
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_unresolved_ties_per_slot(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(SIX))).status_code == 200
+    await play_groups(admin, group_a_score=0)
+
+    payload = (await client.get(PREVIEW)).json()
+    reasons = {slot["seed"]: slot["reason"] for slot in payload["slots"]}
+    assert payload["resolvable"] is False
+    assert reasons == {1: "unresolved_tie", 2: None, 3: "unresolved_tie", 4: None,
+                       5: "unresolved_tie", 6: "unresolved_tie"}
+
+
+@pytest.mark.asyncio
+async def test_preview_best_of_rejects_groups_that_became_unequal(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(SIX))).status_code == 200
+    await admin.execute("DELETE FROM stage_teams WHERE stage_id = $1 AND team_id = $2", GROUP_STAGE, TEAMS[7])
+    await play_groups(admin, skip=7)
+
+    payload = (await client.get(PREVIEW)).json()
+    reasons = {slot["seed"]: slot["reason"] for slot in payload["slots"]}
+    assert reasons == {1: None, 2: None, 3: None, 4: None, 5: "unequal_groups", 6: "unequal_groups"}
+
+
+@pytest.mark.asyncio
+async def test_preview_marks_a_withdrawn_team_as_ineligible(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))).status_code == 200
+    await play_groups(admin)
+    await admin.execute(
+        "UPDATE tournament_teams SET status = 'withdrawn' WHERE tournament_id = $1 AND team_id = $2",
+        TOURNAMENT, TEAMS[0],
+    )
+
+    payload = (await client.get(PREVIEW)).json()
+    assert payload["resolvable"] is False
+    assert payload["slots"][0]["reason"] == "team_ineligible"
+    assert payload["slots"][0]["team_id"] == TEAMS[0]
+    assert [slot["reason"] for slot in payload["slots"][1:]] == [None, None, None]
+
+
+@pytest.mark.asyncio
+async def test_preview_query_count_does_not_grow_with_the_slots(stack):
+    client, admin = stack
+    await play_groups(admin)
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    sync_engine = ENGINES["current"].sync_engine
+    counts = []
+    for origins in ([gp(GROUP_A, 1), gp(GROUP_B, 1)], SIX):
+        assert (await client.put(url(KO_STAGE), json=body(origins, replace_existing=True))).status_code == 200
+        statements.clear()
+        event.listen(sync_engine, "before_cursor_execute", record)
+        try:
+            assert (await client.get(PREVIEW)).status_code == 200
+        finally:
+            event.remove(sync_engine, "before_cursor_execute", record)
+        counts.append(len(statements))
+    assert counts[0] == counts[1]
+
+
+@pytest.mark.asyncio
+async def test_preview_without_origins_is_422_and_not_a_bracket_422(stack):
+    client, _ = stack
+    response = await client.get(PREVIEW)
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"code": "no_slot_origins"}
+    other = await client.get(f"/api/v1/tournaments/{TOURNAMENT}/stages/{GROUP_STAGE}/resolution/preview")
+    assert other.status_code == 422

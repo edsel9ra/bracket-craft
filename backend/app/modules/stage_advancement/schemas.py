@@ -74,3 +74,26 @@ class SlotOriginsTemplateResponse(BaseModel):
     source_stage_id: UUID
     slots_count: int
     origins: list[SlotOriginOut]
+
+
+class SlotPreviewOut(SlotOriginOut):
+    team_id: UUID | None
+    team_name: str | None
+    reason: str | None
+
+
+class SourceStageStateOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    finished: bool
+
+
+class ResolutionPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage_id: UUID
+    fingerprint: str
+    resolvable: bool
+    slots: list[SlotPreviewOut]
+    source_stages: list[SourceStageStateOut]

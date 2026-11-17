@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from sqlalchemy import text
@@ -8,6 +9,16 @@ from app.core.locking import lock_stage_and_version
 from app.modules.rules_engine.engine import validate_rules_config
 from app.modules.standings.head_to_head import MatchRecord
 from app.modules.standings.ranking import rank_buckets
+
+
+@dataclass(frozen=True)
+class StageRanking:
+    buckets: dict[UUID | None, list[list[dict]]]
+    drawn: dict[UUID | None, list[list[dict]]]
+    pipeline: list[dict]
+    points_system: dict[str, int]
+    tie_seed: str
+    persisted_rows: list[dict] = field(default_factory=list)
 
 
 class StandingsService:
@@ -60,6 +71,26 @@ class StandingsService:
             text("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:lock_key AS TEXT), 0))"),
             {"lock_key": f"standings:{context.organization_id}:{tournament_id}:{stage_id}"},
         )
+        ranking = await self.rank_stage(context.organization_id, tournament_id, stage_id, persisted=persisted)
+        ranked = []
+        draw_groups = []
+        for group_id, buckets in ranking.buckets.items():
+            for bucket in ranking.drawn[group_id]:
+                draw_groups.append({"group_id": str(group_id) if group_id is not None else None,
+                    "team_ids": sorted(str(item["team_id"]) for item in bucket)})
+
+            rank = 1
+            for bucket in buckets:
+                for item in bucket:
+                    ranked.append({**item, "rank": rank})
+                    rank += 1
+        return (ranking.persisted_rows if persisted else ranked), draw_groups
+
+    async def rank_stage(
+        self, organization_id: UUID, tournament_id: UUID, stage_id: UUID, *, persisted: bool = False
+    ) -> "StageRanking":
+        """Clasificación ordenada por grupo sin bloqueos ni escrituras; el llamador fija RLS."""
+
         config_result = await self.db.execute(
             text("""
                 SELECT tv.rules_config
@@ -73,7 +104,7 @@ class StandingsService:
                   AND s.id = :stage_id
             """),
             {
-                "organization_id": str(context.organization_id),
+                "organization_id": str(organization_id),
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id),
             },
@@ -97,7 +128,7 @@ class StandingsService:
                 ORDER BY group_id NULLS FIRST, team_id
             """),
             {
-                "organization_id": str(context.organization_id),
+                "organization_id": str(organization_id),
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id),
             },
@@ -135,7 +166,7 @@ class StandingsService:
                  AND me.event_type IN ('yellow_card', 'red_card')
             """),
             {
-                "organization_id": str(context.organization_id),
+                "organization_id": str(organization_id),
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id),
             },
@@ -174,7 +205,7 @@ class StandingsService:
                   AND m.result_confirmed = TRUE
             """),
             {
-                "organization_id": str(context.organization_id),
+                "organization_id": str(organization_id),
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id),
             },
@@ -240,31 +271,30 @@ class StandingsService:
                 FROM standings
                 WHERE organization_id = :organization_id AND tournament_id = :tournament_id AND stage_id = :stage_id
                 ORDER BY group_id NULLS FIRST, team_id
-            """), {"organization_id": context.organization_id, "tournament_id": tournament_id, "stage_id": stage_id})
+            """), {"organization_id": organization_id, "tournament_id": tournament_id, "stage_id": stage_id})
             persisted_rows = [dict(row) for row in result.mappings().all()]
             table = {(row["team_id"], row["group_id"]): row for row in persisted_rows}
 
-        ranked = []
-        draw_groups = []
         teams_by_group: defaultdict[UUID | None, list[dict]] = defaultdict(list)
         for item in table.values():
             teams_by_group[item["group_id"]].append(item)
 
+        tie_seed = f"{tournament_id}:{stage_id}"
+        ranked_buckets: dict[UUID | None, list[list[dict]]] = {}
+        drawn_buckets: dict[UUID | None, list[list[dict]]] = {}
         for group_id, group_items in teams_by_group.items():
-            buckets, drawn = rank_buckets(
+            ranked_buckets[group_id], drawn_buckets[group_id] = rank_buckets(
                 group_items,
                 pipeline,
                 points_system=points_system,
-                tie_seed=f"{tournament_id}:{stage_id}",
+                tie_seed=tie_seed,
                 match_records=match_records_by_group[group_id],
             )
-            for bucket in drawn:
-                draw_groups.append({"group_id": str(group_id) if group_id is not None else None,
-                    "team_ids": sorted(str(item["team_id"]) for item in bucket)})
-
-            rank = 1
-            for bucket in buckets:
-                for item in bucket:
-                    ranked.append({**item, "rank": rank})
-                    rank += 1
-        return (persisted_rows if persisted else ranked), draw_groups
+        return StageRanking(
+            buckets=ranked_buckets,
+            drawn=drawn_buckets,
+            pipeline=pipeline,
+            points_system=points_system,
+            tie_seed=tie_seed,
+            persisted_rows=persisted_rows,
+        )

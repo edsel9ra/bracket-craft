@@ -1,6 +1,8 @@
 """Lecturas y escrituras de la spec 040 sobre la sesión con RLS del llamador."""
 
+from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -11,9 +13,14 @@ from app.modules.stage_advancement.origins import (
     GROUP_POSITION,
     SlotError,
     SlotOrigin,
+    SlotResolution,
     SourceGroup,
     SourceStage,
+    SourceState,
+    resolve_slots,
+    standings_fingerprint,
 )
+from app.modules.standings.service import StandingsService
 
 ELIMINATION_STAGE_TYPES = frozenset({"single_elimination", "double_elimination"})
 SLOT_ORIGINS_CONFLICT = "La llave tiene orígenes declarados: sus equipos se asignan al confirmar la clasificación de origen"
@@ -181,3 +188,116 @@ def slot_errors_exception(errors: list[SlotError]) -> HTTPException:
             "errors": [{"seed": error.seed, "code": error.code} for error in errors],
         },
     )
+
+
+@dataclass(frozen=True)
+class ResolutionPreview:
+    origins: list[SlotOrigin]
+    resolutions: list[SlotResolution]
+    states: dict[UUID, SourceState]
+    fingerprint: str
+
+    @property
+    def resolvable(self) -> bool:
+        return all(item.reason is None for item in self.resolutions)
+
+
+async def _load_source_state(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID, source: SourceStage
+) -> SourceState:
+    params = {"organization_id": str(organization_id), "tournament_id": str(tournament_id), "stage_id": str(source.id)}
+    ranking = await StandingsService(db).rank_stage(organization_id, tournament_id, source.id)
+    statuses = (await db.execute(
+        text("""
+            SELECT st.team_id, tt.status
+            FROM stage_teams st
+            JOIN tournament_teams tt
+              ON tt.team_id = st.team_id
+             AND tt.tournament_id = st.tournament_id
+             AND tt.organization_id = st.organization_id
+            WHERE st.organization_id = :organization_id
+              AND st.tournament_id = :tournament_id
+              AND st.stage_id = :stage_id
+        """),
+        params,
+    )).all()
+    matches = (await db.execute(
+        text("""
+            SELECT id, status, result_confirmed
+            FROM matches
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND stage_id = :stage_id
+        """),
+        params,
+    )).all()
+    return SourceState(
+        stage=source,
+        buckets=ranking.buckets,
+        team_statuses={row.team_id: row.status for row in statuses},
+        matches=[(str(row.id), row.status, bool(row.result_confirmed)) for row in matches],
+        pipeline=ranking.pipeline,
+        tie_seed=ranking.tie_seed,
+        points_system=ranking.points_system,
+    )
+
+
+async def build_resolution_preview(
+    db: AsyncSession, organization_id: UUID, tournament_id: UUID, stage: Mapping
+) -> ResolutionPreview:
+    """Equipo o motivo por plaza con la clasificación vigente; solo lecturas (RF-004–RF-006)."""
+
+    declared = await load_declared_origins(db, organization_id, stage["id"])
+    if not declared:
+        raise HTTPException(status_code=422, detail={"code": "no_slot_origins"})
+    sources, _ = await load_source_stages(db, organization_id, stage)
+    origins = [origin for _, origin in declared]
+    states: dict[UUID, SourceState] = {}
+    for source_id in sorted({origin.source_stage_id for origin in origins}, key=str):
+        if source_id in sources:
+            states[source_id] = await _load_source_state(db, organization_id, tournament_id, sources[source_id])
+    resolutions = resolve_slots(origins, states)
+    counts = Counter(item.team_id for item in resolutions if item.team_id is not None)
+    resolutions = [
+        replace(item, team_id=None, reason="duplicate_team")
+        if item.reason is None and counts[item.team_id] > 1
+        else item
+        for item in resolutions
+    ]
+    return ResolutionPreview(
+        origins=origins,
+        resolutions=resolutions,
+        states=states,
+        fingerprint=standings_fingerprint(states.values()),
+    )
+
+
+async def preview_payload(db: AsyncSession, organization_id: UUID, stage: Mapping, preview: ResolutionPreview) -> dict:
+    team_ids = [str(item.team_id) for item in preview.resolutions if item.team_id is not None]
+    names = {}
+    if team_ids:
+        rows = (await db.execute(
+            text("""
+                SELECT id, name FROM teams
+                WHERE organization_id = :organization_id AND id = ANY(CAST(:team_ids AS uuid[]))
+            """),
+            {"organization_id": str(organization_id), "team_ids": team_ids},
+        )).all()
+        names = {row.id: row.name for row in rows}
+    return {
+        "stage_id": stage["id"],
+        "fingerprint": preview.fingerprint,
+        "resolvable": preview.resolvable,
+        "slots": [
+            {
+                **origin_payload(item.seed, item.origin),
+                "team_id": item.team_id,
+                "team_name": names.get(item.team_id),
+                "reason": item.reason,
+            }
+            for item in preview.resolutions
+        ],
+        "source_stages": [
+            {"id": source_id, "finished": state.finished} for source_id, state in preview.states.items()
+        ],
+    }

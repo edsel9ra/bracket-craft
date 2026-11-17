@@ -16,11 +16,14 @@ from app.modules.stage_advancement.origins import (
     validate_origins,
 )
 from app.modules.stage_advancement.schemas import (
+    ResolutionPreviewResponse,
     SlotOriginsResponse,
     SlotOriginsTemplateResponse,
     SlotOriginsUpdateRequest,
 )
 from app.modules.stage_advancement.service import (
+    build_resolution_preview,
+    preview_payload,
     load_declared_origins,
     load_destination_stage,
     load_source_stages,
@@ -39,6 +42,7 @@ from app.modules.tournaments.scheduling import (
 router = APIRouter(prefix="/tournaments", tags=["stage-advancement"])
 
 SLOT_ORIGINS_PATH = "/{tournament_id}/stages/{stage_id}/slot-origins"
+RESOLUTION_PATH = "/{tournament_id}/stages/{stage_id}/resolution"
 
 
 async def _slot_origins_payload(db: AsyncSession, organization_id: UUID, stage) -> dict:
@@ -204,3 +208,25 @@ async def delete_slot_origins(
                 db, context.organization_id, tournament_id, stage["tournament_version_id"], stage_id
             )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(f"{RESOLUTION_PATH}/preview", response_model=ResolutionPreviewResponse)
+async def get_resolution_preview(
+    tournament_id: UUID,
+    stage_id: UUID,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Vista previa privada de la resolución en una transacción de solo lectura (RF-004–RF-006, RNF-001)."""
+
+    async with db.begin():
+        await db.execute(text("SET TRANSACTION READ ONLY"))
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+        await _require_tournament_management(db, context)
+        stage = await load_destination_stage(db, context.organization_id, tournament_id, stage_id)
+        require_elimination(stage)
+        if await stage_is_resolved(db, context.organization_id, stage_id):
+            raise HTTPException(status_code=409, detail={"code": "already_resolved"})
+        preview = await build_resolution_preview(db, context.organization_id, tournament_id, stage)
+        return await preview_payload(db, context.organization_id, stage, preview)
