@@ -69,3 +69,4 @@ Estado: aprobadas por el usuario el 2026-11-16. PR documental y un PR por bloque
   - CL-4: la vista previa calcula con la clasificación vigente (`rank_stage`) y la huella cambia con ella (`test_fingerprint_is_stable_and_sensitive`).
   - CL-6: el clon reasigna fases y grupos y deja la llave sin resolver (`test_clone_remaps_origin_references_and_leaves_slots_unresolved`).
 - No ejecutado: el flujo contra la pila real con datos de torneo reales (el E2E del Workspace usa un contrato ficticio sobre la sesión demo) y con un lector de pantalla real.
+  - Aceptación de la spec: aceptada por el usuario el 2026-11-17 («Fusiona #103 → #104 → #105 (squash) cuando cada CI esté en verde y registra la aceptación de la spec 040»), tras fusionar #103 → #104 → #105 con su autorización.
