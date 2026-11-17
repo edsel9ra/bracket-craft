@@ -16,13 +16,16 @@ from app.modules.stage_advancement.origins import (
     validate_origins,
 )
 from app.modules.stage_advancement.schemas import (
+    ResolutionConfirmRequest,
     ResolutionPreviewResponse,
+    ResolutionResponse,
     SlotOriginsResponse,
     SlotOriginsTemplateResponse,
     SlotOriginsUpdateRequest,
 )
 from app.modules.stage_advancement.service import (
     build_resolution_preview,
+    confirm_resolution,
     preview_payload,
     load_declared_origins,
     load_destination_stage,
@@ -230,3 +233,20 @@ async def get_resolution_preview(
             raise HTTPException(status_code=409, detail={"code": "already_resolved"})
         preview = await build_resolution_preview(db, context.organization_id, tournament_id, stage)
         return await preview_payload(db, context.organization_id, stage, preview)
+
+
+@router.post(RESOLUTION_PATH, response_model=ResolutionResponse, status_code=status.HTTP_201_CREATED)
+async def post_resolution(
+    tournament_id: UUID,
+    stage_id: UUID,
+    payload: ResolutionConfirmRequest,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Confirma la vista previa: llena todas las plazas o ninguna (RF-007–RF-009, RNF-002)."""
+
+    async with db.begin():
+        await set_rls_context(db, context.organization_id, context.user_id)
+        await _ensure_tournament(db, context.organization_id, tournament_id)
+        await _require_tournament_management(db, context)
+        return await confirm_resolution(db, context, tournament_id, stage_id, payload.fingerprint)

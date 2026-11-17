@@ -51,7 +51,7 @@ from app.modules.identity.schemas import (
     RegisterRequest,
     ResetPasswordRequest,
 )
-from app.modules.stage_advancement.schemas import SlotOriginIn, SlotOriginsUpdateRequest
+from app.modules.stage_advancement.schemas import ResolutionConfirmRequest, SlotOriginIn, SlotOriginsUpdateRequest
 from app.modules.invitations.schemas import (
     AcceptInvitationRequest,
     CreateInvitationRequest,
@@ -271,6 +271,11 @@ EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
         "/api/v1/tournaments/{tournament_id}/stages/{stage_id}/slot-origins",
         "stage_advancement.schemas.SlotOriginsUpdateRequest",
     ),
+    (
+        "POST",
+        "/api/v1/tournaments/{tournament_id}/stages/{stage_id}/resolution",
+        "stage_advancement.schemas.ResolutionConfirmRequest",
+    ),
 ]
 
 # Las tres operaciones multipart quedan fuera de alcance (RF-003, RF-006,
@@ -350,6 +355,7 @@ MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
         "source_stage_id": "00000000-0000-0000-0000-000000000001",
         "position": 1,
     },
+    ResolutionConfirmRequest: {"fingerprint": "0" * 64},
     SlotOriginsUpdateRequest: {
         "origins": [
             {"kind": "group_position", "source_stage_id": "00000000-0000-0000-0000-000000000001", "position": 1},
@@ -706,8 +712,8 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 
 
 def test_inventory_has_46_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 50
-    assert len(set(EXPECTED_OPERATIONS)) == 50
+    assert len(EXPECTED_OPERATIONS) == 51
+    assert len(set(EXPECTED_OPERATIONS)) == 51
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -724,19 +730,19 @@ def test_json_operations_match_the_literal_inventory():
         f"50 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 50
+    assert len(derived) == 51
 
 
 def test_inventory_declares_40_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 44
+    assert len(refs) == 45
 
 
 def test_app_yields_40_top_level_and_17_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 44, sorted(model_ref(m) for m in top_level)
+    assert len(top_level) == 45, sorted(model_ref(m) for m in top_level)
     assert len(nested) == 18, sorted(model_ref(m) for m in nested)
 
 
@@ -815,7 +821,7 @@ def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 62, f"el barrido deriva {len(derived)} modelos, no 62"
+    assert len(derived) == 63, f"el barrido deriva {len(derived)} modelos, no 63"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."

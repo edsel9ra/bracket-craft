@@ -97,3 +97,14 @@ class ResolutionPreviewResponse(BaseModel):
     resolvable: bool
     slots: list[SlotPreviewOut]
     source_stages: list[SourceStageStateOut]
+
+
+class ResolutionConfirmRequest(BaseModel):
+    model_config = STRICT
+
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class ResolutionResponse(ResolutionPreviewResponse):
+    resolution_id: UUID
+    resolved_at: datetime

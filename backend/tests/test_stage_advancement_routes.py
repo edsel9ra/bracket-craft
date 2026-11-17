@@ -5,6 +5,7 @@ equipos en una fase de grupos (orden 1), una llave de eliminación simple
 (orden 2) y una de doble eliminación (orden 3), en una versión en borrador.
 """
 
+import asyncio
 import json
 from uuid import UUID
 
@@ -465,3 +466,165 @@ async def test_preview_without_origins_is_422_and_not_a_bracket_422(stack):
     assert response.json()["detail"] == {"code": "no_slot_origins"}
     other = await client.get(f"/api/v1/tournaments/{TOURNAMENT}/stages/{GROUP_STAGE}/resolution/preview")
     assert other.status_code == 422
+
+
+RESOLUTION = f"/api/v1/tournaments/{TOURNAMENT}/stages/{KO_STAGE}/resolution"
+
+
+async def published_bracket(client, admin, origins=CLASSIC_FOUR) -> str:
+    assert (await client.put(url(KO_STAGE), json=body(origins))).status_code == 200
+    await play_groups(admin)
+    await admin.execute("UPDATE tournament_versions SET status = 'published', published_at = now() WHERE id = $1", VERSION)
+    preview = (await client.get(PREVIEW)).json()
+    assert preview["resolvable"] is True
+    return preview["fingerprint"]
+
+
+async def bracket_teams(admin) -> list:
+    rows = await admin.fetch(
+        "SELECT bracket_code, home_team_id, away_team_id FROM matches WHERE stage_id = $1 ORDER BY bracket_code",
+        KO_STAGE,
+    )
+    return [(row["bracket_code"], str(row["home_team_id"] or ""), str(row["away_team_id"] or "")) for row in rows]
+
+
+@pytest.mark.asyncio
+async def test_resolution_confirm_fills_every_slot_with_audit_and_events(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin)
+    before = await bracket_teams(admin)
+
+    response = await client.post(RESOLUTION, json={"fingerprint": fingerprint})
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["fingerprint"] == fingerprint
+    assert [(slot["seed"], slot["team_id"]) for slot in payload["slots"]] == [
+        (1, TEAMS[0]), (2, TEAMS[4]), (3, TEAMS[1]), (4, TEAMS[5]),
+    ]
+    first_round = {(home, away) for _, home, away in await bracket_teams(admin) if home and away}
+    assert first_round == {(TEAMS[0], TEAMS[5]), (TEAMS[4], TEAMS[1])}
+    assert all(not home and not away for _, home, away in before)
+    assert sorted(str(row["team_id"]) for row in await admin.fetch(
+        "SELECT team_id FROM stage_teams WHERE stage_id = $1", KO_STAGE)) == sorted([TEAMS[0], TEAMS[1], TEAMS[4], TEAMS[5]])
+    assignments = await admin.fetch(
+        "SELECT origin, stage_slot_resolution_id FROM match_slot_assignments msa "
+        "JOIN matches m ON m.id = msa.match_id WHERE m.stage_id = $1", KO_STAGE)
+    assert {(row["origin"], str(row["stage_slot_resolution_id"])) for row in assignments} == {
+        ("stage_rank", payload["resolution_id"])}
+    assert len(assignments) == 4
+    resolution = await admin.fetchrow("SELECT resolved_by_member_id, standings_fingerprint FROM stage_slot_resolutions")
+    assert (str(resolution["resolved_by_member_id"]), resolution["standings_fingerprint"]) == (MEMBER, fingerprint)
+    audit = await admin.fetch("SELECT entity_id, payload FROM administrative_audit_logs WHERE action = 'STAGE_SLOTS_RESOLVED'")
+    assert len(audit) == 1 and str(audit[0]["entity_id"]) == payload["resolution_id"]
+    assert set(json.loads(audit[0]["payload"])) == {"tournament_id", "version_id", "stage_id"}
+    events = await admin.fetch("SELECT payload FROM outbox_events WHERE event_type = 'MATCH_UPDATED'")
+    assert len(events) == 2
+    assert {json.loads(row["payload"])["tournament_id"] for row in events} == {TOURNAMENT}
+
+    assert (await client.get(url(KO_STAGE))).json()["status"] == "resolved"
+    again = await client.post(RESOLUTION, json={"fingerprint": fingerprint})
+    assert again.status_code == 409 and again.json()["detail"] == {"code": "already_resolved"}
+    assert (await client.get(PREVIEW)).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_resolution_with_byes_fills_the_second_round(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin, SIX)
+
+    assert (await client.post(RESOLUTION, json={"fingerprint": fingerprint})).status_code == 201
+
+    placed = [team for _, home, away in await bracket_teams(admin) for team in (home, away) if team]
+    assert sorted(placed) == sorted([TEAMS[0], TEAMS[4], TEAMS[1], TEAMS[5], TEAMS[2], TEAMS[6]])
+    assert await admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type = 'MATCH_UPDATED'") == 4
+
+
+@pytest.mark.asyncio
+async def test_resolution_stale_fingerprint_is_409_without_writes(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))).status_code == 200
+    await play_groups(admin)
+    extra = await admin.fetchval(
+        """INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id, group_id,
+               home_team_id, away_team_id, status, matchday)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 2) RETURNING id""",
+        ORG, TOURNAMENT, VERSION, GROUP_STAGE, GROUP_A, TEAMS[2], TEAMS[3],
+    )
+    await admin.execute("UPDATE tournament_versions SET status = 'published', published_at = now() WHERE id = $1", VERSION)
+    seen = (await client.get(PREVIEW)).json()
+    assert seen["resolvable"] is False
+    blocked = await client.post(RESOLUTION, json={"fingerprint": seen["fingerprint"]})
+    assert blocked.status_code == 422
+    assert {slot["reason"] for slot in blocked.json()["detail"]["slots"]} == {"source_stage_unfinished"}
+    await admin.execute(
+        "UPDATE matches SET status = 'finished', home_score_regular = 0, away_score_regular = 0, home_score = 0, "
+        "away_score = 0, resolution_type = 'regular', result_confirmed = TRUE WHERE id = $1",
+        extra,
+    )
+    before = await table_counts(admin)
+
+    response = await client.post(RESOLUTION, json={"fingerprint": seen["fingerprint"]})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "stale_fingerprint"}
+    assert await table_counts(admin) == before
+    assert await bracket_teams(admin) == [(code, "", "") for code, _, _ in await bracket_teams(admin)]
+
+
+@pytest.mark.asyncio
+async def test_resolution_needs_a_published_version(stack):
+    client, admin = stack
+    assert (await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))).status_code == 200
+    await play_groups(admin)
+    fingerprint = (await client.get(PREVIEW)).json()["fingerprint"]
+
+    response = await client.post(RESOLUTION, json={"fingerprint": fingerprint})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "version_not_published"}
+    assert await admin.fetchval("SELECT count(*) FROM stage_slot_resolutions") == 0
+
+
+@pytest.mark.asyncio
+async def test_resolution_two_simultaneous_confirmations_fill_once(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin)
+
+    responses = await asyncio.gather(
+        client.post(RESOLUTION, json={"fingerprint": fingerprint}),
+        client.post(RESOLUTION, json={"fingerprint": fingerprint}),
+    )
+
+    assert sorted(response.status_code for response in responses) == [201, 409]
+    assert await admin.fetchval("SELECT count(*) FROM stage_slot_resolutions") == 1
+    assert await admin.fetchval("SELECT count(*) FROM stage_teams WHERE stage_id = $1", KO_STAGE) == 4
+    assert await admin.fetchval("SELECT count(*) FROM outbox_events WHERE event_type = 'MATCH_UPDATED'") == 2
+
+
+@pytest.mark.asyncio
+async def test_resolution_from_another_organization_is_404_without_writes(stack):
+    client, admin = stack
+    fingerprint = await published_bracket(client, admin)
+    before = await table_counts(admin)
+
+    async def outsider():
+        return AuthContext(user_id=UUID(int=7), organization_id=UUID(int=8), organization_user_id=UUID(int=9))
+
+    api.dependency_overrides[get_auth_context] = outsider
+    response = await client.post(RESOLUTION, json={"fingerprint": fingerprint})
+    preview = await client.get(PREVIEW)
+
+    assert (response.status_code, preview.status_code) == (404, 404)
+    assert await table_counts(admin) == before
+
+
+@pytest.mark.asyncio
+async def test_resolution_body_is_strict_and_does_not_echo_input(stack):
+    client, admin = stack
+    await published_bracket(client, admin)
+    for payload in ({"fingerprint": "secreto"}, {"fingerprint": "a" * 64, "extra": 1}, {}):
+        response = await client.post(RESOLUTION, json=payload)
+        assert response.status_code == 422
+        assert "secreto" not in response.text
+    assert await admin.fetchval("SELECT count(*) FROM stage_slot_resolutions") == 0

@@ -1,14 +1,16 @@
 """Lecturas y escrituras de la spec 040 sobre la sesión con RLS del llamador."""
 
+import json
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.locking import lock_matches, lock_stage_and_version
 from app.modules.stage_advancement.origins import (
     GROUP_POSITION,
     SlotError,
@@ -301,3 +303,139 @@ async def preview_payload(db: AsyncSession, organization_id: UUID, stage: Mappin
             {"id": source_id, "finished": state.finished} for source_id, state in preview.states.items()
         ],
     }
+
+
+async def _stage_rank_slots(db: AsyncSession, organization_id: UUID, stage_id: UUID) -> list:
+    """Plazas con origen y su partido; con pase libre la plaza está en la segunda ronda."""
+
+    result = await db.execute(
+        text("""
+            SELECT CAST(ps.source_reference->>'seed' AS integer) AS seed, m.id AS match_id,
+                   CASE WHEN m.home_slot_id = ps.id THEN 'home' ELSE 'away' END AS side
+            FROM phase_slots ps
+            JOIN matches m
+              ON m.organization_id = ps.organization_id
+             AND (m.home_slot_id = ps.id OR m.away_slot_id = ps.id)
+            WHERE ps.organization_id = :organization_id
+              AND ps.stage_id = :stage_id
+              AND ps.source_type = 'stage_rank'
+            ORDER BY seed
+        """),
+        {"organization_id": str(organization_id), "stage_id": str(stage_id)},
+    )
+    return result.mappings().all()
+
+
+async def confirm_resolution(
+    db: AsyncSession, context, tournament_id: UUID, stage_id: UUID, fingerprint: str
+) -> dict:
+    """Llena todas las plazas de una vez con la clasificación vista en la vista previa (RF-007, RF-008)."""
+
+    organization_id = context.organization_id
+    try:
+        version_id, version_status = await lock_stage_and_version(db, organization_id, tournament_id, stage_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Fase no encontrada") from exc
+    stage = await load_destination_stage(db, organization_id, tournament_id, stage_id)
+    require_elimination(stage)
+    if version_status != "published":
+        raise HTTPException(status_code=409, detail={"code": "version_not_published"})
+    if await stage_is_resolved(db, organization_id, stage_id):
+        raise HTTPException(status_code=409, detail={"code": "already_resolved"})
+    slots = await _stage_rank_slots(db, organization_id, stage_id)
+    await lock_matches(db, organization_id, [slot["match_id"] for slot in slots])
+
+    preview = await build_resolution_preview(db, organization_id, tournament_id, stage)
+    if not preview.resolvable:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "not_resolvable",
+                "slots": [
+                    {"seed": item.seed, "reason": item.reason}
+                    for item in preview.resolutions if item.reason is not None
+                ],
+            },
+        )
+    if preview.fingerprint != fingerprint:
+        raise HTTPException(status_code=409, detail={"code": "stale_fingerprint"})
+
+    teams = {item.seed: item.team_id for item in preview.resolutions}
+    if sorted(slot["seed"] for slot in slots) != sorted(teams):
+        raise HTTPException(status_code=409, detail={"code": "bracket_mismatch"})
+
+    resolution_id = uuid4()
+    params = {"organization_id": str(organization_id), "tournament_id": str(tournament_id),
+        "version_id": str(version_id), "stage_id": str(stage_id), "resolution_id": str(resolution_id)}
+    inserted = await db.execute(
+        text("""
+            INSERT INTO stage_slot_resolutions
+                (id, organization_id, tournament_id, tournament_version_id, stage_id,
+                 resolved_by_member_id, standings_fingerprint, assignments)
+            VALUES (:resolution_id, :organization_id, :tournament_id, :version_id, :stage_id,
+                    :member_id, :fingerprint, CAST(:assignments AS jsonb))
+            ON CONFLICT ON CONSTRAINT uq_stage_slot_resolution_stage DO NOTHING
+            RETURNING resolved_at
+        """),
+        {**params, "member_id": str(context.organization_user_id), "fingerprint": fingerprint,
+            "assignments": json.dumps([{"seed": seed, "team_id": str(team)} for seed, team in sorted(teams.items())])},
+    )
+    resolved_at = inserted.scalar_one_or_none()
+    if resolved_at is None:
+        raise HTTPException(status_code=409, detail={"code": "already_resolved"})
+    await db.execute(text("SELECT set_config('app.stage_slot_resolution_id', :resolution_id, true)"), params)
+
+    for seed in sorted(teams):
+        await db.execute(
+            text("""
+                INSERT INTO stage_teams (organization_id, tournament_id, tournament_version_id, stage_id, team_id)
+                VALUES (:organization_id, :tournament_id, :version_id, :stage_id, :team_id)
+            """),
+            {**params, "team_id": str(teams[seed])},
+        )
+    for slot in slots:
+        column = "home_team_id" if slot["side"] == "home" else "away_team_id"
+        values = {**params, "match_id": str(slot["match_id"]), "team_id": str(teams[slot["seed"]]),
+            "side": slot["side"]}
+        updated = await db.execute(
+            text("""
+                UPDATE matches SET {column} = :team_id, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :match_id AND organization_id = :organization_id
+                  AND status = 'scheduled' AND {column} IS NULL
+            """  # nosec B608 # columna elegida entre home_team_id y away_team_id; valores ligados.
+            .format(column=column)),
+            values,
+        )
+        if updated.rowcount != 1:
+            raise HTTPException(status_code=409, detail={"code": "bracket_mismatch"})
+        await db.execute(
+            text("""
+                INSERT INTO match_slot_assignments
+                    (organization_id, tournament_id, match_id, side, team_id, origin, stage_slot_resolution_id)
+                VALUES (:organization_id, :tournament_id, :match_id, :side, :team_id, 'stage_rank', :resolution_id)
+            """),
+            values,
+        )
+
+    await db.execute(
+        text("""
+            INSERT INTO administrative_audit_logs
+                (organization_id, entity_type, entity_id, action, payload, performed_by_member_id, performed_by_user_id)
+            VALUES (:organization_id, 'stage_slot_resolutions', :resolution_id, 'STAGE_SLOTS_RESOLVED',
+                    CAST(:payload AS jsonb), :member_id, :user_id)
+        """),
+        {**params, "member_id": str(context.organization_user_id), "user_id": str(context.user_id),
+            "payload": json.dumps({"tournament_id": str(tournament_id), "version_id": str(version_id),
+                "stage_id": str(stage_id)})},
+    )
+    for match_id in sorted({str(slot["match_id"]) for slot in slots}):
+        await db.execute(
+            text("""
+                INSERT INTO outbox_events (organization_id, event_type, payload)
+                VALUES (:organization_id, 'MATCH_UPDATED', CAST(:payload AS jsonb))
+            """),
+            {**params, "payload": json.dumps({"match_id": match_id, "tournament_id": str(tournament_id)})},
+        )
+
+    payload = await preview_payload(db, organization_id, stage, preview)
+    return {"resolution_id": resolution_id, "resolved_at": resolved_at, **payload}
