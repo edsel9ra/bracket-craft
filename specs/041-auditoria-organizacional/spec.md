@@ -1,6 +1,13 @@
 # Spec 041 — Auditoría organizacional visible (F5)
 
-Estado: borrador
+Estado: borrador. DA-1–DA-4 resueltas (2026-11-22); pendiente de aprobación.
+
+## Decisiones del usuario (2026-11-22)
+
+- **DA-1 = (a).** Consultan el propietario y el administrador mediante un permiso nuevo y específico de auditoría, que reciben por defecto esos dos roles.
+- **DA-2 = (a).** El detalle muestra una lista cerrada de campos por acción, incluidos los motivos y las notas en texto libre.
+- **DA-3 = (a).** Sin filtro por torneo: solo tipo de acción, responsable y fechas.
+- **DA-4 = (a).** La entidad afectada enlaza a su pantalla del Workspace cuando existe y el usuario puede abrirla.
 
 ## Contexto y objetivo
 
@@ -18,7 +25,7 @@ Relación con la constitución: §2.1–2.2 (la lectura corre con el aislamiento
 
 - **Público:** no ve nada.
 - **Miembro de organización sin permiso de auditoría:** no ve la sección ni puede consultarla (403).
-- **Usuario con permiso de auditoría de la organización:** consulta las entradas de su organización activa. Quién recibe el permiso por defecto: ver DA-1.
+- **Usuario con permiso de auditoría de la organización:** consulta las entradas de su organización activa. Por defecto lo tienen el propietario y el administrador (DA-1); operador, árbitro y viewer no.
 - **Administrador de plataforma:** sin acciones nuevas; su auditoría propia sigue en `/admin`. Las decisiones que tomó dentro de una organización (rectificaciones y sanciones con autorización expresa) ya están en la auditoría de esa organización y se muestran en ella (ver RF-006).
 - Ninguna organización ve las entradas de otra.
 
@@ -39,14 +46,16 @@ Relación con la constitución: §2.1–2.2 (la lectura corre con el aislamiento
 - **RF-001.** CUANDO un usuario con permiso de auditoría consulte la auditoría, EL SISTEMA devolverá las entradas de su organización activa ordenadas por fecha descendente y, a igualdad, por identificador descendente, en páginas de 1 a 100 entradas (50 por defecto).
 - **RF-002.** SI quien consulta no pertenece a la organización activa o no tiene permiso de auditoría, ENTONCES EL SISTEMA responderá 403 sin devolver ninguna entrada ni revelar si existen.
 - **RF-003.** EL SISTEMA solo devolverá entradas de la organización activa; ninguna otra organización puede ver ni filtrar entradas ajenas, tampoco indicando identificadores de otra organización en los filtros (en ese caso la página sale vacía).
-- **RF-004.** CUANDO se indiquen filtros, EL SISTEMA aplicará en conjunción: tipo de acción (uno o varios del catálogo), responsable (un miembro de la organización) y rango de fechas (desde/hasta, inclusivos, en UTC). Ver DA-3 para el filtro por torneo.
+- **RF-004.** CUANDO se indiquen filtros, EL SISTEMA aplicará en conjunción: tipo de acción (uno o varios del catálogo), responsable (un miembro de la organización) y rango de fechas (desde/hasta, inclusivos, en UTC). No hay filtro por torneo (DA-3).
 - **RF-005.** SI un filtro tiene un valor fuera del catálogo, una fecha inválida, un rango invertido o un tamaño de página fuera de límites, ENTONCES EL SISTEMA responderá 422 sin ejecutar la consulta.
 - **RF-006.** EL SISTEMA mostrará por entrada: fecha, etiqueta de la acción, tipo e identificador de la entidad afectada y responsable (nombre del miembro, o «Administración de plataforma» sin correo ni identidad del administrador).
-- **RF-007.** CUANDO se abra el detalle de una entrada, EL SISTEMA mostrará solo los campos de contenido que el catálogo declara para esa acción (ver DA-2), con etiquetas ES/EN; nunca correos, tokens, enlaces, documentos ni fechas de nacimiento.
+- **RF-007.** CUANDO se abra el detalle de una entrada, EL SISTEMA mostrará solo los campos de contenido que el catálogo declara para esa acción, con etiquetas ES/EN, incluidos los motivos y notas en texto libre que la acción guarde (DA-2); nunca correos, tokens, enlaces de invitación, documentos ni fechas de nacimiento, aunque aparecieran en el contenido guardado.
 - **RF-008.** SI una entrada tiene un tipo de acción que no está en el catálogo, ENTONCES EL SISTEMA la listará con la etiqueta «Acción no catalogada» y su código, sin mostrar contenido.
 - **RF-009.** EL SISTEMA no permitirá crear, editar ni borrar entradas desde esta consulta; consultarla no genera entradas nuevas.
 - **RF-010.** CUANDO no haya entradas que cumplan los filtros, EL SISTEMA mostrará un estado vacío que lo indique, distinto de un error de carga.
 - **RF-011.** EL SISTEMA mostrará la sección de auditoría en la navegación del Workspace solo a quien tenga el permiso de auditoría.
+- **RF-012.** CUANDO la entidad afectada sea un partido o un caso de sanción y el usuario pueda abrir su pantalla del Workspace, EL SISTEMA mostrará un enlace a ella (DA-4); en otro caso, o si la entidad no existe o no es accesible, solo su identificador. Los equipos, miembros, invitaciones, resoluciones de plazas y procedimientos de impacto se muestran sin enlace mientras no tengan pantalla propia en el Workspace.
+- **RF-013.** EL SISTEMA concederá el permiso de auditoría a los roles propietario y administrador de las organizaciones existentes y de las nuevas, y a ningún otro rol; no se añade gestión de permisos por rol.
 
 ## Requisitos no funcionales
 
@@ -59,7 +68,7 @@ Relación con la constitución: §2.1–2.2 (la lectura corre con el aislamiento
 
 - Se muestra el **nombre** del miembro responsable a quien tiene permiso de auditoría de esa misma organización; no se muestra su correo.
 - Los administradores de plataforma aparecen solo como «Administración de plataforma».
-- Las entradas actuales guardan identificadores, códigos y contadores; algunas guardan **texto libre escrito por miembros** (motivo de W.O., notas de interrupción, motivos de rectificación y de sanción). Si se muestran o no: DA-2.
+- Las entradas actuales guardan identificadores, códigos y contadores; algunas guardan **texto libre escrito por miembros** (motivo de W.O., notas de interrupción, motivos de rectificación y de sanción). Se muestran en el detalle a quien tiene permiso de auditoría de la misma organización (DA-2); no se buscan ni se filtran.
 - Nada de esto es público.
 
 ## Casos límite
@@ -82,13 +91,10 @@ Relación con la constitución: §2.1–2.2 (la lectura corre con el aislamiento
 
 ## Criterios de finalización
 
-- RF-001–RF-011 y RNF-001–RNF-004 verificados con pruebas de backend (incluidas dos organizaciones y RLS), frontend y E2E del flujo HU-1–HU-3.
+- RF-001–RF-013 y RNF-001–RNF-004 verificados con pruebas de backend (incluidas dos organizaciones y RLS), frontend y E2E del flujo HU-1–HU-3.
 - README, AGENTS y manual de usuario describen la sección y su permiso.
 - CI completa en verde y aceptación expresa del usuario.
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-1. Quién consulta por defecto.** (a) Propietario y administrador, con un permiso nuevo y específico de auditoría (recomendada); (b) solo propietario; (c) cualquier miembro activo, incluido «viewer».
-- [NECESITA ACLARACIÓN] **DA-2. Contenido del detalle.** (a) Lista cerrada de campos por acción, incluidos los motivos y notas en texto libre (recomendada: el motivo es la razón de ser de la auditoría y ya lo escriben miembros de la misma organización); (b) lista cerrada sin texto libre; (c) el contenido completo tal como está guardado.
-- [NECESITA ACLARACIÓN] **DA-3. Filtro por torneo.** (a) No en esta spec: tipo, responsable y fechas (recomendada; no todas las entradas guardan el torneo y habría que derivarlo por entidad); (b) sí, derivando el torneo desde la entidad afectada.
-- [NECESITA ACLARACIÓN] **DA-4. Enlace a la entidad.** (a) Enlace a la pantalla del Workspace cuando la entidad es un partido, equipo o caso de sanción que el usuario puede abrir (recomendada); (b) solo identificador, sin enlaces.
+Ninguna.
