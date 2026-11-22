@@ -13,7 +13,7 @@ Estado: borrador pendiente de aprobación.
 
 ### Base de datos (`infra/postgres/migrations/064_organization_audit_permission.sql`)
 - Permiso `VIEW_ORGANIZATION_AUDIT` añadido a `role_definitions.system_permissions` de `owner` y `administrator` y a los `roles` ya materializados de esos dos roles (mismo patrón idempotente que la 014). Las organizaciones nuevas lo heredan porque sus roles se copian de `role_definitions` (002 y alta de miembros). Ningún otro rol lo recibe (RF-013).
-- Índice `(organization_id, performed_at DESC, id DESC)` sobre `administrative_audit_logs` para el orden y la paginación (RNF de rendimiento).
+- Índice `(organization_id, performed_at DESC, id DESC)` sobre `administrative_audit_logs` para el orden y la paginación (RF-001, RNF-001).
 - Sin cambios de RLS: la tabla ya tiene `ENABLE`+`FORCE` y política de tenant; `bracket_app` conserva sus privilegios actuales.
 
 ### Backend (`backend/app/modules/organization_audit/`, nuevo)
@@ -25,7 +25,7 @@ Estado: borrador pendiente de aprobación.
 ### Frontend
 - `utils/organizationAudit.ts` (puro): etiquetas ES/EN de acciones y campos, formato de valores, construcción de la consulta (fechas locales → UTC inclusivas) y enlace por entidad.
 - `composables/useOrganizationAudit.ts`: solo `useApi`; descarta respuestas al cambiar de organización o de usuario, como los composables de sanciones.
-- `pages/workspace/audit.vue` (middleware `auth`), `components/workspace/audit/AuditFilters.vue` y `AuditEntryList.vue`.
+- `pages/workspace/audit.vue` (middleware `auth`), `components/workspace/audit/AuditFilters.vue`, `AuditEntryTable.vue` (sobre `ui/DataTable`) y `AuditEntryDialog.vue` (`<dialog>` nativo con `showModal`, como `PublicLineupModal`).
 - `components/WorkspaceShell.vue`: enlace «Auditoría» solo con `auth.hasPermission('VIEW_ORGANIZATION_AUDIT')` (RF-011).
 - Textos en `composables/useI18n.ts` (ES/EN).
 
@@ -94,7 +94,7 @@ ORDER BY l.performed_at DESC, l.id DESC LIMIT :limit OFFSET :offset
 
 Pantalla `/workspace/audit`:
 - Filtros: acciones (selección múltiple del catálogo), responsable, desde y hasta (fecha local que se convierte a UTC con el inicio y el fin del día, inclusivos). Los filtros viven en la query de la URL.
-- Lista paginada en orden descendente con fecha, acción, entidad y responsable. El detalle de cada entrada se abre con `<details>` nativo.
+- Tabla paginada y navegable por teclado, en orden descendente, con fecha, acción, entidad y responsable. El detalle se abre en un diálogo modal: el foco entra al título, Escape lo cierra y el foco vuelve a la fila de origen (RNF-003).
 - Enlaces: un partido lleva a `/workspace/matches/{id}` si `entity_available`; un caso de sanción lleva a `/workspace/sanctions?case={id}` si además el usuario tiene `VIEW_SANCTION_CASES`. Si no, se muestra solo el ID (RF-012).
 - Estados de carga, vacío (RF-010), error y sin permiso, en ES/EN y ambos temas, con tokens y componentes de `components/ui/`.
 
@@ -112,19 +112,19 @@ Pantalla `/workspace/audit`:
 ## 6. Estrategia de tests
 
 - Cada tarea: test en rojo, código mínimo y verde.
-- BD (`RUN_DATABASE_TESTS=1`): permiso solo en propietario y administrador, existentes y nuevos; orden y desempate por ID; paginación y límites; cada filtro y su combinación; aislamiento con dos organizaciones (un `actor_member_id` de otra organización da una página vacía); 403 sin membresía y sin permiso (operador, árbitro y observador); 422 por cada valor inválido sin ejecutar la consulta; responsable de plataforma sin identidad; acción desconocida sin `details`; `entity_available` en partido existente y en entidad borrada o ajena; el número de filas de auditoría no cambia tras consultar.
+- BD (`RUN_DATABASE_TESTS=1`): permiso solo en propietario y administrador, existentes y nuevos; orden y desempate por ID; paginación y límites; cada filtro y su combinación; aislamiento con dos organizaciones (un `actor_member_id` de otra organización da una página vacía); 403 sin membresía y sin permiso (operador, árbitro y observador); 422 por cada valor inválido sin ejecutar la consulta; responsable de plataforma sin identidad; acción desconocida sin `details`; `entity_available` en partido existente y en entidad borrada o ajena; el número de filas de auditoría no cambia tras consultar; mismo número de sentencias con 1 y con 100 entradas por página (RNF-001).
 - Puras: proyección por acción, tipos no coincidentes, recorte de texto, nombres de miembro, catálogo seguro e inventario.
 - Frontend (Vitest): utilidades, composable (descarte al cambiar de organización), visibilidad del enlace en el menú, estados y enlaces.
-- E2E: filtros, paginación, detalle y axe sin violaciones en tema claro y oscuro, a 1440 y 390 px.
+- E2E: filtros, paginación, diálogo de detalle con foco y teclado, y axe sin violaciones en tema claro y oscuro, a 1440 y 390 px.
 
 ## 7. RF cubiertos por parte
 
 | Parte | RF |
 |---|---|
-| Migración 064 | RF-001 (rendimiento del orden), RF-013 |
+| Migración 064 | RF-001, RF-013, RNF-001 |
 | `catalog.py` | RF-007, RF-008 |
-| `service.py` y `router.py` | RF-001 a RF-006, RF-009, RF-012 (disponibilidad) |
-| Pantalla, componentes y menú | RF-006, RF-007, RF-008, RF-010, RF-011, RF-012, RNF-001 a RNF-004 |
+| `schemas.py`, `service.py` y `router.py` | RF-001 a RF-006, RF-009, RF-012 (disponibilidad), RNF-001, RNF-002, RNF-004 |
+| Pantalla, componentes y menú | RF-006, RF-007, RF-008, RF-010, RF-011, RF-012, RNF-003 |
 
 ## 8. Exposición pública
 
