@@ -188,13 +188,27 @@ async def test_actor_resolution_by_member_user_or_platform(audit):
     platform = await entry(audit.admin, "DECIDE_SANCTION_CASE", at="2026-11-01T10:00:00Z",
                            entity_type="sanction_cases", entity=str(uuid4()), member=None, user=OUTSIDER_USER,
                            payload='{"decision":"annul"}')
+    member_decision = await entry(audit.admin, "DECIDE_SANCTION_CASE", at="2026-10-31T10:00:00Z",
+                                  entity_type="sanction_cases", entity=str(uuid4()), member=None, user=USER,
+                                  payload='{"decision_id":"d","decision":"confirm"}')
+    platform_decisions = [
+        await entry(audit.admin, "DECIDE_SANCTION_CASE", at="2026-10-30T10:00:00Z", entity_type="sanction_cases",
+                    entity=str(uuid4()), member=None, user=USER,
+                    payload='{"decision_id":"d","authorization_id":"a","decision":"annul"}'),
+        await entry(audit.admin, "DECIDE_MATCH_REPORT_RECTIFICATION", at="2026-10-29T10:00:00Z",
+                    member=None, user=USER, payload='{"decision":"approve"}'),
+    ]
     items = {item["id"]: item for item in (await audit.client.get(URL)).json()["items"]}
+    assert items[member_decision]["actor"]["member_id"] == MEMBER
+    assert all(items[entry_id]["actor"] == {"kind": "platform", "member_id": None, "name": None}
+               for entry_id in platform_decisions)
+    assert "Migration Owner" not in str([items[entry_id] for entry_id in platform_decisions])
     assert items[by_user]["actor"] == {"kind": "member", "member_id": MEMBER, "name": "Migration Owner"}
     assert items[by_user]["details"] == [] and items[by_user]["entity_available"] is False
     assert items[platform]["actor"] == {"kind": "platform", "member_id": None, "name": None}
     assert items[platform]["details"] == [{"key": "decision", "value": "annul"}]
     filtered = (await audit.client.get(f"{URL}?actor_member_id={MEMBER}")).json()
-    assert [item["id"] for item in filtered["items"]] == [by_user]
+    assert [item["id"] for item in filtered["items"]] == [by_user, member_decision]
 
 
 async def test_entity_availability(audit):

@@ -12,6 +12,8 @@ from app.modules.organization_audit.schemas import OrganizationAuditQuery
 
 PERMISSION = "VIEW_ORGANIZATION_AUDIT"
 
+# Las decisiones de plataforma solo guardan el usuario; aunque sea miembro, se muestran sin identidad.
+
 _COUNT = """
     SELECT count(*)
     FROM administrative_audit_logs l
@@ -19,6 +21,8 @@ _COUNT = """
       ON ou.id = l.performed_by_member_id AND ou.organization_id = l.organization_id
     LEFT JOIN organization_users ou_user
       ON ou.id IS NULL AND ou_user.user_id = l.performed_by_user_id AND ou_user.organization_id = l.organization_id
+     AND l.action <> 'DECIDE_MATCH_REPORT_RECTIFICATION'
+     AND NOT (l.action = 'DECIDE_SANCTION_CASE' AND l.payload ->> 'authorization_id' IS NOT NULL)
     WHERE l.organization_id = :org
       AND (CAST(:actions AS text[]) IS NULL OR l.action = ANY(CAST(:actions AS text[])))
       AND (CAST(:actor AS uuid) IS NULL OR COALESCE(ou.id, ou_user.id) = CAST(:actor AS uuid))
@@ -41,6 +45,8 @@ _PAGE = """
       ON ou.id = l.performed_by_member_id AND ou.organization_id = l.organization_id
     LEFT JOIN organization_users ou_user
       ON ou.id IS NULL AND ou_user.user_id = l.performed_by_user_id AND ou_user.organization_id = l.organization_id
+     AND l.action <> 'DECIDE_MATCH_REPORT_RECTIFICATION'
+     AND NOT (l.action = 'DECIDE_SANCTION_CASE' AND l.payload ->> 'authorization_id' IS NOT NULL)
     LEFT JOIN users u ON u.id = COALESCE(ou.user_id, ou_user.user_id)
     WHERE l.organization_id = :org
       AND (CAST(:actions AS text[]) IS NULL OR l.action = ANY(CAST(:actions AS text[])))
