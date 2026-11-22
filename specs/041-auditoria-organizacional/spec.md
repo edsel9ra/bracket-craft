@@ -1,6 +1,6 @@
 # Spec 041 — Auditoría organizacional visible (F5)
 
-Estado: borrador. DA-1–DA-4 resueltas (2026-11-22); pendiente de aprobación.
+Estado: aprobada por el usuario el 2026-11-22 («Apruebo la spec»). DA-1–DA-4 resueltas (2026-11-22).
 
 ## Decisiones del usuario (2026-11-22)
 
