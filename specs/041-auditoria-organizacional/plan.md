@@ -1,6 +1,6 @@
 # Plan — Spec 041: Auditoría organizacional visible (F5)
 
-Estado: borrador pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-22 («Apruebo el plan y las tareas.»).
 
 ## 1. Alcance y dependencias
 

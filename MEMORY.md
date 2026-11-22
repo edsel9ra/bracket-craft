@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- 041-auditoria-organizacional (F5) — fase: plan — estado: spec aprobada por el usuario el 2026-11-22 («Apruebo la spec»); plan y tareas (T1–T7, bloques A y B, migración 064) pendientes de aprobación. Primera del bloque de corto plazo (F5 → F11 → F14). DA-1–DA-4 = (a).
+- 041-auditoria-organizacional (F5) — fase: implementación — estado: spec aprobada (2026-11-22, «Apruebo la spec») y plan/tareas aprobados (2026-11-22, «Apruebo el plan y las tareas.»). T1–T7 en bloques A (T1–T3) y B (T4–T7); migración 064 antes de la API. Primera del corto plazo (F5 → F11 → F14). DA-1–DA-4 = (a).
 - 039-recuperar-y-cambiar-contrasena (F3) CERRADA: T1–T10 en #99–#101; aceptada por el usuario el 2026-11-16 («Acepto la spec 039»). DA-1–DA-4 (a). Migración 062 antes de API y worker; el worker requiere `FRONTEND_BASE_URL`. No ejecutado: pila real con SMTP real y lector de pantalla real.
 - 040-avance-automatico-entre-fases (F2) CERRADA: T1–T11 en #103–#105; aceptada por el usuario el 2026-11-17 («registra la aceptación de la spec 040»). DA-1–DA-4 (a). Migración 063 antes que la API. No ejecutado: flujo contra la pila real con datos de torneo reales y lector de pantalla real.
 - 038-fichas-de-jugador (F16) CERRADA: T1–T10 en #93–#95; aceptada por el usuario el 2026-11-16 («Acepto la spec 038»). DA-1–DA-4 (a); «autorizada» = consentimiento de imagen de la inscripción. Migración 061 antes del código. No ejecutado: ficha contra la pila real y lector de pantalla real (ver tasks.md T10).

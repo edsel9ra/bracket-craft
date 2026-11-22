@@ -1,6 +1,6 @@
 # Tareas — Spec 041: Auditoría organizacional visible (F5)
 
-Estado: borrador pendiente de aprobación. PR documental (este) y un PR por bloque: A (T1–T3, migración y backend) y B (T4–T7, frontend, E2E, documentación y cierre).
+Estado: aprobadas por el usuario el 2026-11-22. PR documental (este) y un PR por bloque: A (T1–T3, migración y backend) y B (T4–T7, frontend, E2E, documentación y cierre).
 
 ## Bloque A
 
