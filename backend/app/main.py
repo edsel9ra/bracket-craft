@@ -62,6 +62,7 @@ from app.modules.matches.router import router as matches_router
 from app.modules.organizations.errors import OrganizationSlugTaken
 from app.modules.organizations.router import router as organizations_router
 from app.modules.platform.router import router as platform_router
+from app.modules.organization_audit.router import router as organization_audit_router
 from app.modules.rectifications.router import router as rectifications_router
 from app.modules.sanction_appeals.router import router as sanction_appeals_router
 from app.modules.rectifications.service import RectificationConflict, RectificationSelfApproval
@@ -1064,6 +1065,7 @@ api.include_router(match_live_router, prefix="/api/v1")
 api.include_router(rectifications_router, prefix="/api/v1")
 api.include_router(sanction_appeals_router, prefix="/api/v1")
 api.include_router(crests_router, prefix="/api/v1")
+api.include_router(organization_audit_router, prefix="/api/v1")
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=api)
 app = SecurityHeadersMiddleware(sio_app, app_env=settings.app_env)
