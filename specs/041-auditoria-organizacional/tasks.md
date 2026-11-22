@@ -4,7 +4,7 @@ Estado: aprobadas por el usuario el 2026-11-22. PR documental (este) y un PR por
 
 ## Bloque A
 
-- [ ] **T1. Migración 064.** RF-001, RF-013, RNF-001
+- [x] **T1. Migración 064.** RF-001, RF-013, RNF-001
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_064.py` en rojo y luego verde: `VIEW_ORGANIZATION_AUDIT` solo en `owner` y `administrator` (definiciones, roles existentes y organización creada después), índice presente, idempotencia (aplicar dos veces), cadena limpia 001→064 y salto 063→064; `sh -n infra/postgres/migrate.sh`.
 
 - [ ] **T2. Catálogo puro.** RF-007, RF-008
