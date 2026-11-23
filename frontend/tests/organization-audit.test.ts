@@ -38,6 +38,8 @@ test('local dates become inclusive UTC day bounds and invalid dates are dropped'
     assert.equal(helpers.dayBoundUtc('2026-11-01', 'start'), '2026-11-01T05:00:00.000Z');
     assert.equal(helpers.dayBoundUtc('2026-11-01', 'end'), '2026-11-02T04:59:59.999Z');
     for (const value of ['', '2026-13-01', '2026-02-30', 'ayer']) assert.equal(helpers.dayBoundUtc(value, 'start'), null);
+    process.env.TZ = 'America/Santiago';
+    assert.equal(helpers.dayBoundUtc('2026-04-04', 'end'), '2026-04-05T03:59:59.999Z');
   } finally {
     if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
   }

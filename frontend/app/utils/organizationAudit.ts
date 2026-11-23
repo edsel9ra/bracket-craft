@@ -54,9 +54,10 @@ export function dayBoundUtc(value: string, bound: 'start' | 'end'): string | nul
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
   const [year, month, day] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
-  const date = bound === 'start' ? new Date(year, month, day) : new Date(year, month, day, 23, 59, 59, 999);
-  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
-  return date.toISOString();
+  const start = new Date(year, month, day);
+  if (start.getFullYear() !== year || start.getMonth() !== month || start.getDate() !== day) return null;
+  if (bound === 'start') return start.toISOString();
+  return new Date(new Date(year, month, day + 1).getTime() - 1).toISOString();
 }
 
 export function filtersFromQuery(query: AuditRouteQuery): AuditFilters {
