@@ -17,16 +17,14 @@ export interface SeoTexts {
   imageAlt: string;
 }
 
-export interface SeoMeta {
-  name?: string;
-  property?: string;
-  content: string;
-}
+export type SeoMeta =
+  | { name: string; property?: never; content: string }
+  | { property: string; name?: never; content: string };
 
 export interface SeoHead {
   title: string;
   meta: SeoMeta[];
-  link: { rel: string; href: string }[];
+  link: { rel: 'canonical'; href: string }[];
 }
 
 export interface ShareableResultFields {
@@ -134,4 +132,15 @@ export function resultTitle(match: ShareableResultFields, tournamentName: string
 
 export function parseMatchQuery(value: unknown): string | null {
   return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
+}
+
+export function seoContext(siteUrl: string, apiBase: string, locale: unknown): SeoContext {
+  return { siteUrl, apiBase, locale: locale === 'en' ? 'en' : 'es' };
+}
+
+/** Cerrar la cronología compartida quita `match` y conserva fase y grupo. */
+export function withoutMatchQuery<T extends Record<string, unknown>>(query: T): Omit<T, 'match'> {
+  const rest: Record<string, unknown> = { ...query };
+  delete rest.match;
+  return rest as Omit<T, 'match'>;
 }

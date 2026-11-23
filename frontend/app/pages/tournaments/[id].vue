@@ -51,18 +51,31 @@ import {
 } from '~/utils/publicTournament';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import type { LocationQueryRaw } from 'vue-router';
+import {
+  isShareableResult,
+  parseMatchQuery,
+  resultHead,
+  resultTitle,
+  seoContext,
+  tournamentHead,
+  withoutMatchQuery,
+} from '~/utils/publicSeo';
 
 const route = useRoute();
 const router = useRouter();
 const { request } = useApi();
-const { t, statusLabel, stageTypeLabel, formatDateTime, errorMessage } = useI18n();
+const { t, statusLabel, stageTypeLabel, formatDateTime, errorMessage, locale } = useI18n();
+const config = useRuntimeConfig();
 const realtime = useRealtime();
 const tournamentId = String(route.params.id);
+// Spec 043 RF-006: un `?match=` no válido o no compartible abre el torneo sin diálogo.
+const sharedMatchId = parseMatchQuery(route.query.match);
 const PAGE_SIZE = 50;
 const PUBLIC_REFRESH_INTERVAL_MS = 30_000;
 
 interface PublicTournamentData {
   tournament: PublicTournament;
+  sharedMatch: PublicMatchState | null;
 }
 
 function failureMessage(cause: unknown, fallback: string): string {
@@ -72,12 +85,20 @@ function failureMessage(cause: unknown, fallback: string): string {
 const { data: tournamentData, status, error: dataError, refresh } = await useAsyncData<PublicTournamentData>(
   `public-tournament-${tournamentId}`,
   async () => {
-    const tournament = await request<PublicTournament>(`/tournaments/public/${tournamentId}`);
-    return { tournament };
+    const [tournament, sharedMatch] = await Promise.all([
+      request<PublicTournament>(`/tournaments/public/${tournamentId}`),
+      sharedMatchId
+        ? request<PublicMatchState>(`/tournaments/public/${tournamentId}/matches/${sharedMatchId}`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    return { tournament, sharedMatch };
   },
 );
 
 const tournament = computed<PublicTournament | null>(() => tournamentData.value?.tournament ?? null);
+const sharedMatchDismissed = ref(false);
+const sharedMatch = computed(() => (sharedMatchDismissed.value ? null : tournamentData.value?.sharedMatch ?? null));
+const tournamentHeading = ref<HTMLHeadingElement | null>(null);
 const standings = ref<PublicStanding[]>([]);
 const matches = ref<PublicMatchEntry[]>([]);
 const matchList = computed(() => matches.value.map((entry) => entry.match));
@@ -214,17 +235,26 @@ const suspendedMatchesForSelection = computed<SuspendedPublicMatch[]>(() =>
     : []
   ).filter(isSuspendedPublicMatch));
 
-useHead(() => ({
-  title: tournament.value ? `${tournament.value.name} | Bracket Craft` : `${t('public.tournament')} | Bracket Craft`,
-  meta: [
-    {
-      name: 'description',
-      content: tournament.value
-        ? `${t('public.standings')} y resultados públicos de ${tournament.value.name}.`
-        : `${t('public.standings')} y resultados públicos del torneo.`,
-    },
-  ],
-}));
+useHead(() => {
+  const current = tournament.value;
+  if (!current) return { title: `${t('public.tournament')} | Bracket Craft` };
+  const ctx = seoContext(config.public.siteUrl, config.public.apiBase, locale.value);
+  const match = sharedMatch.value;
+  if (match && !isSuspendedPublicMatch(match) && isShareableResult(match)) {
+    const result = resultTitle(match, current.name);
+    return resultHead(ctx, tournamentId, match.id, {
+      title: resultTitle(match, current.name),
+      description: t('seo.resultDescription', { name: current.name }),
+      imageAlt: t('seo.resultImageAlt', { result }),
+    });
+  }
+  const status = statusLabel(current.status);
+  return tournamentHead(ctx, tournamentId, {
+    title: `${current.name} | Bracket Craft`,
+    description: t('seo.tournamentDescription', { name: current.name, season: current.season, status }),
+    imageAlt: t('seo.tournamentImageAlt', { name: current.name, season: current.season, status }),
+  });
+});
 
 function formatScore(match: PublicMatchState) {
   if (match.home_score === null || match.away_score === null) return '-';
@@ -314,8 +344,18 @@ async function loadTimeline() {
 
 function openTimeline(match: PublicMatchState, event: MouseEvent) {
   if (isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
+  showTimeline(match, event.currentTarget as HTMLButtonElement);
+}
+
+function openSharedTimeline() {
+  const match = sharedMatch.value;
+  if (!match || isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
+  showTimeline(match, null);
+}
+
+function showTimeline(match: OpenTimelineMatch, trigger: HTMLButtonElement | null) {
   selectedTimelineMatchId.value = match.id;
-  timelineTrigger.value = event.currentTarget as HTMLButtonElement;
+  timelineTrigger.value = trigger;
   timelineMatchCache.value = match;
   timelineSnapshot = timelineSnapshotOf(match);
   timelineData.value = null;
@@ -332,7 +372,11 @@ function closeTimeline() {
   timelineData.value = null;
   timelineLoading.value = false;
   timelineError.value = false;
-  void nextTick(() => trigger?.focus());
+  if (route.query.match !== undefined) {
+    sharedMatchDismissed.value = true;
+    void router.replace({ query: withoutMatchQuery(route.query) });
+  }
+  void nextTick(() => (trigger ?? tournamentHeading.value)?.focus());
 }
 
 type TimelineSnapshot = Pick<
@@ -640,6 +684,7 @@ onMounted(() => {
     void applyPublicSelection(normalized, 'replace');
   }
   connectRealtime();
+  openSharedTimeline();
   publicRefreshTimer = window.setInterval(() => {
     if (shouldPollPublicRealtime(realtime.status.value)) refreshPublicData();
   }, PUBLIC_REFRESH_INTERVAL_MS);
@@ -678,7 +723,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
         <section class="container tournament-hero">
           <div>
              <p class="eyebrow">{{ t('public.publicCompetition') }} · {{ statusLabel(tournament.status) }}</p>
-            <h1>{{ tournament.name }}</h1>
+            <h1 ref="tournamentHeading" tabindex="-1">{{ tournament.name }}</h1>
              <p class="tournament-meta">{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
              <nav class="public-section-nav" :aria-label="t('public.sectionNavigation')">
                <a href="#public-results">{{ t('public.results') }}</a>

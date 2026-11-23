@@ -11,7 +11,9 @@ import {
   playerHead,
   resultHead,
   resultTitle,
+  seoContext,
   tournamentHead,
+  withoutMatchQuery,
   type SeoContext,
   type SeoHead,
 } from '../app/utils/publicSeo.ts';
@@ -157,4 +159,16 @@ test('el origen público se configura en Nuxt, Compose y .env.example (RF-012)',
   assert.match(prod, /NUXT_PUBLIC_SITE_URL: \$\{FRONTEND_BASE_URL:\?FRONTEND_BASE_URL must be set\}/);
   const env = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8');
   assert.match(env, /^NUXT_PUBLIC_SITE_URL=http:\/\/localhost:3000$/m);
+});
+
+test('seoContext normaliza el idioma y conserva origen y base de API', () => {
+  assert.deepEqual(seoContext('https://a.example', '/api/v1', 'en'), { siteUrl: 'https://a.example', apiBase: '/api/v1', locale: 'en' });
+  for (const value of ['es', 'fr', undefined, null]) {
+    assert.equal(seoContext('https://a.example', '/api/v1', value).locale, 'es', String(value));
+  }
+});
+
+test('withoutMatchQuery quita solo el partido y conserva fase y grupo (RF-006)', () => {
+  assert.deepEqual(withoutMatchQuery({ stage: 's', group: 'g', match: MATCH_ID }), { stage: 's', group: 'g' });
+  assert.deepEqual(withoutMatchQuery({ stage: 's' }), { stage: 's' });
 });

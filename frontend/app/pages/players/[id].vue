@@ -12,10 +12,12 @@ import {
   profilePhotoVisible,
   type PublicPlayerProfile,
 } from '~/utils/publicPlayerProfile';
+import { playerHead, seoContext } from '~/utils/publicSeo';
 
 const route = useRoute();
 const { request } = useApi();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const config = useRuntimeConfig();
 const playerId = String(route.params.id);
 const validId = isPlayerProfileId(playerId);
 
@@ -37,11 +39,24 @@ function markPhotoFailed() {
   failedPhotoUrl.value = profile.value?.photo_url ?? null;
 }
 
-useHead(() => ({
-  title: playerName.value
-    ? t('publicPlayer.title', { name: playerName.value })
-    : `${t('publicPlayer.eyebrow')} | Bracket Craft`,
-}));
+useHead(() => {
+  if (!profile.value) {
+    return {
+      title: `${t('publicPlayer.eyebrow')} | Bracket Craft`,
+      meta: [{ name: 'robots', content: 'noindex, nofollow' }],
+    };
+  }
+  const ctx = seoContext(config.public.siteUrl, config.public.apiBase, locale.value);
+  const name = playerName.value;
+  const recentTournament = profile.value?.tournaments[0]?.tournament_name;
+  return playerHead(ctx, playerId, {
+    title: t('publicPlayer.title', { name }),
+    description: recentTournament
+      ? t('seo.playerDescription', { name, tournament: recentTournament })
+      : t('seo.playerDescriptionNoTournament', { name }),
+    imageAlt: t('seo.brandImageAlt'),
+  });
+});
 </script>
 
 <template>
