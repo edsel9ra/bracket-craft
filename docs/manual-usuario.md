@@ -85,6 +85,8 @@ El paso de composición y el resumen de revisión muestran **un solo total** de 
 
 - `/workspace/tournaments/{id}/calendar` (`?stage=`): crear partido manualmente, sortear/regenerar (con confirmación) y listar partidos con enlace a operación.
 - No se regenera el calendario al asignar/quitar equipos manualmente.
+- Si dos personas sortean la misma fase a la vez, se atienden de una en una y nunca se mezclan partidos. Sin reemplazo, la segunda recibe «La fase ya tiene partidos; confirma el reemplazo para volver a sortear». Con reemplazo, en liga, grupos y eliminatorias queda el último sorteo; en Swiss la segunda recibe «el estado de la fase cambió durante el sorteo; vuelve a intentarlo».
+- Un calendario generado que repetiría un código de partido o un enfrentamiento por encima de lo que permite el formato se rechaza sin guardar nada.
 
 ## 7. Operación de partido y actas
 
