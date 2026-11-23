@@ -18,6 +18,7 @@ import pytest
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
@@ -133,6 +134,8 @@ class DrawSession:
         history=(),
         standings=(),
         fail_write_on: str | None = None,
+        fail_write_error: Exception | None = None,
+        t2_history=None,
     ):
         self.team_rows = [
             {"team_id": UUID(int=index), "group_id": None}
@@ -159,6 +162,8 @@ class DrawSession:
         self.history = list(history)
         self.standings = list(standings)
         self.fail_write_on = fail_write_on
+        self.fail_write_error = fail_write_error or RuntimeError("write failed")
+        self.t2_history = None if t2_history is None else list(t2_history)
         self.active = False
         self.committed = False
         self.rolled_back = False
@@ -240,6 +245,8 @@ class DrawSession:
                 [{"id": match_id} for match_id in self.existing_ids]
             )
         if "home_team_id IS NOT NULL" in sql:
+            if self.in_write_transaction and self.t2_history is not None:
+                return RowsResult(self.t2_history)
             return RowsResult(self.history)
         if self._is_write(sql):
             self._record_write(sql, params or {})
@@ -255,7 +262,7 @@ class DrawSession:
 
     def _record_write(self, sql: str, params: dict) -> None:
         if self.fail_write_on is not None and self.fail_write_on in sql:
-            raise RuntimeError("write failed")
+            raise self.fail_write_error
         self.write_statements.append(sql)
         self.write_calls.append((sql, params))
         self.write_transaction_states.append(self.active)
@@ -465,8 +472,8 @@ async def test_later_rounds_do_not_delete_placeholders_or_previous_matches(
             {"id": match_id, "status": "cancelled"} for match_id in placeholder_ids
         ],
         history=[
-            {"home_team_id": UUID(int=1), "away_team_id": UUID(int=2)},
             {"home_team_id": UUID(int=1), "away_team_id": UUID(int=3)},
+            {"home_team_id": UUID(int=2), "away_team_id": UUID(int=4)},
         ],
     )
     calls = install_runner(monkeypatch, session, result=pairings_for(8))
@@ -485,11 +492,11 @@ async def test_later_rounds_do_not_delete_placeholders_or_previous_matches(
     assert sum(sql.startswith("UPDATE matches ") for sql in session.write_statements) == 4
     assert sum(sql.startswith("INSERT INTO match_slot_assignments ") for sql in session.write_statements) == 4
     assert calls[0]["kwargs"]["prior_pairs"] == {
-        frozenset((UUID(int=1), UUID(int=2))),
         frozenset((UUID(int=1), UUID(int=3))),
+        frozenset((UUID(int=2), UUID(int=4))),
     }
-    assert calls[0]["kwargs"]["home_counts"] == {UUID(int=1): 2}
-    assert calls[0]["kwargs"]["away_counts"] == {UUID(int=2): 1, UUID(int=3): 1}
+    assert calls[0]["kwargs"]["home_counts"] == {UUID(int=1): 1, UUID(int=2): 1}
+    assert calls[0]["kwargs"]["away_counts"] == {UUID(int=3): 1, UUID(int=4): 1}
 
 
 @pytest.mark.parametrize(
@@ -587,6 +594,71 @@ async def test_a_write_failure_rolls_back_the_whole_schedule(
     assert response.status_code == 500
     assert session.rolled_back is True
     assert session.committed_writes == []
+
+
+async def test_a_write_integrity_error_is_a_409_without_writes(
+    monkeypatch, allow_management
+):
+    session = DrawSession(
+        team_count=8,
+        fail_write_on="INSERT INTO matches",
+        fail_write_error=IntegrityError("INSERT INTO matches", {}, Exception("duplicate code")),
+    )
+    install_runner(monkeypatch, session, result=pairings_for(8))
+
+    response = await post_draw(session)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "No se pudo guardar el calendario Swiss"
+    assert session.rolled_back is True
+    assert session.committed_writes == []
+
+
+def _later_round_session(**overrides) -> DrawSession:
+    return DrawSession(
+        team_count=8,
+        version_status="published",
+        configured_rounds=8,
+        previous_rows=[{"id": uuid4(), "status": "finished"} for _ in range(4)],
+        placeholder_rows=[{"id": uuid4(), "status": "cancelled"} for _ in range(4)],
+        history=[{"home_team_id": UUID(int=1), "away_team_id": UUID(int=3)}],
+        **overrides,
+    )
+
+
+async def test_a_pair_repeated_from_a_previous_round_is_a_409_without_writes(
+    monkeypatch, allow_management
+):
+    # The calculation saw one history; under the lock a previous round now
+    # contains a planned pair (reversed): the check counts it before writing.
+    session = _later_round_session(
+        t2_history=[{"home_team_id": UUID(int=2), "away_team_id": UUID(int=1)}],
+    )
+    install_runner(monkeypatch, session, result=pairings_for(8))
+
+    response = await post_draw(session, payload(swiss_round=2, swiss_rounds=8))
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "El calendario generado supera el máximo de enfrentamientos entre dos equipos de la fase"
+    )
+    assert session.write_statements == []
+    assert session.committed_writes == []
+
+
+async def test_a_valid_later_round_reads_the_history_under_the_lock(
+    monkeypatch, allow_management
+):
+    session = _later_round_session()
+    install_runner(monkeypatch, session, result=pairings_for(8))
+
+    response = await post_draw(session, payload(swiss_round=2, swiss_rounds=8))
+
+    assert response.status_code == 201
+    history_reads = [sql for sql in session.t2_statements if "home_team_id IS NOT NULL" in sql]
+    assert len(history_reads) == 1
+    first_write = session.t2_statements.index(session.write_statements[0])
+    assert session.t2_statements.index(history_reads[0]) < first_write
 
 
 STATE_CHANGED = "el estado de la fase cambió durante el sorteo; vuelve a intentarlo"

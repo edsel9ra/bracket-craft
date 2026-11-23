@@ -18,8 +18,9 @@ Estado: aprobadas por el usuario el 2026-11-23. Este PR documental y un PR de im
 - Hecho cuando: tests nuevos en `test_tournament_scheduling.py` en rojo y luego verde: un generador que devuelve un código o una pareja de más produce 409 sin filas nuevas y sin borrar el calendario anterior en un reemplazo; los sorteos normales mantienen códigos, respuestas y resultado por semilla; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_scheduling.py tests/test_concurrency_006.py`.
 - Evidencia: 5 fallos en rojo sin la integración; con ella, 128 passed junto con `test_concurrency_006.py` y `test_schedule_integrity.py`. La comprobación también cubre `_persist_bracket_schedule` cuando lo usa el avance entre fases.
 
-- [ ] **T5. Integración en Swiss.** RF-006, RF-009
+- [x] **T5. Integración en Swiss.** RF-006, RF-009
 - Hecho cuando: tests nuevos en `test_swiss_transaction.py` en rojo y luego verde: una pareja que repite una ronda anterior y un `IntegrityError` de escritura producen 409 sin filas nuevas ni modificadas; rondas válidas sin cambios; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_swiss_transaction.py tests/test_swiss_budget.py`.
+- Evidencia: 3 fallos en rojo sin la integración; con ella, 48 passed en `test_swiss_transaction.py` y `test_swiss_budget.py`, 37 junto con `test_concurrency_042.py` y 155 en las regresiones de liga, grupos, eliminatorias y avance entre fases. Las parejas anteriores se leen bajo el bloqueo de fase y versión. Se corrigió un doble de prueba cuyo historial repetía una pareja del emparejamiento simulado. Reemplazos Swiss simultáneos: el segundo recibe 409 (aclaración de DA-4, «Dejar swiss como está»).
 
 - [ ] **T6. Documentación y validación.** RF-011, criterios de finalización
 - Hecho cuando: README (runbook de la 065), AGENTS, `docs/manual-usuario.md`, `docs/informe-funciones-adicionales.md` y MEMORY sin H7 como riesgo aceptado y con la protección descrita; `cd backend && RUN_DATABASE_TESTS=1 pytest -q`, `python -m compileall -q app`, `ruff check .` y `bandit -r app -ll` limpios; cinco jobs de CI en verde en el PR; cada RF con su evidencia anotada aquí.
