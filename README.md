@@ -682,6 +682,12 @@ La **064** (spec 041, F5) añade el permiso `VIEW_ORGANIZATION_AUDIT` solo a los
 
 Cada entrada lleva acción, entidad (`entity_type`, `entity_id`, `entity_available`), responsable (miembro o «Administración de plataforma», sin identidad del administrador) y `details` proyectados por un catálogo cerrado; una acción sin catalogar llega con `cataloged: false` y sin contenido. Pantalla: `/workspace/audit`, en el menú solo con el permiso.
 
+## Migración 065: códigos de partido únicos (runbook)
+
+La **065** (spec 042, F11) crea el índice único parcial `uq_matches_generated_code` sobre `(organization_id, tournament_version_id, stage_id, bracket_code) WHERE bracket_code IS NOT NULL`. Los partidos creados a mano (sin código) no cuentan, y el mismo código puede repetirse en otra fase o versión. Es idempotente y no cambia RLS ni datos. **Aplicar la 065 antes que la API.**
+
+Si ya hay códigos repetidos, la migración se detiene sin crear el índice ni tocar datos, con el error `MIGRACION 065: N fase(s) con códigos de partido repetidos: <ids>`. Para cada fase listada, regenera su calendario desde el Workspace (sorteo con reemplazo) y vuelve a ejecutar `infra/postgres/migrate.sh`. Un `INSERT` posterior que repita un código responde **409** sin escribir.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
@@ -1018,7 +1024,7 @@ Los límites de esta sección son constantes del backend: no hay variables de en
 - **Conexión:** `statement_timeout` de **15 s**, `idle_in_transaction_session_timeout` de **30 s** y pool de **10 + 10** con espera de **10 s** por proceso. El agotamiento del pool responde **503** («Servicio temporalmente no disponible») con un único aviso, y la API registra los valores efectivos al arrancar.
 - **Agregado de conexiones:** con `API_WORKERS=2` y un worker del outbox son 2 × 20 + 20 = **60** conexiones teóricas frente a las **100** por defecto de PostgreSQL. Subir `API_WORKERS` o bajar `max_connections` exige revisar ese agregado.
 - **Conexión administrativa:** `scripts.encrypt_birth_dates` abre su propia conexión con `DATABASE_ADMIN_URL` y no hereda los timeouts ni el pool del engine de la aplicación.
-- **Riesgo residual aceptado:** en la ronda 1, una fase sin partidos no ofrece filas que bloquear, así que dos sorteos simultáneos en frío podrían insertar calendarios duplicados (no hay unicidad de `bracket_code`). Se corrige fuera de este bloque si se prioriza.
+- **Sorteos simultáneos (042, F11):** H7 deja de ser un riesgo aceptado. Todo sorteo bloquea primero la fase y después la versión (`FOR UPDATE`), también en frío, así que dos sorteos de la misma fase se serializan: sin reemplazo, el segundo responde **409** («La fase ya tiene partidos; confirma el reemplazo para volver a sortear»); con reemplazo en liga, grupos y eliminatorias se aplican uno tras otro y queda el último, y en Swiss el segundo responde **409** de estado cambiado. Antes del primer `INSERT` se comprueba que el calendario no repite códigos ni supera el máximo de enfrentamientos por pareja (Swiss cuenta las rondas anteriores; las eliminatorias quedan fuera de esa regla): si falla, **409** sin guardar nada. La migración **065** impide en la base de datos repetir `bracket_code` dentro de la fase y versión.
 - **Cierre serializado por fase:** el cierre toma el lock de fase (y después versión y partidos), por lo que dos cierres de la misma fase se serializan. Es una decisión de corrección, no una promesa de rendimiento; **no se midió** throughput ni latencia (RNF-003).
 
 ## Verificación

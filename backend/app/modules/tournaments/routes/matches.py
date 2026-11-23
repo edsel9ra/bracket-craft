@@ -24,6 +24,11 @@ from app.modules.tournaments.pairings import (
     max_meetings_per_pair,
     pair_limit_detail,
 )
+from app.modules.tournaments.schedule_integrity import (
+    PlannedMatch,
+    ScheduleIntegrityError,
+    check_generated_schedule,
+)
 from app.modules.tournaments.schemas import (
     CreateMatchRequest,
     GenerateSingleEliminationRequest,
@@ -53,6 +58,7 @@ router = APIRouter()
 logger = logging.getLogger("app.modules.tournaments.router")
 
 SWISS_STATE_CHANGED_DETAIL = "el estado de la fase cambió durante el sorteo; vuelve a intentarlo"
+SWISS_WRITE_CONFLICT_DETAIL = "No se pudo guardar el calendario Swiss"
 
 
 async def _load_draft_stage_context(
@@ -467,6 +473,7 @@ async def generate_single_elimination_matches(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _ensure_generated_schedule(_bracket_plan(bracket), max_meetings=None)
 
         match_ids = {match.code: uuid4() for match in bracket.matches}
         slot_ids: dict[tuple[str, str], UUID] = {}
@@ -595,6 +602,30 @@ async def _load_registered_stage_teams(
     return [dict(row) for row in result.mappings().all()]
 
 
+def _ensure_generated_schedule(
+    planned: list[PlannedMatch],
+    *,
+    max_meetings: int | None,
+    prior_pairs=(),
+) -> None:
+    """Reject a generated schedule before its first write (RF-006, DA-3)."""
+
+    try:
+        check_generated_schedule(planned, max_meetings=max_meetings, prior_pairs=prior_pairs)
+    except ScheduleIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=exc.detail) from exc
+
+
+def _bracket_plan(bracket) -> list[PlannedMatch]:
+    planned = [
+        PlannedMatch(match.code, match.home.team_id, match.away.team_id)
+        for match in bracket.matches
+    ]
+    if bracket.reset_code:
+        planned.append(PlannedMatch(bracket.reset_code, None, None))
+    return planned
+
+
 async def _persist_direct_schedule(
     db: AsyncSession,
     context: AuthContext,
@@ -602,7 +633,17 @@ async def _persist_direct_schedule(
     version_id: UUID,
     stage_id: UUID,
     schedules: list[tuple[UUID | None, object]],
+    *,
+    max_meetings: int | None,
 ) -> int:
+    _ensure_generated_schedule(
+        [
+            PlannedMatch(match.code, match.home_team_id, match.away_team_id, group_id)
+            for group_id, schedule in schedules
+            for match in schedule.matches
+        ],
+        max_meetings=max_meetings,
+    )
     count = 0
     for group_id, schedule in schedules:
         for match in schedule.matches:
@@ -643,6 +684,8 @@ async def _persist_bracket_schedule(
     bracket,
     slot_origins=None,
 ) -> int:
+    # Elimination brackets keep only the code rule: repeated meetings are legitimate.
+    _ensure_generated_schedule(_bracket_plan(bracket), max_meetings=None)
     match_ids = {match.code: uuid4() for match in bracket.matches}
     slot_ids: dict[tuple[str, str], UUID] = {}
     try:
@@ -1070,6 +1113,73 @@ async def _calculate_swiss_pairings(
         raise HTTPException(status_code=409, detail="no existe un sorteo válido sin repetir rivales") from exc
 
 
+def _swiss_plan(
+    payload: GenerateSingleEliminationRequest,
+    swiss_draw: SwissDrawData,
+    active_pairings: list[SwissPairing],
+) -> list[PlannedMatch]:
+    """Every row the Swiss write will create or fill, with its code (RF-006)."""
+
+    rounds = range(1, payload.swiss_rounds + 1) if payload.swiss_round == 1 else (
+        payload.swiss_round,
+    )
+    planned: list[PlannedMatch] = []
+    for round_number in rounds:
+        for match_number in range(1, swiss_draw.match_count_per_round + 1):
+            pairing = (
+                active_pairings[match_number - 1]
+                if round_number == payload.swiss_round
+                and match_number <= len(active_pairings)
+                else None
+            )
+            planned.append(
+                PlannedMatch(
+                    code=f"SW{round_number}-{match_number}",
+                    home_team_id=pairing.home_team_id if pairing else None,
+                    away_team_id=pairing.away_team_id if pairing else None,
+                )
+            )
+    return planned
+
+
+async def _swiss_prior_pairs(
+    db: AsyncSession,
+    context: AuthContext,
+    tournament_id: UUID,
+    payload: GenerateSingleEliminationRequest,
+) -> list[tuple[None, UUID, UUID]]:
+    """Pairs of earlier rounds, read under the stage/version lock (RF-006)."""
+
+    if payload.swiss_round == 1:
+        # Round 1 starts from an empty stage: a replacement clears every round.
+        return []
+    result = await db.execute(
+        text("""
+            SELECT home_team_id, away_team_id
+            FROM matches
+            WHERE organization_id = :organization_id
+              AND tournament_id = :tournament_id
+              AND tournament_version_id = :version_id
+              AND stage_id = :stage_id
+              AND matchday < :swiss_round
+              AND home_team_id IS NOT NULL
+              AND away_team_id IS NOT NULL
+              AND status <> 'cancelled'
+        """),
+        {
+            "organization_id": str(context.organization_id),
+            "tournament_id": str(tournament_id),
+            "version_id": str(payload.version_id),
+            "stage_id": str(payload.stage_id),
+            "swiss_round": payload.swiss_round,
+        },
+    )
+    return [
+        (None, row["home_team_id"], row["away_team_id"])
+        for row in result.mappings().all()
+    ]
+
+
 async def _write_swiss_schedule(
     db: AsyncSession,
     context: AuthContext,
@@ -1320,6 +1430,7 @@ async def _draw_non_swiss_schedule(
             payload.version_id,
             payload.stage_id,
             schedules,
+            max_meetings=max_meetings_per_pair(stage_type, payload.legs),
         )
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="No se pudo guardar el calendario sorteado") from exc
@@ -1494,6 +1605,11 @@ async def draw_stage_schedule(
         await _revalidate_swiss_draw_state(
             db, context, tournament_id, payload, swiss_draw
         )
+        _ensure_generated_schedule(
+            _swiss_plan(payload, swiss_draw, active_pairings),
+            max_meetings=max_meetings_per_pair("swiss", 1),
+            prior_pairs=await _swiss_prior_pairs(db, context, tournament_id, payload),
+        )
         if swiss_draw.replace_existing:
             await _clear_stage_schedule(
                 db,
@@ -1502,9 +1618,14 @@ async def draw_stage_schedule(
                 payload.version_id,
                 payload.stage_id,
             )
-        await _write_swiss_schedule(
-            db, context, tournament_id, payload, swiss_draw, active_pairings
-        )
+        try:
+            await _write_swiss_schedule(
+                db, context, tournament_id, payload, swiss_draw, active_pairings
+            )
+        except IntegrityError as exc:
+            raise HTTPException(
+                status_code=409, detail=SWISS_WRITE_CONFLICT_DETAIL
+            ) from exc
 
     return GenerateSingleEliminationResponse(
         version_id=payload.version_id,

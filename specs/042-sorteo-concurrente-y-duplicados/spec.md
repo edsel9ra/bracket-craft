@@ -1,6 +1,6 @@
 # Spec 042 — Sorteo concurrente y duplicados en calendarios generados (F11)
 
-Estado: aprobada por el usuario el 2026-11-23 («Apruebo la spec»). DA-1–DA-4 resueltas el 2026-11-22.
+Estado: implementada y aceptada por el usuario el 2026-11-23 («acepto la 042»); aprobada el 2026-11-23 («Apruebo la spec»). DA-1–DA-4 resueltas el 2026-11-22.
 
 ## Decisiones del usuario (2026-11-22)
 
@@ -8,6 +8,7 @@ Estado: aprobada por el usuario el 2026-11-23 («Apruebo la spec»). DA-1–DA-4
 - **DA-2 = (a).** Si ya hay códigos repetidos, la migración se detiene sin cambiar nada y lista las fases afectadas para regenerarlas.
 - **DA-3 = (a).** El calendario generado se comprueba antes de guardarlo; si falla, 409 y no se guarda nada. Sin aviso nuevo en el Workspace.
 - **DA-4 = (a).** Dos reemplazos simultáneos se aplican uno tras otro y queda el último; nunca se mezclan partidos.
+  - **Aclaración Swiss (2026-11-23, «Dejar swiss como está»).** En Swiss el emparejamiento se calcula fuera del bloqueo y se revalida dentro; si dos reemplazos coinciden, se aplica el primero y el segundo recibe 409 «el estado de la fase cambió durante el sorteo; vuelve a intentarlo». Tampoco se mezclan partidos. Recalcular dentro del bloqueo alargaría la transacción que el presupuesto de cálculo Swiss evita.
 
 ## Contexto y objetivo
 
@@ -48,7 +49,7 @@ Relación con la constitución: §2.1–2.2 (aislamiento por organización; todo
 
 - **RF-001.** CUANDO lleguen a la vez dos o más sorteos o generaciones de la misma fase y versión, EL SISTEMA los procesará de uno en uno; al terminar, la fase tendrá como mucho un calendario generado completo y nunca partidos de dos sorteos mezclados.
 - **RF-002.** CUANDO dos sorteos en frío de la misma fase coincidan sin pedir reemplazo, EL SISTEMA aplicará uno y responderá al otro 409 con el mensaje vigente de «la fase ya tiene partidos», sin escribir nada.
-- **RF-003.** CUANDO dos sorteos de la misma fase coincidan pidiendo reemplazo, EL SISTEMA aplicará los dos de uno en uno, de modo que el último sustituye por completo al anterior (DA-4); ninguno deja partidos del otro.
+- **RF-003.** CUANDO dos sorteos de la misma fase coincidan pidiendo reemplazo, EL SISTEMA aplicará los dos de uno en uno, de modo que el último sustituye por completo al anterior (DA-4); ninguno deja partidos del otro. En Swiss el segundo recibe 409 de estado cambiado (aclaración de DA-4).
 - **RF-004.** CUANDO dos peticiones de la misma ronda Swiss posterior a la primera coincidan, EL SISTEMA aplicará una y responderá a la otra 409 de estado cambiado, sin escribir nada.
 - **RF-005.** CUANDO un sorteo coincida con el alta manual de un partido en la misma fase, EL SISTEMA los procesará de uno en uno: el alta manual posterior se valida con la regla R26 contando los partidos generados, y un sorteo sin reemplazo posterior responde 409 porque la fase ya tiene partidos.
 - **RF-006.** ANTES de escribir un calendario generado, EL SISTEMA comprobará que no repite ningún código de partido en la fase y que ninguna pareja supera el máximo de enfrentamientos del formato, contando en Swiss las rondas anteriores; SI la comprobación falla, ENTONCES responderá 409 sin escribir nada (DA-3). La comprobación no muestra avisos nuevos en el Workspace.

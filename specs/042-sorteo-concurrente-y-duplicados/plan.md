@@ -85,7 +85,8 @@ comprobar respuestas y filas finales
 | Caso | Esperado |
 |---|---|
 | Liga, grupos, eliminación directa, doble eliminación y Swiss ronda 1: dos sorteos en frío sin reemplazo | Uno 200/201 y otro 409 «ya tiene partidos/sorteo»; un solo calendario, códigos únicos (RF-001, RF-002, CL-1) |
-| Dos reemplazos de liga y de Swiss ronda 1 | Ambos se aplican en orden; queda exactamente el calendario del último (semilla de la respuesta), sin partidos del otro (RF-003, DA-4) |
+| Dos reemplazos de liga | Ambos se aplican en orden; queda exactamente el calendario del último (semilla de la respuesta), sin partidos del otro (RF-003, DA-4) |
+| Dos reemplazos de Swiss ronda 1 | Se aplica el primero; el segundo responde 409 de estado cambiado y queda solo el calendario del primero, sin mezcla (aclaración Swiss de DA-4) |
 | Dos peticiones de la misma ronda Swiss posterior | Una aplicada y otra 409 `SWISS_STATE_CHANGED_DETAIL` (RF-004) |
 | Sorteo frente a alta manual | En ambos órdenes: alta posterior validada con R26 contando los generados; sorteo posterior sin reemplazo, 409 (RF-005) |
 | Reemplazo frente a acta cerrada | 409 de partidos operados, sin cambios (CL-5) |
