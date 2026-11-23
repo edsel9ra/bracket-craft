@@ -110,6 +110,13 @@ test('filters live in the URL, convert local days to inclusive UTC and paginate 
   await expect(page.getByRole('status')).toContainText('No hay entradas que coincidan');
   await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
   await expect(page).toHaveURL(/\/workspace\/audit$/);
+  await page.getByLabel('Desde', { exact: true }).fill('2026-11-21');
+  await page.getByLabel('Hasta', { exact: true }).fill('2026-11-20');
+  await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.getByRole('button', { name: 'Limpiar filtros', exact: true }).click();
+  await expect(page.getByLabel('Desde', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('alert')).toHaveCount(0);
   expect(fixture.writes).toEqual([]);
 });
 

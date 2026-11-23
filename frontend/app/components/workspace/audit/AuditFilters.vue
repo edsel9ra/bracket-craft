@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import Button from '~/components/ui/Button.vue';
-import { AUDIT_ACTIONS, auditActionLabelKey, type AuditActorOption, type AuditFilters } from '~/utils/organizationAudit';
+import { AUDIT_ACTIONS, auditActionLabelKey, filtersFromQuery, type AuditActorOption, type AuditFilters } from '~/utils/organizationAudit';
 
 const props = defineProps<{ filters: AuditFilters; actors: AuditActorOption[]; busy?: boolean }>();
 const emit = defineEmits<{ apply: [filters: AuditFilters]; clear: [] }>();
@@ -19,6 +19,12 @@ function submit() {
   rangeError.value = Boolean(draft.value.from && draft.value.to && draft.value.from > draft.value.to);
   if (rangeError.value) return;
   emit('apply', { ...draft.value, actions: [...draft.value.actions].sort(), page: 1 });
+}
+
+function clear() {
+  draft.value = filtersFromQuery({});
+  rangeError.value = false;
+  emit('clear');
 }
 </script>
 
@@ -51,7 +57,7 @@ function submit() {
     <p v-if="rangeError" :id="`${id}-range`" class="audit-error" role="alert">{{ t('audit.filter.invalidRange') }}</p>
     <div class="audit-filter-actions">
       <Button type="submit" :busy="busy">{{ t('audit.filter.apply') }}</Button>
-      <Button variant="secondary" :disabled="busy" @click="emit('clear')">{{ t('audit.filter.clear') }}</Button>
+      <Button variant="secondary" :disabled="busy" @click="clear">{{ t('audit.filter.clear') }}</Button>
     </div>
   </form>
 </template>
