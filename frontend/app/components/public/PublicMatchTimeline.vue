@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PublicRectifiedMark from './PublicRectifiedMark.vue';
+import PublicShareButton from './PublicShareButton.vue';
 import {
   formatTimelineMinute,
   timelineEventKey,
@@ -34,6 +35,8 @@ const props = defineProps<{
   timeline: PublicMatchTimeline | null;
   loading: boolean;
   error: boolean;
+  shareUrl?: string | null;
+  shareTitle?: string;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -140,6 +143,13 @@ function formatScore(match: TimelineMatch): string {
           <h2 :id="titleId">
             {{ teamName(match, 'home') }} <b>{{ formatScore(match) }}</b> {{ teamName(match, 'away') }}
           </h2>
+          <PublicShareButton
+            v-if="shareUrl"
+            class="timeline-share"
+            :label="t('share.result')"
+            :title="shareTitle ?? ''"
+            :url="shareUrl"
+          />
         </div>
         <button
           autofocus
@@ -206,6 +216,7 @@ function formatScore(match: TimelineMatch): string {
 .timeline-dialog-shell { display: flex; max-height: calc(100dvh - 32px); flex-direction: column; }
 .timeline-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-6); padding: var(--space-6); border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-canvas) 72%, transparent); }
 .timeline-dialog-title { min-width: 0; }
+.timeline-share { margin-top: var(--space-3); }
 .timeline-dialog-title h2 { margin: var(--space-2) 0 0; font-size: var(--text-lg); letter-spacing: -0.05em; line-height: 1.1; overflow-wrap: anywhere; }
 .timeline-dialog-title h2 b { color: var(--color-accent); }
 .timeline-close, .timeline-retry { flex: 0 0 auto; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font-size: var(--text-xs); font-weight: 800; text-transform: uppercase; }

@@ -12,7 +12,8 @@ import {
   profilePhotoVisible,
   type PublicPlayerProfile,
 } from '~/utils/publicPlayerProfile';
-import { playerHead, seoContext } from '~/utils/publicSeo';
+import PublicShareButton from '~/components/public/PublicShareButton.vue';
+import { absoluteUrl, playerHead, seoContext } from '~/utils/publicSeo';
 
 const route = useRoute();
 const { request } = useApi();
@@ -89,6 +90,12 @@ useHead(() => {
           <p class="eyebrow">{{ t('publicPlayer.eyebrow') }}</p>
           <h1>{{ playerName }}</h1>
           <p class="muted">{{ t('publicPlayer.scope') }}</p>
+          <PublicShareButton
+            class="profile-share"
+            :label="t('share.player')"
+            :title="t('publicPlayer.title', { name: playerName })"
+            :url="absoluteUrl(config.public.siteUrl, `/players/${playerId}`)"
+          />
         </div>
       </section>
 
@@ -141,6 +148,7 @@ useHead(() => {
 .profile-heading { min-width: 0; }
 .profile-heading h1 { margin: var(--space-2) 0; font-size: var(--text-display); line-height: 1; letter-spacing: -0.06em; overflow-wrap: anywhere; }
 .profile-heading p.muted { margin: 0; font-size: var(--text-sm); }
+.profile-share { margin-top: var(--space-4); }
 .profile-photo { width: 6rem; height: 6rem; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--color-surface-raised); }
 .profile-photo--initials { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-line); color: var(--color-avatar-ink); font-size: var(--text-xl); font-weight: 800; }
 .eyebrow { margin: 0; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }

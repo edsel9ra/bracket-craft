@@ -4,6 +4,7 @@ import Surface from '~/components/ui/Surface.vue';
 import PublicRectifiedMark from '~/components/public/PublicRectifiedMark.vue';
 import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
 import PublicMatchTimeline from '~/components/public/PublicMatchTimeline.vue';
+import PublicShareButton from '~/components/public/PublicShareButton.vue';
 import { nextTick, shallowRef, watch } from 'vue';
 import {
   canOpenTimeline,
@@ -52,6 +53,7 @@ import {
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import type { LocationQueryRaw } from 'vue-router';
 import {
+  absoluteUrl,
   isShareableResult,
   parseMatchQuery,
   resultHead,
@@ -99,6 +101,7 @@ const tournament = computed<PublicTournament | null>(() => tournamentData.value?
 const sharedMatchDismissed = ref(false);
 const sharedMatch = computed(() => (sharedMatchDismissed.value ? null : tournamentData.value?.sharedMatch ?? null));
 const tournamentHeading = ref<HTMLHeadingElement | null>(null);
+const tournamentShareUrl = computed(() => absoluteUrl(config.public.siteUrl, `/tournaments/${tournamentId}`));
 const standings = ref<PublicStanding[]>([]);
 const matches = ref<PublicMatchEntry[]>([]);
 const matchList = computed(() => matches.value.map((entry) => entry.match));
@@ -141,6 +144,13 @@ const selectedTimelineMatch = computed(() => {
 });
 const timelineMatch = computed(() =>
   selectedTimelineMatchId.value ? (selectedTimelineMatch.value ?? timelineMatchCache.value) : null,
+);
+const timelineShareUrl = computed(() => {
+  const match = timelineMatch.value;
+  return match && isShareableResult(match) ? absoluteUrl(config.public.siteUrl, `/tournaments/${tournamentId}?match=${match.id}`) : null;
+});
+const timelineShareTitle = computed(() =>
+  timelineMatch.value && tournament.value ? resultTitle(timelineMatch.value, tournament.value.name) : '',
 );
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
@@ -731,7 +741,14 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                <a v-if="tournament.teams?.length" href="#public-teams">{{ t('setup.teams') }}</a>
              </nav>
            </div>
-           <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
+           <div class="hero-side">
+             <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
+             <PublicShareButton
+               :label="t('share.tournament')"
+               :title="`${tournament.name} | Bracket Craft`"
+               :url="tournamentShareUrl"
+             />
+           </div>
         </section>
 
 
@@ -1104,6 +1121,8 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       :timeline="timelineData"
       :loading="timelineLoading"
       :error="timelineError"
+      :share-url="timelineShareUrl"
+      :share-title="timelineShareTitle"
       @close="closeTimeline"
       @retry="loadTimeline"
     />
@@ -1124,6 +1143,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 .tournament-hero { display: flex; justify-content: space-between; align-items: end; gap: var(--space-7); padding: 10vh 0 8vh; animation: rise-in 700ms var(--ease-out) both; }
 .tournament-hero h1 { max-width: 850px; margin: var(--space-3) 0 var(--space-2); font-size: clamp(3.4rem, 10vw, 8.5rem); line-height: 0.88; letter-spacing: -0.09em; }
 .tournament-meta, .muted { color: var(--color-muted); }
+.hero-side { display: grid; gap: var(--space-3); justify-items: end; }
 .hero-stamp { padding: var(--space-3); border: 1px solid var(--color-accent); color: var(--color-accent); font-size: var(--text-2xs); font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
 .public-section-nav { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); font-size: var(--text-md); font-weight: 700; }
 .public-section-nav a { color: var(--color-accent); text-underline-offset: var(--space-1); }
@@ -1175,7 +1195,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 @media (max-width: 480px) {
   .container { width: min(100% - 28px, 620px); }
   .tournament-hero { align-items: start; flex-direction: column; padding-top: 8vh; }
-  .hero-stamp { align-self: end; }
+  .hero-side { align-self: end; }
 }
 @media (max-width: 480px) {
   .match-teams { grid-template-columns: 1fr; gap: var(--space-2); text-align: center; }
