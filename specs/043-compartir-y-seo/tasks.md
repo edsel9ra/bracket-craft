@@ -4,8 +4,9 @@ Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan, las tareas y l
 
 ## Bloque A — backend (PR de implementación 1)
 
-- [ ] **T1. Composición de imágenes y política de compartibles.** RF-003, RF-004, RF-014, RNF-002, RNF-003
-- Hecho cuando: `pillow==12.3.0` y la fuente Archivo (OFL) están añadidas; `share_image.py`, `share_policy.py` y `brand-fallback.png` existen; `cd backend && pytest -q tests/test_share_image.py tests/test_share_policy.py` pasa tras confirmarlos en rojo; `pip-audit -r requirements.txt` limpio.
+- [x] **T1. Composición de imágenes y política de compartibles.** RF-003, RF-004, RF-014, RNF-002, RNF-003
+- Hecho cuando: `pillow==13.0.0` y la fuente Archivo (OFL) están añadidas; `share_image.py`, `share_policy.py` y `brand-fallback.png` existen; `cd backend && pytest -q tests/test_share_image.py tests/test_share_policy.py` pasa tras confirmarlos en rojo; `pip-audit -r requirements.txt` limpio.
+- Evidencia (2026-11-23): ambos archivos fallaron primero en la colección (módulos inexistentes); después 30 passed. `pip-audit -r requirements.txt -r requirements-dev.txt` sin vulnerabilidades; `ruff check .` limpio. Desviación: el plan fijaba `pillow==12.3.0`, que `pip-audit` rechaza por avisos corregidos en la 13.0.0; se fija la 13.0.0. Fuente `app/assets/fonts/Archivo[wdth,wght].ttf` con `OFL.txt`; `brand-fallback.png` se compara píxel a píxel con `brand_card("es")`.
 - [ ] **T2. Lectura pública de un partido.** RF-006, RF-007, RF-013
 - Hecho cuando: `GET /public/{id}/matches/{match_id}` devuelve la misma fila que la lista (incluido el suspendido de 14 claves) y el mismo 404 en los demás casos; `RUN_DATABASE_TESTS=1 pytest -q tests/test_public_share.py -k match_read` y los tests existentes de `public_matches` pasan.
 - [ ] **T3. Endpoints de imagen.** RF-003–RF-005, RNF-001, RNF-002, RNF-004
