@@ -1,6 +1,6 @@
 # Spec 042 — Sorteo concurrente y duplicados en calendarios generados (F11)
 
-Estado: aprobada por el usuario el 2026-11-23 («Apruebo la spec»). DA-1–DA-4 resueltas el 2026-11-22.
+Estado: implementada y aceptada por el usuario el 2026-11-23 («acepto la 042»); aprobada el 2026-11-23 («Apruebo la spec»). DA-1–DA-4 resueltas el 2026-11-22.
 
 ## Decisiones del usuario (2026-11-22)
 
