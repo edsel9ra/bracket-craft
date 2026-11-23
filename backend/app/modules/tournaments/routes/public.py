@@ -348,6 +348,35 @@ async def public_matches(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[PublicMatchStateResponse]:
+    return await _public_match_rows(
+        db, tournament_id, stage_id=stage_id, group_id=group_id, limit=limit, offset=offset
+    )
+
+
+@router.get("/public/{tournament_id}/matches/{match_id}")
+async def public_match(
+    tournament_id: UUID,
+    match_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PublicMatchStateResponse:
+    """Spec 043 RF-006: la misma fila que la lista; cualquier otro caso, el mismo 404."""
+
+    rows = await _public_match_rows(db, tournament_id, match_id=match_id, limit=1, offset=0)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+    return rows[0]
+
+
+async def _public_match_rows(
+    db: AsyncSession,
+    tournament_id: UUID,
+    *,
+    stage_id: UUID | None = None,
+    group_id: UUID | None = None,
+    match_id: UUID | None = None,
+    limit: int,
+    offset: int,
+) -> list[dict]:
     # N-2: every query lives inside this read transaction; the photos are
     # signed after it closes, never while the connection is idle in transaction.
     async with db.begin():
@@ -418,6 +447,8 @@ async def public_matches(
                        OR u.stage_id = CAST(:stage_id AS UUID))
                   AND (CAST(:group_id AS UUID) IS NULL
                        OR u.group_id = CAST(:group_id AS UUID))
+                  AND (CAST(:match_id AS UUID) IS NULL
+                       OR u.id = CAST(:match_id AS UUID))
                   ORDER BY u.stage_order, u.stage_id, u.matchday NULLS LAST,
                            u.bracket_code NULLS LAST, u.match_date NULLS LAST, u.id
                  LIMIT :limit OFFSET :offset
@@ -426,6 +457,7 @@ async def public_matches(
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id) if stage_id else None,
                 "group_id": str(group_id) if group_id else None,
+                "match_id": str(match_id) if match_id else None,
                 "limit": limit,
                 "offset": offset,
             },

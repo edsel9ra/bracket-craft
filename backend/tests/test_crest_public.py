@@ -490,7 +490,7 @@ def test_public_crest_queries_only_use_the_public_team_view():
     for endpoint in (
         tournaments_router_module.public_tournament,
         tournaments_router_module.public_standings,
-        tournaments_router_module.public_matches,
+        tournaments_router_module._public_match_rows,
     ):
         source = inspect.getsource(endpoint)
         assert "v_public_tournament_teams" in source, endpoint.__name__
