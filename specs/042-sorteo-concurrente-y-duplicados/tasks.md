@@ -2,17 +2,21 @@
 
 Estado: aprobadas por el usuario el 2026-11-23. Este PR documental y un PR de implementación (T1–T6).
 
-- [ ] **T1. Migración 065.** RF-007, RF-008, RNF-003
+- [x] **T1. Migración 065.** RF-007, RF-008, RNF-003
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_065.py` en rojo y luego verde: índice único parcial presente en volumen limpio 001→065 y en salto 064→065 con partidos existentes; reaplicación inocua; mismo código en otra fase u otra versión y partidos manuales sin código aceptados; con duplicados, la migración aborta con la cantidad y los `stage_id` en el mensaje, sin índice y sin cambiar filas; `sh -n infra/postgres/migrate.sh`.
+- Evidencia: 4 fallos en rojo sin la migración; 5 passed con ella; `sh -n` limpio.
 
-- [ ] **T2. Concurrencia real.** RF-001–RF-005, RF-007, RF-010, RNF-001, RNF-002
+- [x] **T2. Concurrencia real.** RF-001–RF-005, RF-007, RF-010, RNF-001, RNF-002
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_concurrency_042.py` en verde con la barrera de §5 del plan y todos sus casos. Si algún caso reproduce un duplicado, primero queda en rojo y se corrige el bloqueo que falte en esta tarea, anotándolo aquí.
+- Evidencia: 11 passed. Ningún caso reprodujo un duplicado: el bloqueo fase → versión ya serializa los sorteos (Swiss en frío incluido: el segundo recibe 409 de estado cambiado). La inserción directa sin bloqueo queda frenada por el índice de la 065.
 
-- [ ] **T3. Comprobación pura.** RF-006
+- [x] **T3. Comprobación pura.** RF-006
 - Hecho cuando: `cd backend && pytest -q tests/test_schedule_integrity.py` en rojo y luego verde: código repetido, pareja por encima del máximo (una y dos vueltas, no orientada, por grupo), parejas anteriores sumadas, huecos sin equipo ignorados, eliminatorias solo con códigos y calendarios reales de los generadores actuales aceptados para varias semillas.
+- Evidencia: error de importación en rojo; 88 passed con `schedule_integrity.py`.
 
-- [ ] **T4. Integración en liga, grupos y eliminatorias.** RF-006, RF-009
+- [x] **T4. Integración en liga, grupos y eliminatorias.** RF-006, RF-009
 - Hecho cuando: tests nuevos en `test_tournament_scheduling.py` en rojo y luego verde: un generador que devuelve un código o una pareja de más produce 409 sin filas nuevas y sin borrar el calendario anterior en un reemplazo; los sorteos normales mantienen códigos, respuestas y resultado por semilla; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_scheduling.py tests/test_concurrency_006.py`.
+- Evidencia: 5 fallos en rojo sin la integración; con ella, 128 passed junto con `test_concurrency_006.py` y `test_schedule_integrity.py`. La comprobación también cubre `_persist_bracket_schedule` cuando lo usa el avance entre fases.
 
 - [ ] **T5. Integración en Swiss.** RF-006, RF-009
 - Hecho cuando: tests nuevos en `test_swiss_transaction.py` en rojo y luego verde: una pareja que repite una ronda anterior y un `IntegrityError` de escritura producen 409 sin filas nuevas ni modificadas; rondas válidas sin cambios; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_swiss_transaction.py tests/test_swiss_budget.py`.

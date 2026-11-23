@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
@@ -8,9 +9,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.tenancy import AuthContext
+from app.modules.tournaments.routes import matches as matches_routes
 from app.modules.tournaments.routes.matches import (
     create_match,
     draw_stage_schedule,
+    generate_single_elimination_matches,
 )
 from app.modules.tournaments.schemas import (
     CreateMatchRequest,
@@ -812,3 +815,103 @@ async def test_two_leg_generated_calendar_is_created_complete_and_limits_to_two(
     assert "máximo de 2 enfrentamientos" in error.detail
     # ...and the rejection left the complete calendar untouched.
     assert await count_stage_matches(harness, STAGE_TWO_LEG) == 12
+
+
+# ---------------------------------------------------------------------------
+# spec 042 (RF-006, DA-3): generated schedules are checked before any write
+# ---------------------------------------------------------------------------
+
+
+def _repeat_first_match(builder, *, new_code: str | None = None):
+    def wrapped(*args, **kwargs):
+        result = builder(*args, **kwargs)
+        extra = result.matches[0] if new_code is None else dataclasses.replace(result.matches[0], code=new_code)
+        return dataclasses.replace(result, matches=(*result.matches, extra))
+
+    return wrapped
+
+
+async def stage_snapshot(harness: PairingHarness, stage_id: str):
+    return await harness.admin.fetch(
+        """
+        SELECT id, bracket_code, home_team_id, away_team_id
+        FROM public.matches WHERE stage_id = $1 ORDER BY bracket_code, id
+        """,
+        UUID(stage_id),
+    )
+
+
+async def draw_or_error(harness: PairingHarness, route, *, stage_id: str, seed: int, replace: bool = False):
+    payload = GenerateSingleEliminationRequest(
+        version_id=UUID(VERSION), stage_id=UUID(stage_id), start_date=START_DATE,
+        seed=seed, legs=1, replace_existing=replace,
+    )
+    async with AsyncSession(harness.engine, expire_on_commit=False) as session:
+        try:
+            return await route(UUID(TOURNAMENT), payload, pairing_context(), session)
+        except HTTPException as exc:
+            return exc
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("builder_name", "stage_id", "route", "new_code", "detail"),
+    [
+        ("build_round_robin_schedule", STAGE_ONE_LEG, draw_stage_schedule, None,
+         "El calendario generado repite el código de partido "),
+        ("build_round_robin_schedule", STAGE_ONE_LEG, draw_stage_schedule, "RR99-1",
+         "El calendario generado supera el máximo de enfrentamientos entre dos equipos de la fase"),
+        ("build_single_elimination_bracket", STAGE_CUP, draw_stage_schedule, None,
+         "El calendario generado repite el código de partido "),
+        ("build_single_elimination_bracket", STAGE_CUP, generate_single_elimination_matches, None,
+         "El calendario generado repite el código de partido "),
+    ],
+)
+async def test_invalid_generated_schedule_is_409_and_keeps_the_previous_calendar(
+    pairing_harness, monkeypatch, builder_name, stage_id, route, new_code, detail,
+):
+    harness = pairing_harness
+    assert not isinstance(await draw_or_error(harness, route, stage_id=stage_id, seed=13), HTTPException)
+    previous = await stage_snapshot(harness, stage_id)
+    builder = getattr(matches_routes, builder_name)
+    monkeypatch.setattr(matches_routes, builder_name, _repeat_first_match(builder, new_code=new_code))
+
+    error = await draw_or_error(harness, route, stage_id=stage_id, seed=17, replace=True)
+
+    assert isinstance(error, HTTPException)
+    assert error.status_code == 409
+    assert error.detail.startswith(detail)
+    assert await stage_snapshot(harness, stage_id) == previous
+
+
+@pytest.mark.asyncio
+async def test_invalid_cold_generated_schedule_writes_nothing(pairing_harness, monkeypatch):
+    harness = pairing_harness
+    monkeypatch.setattr(
+        matches_routes,
+        "build_round_robin_schedule",
+        _repeat_first_match(matches_routes.build_round_robin_schedule),
+    )
+
+    error = await draw_or_error(harness, draw_stage_schedule, stage_id=STAGE_ONE_LEG, seed=13)
+
+    assert isinstance(error, HTTPException) and error.status_code == 409
+    assert await count_stage_matches(harness, STAGE_ONE_LEG) == 0
+    assert await harness.admin.fetchval("SELECT count(*) FROM match_slot_assignments") == 0
+
+
+@pytest.mark.asyncio
+async def test_valid_draws_keep_codes_and_counts(pairing_harness):
+    harness = pairing_harness
+    league = await draw_or_error(harness, draw_stage_schedule, stage_id=STAGE_ONE_LEG, seed=13)
+    cup = await draw_or_error(harness, generate_single_elimination_matches, stage_id=STAGE_CUP, seed=13)
+
+    assert (league.match_count, cup.match_count) == (6, 1)
+    expected = build_round_robin_schedule(
+        sorted(UUID(team) for team in (TEAM_ONE, TEAM_TWO, TEAM_THREE, TEAM_FOUR)),
+        seed=13, start_date=START_DATE, round_interval_days=7, match_interval_hours=2, legs=1,
+    )
+    rows = await stage_snapshot(harness, STAGE_ONE_LEG)
+    assert sorted((r["bracket_code"], r["home_team_id"], r["away_team_id"]) for r in rows) == sorted(
+        (m.code, m.home_team_id, m.away_team_id) for m in expected.matches
+    )
