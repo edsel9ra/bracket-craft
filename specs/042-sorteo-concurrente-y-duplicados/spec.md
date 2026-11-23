@@ -1,6 +1,13 @@
 # Spec 042 — Sorteo concurrente y duplicados en calendarios generados (F11)
 
-Estado: borrador (2026-11-22). Pendiente de clarificación DA-1–DA-4.
+Estado: borrador (2026-11-22). DA-1–DA-4 resueltas (2026-11-22); pendiente de aprobación.
+
+## Decisiones del usuario (2026-11-22)
+
+- **DA-1 = (a).** Además del bloqueo, una migración nueva impide en la base de datos dos partidos generados con el mismo código en la misma fase y versión.
+- **DA-2 = (a).** Si ya hay códigos repetidos, la migración se detiene sin cambiar nada y lista las fases afectadas para regenerarlas.
+- **DA-3 = (a).** El calendario generado se comprueba antes de guardarlo; si falla, 409 y no se guarda nada. Sin aviso nuevo en el Workspace.
+- **DA-4 = (a).** Dos reemplazos simultáneos se aplican uno tras otro y queda el último; nunca se mezclan partidos.
 
 ## Contexto y objetivo
 
@@ -44,7 +51,7 @@ Relación con la constitución: §2.1–2.2 (aislamiento por organización; todo
 - **RF-003.** CUANDO dos sorteos de la misma fase coincidan pidiendo reemplazo, EL SISTEMA aplicará los dos de uno en uno, de modo que el último sustituye por completo al anterior (DA-4); ninguno deja partidos del otro.
 - **RF-004.** CUANDO dos peticiones de la misma ronda Swiss posterior a la primera coincidan, EL SISTEMA aplicará una y responderá a la otra 409 de estado cambiado, sin escribir nada.
 - **RF-005.** CUANDO un sorteo coincida con el alta manual de un partido en la misma fase, EL SISTEMA los procesará de uno en uno: el alta manual posterior se valida con la regla R26 contando los partidos generados, y un sorteo sin reemplazo posterior responde 409 porque la fase ya tiene partidos.
-- **RF-006.** ANTES de escribir un calendario generado, EL SISTEMA comprobará que no repite ningún código de partido en la fase y que ninguna pareja supera el máximo de enfrentamientos del formato, contando en Swiss las rondas anteriores; SI la comprobación falla, ENTONCES responderá 409 sin escribir nada (DA-3).
+- **RF-006.** ANTES de escribir un calendario generado, EL SISTEMA comprobará que no repite ningún código de partido en la fase y que ninguna pareja supera el máximo de enfrentamientos del formato, contando en Swiss las rondas anteriores; SI la comprobación falla, ENTONCES responderá 409 sin escribir nada (DA-3). La comprobación no muestra avisos nuevos en el Workspace.
 - **RF-007.** EL SISTEMA impedirá en la base de datos que una misma fase y versión tenga dos partidos generados con el mismo código, también si una ruta futura omitiera el bloqueo (DA-1).
 - **RF-008.** SI al aplicar la migración ya existen fases con partidos generados de código repetido, ENTONCES la migración se detendrá sin cambiar nada e indicará cuántas fases están afectadas y sus identificadores, para que se regeneren antes de reintentarla (DA-2).
 - **RF-009.** EL SISTEMA no cambiará el comportamiento de los sorteos que no coinciden: mismos códigos, mismas respuestas, mismas validaciones y mismo resultado para la misma semilla.
@@ -87,7 +94,4 @@ No aplica: solo intervienen fases, partidos, equipos y códigos de partido; no h
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] DA-1: ¿se añade unicidad en la base de datos del código de partido generado por fase y versión, además del bloqueo?
-- [NECESITA ACLARACIÓN] DA-2: si la migración encuentra códigos repetidos ya guardados, ¿se detiene sin cambiar nada o los resuelve sola?
-- [NECESITA ACLARACIÓN] DA-3: ¿se comprueba la integridad del calendario generado antes de escribirlo?
-- [NECESITA ACLARACIÓN] DA-4: con dos reemplazos simultáneos, ¿se aplica el último o el segundo debe fallar?
+Ninguna.
