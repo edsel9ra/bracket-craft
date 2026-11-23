@@ -1,6 +1,6 @@
 # Tareas — Spec 042: Sorteo concurrente y duplicados en calendarios generados (F11)
 
-Estado: borrador, pendiente de aprobación. Este PR documental y un PR de implementación (T1–T6).
+Estado: aprobadas por el usuario el 2026-11-23. Este PR documental y un PR de implementación (T1–T6).
 
 - [ ] **T1. Migración 065.** RF-007, RF-008, RNF-003
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_065.py` en rojo y luego verde: índice único parcial presente en volumen limpio 001→065 y en salto 064→065 con partidos existentes; reaplicación inocua; mismo código en otra fase u otra versión y partidos manuales sin código aceptados; con duplicados, la migración aborta con la cantidad y los `stage_id` en el mensaje, sin índice y sin cambiar filas; `sh -n infra/postgres/migrate.sh`.

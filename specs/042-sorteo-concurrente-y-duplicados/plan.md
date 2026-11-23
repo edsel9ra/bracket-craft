@@ -1,6 +1,6 @@
 # Plan — Spec 042: Sorteo concurrente y duplicados en calendarios generados (F11)
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan y las tareas.»).
 
 ## 1. Alcance y dependencias
 
