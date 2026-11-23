@@ -1,6 +1,6 @@
 # Tareas — Spec 043: Compartir y SEO (F14)
 
-Estado: borrador; pendiente de aprobación del usuario.
+Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan, las tareas y la excepción. Empieza con T1»), incluida la excepción §3.3 del sitemap.
 
 ## Bloque A — backend (PR de implementación 1)
 
