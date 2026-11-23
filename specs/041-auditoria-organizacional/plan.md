@@ -53,7 +53,7 @@ Catálogo inicial (campos entre paréntesis; «—» = sin contenido mostrado):
 
 | Entidad | Acciones |
 |---|---|
-| `matches` | `CLOSE_MATCH_REPORT` y `ADMINISTRATIVE_MATCH_RESOLUTION` (estado anterior y final, tipo de resolución, marcador, motivo del walkover o de la resolución, nota del acta, n.º de suspensiones); `INTERRUPT_MATCH_SEGMENT` (motivo, minuto); `MATCH_LIVE_COMMAND` (tipo, revisión); `SAVE_MATCH_LINEUP` (equipos, inscritos, titulares, suplentes); `PUBLISH_MATCH_LINEUP` y `UNPUBLISH_MATCH_LINEUP` (pública sí/no); `ASSIGN_MATCH_OFFICIAL` y `REMOVE_MATCH_OFFICIAL` (miembro, función); `REQUEST_MATCH_REPORT_RECTIFICATION` (versión base); `DECIDE_MATCH_REPORT_RECTIFICATION` (decisión); `GRANT_RECTIFICATION_AUTHORIZATION` y `REVOKE_RECTIFICATION_AUTHORIZATION` (—) |
+| `matches` | `CLOSE_MATCH_REPORT` y `ADMINISTRATIVE_MATCH_RESOLUTION` (estado anterior y final, tipo de resolución, marcador, motivo del walkover o de la resolución, n.º de suspensiones; el acta no guarda una nota propia); `INTERRUPT_MATCH_SEGMENT` (motivo, minuto, notas); `MATCH_LIVE_COMMAND` (tipo, revisión); `SAVE_MATCH_LINEUP` (equipos, inscritos, titulares, suplentes); `PUBLISH_MATCH_LINEUP` y `UNPUBLISH_MATCH_LINEUP` (pública sí/no); `ASSIGN_MATCH_OFFICIAL` y `REMOVE_MATCH_OFFICIAL` (miembro, función); `REQUEST_MATCH_REPORT_RECTIFICATION` (versión base); `DECIDE_MATCH_REPORT_RECTIFICATION` (decisión); `GRANT_RECTIFICATION_AUTHORIZATION` y `REVOKE_RECTIFICATION_AUTHORIZATION` (—) |
 | `sanction_cases` | `DECIDE_SANCTION_CASE` (decisión); `GRANT_SANCTION_AUTHORIZATION` y `REVOKE_SANCTION_AUTHORIZATION` (—) |
 | `competitive_impact_procedures` | `OPEN_COMPETITIVE_IMPACT` y `CLOSE_COMPETITIVE_IMPACT` (resolución) |
 | `organization_users` | `CHANGE_MEMBER_ROLE` (rol); `SET_MEMBER_ACTIVE` (activo sí/no) |
@@ -80,6 +80,7 @@ FROM administrative_audit_logs l
 LEFT JOIN organization_users ou ON ou.id = l.performed_by_member_id
 LEFT JOIN organization_users ou_user ON ou.id IS NULL AND ou_user.user_id = l.performed_by_user_id
      AND ou_user.organization_id = l.organization_id
+     AND NOT <decisión de plataforma>
 LEFT JOIN users u ON u.id = COALESCE(ou.user_id, ou_user.user_id)
 WHERE l.organization_id = :org
   AND (:actions IS NULL OR l.action = ANY(:actions))
@@ -87,7 +88,7 @@ WHERE l.organization_id = :org
   AND (:from IS NULL OR l.performed_at >= :from) AND (:to IS NULL OR l.performed_at <= :to)
 ORDER BY l.performed_at DESC, l.id DESC LIMIT :limit OFFSET :offset
 ```
-- El responsable es el miembro de `performed_by_member_id` o, si falta, el miembro de esa organización con `performed_by_user_id` (por ejemplo, el propietario que concede una autorización). Si ninguno existe, es la «Administración de plataforma» sin nombre ni ID (RF-006).
+- El responsable es el miembro de `performed_by_member_id` o, si falta, el miembro de esa organización con `performed_by_user_id` (por ejemplo, el propietario que concede una autorización). Las decisiones de plataforma (`DECIDE_MATCH_REPORT_RECTIFICATION` sin miembro y `DECIDE_SANCTION_CASE` con `authorization_id`) no se resuelven por usuario aunque el administrador sea miembro (CL-2). Si ninguno existe, es la «Administración de plataforma» sin nombre ni ID (RF-006).
 - `entity_available` se calcula con `EXISTS` bajo RLS solo para `matches` y `sanction_cases`; para el resto vale `false` (RF-012).
 - Los nombres de miembro de los campos `member` se resuelven en la misma transacción con una consulta por página, no por fila.
 - Solo hay sentencias `SELECT`: consultar no escribe auditoría (RF-009).

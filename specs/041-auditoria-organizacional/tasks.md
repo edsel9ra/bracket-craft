@@ -4,13 +4,13 @@ Estado: aprobadas por el usuario el 2026-11-22. PR documental (este) y un PR por
 
 ## Bloque A
 
-- [ ] **T1. Migración 064.** RF-001, RF-013, RNF-001
+- [x] **T1. Migración 064.** RF-001, RF-013, RNF-001
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_064.py` en rojo y luego verde: `VIEW_ORGANIZATION_AUDIT` solo en `owner` y `administrator` (definiciones, roles existentes y organización creada después), índice presente, idempotencia (aplicar dos veces), cadena limpia 001→064 y salto 063→064; `sh -n infra/postgres/migrate.sh`.
 
-- [ ] **T2. Catálogo puro.** RF-007, RF-008
+- [x] **T2. Catálogo puro.** RF-007, RF-008
 - Hecho cuando: `cd backend && pytest -q tests/test_organization_audit_catalog.py` en rojo y luego verde: proyección por cada acción, omisión de campos ausentes o de tipo distinto, recorte a 1000 caracteres, nombres de miembro, `None` para acciones desconocidas, catálogo sin rutas sensibles e inventario de todas las acciones escritas en `administrative_audit_logs`.
 
-- [ ] **T3. Endpoints de consulta.** RF-001 a RF-006, RF-009, RF-012, RNF-001, RNF-002, RNF-004
+- [x] **T3. Endpoints de consulta.** RF-001 a RF-006, RF-009, RF-012, RNF-001, RNF-002, RNF-004
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_organization_audit_routes.py` en rojo y luego verde (casos de §6 del plan); inventario de esquemas estrictos de la 019 actualizado; `pytest -q`, `python -m compileall -q app`, `ruff check .` y `bandit -r app -ll` limpios.
 
 ## Bloque B
