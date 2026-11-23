@@ -52,6 +52,7 @@ async def test_match_read_equals_list_row_live_scheduled_and_suspended(public_li
                 response = await client.get(_match_path(TOURNAMENT, row["id"]))
                 assert response.status_code == 200, response.text
                 assert response.json() == row
+                assert "set-cookie" not in response.headers
             target = next(row for row in rows if row["id"] == MATCH)
             assert target["status"] == ("suspended" if suspend else "live")
             if suspend:
@@ -95,6 +96,7 @@ async def test_match_read_finished_row_and_organization_isolation(db_session, te
                 response = await client.get(_match_path(seeded["tournament_id"], row["id"]))
                 assert response.status_code == 200, response.text
                 assert response.json() == row
+                assert "set-cookie" not in response.headers
             listed[seeded["tournament_id"]] = rows[0]["id"]
         await _assert_same_404(
             client,
@@ -109,6 +111,30 @@ async def test_match_read_rejects_malformed_ids(db_session):
     async with _public_api(db_session) as client:
         response = await client.get(f"{PUBLIC}/{uuid4()}/matches/not-a-uuid")
         assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_new_public_routes_never_set_cookies_even_on_errors(db_session):
+    """RNF-004: las rutas nuevas no emiten cookies, tampoco en 404 o 422."""
+
+    _skip_if_no_db()
+    missing = uuid4()
+    async with _public_api(db_session) as client:
+        cases = {
+            f"{PUBLIC}/{missing}/matches/{uuid4()}": 404,
+            f"{PUBLIC}/{missing}/matches/not-a-uuid": 422,
+            f"{PUBLIC}/{missing}/share-image": 404,
+            f"{PUBLIC}/{missing}/matches/{uuid4()}/share-image": 404,
+            f"{PUBLIC}/share-image?lang=fr": 422,
+            f"{PUBLIC}/{missing}/share-image?lang=fr": 422,
+        }
+        for path, expected in cases.items():
+            response = await client.get(path)
+            assert response.status_code == expected, path
+            assert "set-cookie" not in response.headers, path
+        legacy = await client.get(f"{PUBLIC}/{missing}")
+        assert legacy.status_code == 404
+        assert "bc_csrf_token=" in legacy.headers.get("set-cookie", "")
 
 
 # ---------------------------------------------------------------------------
