@@ -671,6 +671,17 @@ La **063** (spec 040, F2) vuelve a admitir `phase_slots.source_type = 'stage_ran
 
 Una llave con orígenes rechaza la asignación manual, el sorteo y el alta directa de equipos (409). Clonar una versión copia los orígenes con las fases y grupos nuevos y deja la llave vacía. Una rectificación posterior de la fase de origen abre un impacto `later_phase` y nunca reasigna plazas confirmadas. El Workspace usa `StageSlotOriginsEditor` (borrador) y `StageResolutionPanel` (publicada) en `#fases`.
 
+## Migración 064: auditoría organizacional (runbook)
+
+La **064** (spec 041, F5) añade el permiso `VIEW_ORGANIZATION_AUDIT` solo a los roles `owner` y `administrator`, en las organizaciones existentes y en las nuevas, y crea el índice `idx_administrative_audit_logs_org_performed` para ordenar y paginar. No crea tablas ni cambia RLS: la consulta lee `administrative_audit_logs`. Es idempotente. **Aplicar la 064 antes que la API.**
+
+| Ruta (bajo `/api/v1`, privada, solo lectura) | Permiso | Respuestas |
+|---|---|---|
+| `GET /organization-audit?action=…&actor_member_id=…&from=…&to=…&limit=50&offset=0` | `VIEW_ORGANIZATION_AUDIT` | `200 {items, total, limit, offset}`, orden `performed_at` e `id` descendentes; `403` idéntico sin membresía o sin permiso; `422` con acción fuera del catálogo, fecha sin zona, rango invertido o `limit` fuera de 1–100 |
+| `GET /organization-audit/actors` | `VIEW_ORGANIZATION_AUDIT` | `200 [{member_id, name}]` para el filtro de responsable |
+
+Cada entrada lleva acción, entidad (`entity_type`, `entity_id`, `entity_available`), responsable (miembro o «Administración de plataforma», sin identidad del administrador) y `details` proyectados por un catálogo cerrado; una acción sin catalogar llega con `cataloged: false` y sin contenido. Pantalla: `/workspace/audit`, en el menú solo con el permiso.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.

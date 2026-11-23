@@ -189,6 +189,16 @@ Al aprobar o rechazar una rectificación, el solicitante recibe un correo con la
 
 Todo este contenido es privado. La consulta pública no muestra sanciones, expedientes, motivos, evidencia, responsables, decisiones ni cumplimientos. Las pantallas y confirmaciones están disponibles en ES/EN y tema claro/oscuro; las verificaciones y sus límites se documentan en `specs/034-apelaciones-sanciones/verificacion.md`.
 
+### Auditoría de la organización (spec 041)
+
+Propietarios y administradores ven «Auditoría» en el menú del Workspace. La pantalla lista, de la más reciente a la más antigua y en páginas de 50, las acciones registradas en la organización: fecha, acción, entidad afectada y responsable. Las decisiones tomadas desde plataforma aparecen como «Administración de plataforma».
+
+1. Filtra por una o varias acciones, por responsable y por fechas (desde/hasta, ambos días incluidos, en tu hora local) y pulsa «Aplicar filtros». Los filtros quedan en la dirección de la página, así que puedes compartirla o volver a ella.
+2. Pulsa la acción de una fila para abrir el detalle: muestra solo los campos previstos para esa acción, incluidos motivos y notas. Escape o «Cerrar» devuelven el foco a la fila. Una acción no catalogada se lista sin contenido.
+3. Si la entidad es un partido, o un caso de sanción y puedes consultar sanciones, hay un enlace a su pantalla; en otro caso se muestra su identificador.
+
+La auditoría es de solo lectura y no registra nuevas entradas al consultarla. Las acciones de plataforma siguen en `/admin`.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.

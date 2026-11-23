@@ -80,7 +80,8 @@ FROM administrative_audit_logs l
 LEFT JOIN organization_users ou ON ou.id = l.performed_by_member_id
 LEFT JOIN organization_users ou_user ON ou.id IS NULL AND ou_user.user_id = l.performed_by_user_id
      AND ou_user.organization_id = l.organization_id
-     AND NOT <decisión de plataforma>
+     AND NOT (l.action = 'DECIDE_MATCH_REPORT_RECTIFICATION'
+              OR (l.action = 'DECIDE_SANCTION_CASE' AND l.payload ->> 'authorization_id' IS NOT NULL))
 LEFT JOIN users u ON u.id = COALESCE(ou.user_id, ou_user.user_id)
 WHERE l.organization_id = :org
   AND (:actions IS NULL OR l.action = ANY(:actions))
