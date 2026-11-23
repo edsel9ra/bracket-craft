@@ -24,7 +24,7 @@ Estado: aprobadas por el usuario el 2026-11-22. PR documental (este) y un PR por
 - [x] **T6. E2E y accesibilidad.** RNF-003, HU-1–HU-3
 - Hecho cuando: `cd frontend && pnpm exec playwright test e2e/organization-audit.spec.ts --project workspace` en verde con contratos ficticios: filtros en la URL, paginación, tabla y diálogo de detalle por teclado (foco de entrada y de vuelta, Escape), enlaces, axe sin violaciones en ambos temas a 1440 y 390 px.
 
-- [ ] **T7. Documentación y validación.** Criterios de finalización
+- [x] **T7. Documentación y validación.** Criterios de finalización
 - Hecho cuando: README (permiso, endpoint y runbook de la 064), AGENTS, `docs/manual-usuario.md` y MEMORY actualizados; cinco jobs de CI en verde en el PR del bloque B; cada RF y criterio de finalización con su evidencia anotada en esta tarea.
 
 ## Evidencia (bloque B)
@@ -43,4 +43,4 @@ Estado: aprobadas por el usuario el 2026-11-22. PR documental (este) y un PR por
 | RF-013 | `test_migration_064.py` |
 | RNF-003 | `organization-audit-page.test.ts`; E2E axe en ambos temas a 1440/390 px |
 | Documentación | README (runbook 064 y endpoints), AGENTS, manual §7 y MEMORY |
-| CI y aceptación | Pendiente: CI del PR del bloque B y aceptación expresa del usuario |
+| CI y aceptación | #109 en f0960f73: CI 7/7, runs pull_request 45099879905 y push 45099875998 success; Devin Review triada (2 corregidos, 2 descartados). Aceptada por el usuario el 2026-11-22 («Acepto la 041») |
