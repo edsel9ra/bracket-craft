@@ -94,10 +94,10 @@ test('filters live in the URL, convert local days to inclusive UTC and paginate 
   await page.getByLabel('Hasta', { exact: true }).fill('2026-11-20');
   await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
   await expect(page).toHaveURL(/action=CLOSE_MATCH_REPORT&action=SAVE_MATCH_LINEUP&actor=.+&from=2026-11-19&to=2026-11-20$/);
-  const last = fixture.audits().at(-1)!;
-  expect(last.searchParams.getAll('action')).toEqual(['CLOSE_MATCH_REPORT', 'SAVE_MATCH_LINEUP']);
-  expect([last.searchParams.get('actor_member_id'), last.searchParams.get('from'), last.searchParams.get('to'), last.searchParams.get('offset')])
-    .toEqual([luis, '2026-11-19T05:00:00.000Z', '2026-11-21T04:59:59.999Z', '0']);
+  await expect.poll(() => {
+    const last = fixture.audits().at(-1)!;
+    return [last.searchParams.getAll('action'), last.searchParams.get('actor_member_id'), last.searchParams.get('from'), last.searchParams.get('to'), last.searchParams.get('offset')];
+  }).toEqual([['CLOSE_MATCH_REPORT', 'SAVE_MATCH_LINEUP'], luis, '2026-11-19T05:00:00.000Z', '2026-11-21T04:59:59.999Z', '0']);
   await expect(rows(page).first()).toContainText('Alineación guardada');
 
   await navigate(page, '/workspace');
