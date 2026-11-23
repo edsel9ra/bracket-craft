@@ -2,7 +2,7 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas; detalle histórico en specs y git.
 
 ## Spec activa
-- 043-compartir-y-seo (F14) — fase: clarificación cerrada (DA-1–DA-4 = (a), 2026-11-23); spec en borrador pendiente de aprobación. PR #112.
+- 043-compartir-y-seo (F14) — spec aprobada el 2026-11-23 («Apruebo la spec, pasa al plan y a las tareas»); DA-1–DA-4 = (a). Plan y tareas T1–T9 en borrador pendientes de aprobación. PR #112.
 - 042-sorteo-concurrente-y-duplicados (F11) CERRADA: T1–T6 en #110–#111; aceptada por el usuario el 2026-11-23 («acepto la 042»). DA-1–DA-4 (a) + aclaración Swiss de DA-4. Migración 065 (`uq_matches_generated_code`; aborta listando fases si hay duplicados) antes que la API. T2 confirmó con concurrencia real que el protocolo 006 ya cerraba H7. Siguiente del corto plazo: F14.
 - 041-auditoria-organizacional (F5) CERRADA: T1–T7 en #107–#109; aceptada por el usuario el 2026-11-22 («Acepto la 041»). DA-1–DA-4 (a). Migración 064 antes que la API. Siguiente del corto plazo: F11 (042) → F14. E2E local: `node .output/server/index.mjs` en :3000 y `--no-deps` (sin `.auth/state.json` fallan los specs que dependen del setup). No ejecutado: pila real con datos reales y lector de pantalla real.
 - 039-recuperar-y-cambiar-contrasena (F3) CERRADA: T1–T10 en #99–#101; aceptada por el usuario el 2026-11-16 («Acepto la spec 039»). DA-1–DA-4 (a). Migración 062 antes de API y worker; el worker requiere `FRONTEND_BASE_URL`. No ejecutado: pila real con SMTP real y lector de pantalla real.

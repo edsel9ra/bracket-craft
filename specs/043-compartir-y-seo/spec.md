@@ -1,6 +1,6 @@
 # Spec 043 — Compartir y SEO (F14)
 
-Estado: borrador; DA-1–DA-4 resueltas el 2026-11-23; pendiente de aprobación del usuario.
+Estado: aprobada por el usuario el 2026-11-23 («Apruebo la spec, pasa al plan y a las tareas»). DA-1–DA-4 resueltas el 2026-11-23.
 
 ## Decisiones del usuario (2026-11-23)
 
