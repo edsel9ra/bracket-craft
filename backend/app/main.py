@@ -980,7 +980,14 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     response = await call_next(request)
-    if request.method.upper() != "OPTIONS" and not request.cookies.get(current_settings.csrf_cookie_name):
+    # Spec 043: una respuesta con caché pública (imágenes para compartir) no
+    # lleva cookies; un proxy compartido no debe guardar ni repartir el token.
+    publicly_cacheable = response.headers.get("cache-control", "").startswith("public")
+    if (
+        request.method.upper() != "OPTIONS"
+        and not publicly_cacheable
+        and not request.cookies.get(current_settings.csrf_cookie_name)
+    ):
         response.set_cookie(
             key=current_settings.csrf_cookie_name,
             value=getattr(request.state, "csrf_token", None) or new_csrf_token(),
