@@ -185,6 +185,7 @@ services:
     # dueño del host (Linux frente a Windows/WSL). Producción fija user: "node".
     user: "0:0"
     environment:
+      NUXT_PUBLIC_SITE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
       NUXT_PUBLIC_SOCKET_BASE: ${NUXT_PUBLIC_SOCKET_BASE:-http://localhost:8000}
       NUXT_API_INTERNAL_BASE: ${NUXT_API_INTERNAL_BASE:-http://api:8000/api/v1}

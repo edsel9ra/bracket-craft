@@ -115,7 +115,13 @@ WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "FRONTEND_BASE_URL", "REDIS_U
 
 #: Variables del servidor Nuxt. ``CI`` la fija el compose de desarrollo.
 WEB_ENV = frozenset(
-    {"CI", "NUXT_API_INTERNAL_BASE", "NUXT_PUBLIC_API_BASE", "NUXT_PUBLIC_SOCKET_BASE"}
+    {
+        "CI",
+        "NUXT_API_INTERNAL_BASE",
+        "NUXT_PUBLIC_API_BASE",
+        "NUXT_PUBLIC_SITE_URL",
+        "NUXT_PUBLIC_SOCKET_BASE",
+    }
 )
 
 #: Credenciales y parámetros que consume el servicio de base de datos.
@@ -138,7 +144,9 @@ NON_SERVICE_CONSUMERS: Mapping[str, frozenset[str]] = {
     "encrypt-birth-dates": frozenset({"DATABASE_ADMIN_URL", "PLAYER_DATA_KEY"}),
     # Navegador: consume las variables públicas que el servidor Nuxt expone en
     # el HTML; no viajan en el entorno de ningún contenedor.
-    "browser": frozenset({"NUXT_PUBLIC_API_BASE", "NUXT_PUBLIC_SOCKET_BASE"}),
+    "browser": frozenset(
+        {"NUXT_PUBLIC_API_BASE", "NUXT_PUBLIC_SITE_URL", "NUXT_PUBLIC_SOCKET_BASE"}
+    ),
 }
 
 

@@ -226,6 +226,9 @@ def test_non_service_consumers_are_declared_separately_from_compose_services() -
     )
     assert CONTRACT.non_service_consumers("NUXT_PUBLIC_API_BASE") == ("browser",)
     assert CONTRACT.non_service_consumers("NUXT_PUBLIC_SOCKET_BASE") == ("browser",)
+    # Spec 043 RF-012: el origen público lo leen el SSR de Nuxt y el navegador.
+    assert CONTRACT.non_service_consumers("NUXT_PUBLIC_SITE_URL") == ("browser",)
+    assert "web" in CONTRACT.consumers("NUXT_PUBLIC_SITE_URL", production=True)
     assert "encrypt-birth-dates" in CONTRACT.consumers(
         "PLAYER_DATA_KEY", production=True
     )

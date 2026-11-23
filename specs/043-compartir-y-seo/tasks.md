@@ -16,8 +16,9 @@ Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan, las tareas y l
 
 ## Bloque B — frontend, E2E y documentación (PR de implementación 2)
 
-- [ ] **T4. Origen público y utilidades de metadatos.** RF-001, RF-002, RF-006–RF-008, RF-012, RF-014
+- [x] **T4. Origen público y utilidades de metadatos.** RF-001, RF-002, RF-006–RF-008, RF-012, RF-014
 - Hecho cuando: `siteUrl` está en `nuxt.config.ts`, Compose y `.env.example`; `utils/publicSeo.ts` existe; `cd frontend && pnpm test` (con `public-seo.test.ts` primero en rojo) pasa; `docker compose config -q` y `docker compose -f docker-compose.production.yml config -q` (con variables de ejemplo) pasan.
+- Evidencia (2026-11-23): `public-seo.test.ts` falló primero (`ERR_MODULE_NOT_FOUND`) y después pasa 11/11; `pnpm test` 1164/0, `pnpm run typecheck` y `pnpm run lint` limpios. `NUXT_PUBLIC_SITE_URL` sale de `FRONTEND_BASE_URL` en Compose (obligatoria en producción). Ajuste fuera del plan: el contrato de entorno (`infra/scripts/check_env_contract.py`) rechazaba la variable nueva; se añade al servicio `web` y al consumidor `browser`, con test en `test_env_contract.py` primero en rojo (20 passed). `docker compose config -q`, el merge dev+prod con las variables dummy de CI, `check_env_contract.py` y `assert_production_compose.py` pasan en ambos perfiles; sin `FRONTEND_BASE_URL` la producción no se renderiza.
 - [ ] **T5. Sitemap y `robots.txt`.** RF-009, RF-010, RF-012, RNF-001
 - Hecho cuando: `server/utils/seoDocuments.ts` y las dos rutas Nitro existen; `seo-documents.test.ts` pasa; `pnpm run build` pasa y `curl` local a `/sitemap.xml` y `/robots.txt` devuelve el contenido esperado.
 - [ ] **T6. Metadatos en inicio, torneo y ficha; enlace de partido.** RF-001, RF-002, RF-006–RF-008
