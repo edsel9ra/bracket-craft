@@ -12,10 +12,13 @@ import {
   profilePhotoVisible,
   type PublicPlayerProfile,
 } from '~/utils/publicPlayerProfile';
+import PublicShareButton from '~/components/public/PublicShareButton.vue';
+import { absoluteUrl, playerHead, seoContext } from '~/utils/publicSeo';
 
 const route = useRoute();
 const { request } = useApi();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const config = useRuntimeConfig();
 const playerId = String(route.params.id);
 const validId = isPlayerProfileId(playerId);
 
@@ -37,11 +40,24 @@ function markPhotoFailed() {
   failedPhotoUrl.value = profile.value?.photo_url ?? null;
 }
 
-useHead(() => ({
-  title: playerName.value
-    ? t('publicPlayer.title', { name: playerName.value })
-    : `${t('publicPlayer.eyebrow')} | Bracket Craft`,
-}));
+useHead(() => {
+  if (!profile.value) {
+    return {
+      title: `${t('publicPlayer.eyebrow')} | Bracket Craft`,
+      meta: [{ name: 'robots', content: 'noindex, nofollow' }],
+    };
+  }
+  const ctx = seoContext(config.public.siteUrl, config.public.apiBase, locale.value);
+  const name = playerName.value;
+  const recentTournament = profile.value?.tournaments[0]?.tournament_name;
+  return playerHead(ctx, playerId, {
+    title: t('publicPlayer.title', { name }),
+    description: recentTournament
+      ? t('seo.playerDescription', { name, tournament: recentTournament })
+      : t('seo.playerDescriptionNoTournament', { name }),
+    imageAlt: t('seo.brandImageAlt'),
+  });
+});
 </script>
 
 <template>
@@ -74,6 +90,12 @@ useHead(() => ({
           <p class="eyebrow">{{ t('publicPlayer.eyebrow') }}</p>
           <h1>{{ playerName }}</h1>
           <p class="muted">{{ t('publicPlayer.scope') }}</p>
+          <PublicShareButton
+            class="profile-share"
+            :label="t('share.player')"
+            :title="t('publicPlayer.title', { name: playerName })"
+            :url="absoluteUrl(config.public.siteUrl, `/players/${playerId}`)"
+          />
         </div>
       </section>
 
@@ -126,6 +148,7 @@ useHead(() => ({
 .profile-heading { min-width: 0; }
 .profile-heading h1 { margin: var(--space-2) 0; font-size: var(--text-display); line-height: 1; letter-spacing: -0.06em; overflow-wrap: anywhere; }
 .profile-heading p.muted { margin: 0; font-size: var(--text-sm); }
+.profile-share { margin-top: var(--space-4); }
 .profile-photo { width: 6rem; height: 6rem; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--color-surface-raised); }
 .profile-photo--initials { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-line); color: var(--color-avatar-ink); font-size: var(--text-xl); font-weight: 800; }
 .eyebrow { margin: 0; color: var(--color-accent); font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }

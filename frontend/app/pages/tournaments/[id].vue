@@ -4,6 +4,7 @@ import Surface from '~/components/ui/Surface.vue';
 import PublicRectifiedMark from '~/components/public/PublicRectifiedMark.vue';
 import PublicStandingsTable from '~/components/public/PublicStandingsTable.vue';
 import PublicMatchTimeline from '~/components/public/PublicMatchTimeline.vue';
+import PublicShareButton from '~/components/public/PublicShareButton.vue';
 import { nextTick, shallowRef, watch } from 'vue';
 import {
   canOpenTimeline,
@@ -51,18 +52,32 @@ import {
 } from '~/utils/publicTournament';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import type { LocationQueryRaw } from 'vue-router';
+import {
+  absoluteUrl,
+  isShareableResult,
+  parseMatchQuery,
+  resultHead,
+  resultTitle,
+  seoContext,
+  tournamentHead,
+  withoutMatchQuery,
+} from '~/utils/publicSeo';
 
 const route = useRoute();
 const router = useRouter();
 const { request } = useApi();
-const { t, statusLabel, stageTypeLabel, formatDateTime, errorMessage } = useI18n();
+const { t, statusLabel, stageTypeLabel, formatDateTime, errorMessage, locale } = useI18n();
+const config = useRuntimeConfig();
 const realtime = useRealtime();
 const tournamentId = String(route.params.id);
+// Spec 043 RF-006: un `?match=` no válido o no compartible abre el torneo sin diálogo.
+const sharedMatchId = parseMatchQuery(route.query.match);
 const PAGE_SIZE = 50;
 const PUBLIC_REFRESH_INTERVAL_MS = 30_000;
 
 interface PublicTournamentData {
   tournament: PublicTournament;
+  sharedMatch: PublicMatchState | null;
 }
 
 function failureMessage(cause: unknown, fallback: string): string {
@@ -72,12 +87,21 @@ function failureMessage(cause: unknown, fallback: string): string {
 const { data: tournamentData, status, error: dataError, refresh } = await useAsyncData<PublicTournamentData>(
   `public-tournament-${tournamentId}`,
   async () => {
-    const tournament = await request<PublicTournament>(`/tournaments/public/${tournamentId}`);
-    return { tournament };
+    const [tournament, sharedMatch] = await Promise.all([
+      request<PublicTournament>(`/tournaments/public/${tournamentId}`),
+      sharedMatchId
+        ? request<PublicMatchState>(`/tournaments/public/${tournamentId}/matches/${sharedMatchId}`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    return { tournament, sharedMatch };
   },
 );
 
 const tournament = computed<PublicTournament | null>(() => tournamentData.value?.tournament ?? null);
+const sharedMatchDismissed = ref(false);
+const sharedMatch = computed(() => (sharedMatchDismissed.value ? null : tournamentData.value?.sharedMatch ?? null));
+const tournamentHeading = ref<HTMLHeadingElement | null>(null);
+const tournamentShareUrl = computed(() => absoluteUrl(config.public.siteUrl, `/tournaments/${tournamentId}`));
 const standings = ref<PublicStanding[]>([]);
 const matches = ref<PublicMatchEntry[]>([]);
 const matchList = computed(() => matches.value.map((entry) => entry.match));
@@ -120,6 +144,13 @@ const selectedTimelineMatch = computed(() => {
 });
 const timelineMatch = computed(() =>
   selectedTimelineMatchId.value ? (selectedTimelineMatch.value ?? timelineMatchCache.value) : null,
+);
+const timelineShareUrl = computed(() => {
+  const match = timelineMatch.value;
+  return match && isShareableResult(match) ? absoluteUrl(config.public.siteUrl, `/tournaments/${tournamentId}?match=${match.id}`) : null;
+});
+const timelineShareTitle = computed(() =>
+  timelineMatch.value && tournament.value ? resultTitle(timelineMatch.value, tournament.value.name) : '',
 );
 const loading = computed(() => status.value === 'pending');
 const error = computed(() => dataError.value ? failureMessage(dataError.value, t('public.noLoad')) : null);
@@ -214,17 +245,26 @@ const suspendedMatchesForSelection = computed<SuspendedPublicMatch[]>(() =>
     : []
   ).filter(isSuspendedPublicMatch));
 
-useHead(() => ({
-  title: tournament.value ? `${tournament.value.name} | Bracket Craft` : `${t('public.tournament')} | Bracket Craft`,
-  meta: [
-    {
-      name: 'description',
-      content: tournament.value
-        ? `${t('public.standings')} y resultados públicos de ${tournament.value.name}.`
-        : `${t('public.standings')} y resultados públicos del torneo.`,
-    },
-  ],
-}));
+useHead(() => {
+  const current = tournament.value;
+  if (!current) return { title: `${t('public.tournament')} | Bracket Craft` };
+  const ctx = seoContext(config.public.siteUrl, config.public.apiBase, locale.value);
+  const match = sharedMatch.value;
+  if (match && !isSuspendedPublicMatch(match) && isShareableResult(match)) {
+    const result = resultTitle(match, current.name);
+    return resultHead(ctx, tournamentId, match.id, {
+      title: resultTitle(match, current.name),
+      description: t('seo.resultDescription', { name: current.name }),
+      imageAlt: t('seo.resultImageAlt', { result }),
+    });
+  }
+  const status = statusLabel(current.status);
+  return tournamentHead(ctx, tournamentId, {
+    title: `${current.name} | Bracket Craft`,
+    description: t('seo.tournamentDescription', { name: current.name, season: current.season, status }),
+    imageAlt: t('seo.tournamentImageAlt', { name: current.name, season: current.season, status }),
+  });
+});
 
 function formatScore(match: PublicMatchState) {
   if (match.home_score === null || match.away_score === null) return '-';
@@ -314,8 +354,18 @@ async function loadTimeline() {
 
 function openTimeline(match: PublicMatchState, event: MouseEvent) {
   if (isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
+  showTimeline(match, event.currentTarget as HTMLButtonElement);
+}
+
+function openSharedTimeline() {
+  const match = sharedMatch.value;
+  if (!match || isSuspendedPublicMatch(match) || !isShareableResult(match)) return;
+  showTimeline(match, null);
+}
+
+function showTimeline(match: OpenTimelineMatch, trigger: HTMLButtonElement | null) {
   selectedTimelineMatchId.value = match.id;
-  timelineTrigger.value = event.currentTarget as HTMLButtonElement;
+  timelineTrigger.value = trigger;
   timelineMatchCache.value = match;
   timelineSnapshot = timelineSnapshotOf(match);
   timelineData.value = null;
@@ -332,7 +382,11 @@ function closeTimeline() {
   timelineData.value = null;
   timelineLoading.value = false;
   timelineError.value = false;
-  void nextTick(() => trigger?.focus());
+  if (route.query.match !== undefined) {
+    sharedMatchDismissed.value = true;
+    void router.replace({ query: withoutMatchQuery(route.query) });
+  }
+  void nextTick(() => (trigger ?? tournamentHeading.value)?.focus());
 }
 
 type TimelineSnapshot = Pick<
@@ -640,6 +694,7 @@ onMounted(() => {
     void applyPublicSelection(normalized, 'replace');
   }
   connectRealtime();
+  openSharedTimeline();
   publicRefreshTimer = window.setInterval(() => {
     if (shouldPollPublicRealtime(realtime.status.value)) refreshPublicData();
   }, PUBLIC_REFRESH_INTERVAL_MS);
@@ -678,7 +733,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
         <section class="container tournament-hero">
           <div>
              <p class="eyebrow">{{ t('public.publicCompetition') }} · {{ statusLabel(tournament.status) }}</p>
-            <h1>{{ tournament.name }}</h1>
+            <h1 ref="tournamentHeading" tabindex="-1">{{ tournament.name }}</h1>
              <p class="tournament-meta">{{ tournament.season }} · {{ t('public.starts') }} {{ tournament.start_date }}</p>
              <nav class="public-section-nav" :aria-label="t('public.sectionNavigation')">
                <a href="#public-results">{{ t('public.results') }}</a>
@@ -686,7 +741,14 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
                <a v-if="tournament.teams?.length" href="#public-teams">{{ t('setup.teams') }}</a>
              </nav>
            </div>
-           <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
+           <div class="hero-side">
+             <div class="hero-stamp">{{ t('public.openScoreboard') }}</div>
+             <PublicShareButton
+               :label="t('share.tournament')"
+               :title="`${tournament.name} | Bracket Craft`"
+               :url="tournamentShareUrl"
+             />
+           </div>
         </section>
 
 
@@ -1059,6 +1121,8 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
       :timeline="timelineData"
       :loading="timelineLoading"
       :error="timelineError"
+      :share-url="timelineShareUrl"
+      :share-title="timelineShareTitle"
       @close="closeTimeline"
       @retry="loadTimeline"
     />
@@ -1079,6 +1143,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 .tournament-hero { display: flex; justify-content: space-between; align-items: end; gap: var(--space-7); padding: 10vh 0 8vh; animation: rise-in 700ms var(--ease-out) both; }
 .tournament-hero h1 { max-width: 850px; margin: var(--space-3) 0 var(--space-2); font-size: clamp(3.4rem, 10vw, 8.5rem); line-height: 0.88; letter-spacing: -0.09em; }
 .tournament-meta, .muted { color: var(--color-muted); }
+.hero-side { display: grid; gap: var(--space-3); justify-items: end; }
 .hero-stamp { padding: var(--space-3); border: 1px solid var(--color-accent); color: var(--color-accent); font-size: var(--text-2xs); font-weight: 900; letter-spacing: 0.12em; line-height: 1.4; text-align: right; white-space: pre-line; }
 .public-section-nav { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); font-size: var(--text-md); font-weight: 700; }
 .public-section-nav a { color: var(--color-accent); text-underline-offset: var(--space-1); }
@@ -1130,7 +1195,7 @@ function standingsRows(rows: PublicStanding[]): PublicStanding[] {
 @media (max-width: 480px) {
   .container { width: min(100% - 28px, 620px); }
   .tournament-hero { align-items: start; flex-direction: column; padding-top: 8vh; }
-  .hero-stamp { align-self: end; }
+  .hero-side { align-self: end; }
 }
 @media (max-width: 480px) {
   .match-teams { grid-template-columns: 1fr; gap: var(--space-2); text-align: center; }

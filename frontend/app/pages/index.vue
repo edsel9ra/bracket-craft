@@ -2,22 +2,16 @@
 import Button from '~/components/ui/Button.vue';
 import Surface from '~/components/ui/Surface.vue';
 import StatusPill from '~/components/ui/StatusPill.vue';
+import { homeHead, seoContext } from '~/utils/publicSeo';
 const tournamentsStore = useTournamentsStore();
 const config = useRuntimeConfig();
-const { t, statusLabel } = useI18n();
+const { t, statusLabel, locale } = useI18n();
 const docsUrl = computed(() => config.public.apiBase.replace(/\/api\/v1\/?$/, '/docs'));
 
-useHead(() => ({
+useHead(() => homeHead(seoContext(config.public.siteUrl, config.public.apiBase, locale.value), {
   title: t('home.title'),
-  meta: [
-    {
-      name: 'description',
-      content: t('home.description'),
-    },
-    { property: 'og:title', content: t('home.title') },
-    { property: 'og:description', content: t('home.ogDescription') },
-    { property: 'og:type', content: 'website' },
-  ],
+  description: t('home.description'),
+  imageAlt: t('seo.brandImageAlt'),
 }));
 
 await callOnce('public-tournaments', () => tournamentsStore.loadPublic());

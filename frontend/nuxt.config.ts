@@ -16,6 +16,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     apiInternalBase: process.env.NUXT_API_INTERNAL_BASE || process.env.API_INTERNAL_BASE || 'http://localhost:8000/api/v1',
     public: {
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1',
       socketBase: process.env.NUXT_PUBLIC_SOCKET_BASE || 'http://localhost:8000',
       apiTimeoutMs: Number(process.env.NUXT_PUBLIC_API_TIMEOUT_MS || 15000),
