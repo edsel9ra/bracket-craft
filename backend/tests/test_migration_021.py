@@ -19,8 +19,11 @@ from __future__ import annotations
 import asyncpg
 import pytest
 
-from app.modules.rule_contract import FORMATION_CODES
+from app.modules.rule_contract import FORMATIONS_BY_GAME_FORMAT
 from migration_helpers import apply_migration, throwaway_database
+
+# At 021 the CHECK of 007 accepts only the 11v11 catalog; 066 widens it.
+FORMATION_CODES = FORMATIONS_BY_GAME_FORMAT["11v11"]
 
 ORG = "21000000-0000-4000-8000-000000000001"
 OTHER_ORG = "21000000-0000-4000-8000-000000000002"

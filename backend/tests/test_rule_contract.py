@@ -5,8 +5,8 @@ Covers T011 (RF-050, RF-051, RF-052):
 * ``GF1``/``GF2`` are named constants and the schedule produces exactly them;
 * the closing and the advancement path recognise those constants, and the
   bracket reset is only activated when the losers-bracket finalist wins;
-* the four formations are a closed catalog whose positions match the
-  documented contract and the database ``CHECK``;
+* the formations are a closed catalog per game format (spec 044) whose
+  positions match the documented contract and the database ``CHECK``;
 * ``engine_version`` stays at the documented value.
 
 No PostgreSQL is needed here. The database ``CHECK`` is verified opt-in in
@@ -27,7 +27,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.advancement.service import AdvancementService
-from app.modules.matches.formations import FORMATION_SLOTS, slots_for_formation
+from app.modules.matches.formations import (
+    FORMATION_SLOTS,
+    FORMATIONS_BY_GAME_FORMAT,
+    formation_game_format,
+    slots_for_formation,
+    starters_for_game_format,
+)
 from app.modules.matches.schemas import FormationCode, MatchTeamLineupConfig
 from app.modules.rule_contract import (
     ENGINE_VERSION,
@@ -43,7 +49,36 @@ from app.modules.tournaments.scheduling import build_double_elimination_bracket
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_DOC = ROOT / "docs" / "contrato-reglas.md"
-FORMATION_MIGRATION = ROOT / "infra" / "postgres" / "migrations" / "007_tactical_lineups.sql"
+MIGRATIONS = ROOT / "infra" / "postgres" / "migrations"
+LEGACY_FORMATION_MIGRATION = MIGRATIONS / "007_tactical_lineups.sql"
+FORMATION_MIGRATION = MIGRATIONS / "066_formations_by_game_format.sql"
+
+ELEVEN_A_SIDE_SLOTS = {
+    "4-3-3": ("GK", "LB", "LCB", "RCB", "RB", "CM_L", "CM", "CM_R", "LW", "ST", "RW"),
+    "4-4-2": ("GK", "LB", "LCB", "RCB", "RB", "LM", "LCM", "RCM", "RM", "ST_L", "ST_R"),
+    "3-5-2": ("GK", "LCB", "CB", "RCB", "LWB", "LCM", "CM", "RCM", "RWB", "ST_L", "ST_R"),
+    "4-2-3-1": ("GK", "LB", "LCB", "RCB", "RB", "CDM_L", "CDM_R", "LW", "CAM", "RW", "ST"),
+}
+
+# Spec 044, RF-001 (DA-1): three formations per reduced game format.
+REDUCED_FORMATION_SLOTS = {
+    "1-2-1": ("GK", "CB", "LM", "RM", "ST"),
+    "2-1-1": ("GK", "LCB", "RCB", "CM", "ST"),
+    "2-2": ("GK", "LCB", "RCB", "ST_L", "ST_R"),
+    "2-3-1": ("GK", "LCB", "RCB", "LM", "CM", "RM", "ST"),
+    "3-2-1": ("GK", "LCB", "CB", "RCB", "LCM", "RCM", "ST"),
+    "3-1-2": ("GK", "LCB", "CB", "RCB", "CM", "ST_L", "ST_R"),
+    "3-3-2": ("GK", "LCB", "CB", "RCB", "LM", "CM", "RM", "ST_L", "ST_R"),
+    "3-4-1": ("GK", "LCB", "CB", "RCB", "LM", "LCM", "RCM", "RM", "ST"),
+    "4-3-1": ("GK", "LB", "LCB", "RCB", "RB", "CM_L", "CM", "CM_R", "ST"),
+}
+
+EXPECTED_BY_GAME_FORMAT = {
+    "5v5": ("1-2-1", "2-1-1", "2-2"),
+    "7v7": ("2-3-1", "3-2-1", "3-1-2"),
+    "9v9": ("3-3-2", "3-4-1", "4-3-1"),
+    "11v11": ("4-3-3", "4-4-2", "3-5-2", "4-2-3-1"),
+}
 
 MATCH_DATE = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -262,14 +297,35 @@ async def test_the_repetition_itself_never_reactivates_the_reset():
 # ---------------------------------------------------------------------------
 
 
-def test_the_formation_catalog_is_closed_and_has_eleven_positions():
-    assert len(FORMATION_CODES) == 4
+def test_the_formation_catalog_is_closed_per_game_format():
+    assert FORMATIONS_BY_GAME_FORMAT == EXPECTED_BY_GAME_FORMAT
+    # 11v11 keeps its original order first; the reduced formats follow.
+    assert FORMATION_CODES == (*ELEVEN_A_SIDE_SLOTS, *REDUCED_FORMATION_SLOTS)
+    assert len(FORMATION_CODES) == 13
     assert tuple(FORMATION_SLOTS) == FORMATION_CODES
-    for code, slots in FORMATION_SLOTS.items():
-        assert len(slots) == 11, code
-        assert len(set(slots)) == 11, code
-        assert slots_for_formation(code) == slots
+    assert dict(FORMATION_SLOTS) == {**ELEVEN_A_SIDE_SLOTS, **REDUCED_FORMATION_SLOTS}
     assert slots_for_formation("4-1-4-1") is None
+
+
+def test_every_formation_has_one_goalkeeper_and_the_starters_of_its_format():
+    known_positions = {slot for slots in ELEVEN_A_SIDE_SLOTS.values() for slot in slots}
+    assert len(known_positions) == 23
+    for game_format, codes in FORMATIONS_BY_GAME_FORMAT.items():
+        starters = starters_for_game_format(game_format)
+        assert starters == int(game_format.split("v")[0])
+        for code in codes:
+            slots = FORMATION_SLOTS[code]
+            assert formation_game_format(code) == game_format
+            assert slots_for_formation(code) == slots
+            assert len(slots) == starters, code
+            assert len(set(slots)) == starters, code
+            assert slots.count("GK") == 1 and slots[0] == "GK", code
+            assert set(slots) <= known_positions, code
+    assert formation_game_format("4-1-4-1") is None
+    # A version without game_format reads as 11v11 (spec 024, RF-013).
+    assert starters_for_game_format(None) == 11
+    with pytest.raises(ValueError):
+        starters_for_game_format("6v6")
 
 
 def test_the_api_schema_accepts_exactly_the_catalog():
@@ -286,9 +342,14 @@ def test_the_api_schema_accepts_exactly_the_catalog():
 def test_the_database_check_lists_exactly_the_catalog():
     source = FORMATION_MIGRATION.read_text(encoding="utf-8")
     check = re.search(r"formation_code IN \(([^)]*)\)", source)
-    assert check is not None, "no se encontró el CHECK de formaciones en 007"
+    assert check is not None, "no se encontró el CHECK de formaciones en 066"
     codes = tuple(re.findall(r"'([^']+)'", check.group(1)))
     assert codes == FORMATION_CODES
+
+    # 007 keeps the original 11v11 catalog; 066 replaces its CHECK.
+    legacy = re.search(r"formation_code IN \(([^)]*)\)", LEGACY_FORMATION_MIGRATION.read_text(encoding="utf-8"))
+    assert legacy is not None
+    assert tuple(re.findall(r"'([^']+)'", legacy.group(1))) == FORMATIONS_BY_GAME_FORMAT["11v11"]
 
 
 # ---------------------------------------------------------------------------

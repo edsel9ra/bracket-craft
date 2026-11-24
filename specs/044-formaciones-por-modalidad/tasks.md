@@ -4,8 +4,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas. E
 
 ## Bloque A — backend y migración (PR de implementación 1)
 
-- [ ] **T1. Catálogo por modalidad y migración 066.** RF-001, RF-011, RNF-002
+- [x] **T1. Catálogo por modalidad y migración 066.** RF-001, RF-011, RNF-002
 - Hecho cuando: `rule_contract.py` tiene las 13 formaciones, `FORMATIONS_BY_GAME_FORMAT`, `formation_game_format` y `starters_for_game_format`; existe la 066; `docs/contrato-reglas.md` §3–§5 están actualizados; `pytest -q tests/test_rule_contract.py tests/test_seed_demo.py` y `RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_066.py tests/test_migration_021.py` pasan, tras verlos fallar primero.
+- Evidencia (2026-11-24): `test_rule_contract.py` falló primero en la colección (`FORMATIONS_BY_GAME_FORMAT` inexistente), igual que `test_migration_066.py` y `test_migration_021.py`; después pasan 18 (+2 omitidos sin BD) y 10 con `RUN_DATABASE_TESTS=1`. La 066 sustituye `match_team_lineups_formation_code_check` por `chk_match_team_lineup_formation_code` con los 13 códigos; sobre un volumen en 065 conserva las alineaciones, es idempotente y antes de aplicarla una formación de 7v7 se rechaza. `test_migration_021.py` comprueba ahora el `CHECK` de la 007 con el catálogo de 11v11. Suite backend sin BD 3230 passed; `ruff check .` limpio.
 - [ ] **T2. Guardar y publicar por modalidad.** RF-002, RF-003, RF-009, RF-010
 - Hecho cuando: el guardado y la publicación validan la modalidad y los titulares según el plan §4; `RUN_DATABASE_TESTS=1 pytest -q tests/test_lineup_game_format.py` y los tests existentes de alineaciones y formaciones pasan, tras verlos fallar primero.
 - [ ] **T3. Cambio de formato y estadísticas.** RF-004, RF-008
