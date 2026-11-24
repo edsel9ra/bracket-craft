@@ -8,6 +8,7 @@ Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec 046»). DA-1–
 - **DA-2 = (a).** Un miembro que no ha tocado sus preferencias recibe todos los tipos en la bandeja. El correo está desactivado hasta que él lo active.
 - **DA-3 = (a).** «Partido programado» genera un aviso por cada generación de calendario o alta, con el torneo y el número de partidos creados, no uno por partido.
 - **DA-4 = (a).** El aviso de sanción nombra al jugador y el partido en la bandeja. El correo no lo nombra y enlaza al Workspace.
+- **DA-5 (2026-11-24, tras Devin Review del bloque A).** El jugador, su equipo y la suspensión solo se muestran en la bandeja a quien tenga `VIEW_SANCTION_CASES`, el permiso que ya exige el listado de suspensiones del Workspace. El resto de miembros recibe el aviso con el torneo y el partido, sin el jugador ni la suspensión.
 
 ## Contexto y objetivo
 
@@ -63,7 +64,7 @@ Lo que ya existe y se reutiliza: el outbox y su worker con reintentos, el envío
 ### Bandeja de la app
 
 - **RF-008.** EL SISTEMA mostrará en el Workspace una bandeja con los avisos entregados al miembro en su organización activa. Irán ordenados del más reciente al más antiguo y paginados. Cada aviso mostrará su tipo, su fecha, el torneo y, si lo hay, el partido, con un enlace a la pantalla correspondiente. La bandeja marcará cuántos avisos quedan sin leer.
-- **RF-009.** CUANDO el aviso sea de «sanción generada», EL SISTEMA mostrará en la bandeja el nombre del jugador, su equipo, el partido y el número de partidos de suspensión (DA-4). El nombre se lee al mostrarlo, no se copia en el aviso.
+- **RF-009.** CUANDO el aviso sea de «sanción generada», EL SISTEMA mostrará en la bandeja el partido y, solo a quien tenga `VIEW_SANCTION_CASES`, el nombre del jugador, su equipo y el número de partidos de suspensión (DA-4, DA-5). El nombre se lee al mostrarlo, no se copia en el aviso.
 - **RF-010.** EL SISTEMA permitirá marcar como leído un aviso, o todos a la vez. Cada miembro solo lee y marca sus propios avisos.
 
 ### Correo
@@ -84,7 +85,7 @@ Lo que ya existe y se reutiliza: el outbox y su worker con reintentos, el envío
 ## Datos personales y privacidad
 
 - Se usan los correos de las cuentas de los miembros, y cada uno solo ve el suyo.
-- La bandeja solo muestra datos que el miembro ya puede ver en el Workspace. El nombre del jugador sancionado aparece solo en la bandeja (DA-4).
+- La bandeja solo muestra datos que el miembro ya puede ver en el Workspace: el jugador sancionado y su suspensión, solo con `VIEW_SANCTION_CASES` (DA-5). El nombre del jugador sancionado aparece solo en la bandeja (DA-4).
 - El correo no lleva nombres de jugadores, documentos ni fechas de nacimiento.
 
 ## Casos límite

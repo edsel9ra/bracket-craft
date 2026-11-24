@@ -154,6 +154,19 @@ async def test_the_sanction_names_the_player_only_in_the_inbox(inbox):
     assert player["last_name"] not in str(dict(stored))
 
 
+async def test_the_sanction_detail_requires_view_sanction_cases(inbox):
+    inbox.context = inbox.colleague
+    response = await inbox.client.get(URL)
+    sanctions = [item for item in response.json()["items"] if item["type"] == "sanction_generated"]
+    assert sanctions and all(item["sanction"] is None for item in sanctions)
+    assert all(item["match_id"] == str(inbox.match.match_id) for item in sanctions)
+    player = await inbox.admin.fetchval("SELECT last_name FROM players WHERE id = $1", inbox.match.away_scorer_id)
+    assert player not in response.text
+    await grant(inbox.admin, str(inbox.colleague.organization_id), str(inbox.colleague.organization_user_id), "administrator")
+    granted = (await inbox.client.get(URL)).json()["items"]
+    assert all(item["sanction"] for item in granted if item["type"] == "sanction_generated")
+
+
 async def test_pagination_and_bounds(inbox):
     full = (await inbox.client.get(URL)).json()
     page = (await inbox.client.get(URL, params={"limit": 1, "offset": 1})).json()

@@ -19,6 +19,7 @@ _COUNTS = """
 """
 
 # El nombre del jugador sancionado se lee al listar; nunca se copia en el aviso (RF-009).
+# Sin VIEW_SANCTION_CASES el aviso de sanción llega sin jugador ni suspensión (DA-5).
 _PAGE = """
     SELECT n.id, n.notification_type, n.created_at, r.read_at, n.tournament_id,
            t.name AS tournament_name, n.match_id, home.name AS home_team_name,
@@ -30,7 +31,8 @@ _PAGE = """
     LEFT JOIN matches m ON m.id = n.match_id AND m.organization_id = n.organization_id
     LEFT JOIN teams home ON home.id = m.home_team_id AND home.organization_id = n.organization_id
     LEFT JOIN teams away ON away.id = m.away_team_id AND away.organization_id = n.organization_id
-    LEFT JOIN player_suspensions ps ON ps.id = n.suspension_id AND ps.organization_id = n.organization_id
+    LEFT JOIN player_suspensions ps
+      ON ps.id = n.suspension_id AND ps.organization_id = n.organization_id AND CAST(:sanction_detail AS boolean)
     LEFT JOIN players p ON p.id = ps.player_id AND p.organization_id = n.organization_id
     LEFT JOIN LATERAL (
         SELECT source.team_id FROM (
@@ -110,9 +112,12 @@ class NotificationService:
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
             counts = (await self.db.execute(text(_COUNTS), scope)).mappings().one()
-            rows = (await self.db.execute(
-                text(_PAGE), {**scope, "limit": query.limit, "offset": query.offset},
-            )).mappings().all()
+            sanction_detail = (await self.db.execute(
+                text("SELECT sanction_member_has_permission(:org, 'VIEW_SANCTION_CASES')"), scope,
+            )).scalar_one()
+            rows = (await self.db.execute(text(_PAGE), {
+                **scope, "limit": query.limit, "offset": query.offset, "sanction_detail": bool(sanction_detail),
+            })).mappings().all()
         return {
             "items": [_item(row) for row in rows],
             "unread_count": counts["unread"],
