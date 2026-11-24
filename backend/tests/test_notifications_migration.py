@@ -338,6 +338,32 @@ async def test_inbox_delivery_requires_claim_and_revalidates(db):
     ]
 
 
+async def test_retention_purges_old_notification_events_and_keeps_the_notices(db):
+    await set_preference(db, USER, "result_confirmed", "email", True)
+    notice = await record(db)
+    await deliver_inbox(db, notice)
+    await db.execute(
+        """UPDATE outbox_events SET status='processed', locked_at=NULL,
+               processed_at=CURRENT_TIMESTAMP - INTERVAL '8 days'
+           WHERE event_type LIKE 'NOTIFICATION_%'"""
+    )
+    async with as_app(db):
+        purged = await db.fetchrow(
+            "SELECT * FROM purge_retained_records(CURRENT_TIMESTAMP, CURRENT_TIMESTAMP - INTERVAL '7 days', 500)"
+        )
+    assert purged["outbox_deleted"] == 2
+    rows = await db.fetch(
+        "SELECT user_id::text, channel, outcome, outbox_event_id FROM notification_recipients"
+        " WHERE notification_id=$1 ORDER BY 1,2",
+        notice,
+    )
+    assert [tuple(row) for row in rows] == [
+        (USER, "email", "pending", None),
+        (USER, "inbox", "delivered", None),
+        (USER_B, "inbox", "delivered", None),
+    ]
+
+
 async def test_reads_are_limited_to_own_delivered_inbox(db):
     notice = await record(db)
     async with as_app(db):

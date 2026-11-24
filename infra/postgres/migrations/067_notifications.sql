@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS public.notification_recipients (
     notification_id UUID NOT NULL,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
     channel TEXT NOT NULL CHECK (channel IN ('inbox', 'email')),
-    outbox_event_id UUID NOT NULL REFERENCES public.outbox_events(id) ON DELETE RESTRICT,
+    -- NULL tras purgar el evento procesado (034): el aviso y su lectura se conservan.
+    outbox_event_id UUID REFERENCES public.outbox_events(id) ON DELETE SET NULL,
     outcome TEXT NOT NULL DEFAULT 'pending' CHECK (outcome IN ('pending', 'delivered', 'withheld')),
     delivered_at TIMESTAMPTZ,
     read_at TIMESTAMPTZ,
