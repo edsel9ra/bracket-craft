@@ -19,6 +19,7 @@ from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.advancement.assignments import record_match_slot_assignments
+from app.modules.notifications.recorder import record_notification
 from app.modules.tournaments.pairings import (
     count_pair_meetings,
     max_meetings_per_pair,
@@ -555,6 +556,9 @@ async def generate_single_elimination_matches(
                         "target_side": link.target_side,
                     },
                 )
+            await record_notification(
+                db, "match_scheduled", tournament_id=tournament_id, match_count=len(bracket.matches)
+            )
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="No se pudo guardar la llave eliminatoria") from exc
 
@@ -1409,6 +1413,7 @@ async def _draw_non_swiss_schedule(
             payload.stage_id,
             bracket,
         )
+        await record_notification(db, "match_scheduled", tournament_id=tournament_id, match_count=match_count)
         return GenerateSingleEliminationResponse(
             version_id=payload.version_id,
             stage_id=payload.stage_id,
@@ -1434,6 +1439,7 @@ async def _draw_non_swiss_schedule(
         )
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="No se pudo guardar el calendario sorteado") from exc
+    await record_notification(db, "match_scheduled", tournament_id=tournament_id, match_count=match_count)
 
     # The league format is persisted with the generated calendar so the manual
     # pairing limit can read it later. Elimination brackets keep the default
@@ -1621,6 +1627,9 @@ async def draw_stage_schedule(
         try:
             await _write_swiss_schedule(
                 db, context, tournament_id, payload, swiss_draw, active_pairings
+            )
+            await record_notification(
+                db, "match_scheduled", tournament_id=tournament_id, match_count=len(active_pairings)
             )
         except IntegrityError as exc:
             raise HTTPException(
@@ -1861,4 +1870,5 @@ async def create_match(
         )
         match = dict(result.mappings().one())
         await record_match_slot_assignments(db, context.organization_id, match["id"])
+        await record_notification(db, "match_scheduled", tournament_id=tournament_id, match_count=1)
     return match

@@ -407,6 +407,8 @@ class WalkoverSession:
             return Result(
                 rows=[{"id": SEGMENT_ID, "minute_start": self.active_minute_start}]
             )
+        if sql.startswith("SELECT record_notification"):
+            return Result(scalar=UUID(int=9900))
         if sql.startswith(("INSERT", "UPDATE", "DELETE")):
             return Result()
         raise StopExecution(sql)
@@ -565,6 +567,8 @@ async def test_the_branch_emits_the_audit_entry_and_the_three_outbox_events(monk
         for params in session.parameters("INSERT INTO outbox_events")
     ]
     assert outbox == ["MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"]
+    notices = session.parameters("SELECT record_notification")
+    assert [params["notification_type"] for params in notices] == ["walkover_declared"]
 
 
 # ---------------------------------------------------------------------------
@@ -1050,6 +1054,7 @@ async def snapshot(engine, match: WalkoverMatch) -> dict[str, object]:
                         SELECT event_type
                         FROM outbox_events
                         WHERE organization_id = :organization_id
+                          AND event_type NOT LIKE 'NOTIFICATION_%'
                         ORDER BY event_type
                     """),
                     {"organization_id": str(match.tenant.organization_id)},

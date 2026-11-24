@@ -14,6 +14,7 @@ from app.core.locking import lock_discipline, lock_stage_and_version
 from app.core.outbox import enqueue_outbox
 from app.core.permissions import require_administrative_resolution, require_permission
 from app.core.tenancy import AuthContext
+from app.modules.notifications.recorder import record_notification
 from app.modules.advancement.service import AdvancementService
 from app.modules.matches.errors import (
     AssistPlayerInvalid,
@@ -1022,6 +1023,17 @@ class CloseMatchReportService:
             event_payload = {"match_id": str(match_id), "tournament_id": str(match["tournament_id"])}
             for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
                 await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
+            await record_notification(
+                self.db, "result_confirmed", tournament_id=match["tournament_id"], match_id=match_id
+            )
+            for suspension in created_suspensions:
+                await record_notification(
+                    self.db,
+                    "sanction_generated",
+                    tournament_id=match["tournament_id"],
+                    match_id=match_id,
+                    suspension_id=suspension["id"],
+                )
 
         return {
             "status": "success",
@@ -1167,6 +1179,9 @@ class CloseMatchReportService:
         # RNF-011: exactamente los mismos tres eventos que un cierre normal.
         for event_type in ("MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"):
             await enqueue_outbox(self.db, context.organization_id, event_type, event_payload, return_id=False)
+        await record_notification(
+            self.db, "walkover_declared", tournament_id=match["tournament_id"], match_id=match_id
+        )
 
         return {
             "status": "success",
