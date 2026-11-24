@@ -1077,7 +1077,13 @@ async def _confirm_goalless_match(session: AsyncSession, match_id) -> None:
     )
 
 
-async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSession, tenant):
+async def _seed_goalkeeper_change_with_two_published_formations(
+    session: AsyncSession,
+    tenant,
+    *,
+    formation_codes: tuple[str, str] = ("4-3-3", "4-4-2"),
+    game_format: str | None = None,
+):
     """Caso 16b: cambio de portero entre dos formaciones publicadas.
 
     Partido confirmado 0-0 con dos segmentos y **dos** formaciones publicadas
@@ -1089,6 +1095,8 @@ async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSe
     tournament_id, version_id, match_id, home_team_id, first_segment, second_segment = (
         await _create_live_match_with_two_segments(session, tenant)
     )
+    if game_format is not None:
+        await _set_version_game_format(session, version_id, game_format)
 
     gk_first = await _insert_goalkeeper(
         session,
@@ -1117,7 +1125,7 @@ async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSe
         match_id=match_id,
         segment_id=first_segment,
         team_id=home_team_id,
-        formation_code="4-3-3",
+        formation_code=formation_codes[0],
         players=[(gk_first, "GK", True)],
     )
     await _publish_formation(
@@ -1126,7 +1134,7 @@ async def _seed_goalkeeper_change_with_two_published_formations(session: AsyncSe
         match_id=match_id,
         segment_id=second_segment,
         team_id=home_team_id,
-        formation_code="4-4-2",
+        formation_code=formation_codes[1],
         players=[(gk_second, "GK", True)],
     )
 
@@ -1216,6 +1224,85 @@ async def test_endpoint_attributes_clean_sheet_to_incoming_goalkeeper(db_session
         row for row in team_response.json() if row["team_id"] == str(seeded["team_id"])
     ]
     assert home_rows and home_rows[0]["clean_sheets"] == 1, home_rows
+
+
+async def _set_version_game_format(session: AsyncSession, version_id, game_format: str) -> None:
+    await session.execute(
+        text("""
+            UPDATE tournament_versions
+            SET rules_config = jsonb_set(rules_config, '{game_format}', to_jsonb(CAST(:game_format AS text)))
+            WHERE id = :version_id
+        """),
+        {"version_id": str(version_id), "game_format": game_format},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("game_format", "formation_codes"),
+    [("5v5", ("2-2", "1-2-1")), ("7v7", ("3-2-1", "2-3-1")), ("9v9", ("3-3-2", "4-3-1"))],
+)
+async def test_reduced_formats_attribute_the_clean_sheet_to_the_gk(
+    db_session, tenant_factory, game_format, formation_codes
+):
+    """Spec 044 RF-008: en 5v5/7v7/9v9 la portería imbatida es del `GK`, también del entrante."""
+
+    _skip_if_no_db()
+    tenant = await tenant_factory(f"Goalkeeper {game_format}")
+    await set_tenant_context(db_session, tenant)
+    tournament_id, seeded = await _seed_goalkeeper_change_with_two_published_formations(
+        db_session, tenant, formation_codes=formation_codes, game_format=game_format
+    )
+    await clear_rls_context(db_session)
+
+    async with _public_api(db_session) as client:
+        response = await client.get(f"/api/v1/tournaments/public/{tournament_id}/player-stats")
+        assert response.status_code == 200, response.text
+        rows = {row["player_id"]: row for row in response.json()}
+
+    assert rows[str(seeded["gk_second"])]["clean_sheets"] == 1
+    assert rows[str(seeded["gk_first"])]["clean_sheets"] == 0
+    assert [row["player_id"] for row in rows.values() if row["clean_sheets"] == 1] == [
+        str(seeded["gk_second"])
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reduced_format_without_published_formation_attributes_no_clean_sheet(
+    db_session, tenant_factory
+):
+    """Spec 044 RF-008: sin formación publicada no hay portero identificable."""
+
+    _skip_if_no_db()
+    tenant = await tenant_factory("Goalkeeper 7v7 no formation")
+    await set_tenant_context(db_session, tenant)
+    tournament_id, version_id, match_id, home_team_id, _first, _second = (
+        await _create_live_match_with_two_segments(db_session, tenant)
+    )
+    await _set_version_game_format(db_session, version_id, "7v7")
+    keeper = await _insert_goalkeeper(
+        db_session,
+        tenant,
+        tournament_id=tournament_id,
+        match_id=match_id,
+        team_id=home_team_id,
+        dorsal_number=1,
+        first_name="Sin",
+        last_name="Formacion",
+    )
+    await _confirm_goalless_match(db_session, match_id)
+    await _publish_tournament(db_session, tournament_id, version_id)
+    await clear_rls_context(db_session)
+
+    async with _public_api(db_session) as client:
+        players = await client.get(f"/api/v1/tournaments/public/{tournament_id}/player-stats")
+        teams = await client.get(f"/api/v1/tournaments/public/{tournament_id}/team-stats")
+    assert players.status_code == 200, players.text
+    # Without a lineup the keeper has no participation, so there is no row or it has 0.
+    assert all(row["clean_sheets"] == 0 for row in players.json()), players.json()
+    assert str(keeper) not in {row["player_id"] for row in players.json() if row["clean_sheets"]}
+    home = [row for row in teams.json() if row["team_id"] == str(home_team_id)]
+    assert home and home[0]["clean_sheets"] == 1, home
 
 
 async def _seed_ejected_goalkeeper_with_two_published_formations(session: AsyncSession, tenant):

@@ -9,6 +9,7 @@ from app.core.database import get_db, set_rls_context
 from app.core.permissions import require_permission
 from app.core.tenancy import AuthContext, get_auth_context
 from app.modules.advancement.assignments import record_match_slot_assignments
+from app.modules.rule_contract import DEFAULT_GAME_FORMAT, formation_game_format
 from app.modules.rules_engine.engine import (
     normalize_rules_config,
     remap_stage_overrides,
@@ -505,28 +506,26 @@ async def _update_version_rules_record(
             raise HTTPException(status_code=404, detail="Versión no encontrada")
         if version["status"] != "draft":
             raise HTTPException(status_code=409, detail="La versión publicada es inmutable")
-        # Spec 024: rechazar cambio a formato no 11v11 si hay formación táctica publicada.
-        new_game_format = rules_config.get("game_format", "11v11")
-        if new_game_format != "11v11":
+        # Specs 024/044: a public formation must belong to the new format.
+        new_game_format = rules_config.get("game_format") or DEFAULT_GAME_FORMAT
+        published = await db.execute(
+            text("""
+                SELECT DISTINCT mtl.formation_code
+                FROM match_team_lineups mtl
+                JOIN matches m ON m.id = mtl.match_id
+                WHERE mtl.organization_id = :organization_id
+                  AND m.tournament_version_id = :version_id
+                  AND mtl.is_public = TRUE
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "version_id": str(version_id),
+            },
+        )
+        if any(formation_game_format(code) != new_game_format for code in published.scalars().all()):
             from app.modules.matches.errors import PublishedFormationMustBeUnpublished
 
-            published = await db.execute(
-                text("""
-                    SELECT 1
-                    FROM match_team_lineups mtl
-                    JOIN matches m ON m.id = mtl.match_id
-                    WHERE mtl.organization_id = :organization_id
-                      AND m.tournament_version_id = :version_id
-                      AND mtl.is_public = TRUE
-                    LIMIT 1
-                """),
-                {
-                    "organization_id": str(context.organization_id),
-                    "version_id": str(version_id),
-                },
-            )
-            if published.scalar_one_or_none() is not None:
-                raise PublishedFormationMustBeUnpublished()
+            raise PublishedFormationMustBeUnpublished()
 
         await db.execute(
             text("""
