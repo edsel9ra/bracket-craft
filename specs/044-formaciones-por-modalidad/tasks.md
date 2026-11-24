@@ -17,8 +17,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas. E
 
 ## Bloque B — frontend, E2E y documentación (PR de implementación 2)
 
-- [ ] **T4. Catálogo y rejilla del frontend.** RF-001, RF-006
+- [x] **T4. Catálogo y rejilla del frontend.** RF-001, RF-006
 - Hecho cuando: `formations.ts` y `publicLineup.ts` siguen el plan §2–§3; `formations.test.ts` y `public-lineup.test.ts` pasan, tras verlos fallar primero; `pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios.
+- Evidencia (2026-11-24): `formations.test.ts` (nuevo) falló primero al importar (`FORMATIONS_BY_GAME_FORMAT` inexistente) y `public-lineup.test.ts` falló con las formaciones reducidas. `formations.ts` tiene ahora `GameFormat`, `FORMATIONS_BY_GAME_FORMAT` (mismo catálogo y posiciones que `rule_contract.py`), las coordenadas del plan §3, `formationOptionsFor` (ausente o desconocida → 11v11) y `formationGameFormat`; `FormationCode` se deriva del catálogo y `FORMATION_OPTIONS` sigue siendo 11v11. `VALID_FORMATION_CODES` sale de `FORMATIONS_GRID`; un código desconocido sigue cayendo a la planilla. Las nueve formaciones nuevas tienen un único `GK` en la banda de portero y ninguna pareja de posiciones a menos de 10 puntos. Pasan 27/27; `pnpm test` 1195/0, `typecheck` y `lint` limpios.
 - [ ] **T5. Selector por modalidad en la operación.** RF-002, RF-006
 - Hecho cuando: el selector solo ofrece la modalidad del partido, la formación ajena aparece deshabilitada con aviso y la precarga de la 028 funciona con 5v5; tests de componente y composable pasan, tras verlos fallar primero.
 - [ ] **T6. Textos ES/EN.** RF-007, RNF-003
