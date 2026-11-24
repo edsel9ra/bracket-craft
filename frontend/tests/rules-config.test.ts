@@ -1018,3 +1018,28 @@ test('the advanced mode keeps the format and the two limits', () => {
   invalid.game_format = '3v3';
   assert.ok(validateRulesConfig(invalid).some((error) => error.code === 'game_format'));
 });
+
+test('spec 044 (RF-007): los textos de formato describen el catálogo por modalidad en ES y EN', () => {
+  const { spanish, english } = catalogSlices();
+  const value = (slice: string, key: string) => {
+    const match = slice.match(new RegExp(`'${key.replace(/\./g, '\\.')}':\\s*'([^']*)'`));
+    assert.ok(match, `missing ${key}`);
+    return match[1]!;
+  };
+  const keys = ['format.context', 'rules.gameFormatHint', 'format.notice.rules', 'format.notice.summary', 'format.notice.operation'];
+  for (const key of keys) {
+    assert.doesNotMatch(value(spanish, key), /sin esquema táctico|llegará con la spec|no cambia las formaciones|de once jugadores/, key);
+    assert.doesNotMatch(value(english, key), /without tactical scheme|will arrive with|does not change formations|eleven-a-side/, key);
+  }
+  assert.match(value(spanish, 'rules.gameFormatHint'), /formaciones/);
+  assert.match(value(english, 'rules.gameFormatHint'), /formation/);
+  for (const key of ['match.formationNotSupportedForFormat', 'rules.error.publishedFormation']) {
+    value(spanish, key);
+    value(english, key);
+  }
+
+  const operationSource = readFileSync(new URL('../app/composables/useMatchOperation.ts', import.meta.url), 'utf8');
+  assert.match(operationSource, /'formation_not_supported_for_format'[\s\S]{0,200}match\.formationNotSupportedForFormat/);
+  const setupSource = readFileSync(new URL('../app/composables/useTournamentSetup.ts', import.meta.url), 'utf8');
+  assert.match(setupSource, /PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE[\s\S]{0,200}rules\.error\.publishedFormation/);
+});

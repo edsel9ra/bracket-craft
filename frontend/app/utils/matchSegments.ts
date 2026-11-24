@@ -224,6 +224,8 @@ export const CLOSE_CONFLICT_MESSAGE_LABEL_KEYS = {
   walkover_state_not_allowed: 'match.walkoverStateNotAllowed',
   walkover_score_mismatch: 'match.walkoverScoreMismatch',
   walkover_config_inconsistent: 'match.walkoverConfigInconsistent',
+  formation_not_supported_for_format: 'match.formationNotSupportedForFormat',
+  published_formation_must_be_unpublished: 'match.noClose',
   other: 'match.noClose',
 } as const;
 

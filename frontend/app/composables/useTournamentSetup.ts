@@ -1,4 +1,5 @@
-import { isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import { getApiCode, isForbidden, isNotFound, isUnauthorized } from '~/utils/api';
+import { PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE } from '~/utils/matchResolution';
 import { safeInternalRedirect } from '~/utils/navigation';
 import {
   DEFAULT_RULES_CONFIG,
@@ -582,7 +583,7 @@ export function useTournamentSetup(tournamentId: string) {
       // RF-016: un guardado fallido no deja aviso, controles ni salto armado.
       clearPendingAdvance();
       rulesServerDetail.value = serverValidationDetail(cause);
-      rulesError.value = failureMessage(cause, t('setup.noRulesUpdate'));
+      rulesError.value = getApiCode(cause) === PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE ? t('rules.error.publishedFormation') : failureMessage(cause, t('setup.noRulesUpdate'));
     } finally {
       saving.value = false;
     }

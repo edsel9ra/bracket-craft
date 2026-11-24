@@ -2,9 +2,8 @@
 /**
  * Advertencia declarativa de formato (spec 012, RF-043).
  *
- * La planilla soportada es de once. Cuando el formato declarado no es `11v11`
- * se avisa en el paso de reglas, en el resumen de configuración y en la
- * operación/planilla, siempre con un texto traducido. La advertencia es
+ * Cuando el formato declarado no es `11v11` se recuerda que fija las
+ * formaciones y sus titulares (spec 044), siempre con un texto traducido. La advertencia es
  * puramente informativa: no deshabilita controles ni bloquea ninguna acción.
  */
 import { formatWarns } from '~/utils/rulesWizard';
