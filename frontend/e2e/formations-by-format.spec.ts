@@ -47,6 +47,7 @@ class FormationFixture {
       if (this.rejectNextSave) { this.rejectNextSave = false; return reply({ detail: 'La operación no está soportada para el formato del torneo', code: 'FORMATION_NOT_SUPPORTED_FOR_FORMAT' }, 409); }
       this.saves.push(request.postDataJSON() as Record<string, unknown>); return reply({});
     }
+    if (path === '/competitive-impacts' || path === '/rectifications') return reply({ items: [], total: 0, limit: 25, offset: 0 });
     return reply([]);
   }
 }
@@ -149,9 +150,10 @@ test('the public pitch shows 5v5, 7v7 and 9v9 formations with one player per slo
   }
 });
 
-// Axe mide colores calculados: espera al esquema del tema y a que terminen las transiciones.
+// Axe mide el DOM estable: espera al esquema del tema, a un solo `main` y a que terminen las transiciones.
 async function settleTheme(page: Page, theme: 'dark' | 'light') {
   await assertTheme(page, theme, theme);
+  await expect(page.locator('main')).toHaveCount(1);
   await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
 }
 
