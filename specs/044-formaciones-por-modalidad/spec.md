@@ -1,6 +1,6 @@
 # Spec 044 — Formaciones por modalidad (F12)
 
-Estado: borrador. DA-1–DA-4 resueltas por el usuario el 2026-11-24; pendiente de aprobación.
+Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec»). DA-1–DA-4 resueltas el 2026-11-24.
 
 ## Decisiones del usuario (2026-11-24)
 
