@@ -47,6 +47,10 @@ const canViewAudit = computed(() => auth.hasPermission('VIEW_ORGANIZATION_AUDIT'
 const canUseSanctions = computed(() => ['VIEW_SANCTION_CASES', 'SUBMIT_SANCTION_APPEALS', 'RESOLVE_SANCTION_CASES'].some((permission) => auth.hasPermission(permission)) || auth.access?.role_code === 'owner');
 const activeSection = computed<TournamentSection>(() => tournamentSectionForPath(route.path, route.hash));
 const matchId = computed(() => matchIdFromPath(route.path));
+const notificationUnread = useNotificationUnread();
+const unreadCount = notificationUnread.count;
+watch(() => route.path, () => { void notificationUnread.refresh(); });
+onMounted(() => { void notificationUnread.refresh(); });
 const organizationName = computed(() => {
   const active = auth.organizations.find((organization: { id: string; name: string }) => organization.id === auth.organizationId);
   return active?.name || auth.organizations[0]?.name || t('shell.organization');
@@ -59,6 +63,7 @@ const tournamentLabel = computed(() => {
 });
 
 const primaryLinks = computed(() => [
+  { key: 'notifications', label: t('notification.nav'), to: '/workspace/notifications', current: route.path === '/workspace/notifications' },
   { key: 'sanction-notifications', label: t('sanction.notifications'), to: '/workspace/sanction-notifications', current: route.path === '/workspace/sanction-notifications' },
   ...(canUseSanctions.value ? [{ key: 'sanctions', label: t('sanction.inbox'), to: '/workspace/sanctions', current: route.path === '/workspace/sanctions' }] : []),
   { key: 'rectifications', label: t('rectification.inbox'), to: '/workspace/rectifications', current: route.path === '/workspace/rectifications' },
@@ -185,7 +190,7 @@ onMounted(() => {
             :to="link.to"
             class="workspace-nav-link"
             :aria-current="link.current ? 'page' : undefined"
-          >{{ link.label }}</NuxtLink>
+          >{{ link.label }}<span v-if="link.key === 'notifications' && unreadCount" class="workspace-nav-badge"> <span aria-hidden="true">{{ unreadCount }}</span><span class="visually-hidden">{{ t('notification.unreadCount', { count: unreadCount }) }}</span></span></NuxtLink>
         </nav>
 
         <div class="workspace-desktop-controls">
@@ -248,7 +253,7 @@ onMounted(() => {
               class="workspace-mobile-link"
               :aria-current="link.current ? 'page' : undefined"
               @click="closeMenus"
-            >{{ link.label }}</NuxtLink>
+            >{{ link.label }}<span v-if="link.key === 'notifications' && unreadCount" class="workspace-nav-badge"> <span aria-hidden="true">{{ unreadCount }}</span><span class="visually-hidden">{{ t('notification.unreadCount', { count: unreadCount }) }}</span></span></NuxtLink>
           </nav>
 
           <div class="workspace-mobile-controls">
@@ -337,6 +342,7 @@ onMounted(() => {
 .workspace-nav-link, .workspace-account-button { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--color-muted); font-size: var(--text-xs); text-decoration: none; }
 .workspace-nav-link:hover, .workspace-nav-link[aria-current='page'], .workspace-account-button:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-ink); }
 .workspace-nav-link[aria-current='page'] { color: var(--color-accent); }
+.workspace-nav-badge { margin-inline-start: var(--space-1); color: var(--color-accent); font-weight: 700; }
 .workspace-desktop-controls { display: flex; flex: 1 1 auto; align-items: center; justify-content: end; gap: var(--space-3); min-width: 0; }
 .workspace-organization { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .workspace-control-label { color: var(--color-muted); font-size: var(--text-2xs); letter-spacing: 0.08em; text-transform: uppercase; }

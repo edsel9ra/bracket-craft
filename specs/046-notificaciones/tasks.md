@@ -23,8 +23,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas»)
 
 ## Bloque B — frontend, E2E y documentación (PR apilado sobre el bloque A)
 
-- [ ] **T6. Bandeja en el Workspace.** RF-008–RF-010, RNF-003
+- [x] **T6. Bandeja en el Workspace.** RF-008–RF-010, RNF-003
 - Hecho cuando: `utils/notifications.ts`, `useNotifications`, la página, `NotificationInbox` y el enlace con no leídos siguen el plan §5; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
+- Hecho (2026-11-24): `tests/notifications.test.ts` falló primero (no existía `utils/notifications.ts`) y ahora pasa 17/17; la suite del frontend pasa 1229/0 y typecheck y lint están limpios. El contador del Workspace pide `GET /notifications?limit=1` al montar y al navegar, comparte estado con la bandeja y se oculta si falla. La sanción solo nombra al jugador si la API envía el detalle (DA-5).
 - [ ] **T7. Preferencias y textos ES/EN.** RF-005, RF-006, RNF-003
 - Hecho cuando: `useNotificationPreferences` y `NotificationPreferences` siguen el plan §5 y las claves `notification.*` tienen paridad ES/EN; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
 - [ ] **T8. E2E, documentación y validación.** RNF-003
