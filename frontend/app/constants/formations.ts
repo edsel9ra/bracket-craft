@@ -93,3 +93,17 @@ export function formationGameFormat(code: string | null | undefined): GameFormat
 export function formationSlots(formation: FormationCode | ''): string[] {
   return formation ? Object.keys(FORMATIONS_GRID[formation]) : [];
 }
+
+/**
+ * Opciones del selector de la operación (spec 044): las de la modalidad del
+ * partido y, aparte, la formación guardada si es de otra modalidad.
+ */
+export function formationSelectOptions(
+  format: string | null | undefined,
+  current: string | null | undefined,
+): { options: FormationCode[]; foreign: FormationCode | null } {
+  const options = formationOptionsFor(format);
+  const currentFormat = formationGameFormat(current);
+  const foreign = currentFormat && !options.includes(current as FormationCode) ? (current as FormationCode) : null;
+  return { options, foreign };
+}

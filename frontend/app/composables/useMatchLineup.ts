@@ -1,5 +1,5 @@
 import type { MatchOperationState } from '~/composables/useMatchOperationState';
-import { formationSlots, type FormationCode } from '~/constants/formations';
+import { formationOptionsFor, formationSlots, type FormationCode } from '~/constants/formations';
 import { readMatchSelection, teamRosterHref, writeMatchSelection } from '~/utils/matchNavigation';
 import { applyInterruptionMinute, applySegmentProposal, forceMinuteOnRefresh, type SegmentRefreshCause } from '~/utils/matchSegments';
 import { deriveLineupSource } from '~/utils/lineupSource';
@@ -9,7 +9,7 @@ export function useMatchLineup(state: MatchOperationState, dependencies: {
   refreshOperation(cause?: SegmentRefreshCause): Promise<void>;
   runAction(action: string, callback: () => Promise<void>, onError?: (cause: unknown) => boolean): Promise<void>;
 }) {
-  const { request, t, matchId, operation, actionError, openingBlocked, selectedSegmentId, lineupRoles, lineupPositions, lineupFormations, segmentForm, interruptionForm, eventForm, match, selectedSegmentIsActive, teamRosters, lineupEntries, selectedTacticalLineups, selectedSegmentStorageKey } = state;
+  const { request, t, matchId, operation, actionError, openingBlocked, selectedSegmentId, lineupRoles, lineupPositions, lineupFormations, segmentForm, interruptionForm, eventForm, match, selectedSegmentIsActive, teamRosters, lineupEntries, selectedTacticalLineups, selectedSegmentStorageKey, matchGameFormat } = state;
   const { refreshOperation, runAction } = dependencies;
 
   /**
@@ -201,6 +201,11 @@ export function useMatchLineup(state: MatchOperationState, dependencies: {
   async function saveLineup() {
     if (!selectedSegmentId.value || !selectedSegmentIsActive.value) {
       actionError.value = t('match.createSegmentFirst');
+      return;
+    }
+    const allowed = new Set<string>(formationOptionsFor(matchGameFormat.value));
+    if (Object.values(lineupFormations.value).some((formation) => formation && !allowed.has(formation))) {
+      actionError.value = t('match.formationOtherFormat');
       return;
     }
     await runAction('lineup', async () => {

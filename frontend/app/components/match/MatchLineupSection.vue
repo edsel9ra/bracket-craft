@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FORMATION_OPTIONS } from '~/constants/formations';
+import { formationSelectOptions } from '~/constants/formations';
 import Button from '~/components/ui/Button.vue';
 import SanctionLineupWarning from '~/components/sanction/SanctionLineupWarning.vue';
 import { positionLabel } from '~/utils/positions';
@@ -7,7 +7,8 @@ import { positionLabel } from '~/utils/positions';
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
 
 const props = defineProps<{ context: MatchOperationContext }>();
-const { t, busyAction, lineupRoles, lineupPositions, lineupFormations, isTerminal, canOperateMatch, selectedSegment, selectedSegmentIsActive, teamRosters, availablePositions, tacticalRowsForTeam, isTeamLineupPublic, playerName } = props.context;
+const { t, busyAction, lineupRoles, lineupPositions, lineupFormations, isTerminal, canOperateMatch, selectedSegment, selectedSegmentIsActive, teamRosters, availablePositions, tacticalRowsForTeam, isTeamLineupPublic, playerName, matchGameFormat } = props.context;
+const formationChoice = (teamId: string) => formationSelectOptions(matchGameFormat.value, lineupFormations.value[teamId]);
 const emit = defineEmits<{
   saveLineup: [];
   setFormation: [teamId: string, event: Event];
@@ -35,9 +36,11 @@ const toggleLineupPublication = (teamId: string) => emit('toggleLineupPublicatio
                  <label class="field">{{ t('match.formation') }}
                     <select :value="lineupFormations[team.team_id] || ''" :disabled="!canOperateMatch || !team.team_id || isTerminal || !selectedSegmentIsActive" @change="setFormation(team.team_id, $event)">
                      <option value="">{{ t('match.classicLineup') }}</option>
-                     <option v-for="formation in FORMATION_OPTIONS" :key="formation" :value="formation">{{ formation }}</option>
+                     <option v-if="formationChoice(team.team_id).foreign" :value="formationChoice(team.team_id).foreign" disabled>{{ t('match.formationOtherFormatOption', { formation: formationChoice(team.team_id).foreign || '' }) }}</option>
+                     <option v-for="formation in formationChoice(team.team_id).options" :key="formation" :value="formation">{{ formation }}</option>
                    </select>
                  </label>
+                 <p v-if="formationChoice(team.team_id).foreign" class="segment-warning" role="status">{{ t('match.formationOtherFormatNotice', { format: matchGameFormat }) }}</p>
                   <button v-if="canOperateMatch && team.team_id && lineupFormations[team.team_id]" class="text-button publication-button" type="button" :disabled="Boolean(busyAction) || isTerminal || !tacticalRowsForTeam(team.team_id).length" @click="toggleLineupPublication(team.team_id)">
                    {{ isTeamLineupPublic(team.team_id) ? t('match.unpublishLineup') : t('match.publishLineup') }}
                  </button>

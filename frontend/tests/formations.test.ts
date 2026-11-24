@@ -7,6 +7,7 @@ import {
   FORMATIONS_GRID,
   formationGameFormat,
   formationOptionsFor,
+  formationSelectOptions,
   formationSlots,
   type FormationCode,
 } from '../app/constants/formations.ts';
@@ -103,4 +104,12 @@ test('las formaciones nuevas no solapan posiciones y respetan las bandas de slot
   assert.equal(slotLine('2-2', 'LCB'), 'def');
   assert.equal(slotLine('3-2-1', 'LCM'), 'mid');
   assert.equal(slotLine('1-2-1', 'ST'), 'att');
+});
+
+test('formationSelectOptions ofrece la modalidad del partido y separa la formación guardada de otra modalidad', () => {
+  assert.deepEqual(formationSelectOptions('7v7', ''), { options: ['2-3-1', '3-2-1', '3-1-2'], foreign: null });
+  assert.deepEqual(formationSelectOptions('7v7', '3-2-1'), { options: ['2-3-1', '3-2-1', '3-1-2'], foreign: null });
+  assert.deepEqual(formationSelectOptions('5v5', '4-3-3'), { options: ['1-2-1', '2-1-1', '2-2'], foreign: '4-3-3' });
+  assert.deepEqual(formationSelectOptions(null, '2-2'), { options: FORMATION_OPTIONS, foreign: '2-2' });
+  assert.deepEqual(formationSelectOptions('9v9', '9-9-9'), { options: ['3-3-2', '3-4-1', '4-3-1'], foreign: null });
 });
