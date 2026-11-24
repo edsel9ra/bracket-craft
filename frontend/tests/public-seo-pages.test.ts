@@ -32,7 +32,7 @@ test('torneo usa tournamentHead y, con ?match= compartible, resultHead (RF-001, 
 
 test('el enlace de partido abre la cronología tras hidratar y cerrarla limpia la URL (RF-006)', () => {
   assert.match(tournament, /onMounted\(\(\) => \{[\s\S]*?openSharedTimeline\(\);/);
-  assert.match(tournament, /function openSharedTimeline\(\) \{\n {2}const match = sharedMatch\.value;\n {2}if \(!match \|\| isSuspendedPublicMatch\(match\) \|\| !canOpenTimeline\(match\)\) return;\n {2}showTimeline\(match, null\);/);
+  assert.match(tournament, /function openSharedTimeline\(\) \{\n {2}const match = sharedMatch\.value;\n {2}if \(!match \|\| isSuspendedPublicMatch\(match\) \|\| !isShareableResult\(match\)\) return;\n {2}showTimeline\(match, null\);/);
   assert.match(tournament, /if \(route\.query\.match !== undefined\) \{\n {4}sharedMatchDismissed\.value = true;\n {4}void router\.replace\(\{ query: withoutMatchQuery\(route\.query\) \}\);/);
   assert.match(tournament, /\(trigger \?\? tournamentHeading\.value\)\?\.focus\(\)/);
   assert.match(tournament, /<h1 ref="tournamentHeading" tabindex="-1">\{\{ tournament\.name \}\}<\/h1>/);

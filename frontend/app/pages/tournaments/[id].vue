@@ -359,7 +359,7 @@ function openTimeline(match: PublicMatchState, event: MouseEvent) {
 
 function openSharedTimeline() {
   const match = sharedMatch.value;
-  if (!match || isSuspendedPublicMatch(match) || !canOpenTimeline(match)) return;
+  if (!match || isSuspendedPublicMatch(match) || !isShareableResult(match)) return;
   showTimeline(match, null);
 }
 
