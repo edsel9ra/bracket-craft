@@ -79,7 +79,7 @@ def seed_sql() -> str:
 
 @pytest.fixture
 async def stack(database_admin_url):
-    async with throwaway_database(database_admin_url, last=63) as admin:
+    async with throwaway_database(database_admin_url, last=999) as admin:
         await admin.execute(seed_sql())
         name = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(make_url(application_database_url()).set(database=name))
@@ -184,6 +184,20 @@ async def test_origins_put_in_draft_builds_the_bracket_with_empty_slots(stack):
     again = await client.get(url(KO_STAGE))
     assert again.status_code == 200
     assert again.json()["origins"] == payload["origins"]
+
+
+@pytest.mark.asyncio
+async def test_origins_put_records_one_scheduling_notice_per_generation(stack):
+    client, admin = stack
+    first = await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))
+    rejected = await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR))
+    second = await client.put(url(KO_STAGE), json=body(CLASSIC_FOUR, replace_existing=True))
+
+    assert (first.status_code, rejected.status_code, second.status_code) == (200, 409, 200)
+    notices = await admin.fetch(
+        "SELECT notification_type, tournament_id::text, match_count FROM notifications ORDER BY created_at, id"
+    )
+    assert [tuple(row) for row in notices] == [("match_scheduled", TOURNAMENT, 3)] * 2
 
 
 @pytest.mark.asyncio
