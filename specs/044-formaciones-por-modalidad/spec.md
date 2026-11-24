@@ -1,6 +1,13 @@
 # Spec 044 — Formaciones por modalidad (F12)
 
-Estado: borrador
+Estado: borrador. DA-1–DA-4 resueltas por el usuario el 2026-11-24; pendiente de aprobación.
+
+## Decisiones del usuario (2026-11-24)
+
+- **DA-1 = (a).** Tres formaciones por modalidad. 5v5: `1-2-1`, `2-1-1`, `2-2`. 7v7: `2-3-1`, `3-2-1`, `3-1-2`. 9v9: `3-3-2`, `3-4-1`, `4-3-1`.
+- **DA-2 = (a).** Solo las alineaciones con formación exigen 5/7/9/11 titulares; la planilla de convocados sigue libre, como en la 024.
+- **DA-3 = (a).** La portería imbatida se atribuye al `GK` de una formación publicada en cualquier modalidad, igual que en 11v11.
+- **DA-4 = (a).** `engine_version` se mantiene en `2026.1`: el catálogo solo crece y ninguna formación ni torneo existente cambia.
 
 ## Contexto y objetivo
 
@@ -45,11 +52,24 @@ La 024 reservó las formaciones por modalidad a una spec independiente (su «Fue
 
 ### Catálogo por modalidad
 
-- **RF-001.** EL SISTEMA mantendrá un catálogo cerrado de formaciones tácticas por modalidad. El catálogo de 11v11 conserva exactamente las cuatro formaciones y posiciones actuales. Los catálogos de 5v5, 7v7 y 9v9 se fijan en DA-1.
+- **RF-001.** EL SISTEMA mantendrá un catálogo cerrado de formaciones tácticas por modalidad (DA-1). El catálogo de 11v11 conserva exactamente las cuatro formaciones y posiciones actuales.
+
+  | Modalidad | Formación | Posiciones (portero → delantera) |
+  |---|---|---|
+  | 5v5 | `1-2-1` | GK, CB, LM, RM, ST |
+  | 5v5 | `2-1-1` | GK, LCB, RCB, CM, ST |
+  | 5v5 | `2-2` | GK, LCB, RCB, ST_L, ST_R |
+  | 7v7 | `2-3-1` | GK, LCB, RCB, LM, CM, RM, ST |
+  | 7v7 | `3-2-1` | GK, LCB, CB, RCB, LCM, RCM, ST |
+  | 7v7 | `3-1-2` | GK, LCB, CB, RCB, CM, ST_L, ST_R |
+  | 9v9 | `3-3-2` | GK, LCB, CB, RCB, LM, CM, RM, ST_L, ST_R |
+  | 9v9 | `3-4-1` | GK, LCB, CB, RCB, LM, LCM, RCM, RM, ST |
+  | 9v9 | `4-3-1` | GK, LB, LCB, RCB, RB, CM_L, CM, CM_R, ST |
+  | 11v11 | `4-3-3`, `4-4-2`, `3-5-2`, `4-2-3-1` | Sin cambios |
+
   *Criterios de aceptación:*
-  - Cada formación pertenece a una sola modalidad y declara sus posiciones en orden de portero a delantera.
-  - Toda formación incluye exactamente un portero (`GK`) y tantas posiciones como titulares de la modalidad.
-  - Las posiciones reutilizan códigos del catálogo actual de 23 posiciones siempre que exista uno equivalente; un código nuevo solo se añade si ninguno existente describe la posición.
+  - Cada formación pertenece a una sola modalidad, incluye exactamente un portero (`GK`) y tantas posiciones distintas como titulares de la modalidad.
+  - Todas las posiciones pertenecen al catálogo actual de 23 posiciones; no se añaden posiciones nuevas.
   - Una formación fuera del catálogo se rechaza en la API (422) y en la base de datos.
 
 - **RF-002.** CUANDO se guarde una alineación con formación, EL SISTEMA aceptará solo formaciones del catálogo de la modalidad del torneo y exigirá exactamente los titulares de la modalidad, cada uno en una posición distinta de esa formación.
@@ -72,7 +92,7 @@ La 024 reservó las formaciones por modalidad a una spec independiente (su «Fue
 
 ### Planilla de convocados
 
-- **RF-005.** EL SISTEMA mantendrá la planilla de convocados en todas las modalidades, con las reglas actuales (ver DA-2 para el número de titulares).
+- **RF-005.** EL SISTEMA mantendrá la planilla de convocados en todas las modalidades, con las reglas actuales: el número de titulares de la planilla no depende de la modalidad (DA-2).
 
 ### Operación y presentación
 
@@ -86,13 +106,16 @@ La 024 reservó las formaciones por modalidad a una spec independiente (su «Fue
 
 ### Estadísticas
 
-- **RF-008.** EL SISTEMA atribuirá la portería imbatida según DA-3.
+- **RF-008.** EL SISTEMA atribuirá la portería imbatida al `GK` de la formación publicada en cualquier modalidad, con las mismas reglas que hoy en 11v11 (spec 022), incluido el portero entrante (DA-3).
+  *Criterios de aceptación:*
+  - Sin formación publicada no se atribuye a ningún portero, como hoy.
+  - Las estadísticas de 11v11 no cambian.
 
 ### Compatibilidad, aislamiento y contrato
 
 - **RF-009.** EL SISTEMA mantendrá inmutables las versiones publicadas, las alineaciones guardadas y las actas cerradas: ninguna formación existente se reescribe ni se revalida.
 - **RF-010.** EL SISTEMA aplicará el catálogo dentro del aislamiento por organización y con los permisos actuales; ninguna organización puede leer ni modificar formaciones de otra.
-- **RF-011.** EL SISTEMA documentará el catálogo ampliado en `docs/contrato-reglas.md`, con la versión del contrato que fije DA-4, y la prueba del contrato comprobará que el código, la API y la base de datos coinciden con el documento.
+- **RF-011.** EL SISTEMA documentará el catálogo ampliado en `docs/contrato-reglas.md`, manteniendo `engine_version` `2026.1` (DA-4), y la prueba del contrato comprobará que el código, la API y la base de datos coinciden con el documento.
 
 ## Requisitos no funcionales
 
@@ -138,7 +161,4 @@ La 024 reservó las formaciones por modalidad a una spec independiente (su «Fue
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] DA-1. ¿Qué formaciones forman el catálogo de 5v5, 7v7 y 9v9?
-- [NECESITA ACLARACIÓN] DA-2. ¿La modalidad fija también el número de titulares de la planilla de convocados, o solo el de las alineaciones con formación?
-- [NECESITA ACLARACIÓN] DA-3. ¿Se atribuye la portería imbatida al `GK` de una formación publicada en 5v5/7v7/9v9, igual que en 11v11?
-- [NECESITA ACLARACIÓN] DA-4. ¿El catálogo ampliado mantiene `engine_version` 2026.1 o sube a 2026.2?
+Ninguna.
