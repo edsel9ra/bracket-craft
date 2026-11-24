@@ -1,6 +1,6 @@
 # Spec 046 — Notificaciones en la app y por correo (F6, parte 1)
 
-Estado: borrador (2026-11-24). DA-1–DA-4 resueltas el 2026-11-24. Pedida por el usuario el 2026-11-24 («Acepto la 045, fusiona los PR y empieza F6»).
+Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec 046»). DA-1–DA-4 resueltas el 2026-11-24. Pedida por el usuario el 2026-11-24 («Acepto la 045, fusiona los PR y empieza F6»).
 
 ## Decisiones del usuario (2026-11-24)
 
