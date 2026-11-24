@@ -12,3 +12,4 @@ python-socketio==5.18.1
 jsonschema==4.26.0
 python-multipart==0.0.33
 boto3==1.44.2
+pillow==13.0.0

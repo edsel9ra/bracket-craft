@@ -1,6 +1,11 @@
+import logging
+from collections.abc import Callable
+from functools import lru_cache
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +26,8 @@ from app.modules.tournaments.public_player_profile import (
     profile_photo_candidate,
     representative_first,
 )
+from app.modules.tournaments import share_image
+from app.modules.tournaments.share_policy import is_shareable_result
 from app.modules.tournaments.public_timeline import (
     build_public_timeline,
     public_player_names,
@@ -42,6 +49,32 @@ from app.modules.tournaments.access import (
 
 router = APIRouter()
 
+logger = logging.getLogger("app.modules.tournaments.share")
+
+ShareLang = Literal["es", "en"]
+SHARE_IMAGE_CACHE = "public, max-age=600"
+PUBLIC_NOT_FOUND = "Torneo público no encontrado"
+
+
+@lru_cache(maxsize=1)
+def _brand_fallback() -> bytes:
+    return share_image.BRAND_FALLBACK_PATH.read_bytes()
+
+
+async def _share_png(render: Callable[[], bytes]) -> Response:
+    """Spec 043 RNF-002: si el render falla se sirve la imagen de marca (200)."""
+
+    try:
+        content = await run_in_threadpool(render)
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo degrada a la imagen de marca
+        logger.warning("share_image_render_failed error=%s", type(exc).__name__)
+        content = _brand_fallback()
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": SHARE_IMAGE_CACHE},
+    )
+
 
 @router.get("/public", response_model=list[PublicTournamentSummaryResponse])
 async def list_public_tournaments(
@@ -59,6 +92,72 @@ async def list_public_tournaments(
         {"limit": limit, "offset": offset},
     )
     return [dict(row) for row in result.mappings().all()]
+
+
+@router.get("/public/share-image", response_class=Response)
+async def public_brand_share_image(lang: ShareLang = "es") -> Response:
+    return await _share_png(lambda: share_image.brand_card(lang))
+
+
+@router.get("/public/{tournament_id}/share-image", response_class=Response)
+async def public_tournament_share_image(
+    tournament_id: UUID,
+    lang: ShareLang = "es",
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    async with db.begin():
+        row = (
+            await db.execute(
+                text("SELECT name, season, status FROM v_public_tournaments WHERE id = :tournament_id"),
+                {"tournament_id": str(tournament_id)},
+            )
+        ).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=PUBLIC_NOT_FOUND)
+    return await _share_png(
+        lambda: share_image.tournament_card(
+            name=row["name"], season=row["season"], status=row["status"], lang=lang
+        )
+    )
+
+
+@router.get("/public/{tournament_id}/matches/{match_id}/share-image", response_class=Response)
+async def public_match_share_image(
+    tournament_id: UUID,
+    match_id: UUID,
+    lang: ShareLang = "es",
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Spec 043 RF-004/RF-005: solo resultados finales compartibles; el resto, el mismo 404."""
+
+    async with db.begin():
+        row = (
+            await db.execute(
+                text("""
+                    SELECT t.name AS tournament_name, m.status, m.home_team_id,
+                           m.away_team_id, m.home_team_name, m.away_team_name,
+                           m.home_score, m.away_score, m.home_penalties, m.away_penalties
+                    FROM v_public_matches m
+                    JOIN v_public_tournaments t ON t.id = m.tournament_id
+                    WHERE m.tournament_id = :tournament_id AND m.id = :match_id
+                """),
+                {"tournament_id": str(tournament_id), "match_id": str(match_id)},
+            )
+        ).mappings().one_or_none()
+    if row is None or not is_shareable_result(row):
+        raise HTTPException(status_code=404, detail=PUBLIC_NOT_FOUND)
+    return await _share_png(
+        lambda: share_image.result_card(
+            tournament_name=row["tournament_name"],
+            home_team=row["home_team_name"] or "",
+            away_team=row["away_team_name"] or "",
+            home_score=row["home_score"],
+            away_score=row["away_score"],
+            home_penalties=row["home_penalties"],
+            away_penalties=row["away_penalties"],
+            lang=lang,
+        )
+    )
 
 
 async def _profile_rows(
@@ -348,6 +447,35 @@ async def public_matches(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[PublicMatchStateResponse]:
+    return await _public_match_rows(
+        db, tournament_id, stage_id=stage_id, group_id=group_id, limit=limit, offset=offset
+    )
+
+
+@router.get("/public/{tournament_id}/matches/{match_id}")
+async def public_match(
+    tournament_id: UUID,
+    match_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PublicMatchStateResponse:
+    """Spec 043 RF-006: la misma fila que la lista; cualquier otro caso, el mismo 404."""
+
+    rows = await _public_match_rows(db, tournament_id, match_id=match_id, limit=1, offset=0)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Torneo público no encontrado")
+    return rows[0]
+
+
+async def _public_match_rows(
+    db: AsyncSession,
+    tournament_id: UUID,
+    *,
+    stage_id: UUID | None = None,
+    group_id: UUID | None = None,
+    match_id: UUID | None = None,
+    limit: int,
+    offset: int,
+) -> list[dict]:
     # N-2: every query lives inside this read transaction; the photos are
     # signed after it closes, never while the connection is idle in transaction.
     async with db.begin():
@@ -418,6 +546,8 @@ async def public_matches(
                        OR u.stage_id = CAST(:stage_id AS UUID))
                   AND (CAST(:group_id AS UUID) IS NULL
                        OR u.group_id = CAST(:group_id AS UUID))
+                  AND (CAST(:match_id AS UUID) IS NULL
+                       OR u.id = CAST(:match_id AS UUID))
                   ORDER BY u.stage_order, u.stage_id, u.matchday NULLS LAST,
                            u.bracket_code NULLS LAST, u.match_date NULLS LAST, u.id
                  LIMIT :limit OFFSET :offset
@@ -426,6 +556,7 @@ async def public_matches(
                 "tournament_id": str(tournament_id),
                 "stage_id": str(stage_id) if stage_id else None,
                 "group_id": str(group_id) if group_id else None,
+                "match_id": str(match_id) if match_id else None,
                 "limit": limit,
                 "offset": offset,
             },

@@ -5,7 +5,7 @@ Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan, las tareas y l
 ## 1. Alcance y dependencias
 
 - Sin migraciones, tablas, permisos, RLS, outbox ni Socket.IO nuevos. Las lecturas nuevas usan las vistas públicas existentes (`v_public_tournaments`, `v_public_matches`, `v_match_live_public_selection`) con el mismo `set_rls_context(org_del_torneo, None)` que la cronología (037).
-- Una dependencia nueva de backend: **Pillow 12.3.0** (última estable), para dibujar PNG. Una fuente vendorizada: Archivo variable (OFL) en TTF, la misma familia que ya sirve el frontend.
+- Una dependencia nueva de backend: **Pillow 13.0.0** (desviación registrada en T1: la 12.3.0 aprobada tiene avisos de seguridad en `pip-audit` corregidos en la 13.0.0), para dibujar PNG. Una fuente vendorizada: Archivo variable (OFL) en TTF, la misma familia que ya sirve el frontend.
 - Sin dependencias nuevas de frontend.
 - Variable nueva de frontend `NUXT_PUBLIC_SITE_URL` (origen público, RF-012). En Compose reutiliza `FRONTEND_BASE_URL`, que producción ya exige con `:?` (caso límite «origen sin configurar»).
 - Dos PR de implementación: **bloque A** backend (T1–T3) y **bloque B** frontend, E2E y documentación (T4–T9).
@@ -21,7 +21,7 @@ Estado: aprobado por el usuario el 2026-11-23 («Apruebo el plan, las tareas y l
 | `backend/app/assets/fonts/Archivo[wdth,wght].ttf`, `OFL.txt` (nuevos) | Fuente vendorizada con su licencia. | RNF-003 |
 | `backend/app/assets/share/brand-fallback.png` (nuevo) | Imagen de marca generada una vez por `brand_card("es")` y versionada; se sirve si falla el render. | RNF-002 |
 | `backend/app/modules/tournaments/routes/public.py` | Cuatro lecturas (detalle en §3). Reutiliza la consulta de `public_matches` extrayendo la unión a un helper con filtro opcional por `match_id`, sin cambiar su salida. | RF-005, RF-006, RF-013 |
-| `backend/requirements.txt` | `pillow==12.3.0`. | — |
+| `backend/requirements.txt` | `pillow==13.0.0`. | — |
 
 ### Frontend
 

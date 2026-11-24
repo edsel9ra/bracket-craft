@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import tomllib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -937,6 +938,14 @@ async def _buffer_request_body(request: Request, max_bytes: int) -> BodyBufferRe
     return BodyBufferResult.COMPLETE
 
 
+# Spec 043 RNF-004: las rutas públicas de compartir no emiten cookies en ninguna
+# respuesta (tampoco 404/422); un proxy compartido no debe guardar el token.
+COOKIELESS_PUBLIC_PATHS = re.compile(
+    r"^/api/v1/tournaments/public/"
+    r"(?:share-image|[^/]+/share-image|[^/]+/matches/[^/]+(?:/share-image)?)/?$"
+)
+
+
 @api.middleware("http")
 async def csrf_and_request_size_middleware(request: Request, call_next):
     current_settings = get_settings()
@@ -980,7 +989,11 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     response = await call_next(request)
-    if request.method.upper() != "OPTIONS" and not request.cookies.get(current_settings.csrf_cookie_name):
+    if (
+        request.method.upper() != "OPTIONS"
+        and not COOKIELESS_PUBLIC_PATHS.match(request.url.path)
+        and not request.cookies.get(current_settings.csrf_cookie_name)
+    ):
         response.set_cookie(
             key=current_settings.csrf_cookie_name,
             value=getattr(request.state, "csrf_token", None) or new_csrf_token(),
