@@ -35,6 +35,8 @@ from app.modules.matches.audit import (
     lineup_content_summary,
     lineup_signature,
     publication_audit_action,
+    team_publication_signatures,
+    withdrawn_publications,
 )
 from app.modules.matches.formations import FORMATION_SLOTS
 from app.modules.matches.router import (
@@ -207,6 +209,76 @@ def test_lineup_audit_action_only_fires_when_the_content_changes():
 )
 def test_publication_audit_only_records_the_state_transition(before, after, expected):
     assert publication_audit_action(before, after) == expected
+
+
+def test_team_publication_signature_ignores_order_and_minutes():
+    """Spec 045, DA-2: minutes and request order do not change a team lineup."""
+
+    formations = [(TEAM_A, FORMATION_CODE), (TEAM_B, "4-3-3")]
+    entries = [
+        (TEAM_A, PLAYER_A, PLAYER_A, "starter", "GK", None, None),
+        (TEAM_A, PLAYER_B, PLAYER_B, "substitute", None, None, None),
+    ]
+    with_minutes = [
+        (TEAM_A, PLAYER_B, PLAYER_B, "substitute", None, 55, None),
+        (TEAM_A, PLAYER_A, PLAYER_A, "starter", "GK", None, 70),
+    ]
+
+    signatures = team_publication_signatures(formations, entries)
+
+    assert set(signatures) == {TEAM_A, TEAM_B}
+    assert signatures == team_publication_signatures(list(reversed(formations)), with_minutes)
+
+
+def test_team_publication_signature_changes_with_formation_role_position_or_membership():
+    formations = [(TEAM_A, FORMATION_CODE), (TEAM_B, "4-3-3")]
+    base = [
+        (TEAM_A, PLAYER_A, PLAYER_A, "starter", "GK", None, None),
+        (TEAM_A, PLAYER_B, PLAYER_B, "substitute", None, None, None),
+    ]
+    baseline = team_publication_signatures(formations, base)
+
+    variants = [
+        team_publication_signatures([(TEAM_A, "4-3-3"), (TEAM_B, "4-3-3")], base),
+        team_publication_signatures(formations, [base[0], (TEAM_A, PLAYER_B, PLAYER_B, "starter", None, None, None)]),
+        team_publication_signatures(formations, [(TEAM_A, PLAYER_A, PLAYER_A, "starter", "RB", None, None), base[1]]),
+        team_publication_signatures(formations, base[:1]),
+    ]
+    for variant in variants:
+        assert variant[TEAM_A] != baseline[TEAM_A]
+        # The other team is untouched by any change of TEAM_A.
+        assert variant[TEAM_B] == baseline[TEAM_B]
+
+
+def test_team_publication_signature_covers_only_teams_with_a_formation():
+    entries = [(TEAM_A, PLAYER_A, PLAYER_A, "starter", None, None, None)]
+
+    assert team_publication_signatures([], entries) == {}
+
+
+def test_withdrawn_publications_lists_only_public_teams_that_change_or_disappear():
+    formations = [(TEAM_A, FORMATION_CODE), (TEAM_B, "4-3-3")]
+    entries = [
+        (TEAM_A, PLAYER_A, PLAYER_A, "starter", "GK", None, None),
+        (TEAM_B, PLAYER_B, PLAYER_B, "starter", "GK", None, None),
+    ]
+    before = team_publication_signatures(formations, entries)
+    changed_a = team_publication_signatures(
+        formations, [(TEAM_A, PLAYER_A, PLAYER_A, "substitute", None, None, None), entries[1]]
+    )
+    minutes_only = team_publication_signatures(
+        formations, [(TEAM_A, PLAYER_A, PLAYER_A, "starter", "GK", 1, 80), entries[1]]
+    )
+
+    assert withdrawn_publications({TEAM_A, TEAM_B}, before, before) == []
+    assert withdrawn_publications({TEAM_A, TEAM_B}, before, minutes_only) == []
+    assert withdrawn_publications({TEAM_B}, before, changed_a) == []
+    assert withdrawn_publications({TEAM_A, TEAM_B}, before, changed_a) == [TEAM_A]
+    # Classic planilla: both formations disappear.
+    assert withdrawn_publications({TEAM_B, TEAM_A}, before, {}) == sorted(
+        [TEAM_A, TEAM_B], key=str
+    )
+    assert withdrawn_publications(set(), before, {}) == []
 
 
 def test_lineup_audit_payload_keeps_codes_and_counts_only():

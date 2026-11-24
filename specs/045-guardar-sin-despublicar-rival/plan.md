@@ -1,6 +1,6 @@
 # Plan — Spec 045: Guardar la alineación sin despublicar al rival
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas»).
 
 ## 1. Alcance y dependencias
 

@@ -18,11 +18,14 @@ from app.modules.matches.audit import (
     ASSIGN_MATCH_OFFICIAL,
     REMOVE_MATCH_OFFICIAL,
     LineupEntry,
+    UNPUBLISH_MATCH_LINEUP,
     lineup_audit_action,
     lineup_content_summary,
     lineup_signature,
     publication_audit_action,
     record_match_audit,
+    team_publication_signatures,
+    withdrawn_publications,
 )
 from app.modules.matches.errors import FormationNotSupportedForFormat, ResolutionNotEnabled
 from app.modules.matches.formations import (
@@ -298,6 +301,14 @@ async def _load_match_tactical_lineups(
         {"match_id": str(match_id), "organization_id": str(organization_id)},
     )
     return [dict(row) for row in result.mappings().all()]
+
+
+def _kept_publication(previous: Any, withdrawn: bool) -> dict[str, Any]:
+    """Publication values for a recreated team lineup (spec 045, RF-001/RF-002)."""
+
+    if previous is None or withdrawn or not previous["is_public"]:
+        return {"is_public": False, "published_at": None}
+    return {"is_public": True, "published_at": previous["published_at"]}
 
 
 async def _load_segment_lineup_state(
@@ -1130,6 +1141,30 @@ async def save_match_lineup(
             )
             for entry in payload.entries
         ]
+        # Spec 045: a team whose public lineup does not change keeps its
+        # publication; a published one that changes or disappears is withdrawn.
+        publication_result = await db.execute(
+            text("""
+                SELECT team_id, formation_code, is_public, published_at
+                FROM match_team_lineups
+                WHERE match_id = :match_id
+                  AND segment_id = :segment_id
+                  AND organization_id = :organization_id
+            """),
+            {
+                "match_id": str(match_id),
+                "segment_id": str(payload.segment_id),
+                "organization_id": str(context.organization_id),
+            },
+        )
+        before_publications = {
+            UUID(str(row["team_id"])): row for row in publication_result.mappings().all()
+        }
+        withdrawn = withdrawn_publications(
+            (team_id for team_id, row in before_publications.items() if row["is_public"]),
+            team_publication_signatures(before_formations, before_entries),
+            team_publication_signatures(payload_formations, payload_entries),
+        )
 
         await db.execute(
             text("""
@@ -1166,8 +1201,10 @@ async def save_match_lineup(
                 await db.execute(
                     text("""
                         INSERT INTO match_team_lineups
-                            (organization_id, match_id, segment_id, team_id, formation_code)
-                        VALUES (:organization_id, :match_id, :segment_id, :team_id, :formation_code)
+                            (organization_id, match_id, segment_id, team_id, formation_code,
+                             is_public, published_at)
+                        VALUES (:organization_id, :match_id, :segment_id, :team_id, :formation_code,
+                                :is_public, :published_at)
                     """),
                     {
                         "organization_id": str(context.organization_id),
@@ -1175,6 +1212,7 @@ async def save_match_lineup(
                         "segment_id": str(payload.segment_id),
                         "team_id": str(config.team_id),
                         "formation_code": config.formation_code,
+                        **_kept_publication(before_publications.get(config.team_id), config.team_id in withdrawn),
                     },
                 )
             for entry in payload.entries:
@@ -1232,6 +1270,20 @@ async def save_match_lineup(
                 payload={
                     "segment_id": str(payload.segment_id),
                     **lineup_content_summary(payload_formations, payload_entries),
+                },
+            )
+        for team_id in withdrawn:
+            await record_match_audit(
+                db,
+                organization_id=context.organization_id,
+                member_id=context.organization_user_id,
+                match_id=match_id,
+                action=UNPUBLISH_MATCH_LINEUP,
+                payload={
+                    "segment_id": str(payload.segment_id),
+                    "team_id": str(team_id),
+                    "is_public": False,
+                    "formation_code": before_publications[team_id]["formation_code"],
                 },
             )
         return await _load_match_lineup(db, context.organization_id, match_id)

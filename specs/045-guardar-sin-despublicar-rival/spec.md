@@ -1,6 +1,6 @@
 # Spec 045 — Guardar la alineación sin despublicar al rival
 
-Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec 045»). DA-1–DA-4 resueltas el mismo día.
+Estado: implementada y aceptada por el usuario el 2026-11-24 («Acepto la 045, fusiona los PR y empieza F6»). Aprobada el 2026-11-24 («Apruebo la spec 045»). DA-1–DA-4 resueltas el mismo día.
 
 ## Decisiones del usuario (2026-11-24)
 
