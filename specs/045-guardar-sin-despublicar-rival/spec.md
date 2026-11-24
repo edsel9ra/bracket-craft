@@ -1,6 +1,13 @@
 # Spec 045 — Guardar la alineación sin despublicar al rival
 
-Estado: borrador
+Estado: borrador. DA-1–DA-4 resueltas el 2026-11-24.
+
+## Decisiones del usuario (2026-11-24)
+
+- **DA-1 = (a).** La formación publicada de un equipo cuya alineación cambia pasa a privada, como hoy: lo público siempre es algo publicado explícitamente.
+- **DA-2 = (a).** Cuenta como cambio lo que se ve en público: la formación y, por jugador, si está convocado, su rol y su posición. Los minutos de entrada y salida no cuentan.
+- **DA-3 = (a).** Si un guardado va a retirar una formación publicada, el Workspace pide confirmación antes de guardar y nombra al equipo afectado.
+- **DA-4 = (a).** Además de la entrada de guardado, la auditoría registra una despublicación por cada equipo cuya formación pasa a privada.
 
 ## Contexto y objetivo
 
@@ -30,15 +37,17 @@ Consecuencia hoy: corregir un dorsal o un suplente del local retira de la vista 
 
 ## Definiciones
 
-- **Alineación de un equipo en un segmento:** su formación (o ninguna) y, por jugador, su rol (titular o suplente) y su posición. [NECESITA ACLARACIÓN] DA-2: si los minutos de entrada y salida también cuentan.
-- **Alineación sin cambios:** la que, tras guardar, es idéntica a la que había guardada antes para ese equipo y segmento.
+- **Alineación de un equipo en un segmento:** su formación (o ninguna) y, por jugador convocado, su rol (titular o suplente) y su posición (DA-2). Los minutos de entrada y salida no forman parte de ella.
+- **Alineación sin cambios:** la que, tras guardar, tiene la misma formación y los mismos jugadores convocados, con el mismo rol y la misma posición, que la guardada antes para ese equipo y segmento. El orden de los jugadores en la petición no importa.
+- **Formación retirada:** una formación publicada que un guardado deja privada (RF-002) o elimina (caso límite 4).
 
 ## Requisitos funcionales
 
 - **RF-001.** CUANDO se guarde la planilla de un segmento y la alineación de un equipo quede sin cambios, EL SISTEMA conservará su estado de publicación y su fecha de publicación.
-- **RF-002.** CUANDO se guarde la planilla de un segmento y la alineación de un equipo con formación publicada cambie, EL SISTEMA [NECESITA ACLARACIÓN] DA-1: la dejará privada (como hoy) o la mantendrá publicada con el contenido nuevo.
-- **RF-003.** CUANDO un guardado retire de la vista pública una formación publicada, EL SISTEMA [NECESITA ACLARACIÓN] DA-3: lo confirmará antes, lo avisará después o no dirá nada.
-- **RF-004.** CUANDO un guardado retire una formación publicada, EL SISTEMA [NECESITA ACLARACIÓN] DA-4: registrará o no, además del guardado, una entrada de despublicación de ese equipo en la auditoría.
+- **RF-002.** CUANDO se guarde la planilla de un segmento y la alineación de un equipo con formación publicada cambie, EL SISTEMA la dejará privada y sin fecha de publicación, como hoy (DA-1). Para volver a mostrarla hay que publicarla explícitamente.
+- **RF-003.** CUANDO el operador vaya a guardar y, según el estado cargado en el Workspace, el guardado vaya a retirar alguna formación publicada, EL SISTEMA pedirá confirmación antes de enviar nada, nombrando a cada equipo afectado (DA-3). Si el operador cancela, no se guarda nada. Si ningún equipo publicado cambia, se guarda sin confirmación, como hoy.
+- **RF-004.** CUANDO un guardado retire una formación publicada, EL SISTEMA registrará en la auditoría, en la misma transacción y además de la entrada de guardado, una entrada de despublicación por cada equipo afectado, con el segmento y el equipo (DA-4). Un equipo que conserva su publicación no genera entrada de despublicación.
+- **RF-008.** EL SISTEMA decidirá qué formaciones se retiran comparando, en el servidor y dentro de la misma transacción, lo guardado con lo que deja el guardado; la confirmación del Workspace (RF-003) es solo informativa y no cambia ese resultado.
 - **RF-005.** EL SISTEMA mantendrá las validaciones actuales de guardar y publicar (modalidad, titulares, posiciones, segmento activo, partido sin eventos ni terminado) y la independencia por segmento de la 028.
 - **RF-006.** EL SISTEMA aplicará el mismo comportamiento en 5v5, 7v7, 9v9 y 11v11.
 - **RF-007.** SI la petición llega de otra organización o el partido no existe, ENTONCES EL SISTEMA responderá como hoy, sin leer ni modificar datos de ninguna organización.
@@ -58,12 +67,14 @@ No se exponen datos nuevos. El efecto es que una formación ya publicada sigue p
 
 1. Guardar sin cambiar nada: ninguna formación cambia de estado de publicación.
 2. Cambiar solo el local con el visitante publicado: el visitante sigue publicado con la misma fecha.
-3. Cambiar los dos equipos: se aplica RF-002 a cada uno.
-4. Pasar a la planilla clásica (sin formación): la formación es obligatoria para los dos equipos o para ninguno, así que desaparecen las dos y con ellas su publicación.
+3. Cambiar los dos equipos: se aplica RF-002 a cada uno; la confirmación nombra a los dos si ambos estaban publicados.
+4. Pasar a la planilla clásica (sin formación): la formación es obligatoria para los dos equipos o para ninguno, así que desaparecen las dos. Cada una que estuviera publicada cuenta como retirada (RF-003, RF-004).
 5. Formación privada de otra modalidad (044) en el equipo que no se toca: hay que cambiarla para guardar, así que ese equipo sí cambia.
 6. Solo cambia el orden de los jugadores en la petición: no cuenta como cambio.
 7. Segmento distinto del activo: sigue respondiendo 409 sin tocar nada.
-8. Publicación del rival en curso mientras se guarda: se aplica RNF-003.
+8. Publicación del rival en curso mientras se guarda: se aplica RNF-003; si el estado del Workspace estaba desfasado, la confirmación puede no coincidir, pero el resultado y la auditoría siguen RF-008.
+9. Solo cambian los minutos de entrada o salida de un jugador del equipo publicado: no cuenta como cambio y la publicación se conserva (DA-2).
+10. Un jugador pasa de titular a suplente o cambia de posición en el equipo publicado: cuenta como cambio (DA-2).
 
 ## Fuera de alcance
 
@@ -73,13 +84,10 @@ No se exponen datos nuevos. El efecto es que una formación ya publicada sigue p
 
 ## Criterios de finalización
 
-- Pruebas con base de datos real de los casos límite 1–8 en las cuatro modalidades representativas.
+- Pruebas con base de datos real de los casos límite 1–10, en 11v11 y al menos una modalidad reducida.
 - Pruebas del frontend y E2E con axe del comportamiento de RF-003.
 - Documentación (README, manual, AGENTS, MEMORY) actualizada; CI en verde.
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] DA-1 (RF-002): qué pasa con la publicación del equipo cuya alineación cambia.
-- [NECESITA ACLARACIÓN] DA-2 (Definiciones): si los minutos de entrada y salida cuentan como cambio.
-- [NECESITA ACLARACIÓN] DA-3 (RF-003): cómo se entera el operador de que un guardado retira una formación publicada.
-- [NECESITA ACLARACIÓN] DA-4 (RF-004): si la retirada se registra como despublicación en la auditoría.
+Ninguna. DA-1–DA-4 resueltas el 2026-11-24 (ver «Decisiones del usuario»).
