@@ -1,7 +1,7 @@
 # Contrato interno de reglas
 
 **Versión del contrato (`engine_version`):** `2026.1`
-**Ámbito:** códigos de llave de doble eliminación y catálogo de formaciones.
+**Ámbito:** códigos de llave de doble eliminación y catálogo de formaciones por modalidad.
 **Fuente única en código:** `backend/app/modules/rule_contract.py`
 (`ENGINE_VERSION`, `GRAND_FINAL_CODE`, `RESET_CODE`, `FORMATION_CODES`,
 `FORMATION_SLOTS`).
@@ -45,13 +45,31 @@ Lógica del formato, no configuración:
 
 ## 3. Catálogo cerrado de formaciones
 
-El catálogo tiene cuatro formaciones y es cerrado: `FormationCode` en la API y
-el `CHECK` de `match_team_lineups.formation_code` aceptan exactamente estas
-cuatro y ninguna más. Una formación distinta responde 422 nombrando el catálogo
-y, si se saltara la API, la base de datos la rechaza.
+El catálogo tiene trece formaciones y es cerrado: `FormationCode` en la API y
+el `CHECK` `chk_match_team_lineup_formation_code` de `match_team_lineups`
+(migración `066`) aceptan exactamente estas trece y ninguna más. Una formación
+distinta responde 422 nombrando el catálogo y, si se saltara la API, la base de
+datos la rechaza.
+
+Cada formación pertenece a una sola modalidad (`game_format`, spec 044) y tiene
+tantas posiciones como titulares de esa modalidad, con un único `GK`:
+
+| Modalidad | Titulares | Formaciones |
+|---|---|---|
+| `5v5` | 5 | `1-2-1`, `2-1-1`, `2-2` |
+| `7v7` | 7 | `2-3-1`, `3-2-1`, `3-1-2` |
+| `9v9` | 9 | `3-3-2`, `3-4-1`, `4-3-1` |
+| `11v11` | 11 | `4-3-3`, `4-4-2`, `3-5-2`, `4-2-3-1` |
+
+Una alineación con formación solo admite formaciones de la modalidad del
+partido (409 `FORMATION_NOT_SUPPORTED_FOR_FORMAT` si es de otra). La planilla de
+convocados, sin formación, no depende de la modalidad.
 
 Las posiciones se listan en el orden de la alineación (de portero a delantera)
-y son etiquetas internas, no configuración.
+y son etiquetas internas, no configuración. Todas pertenecen al catálogo de 23
+posiciones de 11v11.
+
+### 11v11
 
 ### `4-3-3`
 
@@ -73,21 +91,64 @@ Posiciones: `GK`, `LCB`, `CB`, `RCB`, `LWB`, `LCM`, `CM`, `RCM`, `RWB`, `ST_L`,
 Posiciones: `GK`, `LB`, `LCB`, `RCB`, `RB`, `CDM_L`, `CDM_R`, `LW`, `CAM`,
 `RW`, `ST`.
 
+### 5v5
+
+### `1-2-1`
+
+Posiciones: `GK`, `CB`, `LM`, `RM`, `ST`.
+
+### `2-1-1`
+
+Posiciones: `GK`, `LCB`, `RCB`, `CM`, `ST`.
+
+### `2-2`
+
+Posiciones: `GK`, `LCB`, `RCB`, `ST_L`, `ST_R`.
+
+### 7v7
+
+### `2-3-1`
+
+Posiciones: `GK`, `LCB`, `RCB`, `LM`, `CM`, `RM`, `ST`.
+
+### `3-2-1`
+
+Posiciones: `GK`, `LCB`, `CB`, `RCB`, `LCM`, `RCM`, `ST`.
+
+### `3-1-2`
+
+Posiciones: `GK`, `LCB`, `CB`, `RCB`, `CM`, `ST_L`, `ST_R`.
+
+### 9v9
+
+### `3-3-2`
+
+Posiciones: `GK`, `LCB`, `CB`, `RCB`, `LM`, `CM`, `RM`, `ST_L`, `ST_R`.
+
+### `3-4-1`
+
+Posiciones: `GK`, `LCB`, `CB`, `RCB`, `LM`, `LCM`, `RCM`, `RM`, `ST`.
+
+### `4-3-1`
+
+Posiciones: `GK`, `LB`, `LCB`, `RCB`, `RB`, `CM_L`, `CM`, `CM_R`, `ST`.
+
 ## 4. Estabilidad y verificación
 
 - `engine_version` se mantiene en `2026.1`; es la versión que valida el motor de
   reglas (`RULES_SCHEMA` y `DEFAULT_RULES_CONFIG`).
 - `backend/tests/test_rule_contract.py` comprueba que las constantes coinciden
   con este documento, con el esquema de la API y con el `CHECK` de la migración
-  `007`, que el calendario produce `GF1`/`GF2` y que la repetición se activa
+  `066` (la `007` conserva el catálogo original de 11v11), que el calendario produce `GF1`/`GF2` y que la repetición se activa
   con ambos equipos.
-- `backend/tests/test_migration_021.py` (opt-in con PostgreSQL) comprueba que
-  el `CHECK` real acepta las cuatro formaciones y rechaza una quinta.
+- `backend/tests/test_migration_066.py` (opt-in con PostgreSQL) comprueba que
+  el `CHECK` real acepta las trece formaciones y rechaza cualquier otra, y que
+  la `066` conserva las alineaciones existentes y es idempotente.
 
 ## 5. Alcance del contrato cerrado
 
 Este documento cubre **solo** los códigos de llave `GF1`/`GF2` y el catálogo
-cerrado de las cuatro formaciones con sus posiciones. `engine_version` sigue en
+cerrado de las trece formaciones por modalidad con sus posiciones. `engine_version` sigue en
 **`2026.1`**.
 
 La configuración de la versión incluye además tres claves **aditivas** que
@@ -95,13 +156,14 @@ quedan **fuera** de este contrato y no cambian ninguna regla del motor:
 
 | Clave | Tipo | Default | Significado |
 |---|---|---|---|
-| `game_format` | texto del catálogo `5v5`, `7v7`, `9v9`, `11v11` | `11v11` | Modalidad declarada; no altera formaciones, titulares ni planilla |
+| `game_format` | texto del catálogo `5v5`, `7v7`, `9v9`, `11v11` | `11v11` | Modalidad; fija el catálogo de formaciones y sus titulares, no la planilla de convocados |
 | `min_players_per_team` | entero ≥ 0 | `0` (sin límite) | Mínimo de jugadores activos por equipo |
 | `max_players_per_team` | entero ≥ 0 | `0` (sin límite) | Máximo de jugadores activos por equipo |
 
 - Los defaults reproducen el comportamiento anterior: una configuración sin las
   claves se lee como `11v11` y sin límites, y no se reescribe.
-- El formato **no** es referencia de validación de los límites ni habilita
-  formaciones por modalidad; la planilla soportada sigue siendo de once.
+- El formato **no** es referencia de validación de los límites ni del número
+  de titulares de la planilla de convocados; solo determina qué formaciones del
+  §3 se pueden usar (spec 044).
 - La aclaración no cambia `engine_version`, el catálogo de formaciones ni
   ninguna regla deportiva.

@@ -56,6 +56,9 @@ class Result:
     def scalar_one(self):
         return self._scalar
 
+    def scalars(self):
+        return self
+
 
 class Transaction:
     async def __aenter__(self):
@@ -97,6 +100,8 @@ class RecordingSession:
             and "FOR UPDATE" in sql
         ):
             return Result(rows=[{"status": self.version_status}])
+        if "SELECT DISTINCT mtl.formation_code" in sql:
+            return Result()
         if sql.startswith("INSERT INTO tournaments"):
             return Result(scalar=TOURNAMENT_ID)
         if sql.startswith("INSERT INTO tournament_versions"):

@@ -6,9 +6,21 @@ the tests.
 """
 
 from app.modules.rule_contract import (
+    DEFAULT_GAME_FORMAT,
     FORMATION_CODES,
     FORMATION_SLOTS,
+    FORMATIONS_BY_GAME_FORMAT,
+    formation_game_format,
     slots_for_formation,
+    starters_for_game_format,
 )
 
-__all__ = ["FORMATION_CODES", "FORMATION_SLOTS", "slots_for_formation"]
+__all__ = [
+    "DEFAULT_GAME_FORMAT",
+    "FORMATION_CODES",
+    "FORMATION_SLOTS",
+    "FORMATIONS_BY_GAME_FORMAT",
+    "formation_game_format",
+    "slots_for_formation",
+    "starters_for_game_format",
+]
