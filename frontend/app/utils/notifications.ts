@@ -73,6 +73,7 @@ export function notificationErrorKey(cause: unknown): string {
   const status = failure?.statusCode || failure?.status;
   if (status === 403) return 'notification.error.forbidden';
   if (status === 404) return 'notification.error.notFound';
+  if (status === 422) return 'notification.error.invalid';
   return 'notification.error.generic';
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PageHeader from '~/components/ui/PageHeader.vue';
 import NotificationInbox from '~/components/notification/NotificationInbox.vue';
+import NotificationPreferences from '~/components/notification/NotificationPreferences.vue';
 definePageMeta({ middleware: 'auth' });
 const { t } = useI18n();
 useHead({ title: computed(() => `${t('notification.title')} | Bracket Craft`) });
@@ -12,6 +13,7 @@ useHead({ title: computed(() => `${t('notification.title')} | Bracket Craft`) })
       <PageHeader :title="t('notification.title')" />
       <p class="notification-hint">{{ t('notification.hint') }}</p>
       <NotificationInbox />
+      <NotificationPreferences />
     </main>
   </WorkspaceShell>
 </template>
