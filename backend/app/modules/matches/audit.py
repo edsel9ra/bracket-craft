@@ -62,6 +62,43 @@ def lineup_signature(
     )
 
 
+def team_publication_signatures(
+    formations: Iterable[tuple[UUID, str]],
+    entries: Iterable[LineupEntry],
+) -> dict[UUID, str]:
+    """Fingerprint per team of what its public formation shows (spec 045).
+
+    Only teams with a formation can be published, so only they get a
+    signature. It covers the formation and, per called-up player, the role and
+    the position; minutes and request order are ignored (DA-2).
+    """
+
+    players: dict[UUID, list[str]] = {}
+    for team_id, _roster_id, player_id, role, position_slot, _entered, _left in entries:
+        players.setdefault(team_id, []).append(f"{player_id}|{role}|{position_slot or ''}")
+    return {
+        team_id: json.dumps(
+            {"formation": formation_code, "players": sorted(players.get(team_id, []))},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for team_id, formation_code in formations
+    }
+
+
+def withdrawn_publications(
+    public_teams: Iterable[UUID],
+    before: dict[UUID, str],
+    after: dict[UUID, str],
+) -> list[UUID]:
+    """Published teams whose lineup a save changes or removes, in stable order."""
+
+    return sorted(
+        (team_id for team_id in set(public_teams) if before.get(team_id) != after.get(team_id)),
+        key=str,
+    )
+
+
 def lineup_audit_action(before: str, after: str) -> str | None:
     """Action to record when the lineup content changes, ``None`` otherwise."""
 
