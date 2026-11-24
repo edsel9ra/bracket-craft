@@ -1,6 +1,6 @@
 # Plan — Spec 046: Notificaciones en la app y por correo (F6, parte 1)
 
-Estado: borrador (2026-11-24), pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas»).
 
 ## 1. Alcance y dependencias
 
