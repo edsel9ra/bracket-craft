@@ -74,7 +74,7 @@ worker, bucle de correo aparte: NOTIFICATION_EMAIL → payload (revalida o withh
 
 | Endpoint (`/api/v1`) | Quién | Respuesta |
 |---|---|---|
-| `GET /notifications?limit&offset` | Cualquier miembro | `{items, unread_count}`, solo avisos propios entregados en la bandeja de la organización activa. |
+| `GET /notifications?limit&offset` | Cualquier miembro | `{items, unread_count, total, limit, offset}` (`limit` 1–100, 50 por defecto), solo avisos propios entregados en la bandeja de la organización activa, del más reciente al más antiguo. Cada aviso: `id`, `type`, `created_at`, `read_at`, `tournament_id`, `tournament_name`, `match_id`, `home_team_name`, `away_team_name`, `match_count` y `sanction` (`player_name`, `team_name`, `matches_suspended`) o `null`. |
 | `POST /notifications/{id}/read` | Cualquier miembro | 204. Un aviso ajeno o inexistente responde el mismo 404. |
 | `POST /notifications/read-all` | Cualquier miembro | 204. |
 | `GET /notification-preferences` | Cualquier miembro | `{items: [{type, channel, enabled}]}` con los ocho pares, aplicando los valores por defecto. |
