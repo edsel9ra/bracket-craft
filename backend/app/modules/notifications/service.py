@@ -32,7 +32,8 @@ _PAGE = """
     LEFT JOIN teams home ON home.id = m.home_team_id AND home.organization_id = n.organization_id
     LEFT JOIN teams away ON away.id = m.away_team_id AND away.organization_id = n.organization_id
     LEFT JOIN player_suspensions ps
-      ON ps.id = n.suspension_id AND ps.organization_id = n.organization_id AND CAST(:sanction_detail AS boolean)
+      ON ps.id = n.suspension_id AND ps.organization_id = n.organization_id
+     AND sanction_member_has_permission(n.organization_id, 'VIEW_SANCTION_CASES')
     LEFT JOIN players p ON p.id = ps.player_id AND p.organization_id = n.organization_id
     LEFT JOIN LATERAL (
         SELECT source.team_id FROM (
@@ -112,12 +113,9 @@ class NotificationService:
         async with self.db.begin():
             await set_rls_context(self.db, context.organization_id, context.user_id)
             counts = (await self.db.execute(text(_COUNTS), scope)).mappings().one()
-            sanction_detail = (await self.db.execute(
-                text("SELECT sanction_member_has_permission(:org, 'VIEW_SANCTION_CASES')"), scope,
-            )).scalar_one()
-            rows = (await self.db.execute(text(_PAGE), {
-                **scope, "limit": query.limit, "offset": query.offset, "sanction_detail": bool(sanction_detail),
-            })).mappings().all()
+            rows = (await self.db.execute(
+                text(_PAGE), {**scope, "limit": query.limit, "offset": query.offset},
+            )).mappings().all()
         return {
             "items": [_item(row) for row in rows],
             "unread_count": counts["unread"],
