@@ -1,6 +1,6 @@
 # Tareas — Spec 044: Formaciones por modalidad (F12)
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas. Empieza por T1»).
 
 ## Bloque A — backend y migración (PR de implementación 1)
 
