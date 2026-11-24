@@ -203,6 +203,17 @@ Propietarios y administradores ven «Auditoría» en el menú del Workspace. La 
 
 La auditoría es de solo lectura y no registra nuevas entradas al consultarla. Las acciones de plataforma siguen en `/admin`.
 
+### Notificaciones (spec 046)
+
+Todos los miembros ven «Notificaciones» en el menú del Workspace, con el número de avisos sin leer. La bandeja muestra, del más reciente al más antiguo y en páginas de 25, los avisos de tu organización activa: partidos programados (uno por generación de calendario o alta, con el número de partidos), resultado confirmado, W.O. declarado y sanción generada.
+
+1. Cada aviso indica su tipo, la fecha, el torneo y el partido, con un enlace al partido o, si es de calendario, al calendario del torneo. Los no leídos llevan un punto.
+2. Pulsa «Marcar como leído» en un aviso o «Marcar todo como leído».
+3. En un aviso de sanción, el jugador, su equipo y los partidos de suspensión solo aparecen si puedes consultar sanciones; si no, ves el aviso con el torneo y el partido.
+4. En «Preferencias» elige, por cada tipo, si lo recibes en la bandeja y por correo, y pulsa «Guardar preferencias». Por defecto todo llega a la bandeja y nada por correo. El correo va a la dirección de tu cuenta, en español y en inglés, nunca nombra a un jugador y enlaza a la bandeja.
+
+Las preferencias son tuyas y de cada organización. Solo recibes avisos de hechos ocurridos mientras eras miembro.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
