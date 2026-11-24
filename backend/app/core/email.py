@@ -100,6 +100,10 @@ async def _send_account_email(recipient: str, subject: str, body: str) -> None:
         settings.smtp_use_tls, settings.smtp_username, settings.smtp_password, settings.smtp_timeout_seconds)
 
 
+async def send_notification_email(recipient: str, subject: str, body: str) -> None:
+    await _send_account_email(recipient, subject, body)
+
+
 async def send_password_reset_email(recipient: str, reset_url: str, expires_at: datetime) -> None:
     await _send_account_email(
         recipient,

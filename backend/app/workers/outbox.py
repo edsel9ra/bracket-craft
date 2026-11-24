@@ -10,9 +10,14 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.core.database import SessionFactory, validate_application_role
-from app.core.email import send_rectification_decision_email, send_sanction_notice_email
+from app.core.email import (
+    send_notification_email,
+    send_rectification_decision_email,
+    send_sanction_notice_email,
+)
 from app.core.config import get_settings
 from app.core.outbox import OUTBOX_STREAM, OUTBOX_STREAM_MAXLEN
+from app.modules.notifications.delivery import deliver_email, deliver_inbox
 from app.modules.sanction_appeals.notifications import deliver_internal
 from app.workers.heartbeat import (
     HEARTBEAT_INTERVAL_SECONDS,
@@ -30,6 +35,7 @@ __all__ = [
     "build_stream_message",
     "heartbeat_is_fresh",
     "main",
+    "process_notification_emails",
     "process_once",
     "publish_stream_event",
 ]
@@ -93,7 +99,9 @@ async def process_once(redis: Redis | None = None) -> int:
 
         for event in events:
             try:
-                if event["event_type"] == "SANCTION_CASE_NOTICE_INTERNAL":
+                if event["event_type"] == "NOTIFICATION_INBOX":
+                    await deliver_inbox(db, event)
+                elif event["event_type"] == "SANCTION_CASE_NOTICE_INTERNAL":
                     await deliver_internal(db, event)
                 elif event["event_type"] == "SANCTION_CASE_NOTICE_EMAIL":
                     async with db.begin():
@@ -135,12 +143,42 @@ async def process_once(redis: Redis | None = None) -> int:
         return len(events)
 
 
+async def process_notification_emails() -> int:
+    """Procesa un lote de correos de aviso (spec 046), fuera del bucle del outbox."""
+
+    async with SessionFactory() as db:
+        async with db.begin():
+            result = await db.execute(text("""
+                SELECT id, organization_id, event_type, payload
+                FROM claim_notification_email_events(20)
+            """))
+            events = result.mappings().all()
+
+        for event in events:
+            try:
+                await deliver_email(
+                    db, event, base_url=get_settings().frontend_base_url, send=send_notification_email
+                )
+            except Exception as exc:
+                # Solo el id y el tipo de error: el mensaje del SMTP puede llevar el correo.
+                logger.warning("No se pudo enviar el correo del aviso %s: %s", event["id"], type(exc).__name__)
+                async with db.begin():
+                    await db.execute(
+                        text("SELECT fail_outbox_event(:id, :error)"),
+                        {"id": str(event["id"]), "error": type(exc).__name__},
+                    )
+                continue
+            async with db.begin():
+                await db.execute(text("SELECT complete_outbox_event(:id)"), {"id": str(event["id"])})
+        return len(events)
+
+
 async def main():
     if get_settings().app_env.lower().strip() not in {"development", "dev", "local"}:
         await validate_application_role()
     redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
     try:
-        await asyncio.gather(_run_loop(redis), _run_account_email_loop())
+        await asyncio.gather(_run_loop(redis), _run_account_email_loop(), _run_notification_email_loop())
     finally:
         await redis.aclose()
 
@@ -153,6 +191,16 @@ async def _run_account_email_loop() -> None:
             await process_account_email_jobs()
         except Exception:
             logger.exception("Error procesando correos de cuenta")
+        await asyncio.sleep(1)
+
+
+async def _run_notification_email_loop() -> None:
+    # Bucle aparte: un SMTP lento no frena el tiempo real ni la bandeja (RNF-002).
+    while True:
+        try:
+            await process_notification_emails()
+        except Exception:
+            logger.exception("Error procesando correos de avisos")
         await asyncio.sleep(1)
 
 
