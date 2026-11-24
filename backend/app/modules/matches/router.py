@@ -979,6 +979,29 @@ def _match_game_format(match: Any) -> str:
     return rules_config.get("game_format") or DEFAULT_GAME_FORMAT
 
 
+async def _lock_version_game_format(db: AsyncSession, context: AuthContext, match_id: UUID) -> str | None:
+    """Share-lock the match version and return its format (spec 044)."""
+
+    result = await db.execute(
+        text("""
+            SELECT tv.rules_config
+            FROM tournament_versions tv
+            WHERE tv.organization_id = :organization_id
+              AND tv.id = (
+                  SELECT m.tournament_version_id
+                  FROM matches m
+                  WHERE m.id = :match_id AND m.organization_id = :organization_id
+              )
+            FOR SHARE
+        """),
+        {"match_id": str(match_id), "organization_id": str(context.organization_id)},
+    )
+    row = result.one_or_none()
+    if row is None:
+        return None
+    return _match_game_format({"rules_config": row[0]})
+
+
 @router.put("/{match_id}/lineup", response_model=list[dict[str, Any]])
 async def save_match_lineup(
     match_id: UUID,
@@ -1223,6 +1246,9 @@ async def publish_match_lineup(
 ) -> dict[str, Any]:
     async with db.begin():
         await set_rls_context(db, context.organization_id, context.user_id)
+        # Version before match (core.locking): a concurrent rules edit holds the
+        # version FOR UPDATE, so the format read here is the one that commits.
+        game_format = await _lock_version_game_format(db, context, match_id)
         match = await _load_operation_match(db, context, match_id)
         if payload.team_id not in {match["home_team_id"], match["away_team_id"]}:
             raise HTTPException(status_code=422, detail="El equipo no participa en el partido")
@@ -1248,7 +1274,7 @@ async def publish_match_lineup(
             raise HTTPException(status_code=409, detail="Guarda la formación antes de publicarla")
 
         formation_code = str(lineup["formation_code"])
-        if payload.is_public and formation_game_format(formation_code) != _match_game_format(match):
+        if payload.is_public and formation_game_format(formation_code) != (game_format or _match_game_format(match)):
             raise FormationNotSupportedForFormat()
 
         snapshot_result = await db.execute(
