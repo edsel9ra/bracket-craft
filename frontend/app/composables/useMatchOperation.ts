@@ -277,6 +277,11 @@ export function useMatchOperation() {
         actionError.value = t('match.resolutionNotEnabled');
         return;
       }
+      // Spec 044: formación de otra modalidad o titulares de otra modalidad al publicar.
+      if (classifyMatchConflict(cause) === 'formation_not_supported_for_format') {
+        actionError.value = t('match.formationNotSupportedForFormat');
+        return;
+      }
       actionError.value = failureMessage(cause, t('match.noOperation'));
     } finally {
       busyAction.value = null;

@@ -25,11 +25,20 @@ function operationFixture(): MatchOperation {
   } as unknown as MatchOperation;
 }
 
-function editor() {
+function editor(gameFormat = '11v11') {
   const operation = ref<MatchOperation | null>(null);
+  const requests: { path: string; options: unknown }[] = [];
   const selectedSegmentId = ref('');
   const state = {
     operation, selectedSegmentId,
+    request: async (path: string, options: unknown) => { requests.push({ path, options }); },
+    t: (key: string) => key,
+    matchId: 'm1',
+    actionError: ref<string | null>(null),
+    matchGameFormat: computed(() => gameFormat),
+    selectedSegmentIsActive: computed(() => true),
+    teamRosters: computed(() => [{ team_id: 'home' }, { team_id: 'away' }]),
+    lineupEntries: computed(() => []),
     match: computed(() => operation.value?.match),
     openingBlocked: ref(null),
     lineupRoles: ref<Record<string, LineupRole | ''>>({}),
@@ -52,7 +61,7 @@ function editor() {
   const actions = exports.useMatchLineup!(state as unknown as MatchOperationState, {
     refreshOperation: async () => {}, runAction: async (_name, callback) => { await callback(); },
   });
-  return { state, ...actions };
+  return { state, requests, ...actions };
 }
 
 test('classic lineup: hydrate all 24 roles without a formation or position, including on refresh', () => {
@@ -106,3 +115,52 @@ for (const selected of ['s1', 's2']) {
     assert.equal(state.lineupFormations.value.home, '4-3-3');
   });
 }
+
+test('spec 044: la precarga entre segmentos (028) copia una formación de 5v5', () => {
+  const { state, applyOperation, syncTacticalEditor } = editor('5v5');
+  const value = operationFixture();
+  value.segments = [
+    { id: 's1', segment_number: 1, status: 'closed', minute_start: 0 },
+    { id: 's2', segment_number: 2, status: 'active', minute_start: 20 },
+  ] as MatchOperation['segments'];
+  value.tactical_lineups = ['GK', 'LCB', 'RCB', 'ST_L', 'ST_R'].map((slot, index) => ({
+    segment_id: 's1', segment_number: 1, team_id: 'home', formation_code: '2-2',
+    player_id: `p${index}`, is_starter: true, position_slot: slot, is_public: false,
+    published_at: null, first_name: null, last_name: null,
+  })) as MatchOperation['tactical_lineups'];
+  applyOperation(value);
+  state.selectedSegmentId.value = 's2';
+  syncTacticalEditor();
+  assert.equal(state.lineupFormations.value.home, '2-2');
+  assert.equal(state.lineupPositions.value.r0, 'GK');
+  assert.equal(state.lineupPositions.value.r4, 'ST_R');
+  assert.equal(state.lineupRoles.value.r4, 'starter');
+});
+
+test('spec 044: guardar con una formación de otra modalidad avisa y no llama a la API', async () => {
+  const { state, requests, saveLineup } = editor('5v5');
+  state.selectedSegmentId.value = 's1';
+  state.lineupFormations.value = { home: '4-3-3' };
+  await saveLineup();
+  assert.equal(requests.length, 0);
+  assert.equal(state.actionError.value, 'match.formationOtherFormat');
+});
+
+test('spec 044: guardar con la formación de la modalidad envía team_lineups', async () => {
+  const { state, requests, saveLineup } = editor('5v5');
+  state.selectedSegmentId.value = 's1';
+  state.lineupFormations.value = { home: '2-2' };
+  await saveLineup();
+  assert.equal(requests.length, 1);
+  const body = (requests[0]!.options as { body: { team_lineups: unknown } }).body;
+  assert.equal(JSON.stringify(body.team_lineups), JSON.stringify([{ team_id: 'home', formation_code: '2-2' }]));
+  assert.equal(state.actionError.value, null);
+});
+
+test('spec 044: el selector de la operación usa la modalidad del partido y deshabilita la formación ajena', () => {
+  const source = readFileSync(new URL('../app/components/match/MatchLineupSection.vue', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /FORMATION_OPTIONS/);
+  assert.match(source, /formationSelectOptions\(matchGameFormat/);
+  assert.match(source, /<option v-if="[^"]*foreign[^"]*"[^>]*disabled/);
+  assert.match(source, /match\.formationOtherFormatNotice/);
+});

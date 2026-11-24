@@ -10,12 +10,7 @@ export { formationSlots };
 
 export type LineCode = 'gk' | 'def' | 'mid' | 'att';
 
-const VALID_FORMATION_CODES: ReadonlySet<string> = new Set([
-  '4-3-3',
-  '4-4-2',
-  '3-5-2',
-  '4-2-3-1',
-]);
+const VALID_FORMATION_CODES: ReadonlySet<string> = new Set(Object.keys(FORMATIONS_GRID));
 
 export function isTacticalFormationValid(team: PublicTeamLineup): boolean {
   if (!team) return false;

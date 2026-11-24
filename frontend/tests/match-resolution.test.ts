@@ -15,6 +15,8 @@ import {
   WALKOVER_SCORE_MISMATCH_CODE,
   WALKOVER_STATE_NOT_ALLOWED_CODE,
   classifyMatchConflict,
+  FORMATION_NOT_SUPPORTED_FOR_FORMAT_CODE,
+  PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE,
   closeResolutionDecision,
   createResolutionStore,
   enabledResolutions,
@@ -1262,4 +1264,17 @@ test('does not block a walkover because of persisted segments beyond the maximum
   assert.equal(decision.outcome, 'confirm');
   assert.equal(decision.send, true);
   assert.equal(decision.needsConfirmation, true);
+});
+
+test('spec 044: los 409 de formación por modalidad se clasifican por su code', () => {
+  assert.equal(FORMATION_NOT_SUPPORTED_FOR_FORMAT_CODE, 'FORMATION_NOT_SUPPORTED_FOR_FORMAT');
+  assert.equal(PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE, 'PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED');
+  assert.equal(
+    classifyMatchConflict({ status: 409, data: { detail: 'x', code: FORMATION_NOT_SUPPORTED_FOR_FORMAT_CODE } }),
+    'formation_not_supported_for_format',
+  );
+  assert.equal(
+    classifyMatchConflict({ status: 409, data: { detail: 'x', code: PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE } }),
+    'published_formation_must_be_unpublished',
+  );
 });

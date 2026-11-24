@@ -170,3 +170,26 @@ test('no lee reloj, red ni almacenamiento', () => {
   // sanity: functions are pure exports
   assert.equal(typeof isTacticalFormationValid, 'function');
 });
+
+test('spec 044: acepta formaciones de 5v5, 7v7 y 9v9 con sus titulares exactos', () => {
+  const cases: [string, number][] = [['2-2', 5], ['3-2-1', 7], ['4-3-1', 9]];
+  for (const [code, count] of cases) {
+    const slots = formationSlots(code as never);
+    assert.equal(slots.length, count, code);
+    const starters = slots.map((slot, index) => player({ player_id: `${code}-${index}`, position_slot: slot }));
+    const team = { team_id: 't', formation_code: code, starters, substitutes: [] } as unknown as PublicTeamLineup;
+    assert.equal(isTacticalFormationValid(team), true, code);
+    const lines = textualFormationLines(team);
+    assert.equal(lines[0]?.line, 'gk', code);
+    assert.equal(lines.flatMap((line) => line.players).length, count, code);
+    const short = { ...team, starters: starters.slice(1) } as PublicTeamLineup;
+    assert.equal(isTacticalFormationValid(short), false, `${code} con un titular menos`);
+  }
+});
+
+test('spec 044: un código desconocido sigue cayendo a la planilla', () => {
+  const team = {
+    team_id: 't', formation_code: '9-9-9', starters: [player({ position_slot: 'GK' })], substitutes: [],
+  } as unknown as PublicTeamLineup;
+  assert.equal(isTacticalFormationValid(team), false);
+});

@@ -701,6 +701,8 @@ export function createResolutionStore(
 
 export const RESOLUTION_NOT_ENABLED_CODE = 'RESOLUTION_NOT_ENABLED';
 export const ROSTER_SIZE_OUT_OF_RANGE_CODE = 'ROSTER_SIZE_OUT_OF_RANGE';
+export const FORMATION_NOT_SUPPORTED_FOR_FORMAT_CODE = 'FORMATION_NOT_SUPPORTED_FOR_FORMAT';
+export const PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE = 'PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED';
 // Spec 017 (RF-006, RF-010): códigos aditivos del cierre del acta.
 export const ASSIST_PLAYER_INVALID_CODE = 'ASSIST_PLAYER_INVALID';
 export const DOUBLE_YELLOW_INCONSISTENT_CODE = 'DOUBLE_YELLOW_INCONSISTENT';
@@ -717,6 +719,8 @@ export type MatchConflictKind =
   | 'walkover_state_not_allowed'
   | 'walkover_score_mismatch'
   | 'walkover_config_inconsistent'
+  | 'formation_not_supported_for_format'
+  | 'published_formation_must_be_unpublished'
   | 'other';
 
 /** Causa de un 409 de operación según su `code` aditivo, sin mirar el texto. */
@@ -729,6 +733,8 @@ export function classifyMatchConflict(cause: unknown): MatchConflictKind {
   if (code === WALKOVER_STATE_NOT_ALLOWED_CODE) return 'walkover_state_not_allowed';
   if (code === WALKOVER_SCORE_MISMATCH_CODE) return 'walkover_score_mismatch';
   if (code === WALKOVER_CONFIG_INCONSISTENT_CODE) return 'walkover_config_inconsistent';
+  if (code === FORMATION_NOT_SUPPORTED_FOR_FORMAT_CODE) return 'formation_not_supported_for_format';
+  if (code === PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_CODE) return 'published_formation_must_be_unpublished';
   return 'other';
 }
 

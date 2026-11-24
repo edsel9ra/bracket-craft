@@ -869,7 +869,7 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Tab');
       await expect(formatSelect).toHaveValue('7v7');
-      await expect(rulesWizard.getByText('Formato 7v7 · alineación sin esquema táctico', { exact: true })).toBeVisible();
+      await expect(rulesWizard.getByText('Formato 7v7 · formaciones de 7v7', { exact: true })).toBeVisible();
     });
     record('rules-format-warning');
 
@@ -946,7 +946,7 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       await tabUntilFocused(page, save, 'guardar-reglas');
       await expect(save).toBeEnabled();
       await page.keyboard.press('Enter');
-      await expect(page.locator('#resumen').getByText('Formato 7v7 · alineación sin esquema táctico', { exact: true })).toBeVisible({ timeout: MAX_MS.initialConnected });
+      await expect(page.locator('#resumen').getByText('Formato 7v7 · formaciones de 7v7', { exact: true })).toBeVisible({ timeout: MAX_MS.initialConnected });
       await expect(page.locator('#resumen')).toContainText('7v7');
     });
     record('rules-saved');
@@ -1109,7 +1109,7 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       await expect(matchBar).toContainText(homeTeam.name);
       await expect(matchBar).toContainText(awayTeam.name);
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-      await expect(page.getByText('Formato 7v7 · alineación sin esquema táctico', { exact: true })).toBeVisible();
+      await expect(page.getByText('Formato 7v7 · formaciones de 7v7', { exact: true })).toBeVisible();
     });
     record('operation-format-warning');
 

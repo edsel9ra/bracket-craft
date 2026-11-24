@@ -31,7 +31,7 @@ export class SanctionFixture {
       segments: [{ id: segment, segment_number: 1, minute_start: 0, minute_end: null, status: 'active' }], interruptions: [], officials: [], eligible_officials: [], events: [], next_segment: null,
       rosters: [{ roster_id: roster, player_id: this.player, team_id: team, team_name: 'Local', first_name: 'Jugador', last_name: '034', dorsal_number: 1, is_active: true, match_roster_id: uuid(71), role: 'starter', entered_minute: 0, left_minute: null, is_valid: true }],
       lineup: [{ match_roster_id: uuid(71), roster_id: roster, player_id: this.player, team_id: team, role: 'starter', entered_minute: 0, left_minute: null, first_name: 'Jugador', last_name: '034', dorsal_number: 1, position_slot: 'GK' }],
-      tactical_lineups: [{ segment_id: segment, segment_number: 1, team_id: team, formation_code: '4-3-3', is_public: this.publications > 0, published_at: null, player_id: this.player, is_starter: true, position_slot: 'GK', first_name: 'Jugador', last_name: '034' }],
+      tactical_lineups: [{ segment_id: segment, segment_number: 1, team_id: team, formation_code: '1-2-1', is_public: this.publications > 0, published_at: null, player_id: this.player, is_starter: true, position_slot: 'GK', first_name: 'Jugador', last_name: '034' }],
     };
   }
   async handle(route: Route, actor: Actor) {
