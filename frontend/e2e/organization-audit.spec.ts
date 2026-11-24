@@ -6,7 +6,7 @@ const uuid = (value: number) => `04100000-0000-4000-8000-${String(value).padStar
 const ana = uuid(1); const luis = uuid(2);
 type Entry = AuditEntry;
 
-test.use({ actionTimeout: 15_000, trace: 'off', video: 'off', timezoneId: 'America/Bogota', storageState: { cookies: [], origins: [] } });
+test.use({ actionTimeout: 15_000, reducedMotion: 'reduce', trace: 'off', video: 'off', timezoneId: 'America/Bogota', storageState: { cookies: [], origins: [] } });
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'ignoreErrors' }); });
 
 class AuditFixture {

@@ -54,7 +54,7 @@ test.describe('HTML del servidor sin JavaScript', () => {
   test('inicio, torneo y resultado traen metadatos absolutos del origen configurado, no del Host', async ({ request, baseURL }) => {
     const origin = baseURL!.replace(/\/+$/, '');
     const get = async (path: string) => {
-      const response = await request.get(path, { headers: { host: 'evil.example', cookie: 'bc_locale=es' } });
+      const response = await request.get(path, { headers: { 'x-forwarded-host': 'evil.example', forwarded: 'host=evil.example;proto=https', cookie: 'bc_locale=es' } });
       expect(response.status(), path).toBe(200);
       const html = await response.text();
       expect(html, path).not.toContain('evil.example');
@@ -95,7 +95,7 @@ test.describe('HTML del servidor sin JavaScript', () => {
 
   test('sitemap lista inicio y torneos públicos sin parámetros ni fichas; robots bloquea lo privado', async ({ request, baseURL }) => {
     const origin = baseURL!.replace(/\/+$/, '');
-    const sitemap = await request.get('/sitemap.xml', { headers: { host: 'evil.example' } });
+    const sitemap = await request.get('/sitemap.xml', { headers: { 'x-forwarded-host': 'evil.example', forwarded: 'host=evil.example;proto=https' } });
     expect(sitemap.status()).toBe(200);
     expect(sitemap.headers()['content-type']).toContain('application/xml');
     expect(sitemap.headers()['cache-control']).toBe('public, max-age=600');
@@ -107,7 +107,7 @@ test.describe('HTML del servidor sin JavaScript', () => {
       expect(loc, loc).not.toMatch(/[?#]|\/players\//);
     }
 
-    const robots = await request.get('/robots.txt', { headers: { host: 'evil.example' } });
+    const robots = await request.get('/robots.txt', { headers: { 'x-forwarded-host': 'evil.example', forwarded: 'host=evil.example;proto=https' } });
     expect(robots.status()).toBe(200);
     expect(robots.headers()['content-type']).toContain('text/plain');
     expect(robots.headers()['cache-control']).toBe('public, max-age=600');
