@@ -62,7 +62,7 @@ test('version selector restores its value before waiting and route guards preser
 
 test('every confirmation action has a localized title and verb in both catalogs', () => {
   const catalog = readFileSync(new URL('../app/composables/useI18n.ts', import.meta.url), 'utf8');
-  for (const action of ['discardChanges', 'deactivate', 'revokeInvitation', 'reopenInvitation', 'changeResolution', 'discardDraft', 'leaveMatch', 'closeReport', 'publish', 'changeVersion', 'leaveTournament', 'replaceRules', 'removeCrest', 'saveRules', 'regenerateSchedule', 'revokePhotoConsent']) {
+  for (const action of ['discardChanges', 'deactivate', 'revokeInvitation', 'reopenInvitation', 'changeResolution', 'discardDraft', 'leaveMatch', 'closeReport', 'publish', 'changeVersion', 'leaveTournament', 'replaceRules', 'removeCrest', 'saveRules', 'regenerateSchedule', 'revokePhotoConsent', 'lineupWithdraw']) {
     for (const field of ['title', 'action']) {
       const key = `confirm.${action}.${field}`;
       assert.equal(catalog.split(`'${key}':`).length - 1, 2, key);

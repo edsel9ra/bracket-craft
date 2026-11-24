@@ -3,13 +3,14 @@ import { formationOptionsFor, formationSlots, type FormationCode } from '~/const
 import { readMatchSelection, teamRosterHref, writeMatchSelection } from '~/utils/matchNavigation';
 import { applyInterruptionMinute, applySegmentProposal, forceMinuteOnRefresh, type SegmentRefreshCause } from '~/utils/matchSegments';
 import { deriveLineupSource } from '~/utils/lineupSource';
+import { withdrawnPublicTeams } from '~/utils/lineupPublication';
 import type { LineupRole, TacticalLineupRow, MatchOperation } from '~/components/match/types';
 
 export function useMatchLineup(state: MatchOperationState, dependencies: {
   refreshOperation(cause?: SegmentRefreshCause): Promise<void>;
   runAction(action: string, callback: () => Promise<void>, onError?: (cause: unknown) => boolean): Promise<void>;
 }) {
-  const { request, t, matchId, operation, actionError, openingBlocked, selectedSegmentId, lineupRoles, lineupPositions, lineupFormations, segmentForm, interruptionForm, eventForm, match, selectedSegmentIsActive, teamRosters, lineupEntries, selectedTacticalLineups, selectedSegmentStorageKey, matchGameFormat } = state;
+  const { request, confirm, t, matchId, operation, actionError, openingBlocked, selectedSegmentId, lineupRoles, lineupPositions, lineupFormations, segmentForm, interruptionForm, eventForm, match, selectedSegmentIsActive, teamRosters, lineupEntries, selectedTacticalLineups, selectedSegmentStorageKey, matchGameFormat } = state;
   const { refreshOperation, runAction } = dependencies;
 
   /**
@@ -207,6 +208,24 @@ export function useMatchLineup(state: MatchOperationState, dependencies: {
     if (Object.values(lineupFormations.value).some((formation) => formation && !allowed.has(formation))) {
       actionError.value = t('match.formationOtherFormat');
       return;
+    }
+    // Spec 045, RF-003/RF-008: aviso previo con el estado cargado; el servidor
+    // decide qué formaciones retira y lo audita.
+    const withdrawn = new Set(withdrawnPublicTeams(
+      selectedTacticalLineups.value,
+      lineupFormations.value,
+      lineupEntries.value,
+      operation.value?.rosters || [],
+    ));
+    if (withdrawn.size) {
+      const teams = teamRosters.value.filter((team) => withdrawn.has(team.team_id)).map((team) => team.name).join(', ');
+      const accepted = await confirm({
+        title: t('confirm.lineupWithdraw.title'),
+        message: t('confirm.lineupWithdraw.message', { teams }),
+        confirmLabel: t('confirm.lineupWithdraw.action'),
+        tone: 'danger',
+      });
+      if (!accepted) return;
     }
     await runAction('lineup', async () => {
       await request(`/matches/${matchId}/lineup`, {
