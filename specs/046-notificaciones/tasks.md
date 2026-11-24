@@ -4,8 +4,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas»)
 
 ## Bloque A — backend y migración (PR apilado sobre el #122)
 
-- [ ] **T1. Migración 067.** RF-002, RF-004, RF-006, RF-007, RF-012, RF-013
+- [x] **T1. Migración 067.** RF-002, RF-004, RF-006, RF-007, RF-012, RF-013
 - Hecho cuando: `067_notifications.sql` sigue el plan §2; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_notifications_migration.py` pasa sobre un volumen limpio y uno ya migrado, tras ver fallar primero los casos nuevos; `sh -n infra/postgres/migrate.sh` pasa.
+- Evidencia (2026-11-24): `test_notifications_migration.py` falló primero 20/20 (sin la 067) y ahora pasa 20/20: RLS `FORCE` y privilegios, `CHECK` por tipo, destinatarios y preferencias por defecto, rollback del hecho, reclamación de correo aparte, revalidación en la entrega, lecturas propias, marcar leídos, correo sin el nombre del jugador, y volumen limpio igual al ya migrado y reaplicable. `sh -n infra/postgres/migrate.sh` pasa. Ajuste del plan §2: `outbox_event_id` es único solo en el canal `email`.
 - [ ] **T2. Catálogo puro y registro.** RF-001, RF-002, RF-006, RF-011
 - Hecho cuando: `catalog.py` y `recorder.py` siguen el plan §3; `cd backend && pytest -q tests/test_notification_catalog.py` pasa, tras ver fallar primero los tests; `ruff check .` limpio.
 - [ ] **T3. Productores.** RF-001–RF-004
