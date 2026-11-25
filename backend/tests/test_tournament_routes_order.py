@@ -57,10 +57,12 @@ OPERATIONS = {
 
 def test_all_44_tournament_operations_remain_registered():
     crest_path = PREFIX + "/{tournament_id}/teams/{team_id}/crest"
+    # Las exportaciones (spec 048) viven en su propio módulo, igual que los escudos.
+    exports_path = PREFIX + "/{tournament_id}/exports/{kind}"
     actual = {
         (method.upper(), path.removeprefix(PREFIX))
         for path, operations in api.openapi()["paths"].items()
-        if path.startswith(PREFIX) and path != crest_path
+        if path.startswith(PREFIX) and path not in {crest_path, exports_path}
         for method in operations
         if method in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
     }
