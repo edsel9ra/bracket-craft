@@ -214,6 +214,17 @@ Todos los miembros ven «Notificaciones» en el menú del Workspace, con el núm
 
 Las preferencias son tuyas y de cada organización. Solo recibes avisos de hechos ocurridos mientras eras miembro.
 
+### Webhooks (spec 047)
+
+El owner y el administrador (permiso `MANAGE_WEBHOOKS`) ven «Webhooks» en el menú del Workspace. Un webhook envía los avisos de la organización a una URL HTTPS de tu sistema, firmados para que puedas comprobar que vienen de Bracket Craft.
+
+1. Escribe la URL de destino (`https://`, sin usuario ni contraseña) y marca los tipos de aviso: partido programado, resultado confirmado, W.O. declarado o sanción generada. Pulsa «Crear webhook». Puedes tener hasta 10.
+2. Se abre un diálogo con el secreto (`whsec_…`). Cópialo y guárdalo en tu receptor: **no se volverá a mostrar**. Pulsa «Ya lo he guardado».
+3. «Enviar prueba» pone en cola una entrega de prueba; «Ver entregas» muestra las últimas 50 de los 30 últimos días, con tipo, fecha, intentos, último código y estado.
+4. «Editar» cambia la URL o los tipos. «Desactivar» deja de enviar y descarta las entregas pendientes; «Activar» lo reanuda. «Rotar secreto» crea un secreto nuevo (el anterior deja de valer) y lo muestra una sola vez. «Eliminar» lo borra con su historial. Desactivar, rotar y eliminar piden confirmación.
+
+Solo se envían avisos de torneos públicos, con los datos que ya muestra la vista pública: nunca el nombre de un jugador. Si tu receptor no responde con un código 2xx, se reintenta hasta completar 6 intentos en unas 3 horas, con el mismo identificador de entrega; el webhook no se desactiva solo. Cada cambio queda en la auditoría con el dominio de la URL, sin la ruta ni el secreto. El formato de la firma está en el README.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
