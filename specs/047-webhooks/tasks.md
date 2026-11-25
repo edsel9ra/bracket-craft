@@ -22,8 +22,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas de
 
 ## Bloque B — frontend, E2E y documentación (PR apilado sobre el bloque A)
 
-- [ ] **T6. Gestión de webhooks en el Workspace.** RF-001–RF-003, RF-012
+- [x] **T6. Gestión de webhooks en el Workspace.** RF-001–RF-003, RF-012
 - Hecho cuando: `utils/webhooks.ts`, `useWebhooks`, la página `/workspace/webhooks`, sus componentes y el enlace con permiso siguen el plan §5; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
+- Evidencia (2026-11-25): `webhooks.test.ts` (12) y `webhook-components.test.ts` (7) fallaron primero (módulos inexistentes) y pasan 19/19; `pnpm test` 1257/0 (1 omitido ya existente), `pnpm run typecheck` y `pnpm run lint` limpios. Las claves `webhook.*` ES/EN se añadieron aquí porque la página las necesita; el test de paridad y la revisión de `/workspace/audit` quedan para T7.
 - [ ] **T7. Textos ES/EN y auditoría en el Workspace.** RF-004, RNF-004
 - Hecho cuando: las claves `webhook.*` y las acciones nuevas de la auditoría tienen paridad ES/EN y se muestran en `/workspace/audit`; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
 - [ ] **T8. E2E, documentación y validación.** RNF-004
