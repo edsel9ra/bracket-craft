@@ -8,6 +8,7 @@ from app.core.database import SessionFactory
 SESSION_RETENTION = timedelta(days=30)
 OUTBOX_RETENTION = timedelta(days=7)
 ACCOUNT_RECOVERY_RETENTION = timedelta(days=7)
+WEBHOOK_DELIVERY_RETENTION = timedelta(days=30)
 PURGE_INTERVAL_SECONDS = 3600
 PURGE_BATCH_LIMIT = 500
 PURGE_MAX_BATCHES = 20
@@ -70,3 +71,25 @@ async def purge_account_recovery_once(now: datetime) -> tuple[int, int]:
                 break
     logger.info("Purga de recuperación completada: enlaces=%d, correos de cuenta=%d", tokens_deleted, jobs_deleted)
     return tokens_deleted, jobs_deleted
+
+
+async def purge_webhook_deliveries_once(now: datetime) -> int:
+    """Purga las entregas de webhook finales de más de 30 días (spec 047, RF-012)."""
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("La fecha de purga debe incluir zona horaria")
+    cutoff = now - WEBHOOK_DELIVERY_RETENTION
+    deleted = 0
+    async with SessionFactory() as db:
+        for _ in range(PURGE_MAX_BATCHES):
+            async with db.begin():
+                result = await db.execute(
+                    text("SELECT public.purge_webhook_deliveries(:cutoff, :batch_limit)"),
+                    {"cutoff": cutoff, "batch_limit": PURGE_BATCH_LIMIT},
+                )
+                count = result.scalar_one()
+            deleted += count
+            if count < PURGE_BATCH_LIMIT:
+                break
+    logger.info("Purga de webhooks completada: entregas=%d", deleted)
+    return deleted
