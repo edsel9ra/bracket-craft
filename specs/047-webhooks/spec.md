@@ -8,6 +8,7 @@ Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec 046 y la enmien
 - **DA-2 = (a).** El cuerpo lleva los identificadores y los datos públicos del hecho: el torneo, los equipos, el marcador y el número de partidos. La sanción no lleva ni el jugador ni su equipo.
 - **DA-3 = (a).** El secreto se cifra con una clave propia, `WEBHOOK_SECRET_KEY`. Antes de implementar hay que enmendar la §3.4 de la constitución en un PR aparte, para añadirla a los secretos que se cambian fuera de desarrollo.
 - **DA-4 = (a).** Hasta 6 intentos con espera creciente, de 1 minuto a unas 2 horas entre intentos. Se pueden consultar las últimas 50 entregas de cada webhook de los últimos 30 días. El webhook no se desactiva solo por fallar.
+- **DA-5 = (a)** (2026-11-25, tras Devin Review del PR #128). Mientras el torneo no sea público, un aviso no crea entregas de webhook; la bandeja y el correo internos no cambian. Así el cuerpo nunca adelanta datos que la proyección pública aún no muestra (RF-006).
 
 ## Contexto y objetivo
 
@@ -55,7 +56,7 @@ Lo que ya existe y se reutiliza: el catálogo de avisos y su registro en la tran
 
 ### Entrega
 
-- **RF-005.** CUANDO se registre un aviso del catálogo de la 046, EL SISTEMA creará en la misma transacción una entrega por cada webhook activo de la organización del torneo suscrito a ese tipo, y la encolará en el outbox. La envía el worker, nunca la petición. Si la transacción se revierte, no queda ninguna entrega.
+- **RF-005.** CUANDO se registre un aviso del catálogo de la 046, EL SISTEMA creará en la misma transacción una entrega por cada webhook activo de la organización del torneo suscrito a ese tipo, y la encolará en el outbox. Si el torneo aún no es público, no creará ninguna (DA-5). La envía el worker, nunca la petición. Si la transacción se revierte, no queda ninguna entrega.
 - **RF-006.** CUANDO el worker envíe una entrega, EL SISTEMA hará un `POST` con un cuerpo JSON que lleva el tipo, el identificador único de la entrega, la fecha del hecho, los identificadores de organización, torneo y, si lo hay, partido, y solo datos que ya aparecen en la proyección pública (DA-2):
   - **Partido programado:** el nombre del torneo y el número de partidos creados.
   - **Resultado confirmado y W.O. declarado:** el nombre del torneo, los dos equipos y el marcador final; en el W.O., también el equipo ganador.
@@ -102,6 +103,7 @@ Lo que ya existe y se reutiliza: el catálogo de avisos y su registro en la tran
 6. Un torneo o partido que se archiva después del hecho no impide la entrega; el cuerpo lleva los datos del momento del hecho.
 7. Un aviso que no tiene webhooks suscritos no crea entregas; la bandeja y el correo siguen igual.
 8. Una rectificación (033) no genera un segundo «resultado confirmado», tampoco en los webhooks.
+9. Un calendario generado antes de publicar el torneo crea el aviso interno, pero ninguna entrega de webhook; publicar después no las crea a posteriori (DA-5).
 
 ## Fuera de alcance
 
