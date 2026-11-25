@@ -6,6 +6,8 @@ import ts from 'typescript';
 import * as vue from 'vue';
 import * as helpers from '../app/utils/webhooks.ts';
 import { NOTIFICATION_TYPES } from '../app/utils/notifications.ts';
+import { catalogParity } from '../app/utils/i18nCatalog.ts';
+import { AUDIT_WEBHOOK_EVENT_TYPES } from '../app/utils/organizationAudit.ts';
 
 const read = (path: string) => readFileSync(new URL(`../app/${path}`, import.meta.url), 'utf8');
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown;
@@ -18,6 +20,7 @@ const hook = (overrides: Partial<helpers.WebhookItem> = {}): helpers.WebhookItem
 
 test('the catalog mirrors the notification types of the backend, with ten webhooks at most', () => {
   assert.deepEqual([...helpers.WEBHOOK_EVENT_TYPES], [...NOTIFICATION_TYPES]);
+  assert.deepEqual([...AUDIT_WEBHOOK_EVENT_TYPES], [...helpers.WEBHOOK_EVENT_TYPES]);
   assert.equal(helpers.WEBHOOK_LIMIT, 10);
   assert.equal(helpers.webhookTypeKey('webhook_test'), 'webhook.type.webhook_test');
   assert.equal(helpers.webhookTypeKey('sanction_generated'), 'webhook.type.sanction_generated');
@@ -175,4 +178,42 @@ test('the delivery history of one webhook is requested on demand', async () => {
 test('webhooks go through useApi only', () => {
   const source = read('composables/useWebhooks.ts');
   assert.match(source, /useApi\(\)/); assert.doesNotMatch(source, /\$fetch|fetch\(/);
+});
+
+const translations = read('composables/useI18n.ts');
+const englishStart = translations.indexOf('\n  en: {');
+const keysOf = (slice: string) => new Set([...slice.matchAll(/^ {4}'([^']+)':\s*'/gm)].map((match) => match[1]!));
+const spanishKeys = keysOf(translations.slice(0, englishStart));
+const englishKeys = keysOf(translations.slice(englishStart));
+
+test('the webhook.* catalogs have exact ES/EN parity', () => {
+  assert.ok(englishStart > 0);
+  const parity = catalogParity([...spanishKeys].filter((key) => key.startsWith('webhook.')), [...englishKeys].filter((key) => key.startsWith('webhook.')));
+  assert.deepEqual(parity, { onlySpanish: [], onlyEnglish: [] });
+});
+
+test('every webhook key used by the Workspace exists in both catalogs, also the dynamic ones', () => {
+  const files = ['utils/webhooks.ts', 'composables/useWebhooks.ts', 'pages/workspace/webhooks.vue', 'components/WorkspaceShell.vue',
+    'components/webhooks/WebhookForm.vue', 'components/webhooks/WebhookSecretDialog.vue', 'components/webhooks/WebhookDeliveries.vue'];
+  const literal = new Set(files.flatMap((file) => [...read(file).matchAll(/['"`](webhook\.[a-zA-Z.]+[a-zA-Z])['"`]/g)].map((match) => match[1]!))
+    .filter((key) => !/^webhook\.(id|url|event_types|is_active)$/.test(key)));
+  const dynamic = [
+    ...[...helpers.WEBHOOK_EVENT_TYPES, 'webhook_test'].map((type) => helpers.webhookTypeKey(type as helpers.WebhookDeliveryType)),
+    ...(['pending', 'delivered', 'failed', 'rejected', 'discarded'] as const).map(helpers.deliveryStatusKey),
+    ...['disable', 'delete', 'rotate'].flatMap((kind) => ['title', 'message', 'action'].map((part) => `webhook.confirm.${kind}.${part}`)),
+    ...[403, 404, 422, 500].map((status) => helpers.webhookErrorKey({ status })),
+    helpers.webhookErrorKey({ status: 409, data: { detail: 'WEBHOOK_LIMIT_REACHED' } }), helpers.webhookErrorKey({ status: 409, data: { detail: 'WEBHOOK_INACTIVE' } }),
+    'webhook.error.types', 'webhook.testQueued',
+  ];
+  const used = [...new Set([...literal, ...dynamic])];
+  assert.ok(used.length > 40, `only ${used.length} keys found`);
+  assert.deepEqual(used.filter((key) => !spanishKeys.has(key)), []);
+  assert.deepEqual(used.filter((key) => !englishKeys.has(key)), []);
+});
+
+test('the audit catalog labels the webhook actions and fields in both languages', () => {
+  for (const key of ['audit.action.CREATE_WEBHOOK', 'audit.action.UPDATE_WEBHOOK', 'audit.action.SET_WEBHOOK_ACTIVE', 'audit.action.ROTATE_WEBHOOK_SECRET',
+    'audit.action.DELETE_WEBHOOK', 'audit.entity.organization_webhooks', 'audit.field.host', 'audit.field.event_types', 'audit.field.is_active']) {
+    assert.ok(spanishKeys.has(key), `es ${key}`); assert.ok(englishKeys.has(key), `en ${key}`);
+  }
 });

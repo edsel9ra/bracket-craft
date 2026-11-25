@@ -62,7 +62,7 @@ function onBackdrop(event: MouseEvent) { if (event.target === event.currentTarge
       <dl v-else class="audit-details">
         <div v-for="detail in entry.details" :key="detail.key">
           <dt>{{ t(`audit.field.${detail.key}`) }}</dt>
-          <dd>{{ formatAuditValue(detail.value, t, formatNumber) }}</dd>
+          <dd>{{ formatAuditValue(detail.value, t, formatNumber, detail.key) }}</dd>
         </div>
       </dl>
     </div>
