@@ -128,6 +128,23 @@ test('the detail dialog renders closed details, uncataloged and empty variants, 
   for (const pattern of [/showModal\(\)/, /title\.value\?\.focus\(\)/, /@cancel\.prevent/, /opener\?\.isConnected\) opener\.focus\(\)/]) assert.match(source, pattern);
 });
 
+test('webhook entries show their action, entity and fields, with the subscribed types translated and no link', async () => {
+  const webhook = entry({
+    action: 'CREATE_WEBHOOK', entity_type: 'organization_webhooks', entity_id: 'w1',
+    details: [{ key: 'host', value: 'hooks.example.com' }, { key: 'event_types', value: 'match_scheduled,walkover_declared' }, { key: 'is_active', value: true }],
+  });
+  const dialog = compile('components/workspace/audit/AuditEntryDialog.vue', globals({}));
+  const html = await render(dialog, { entry: webhook, permissions: ['MANAGE_WEBHOOKS'] });
+  for (const text of ['audit.action.CREATE_WEBHOOK', 'audit.entity.organization_webhooks', 'audit.field.host', 'hooks.example.com',
+    'audit.field.event_types', 'webhook.type.match_scheduled, webhook.type.walkover_declared', 'audit.field.is_active', 'audit.value.true']) assert.ok(html.includes(text), text);
+  assert.doesNotMatch(html, /href=/);
+  const list = await page({ items: [webhook] }, {}, ['VIEW_ORGANIZATION_AUDIT']);
+  assert.match(list, /audit\.action\.CREATE_WEBHOOK/);
+  for (const action of ['CREATE_WEBHOOK', 'UPDATE_WEBHOOK', 'SET_WEBHOOK_ACTIVE', 'ROTATE_WEBHOOK_SECRET', 'DELETE_WEBHOOK']) {
+    assert.match(list, new RegExp(`<option value="${action}"[^>]*>audit\\.action\\.${action}</option>`));
+  }
+});
+
 test('the Workspace menu shows Audit only with VIEW_ORGANIZATION_AUDIT', () => {
   const shell = read('components/WorkspaceShell.vue');
   assert.match(shell, /const canViewAudit = computed\(\(\) => auth\.hasPermission\('VIEW_ORGANIZATION_AUDIT'\)\);/);

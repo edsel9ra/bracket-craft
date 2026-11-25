@@ -44,6 +44,7 @@ const isAdminRoute = computed(() => route.path === '/admin' || route.path.starts
 const showAdminLink = computed(() => isAdminRoute.value || platformAccess.value === 'allowed');
 const canManageMembers = computed(() => auth.hasPermission('MANAGE_MEMBERS'));
 const canViewAudit = computed(() => auth.hasPermission('VIEW_ORGANIZATION_AUDIT'));
+const canManageWebhooks = computed(() => auth.hasPermission('MANAGE_WEBHOOKS'));
 const canUseSanctions = computed(() => ['VIEW_SANCTION_CASES', 'SUBMIT_SANCTION_APPEALS', 'RESOLVE_SANCTION_CASES'].some((permission) => auth.hasPermission(permission)) || auth.access?.role_code === 'owner');
 const activeSection = computed<TournamentSection>(() => tournamentSectionForPath(route.path, route.hash));
 const matchId = computed(() => matchIdFromPath(route.path));
@@ -76,6 +77,7 @@ const primaryLinks = computed(() => [
        || route.path.startsWith('/workspace/matches/'),
    },
    ...(canViewAudit.value ? [{ key: 'audit', label: t('audit.nav'), to: '/workspace/audit', current: route.path === '/workspace/audit' }] : []),
+   ...(canManageWebhooks.value ? [{ key: 'webhooks', label: t('webhook.nav'), to: '/workspace/webhooks', current: route.path === '/workspace/webhooks' }] : []),
   ...(canManageMembers.value
      ? [{ key: 'members', label: t('shell.members'), to: '/workspace/members', current: route.path === '/workspace/members' }]
      : []),

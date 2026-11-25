@@ -107,9 +107,14 @@ export function auditEntityLink(
   return null;
 }
 
-export function formatAuditValue(value: AuditValue, t: (key: string) => string, number: (value: number) => string): string {
+export const AUDIT_WEBHOOK_EVENT_TYPES = ['match_scheduled', 'result_confirmed', 'walkover_declared', 'sanction_generated'];
+
+export function formatAuditValue(value: AuditValue, t: (key: string) => string, number: (value: number) => string, key = ''): string {
   if (typeof value === 'boolean') return t(`audit.value.${value}`);
   if (typeof value === 'number') return number(value);
+  if (key === 'event_types') {
+    return value.split(',').map((code) => (AUDIT_WEBHOOK_EVENT_TYPES.includes(code) ? t(`webhook.type.${code}`) : code)).join(', ');
+  }
   return value;
 }
 

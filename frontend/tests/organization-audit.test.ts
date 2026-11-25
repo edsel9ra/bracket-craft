@@ -84,6 +84,9 @@ test('detail values are formatted by type and errors map to forbidden or generic
   assert.equal(helpers.formatAuditValue(false, t, number), 't:audit.value.false');
   assert.equal(helpers.formatAuditValue(3, t, number), 'n:3');
   assert.equal(helpers.formatAuditValue('walkover', t, number), 'walkover');
+  assert.equal(helpers.formatAuditValue('match_scheduled,sanction_generated', t, number, 'event_types'), 't:webhook.type.match_scheduled, t:webhook.type.sanction_generated');
+  assert.equal(helpers.formatAuditValue('result_confirmed,future_type', t, number, 'event_types'), 't:webhook.type.result_confirmed, future_type');
+  assert.equal(helpers.formatAuditValue('hooks.example.com', t, number, 'host'), 'hooks.example.com');
   assert.equal(helpers.auditErrorKey({ statusCode: 403 }), 'audit.error.forbidden');
   assert.equal(helpers.auditErrorKey({ status: 500 }), 'audit.error.generic');
 });
