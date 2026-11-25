@@ -195,6 +195,9 @@ BEGIN
         SELECT w.id FROM public.organization_webhooks w
         WHERE w.organization_id = v_org AND w.is_active AND p_type = ANY(w.event_types)
         ORDER BY w.created_at, w.id
+        -- Espera a un borrado o una edición en curso y se salta el webhook si
+        -- ya no procede, en vez de abortar el hecho por la clave foránea.
+        FOR KEY SHARE OF w
     LOOP
         v_delivery := gen_random_uuid();
         INSERT INTO public.outbox_events (organization_id, event_type, payload)

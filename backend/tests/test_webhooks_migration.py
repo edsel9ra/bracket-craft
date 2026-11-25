@@ -8,6 +8,7 @@ limpio (init + 001..068). Requiere ``RUN_DATABASE_TESTS=1`` y
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -15,7 +16,7 @@ from datetime import timedelta
 import asyncpg
 import pytest
 
-from migration_helpers import apply_migration, throwaway_database
+from migration_helpers import apply_migration, connect, throwaway_database
 from test_migration_031 import (
     MATCH,
     MEMBER,
@@ -307,6 +308,23 @@ async def test_rollback_of_the_fact_leaves_no_delivery(db):
             raise RuntimeError
     assert await db.fetchval("SELECT count(*) FROM webhook_deliveries") == 0
     assert await db.fetchval("SELECT count(*) FROM outbox_events WHERE event_type='WEBHOOK_DELIVERY'") == 0
+
+
+async def test_a_webhook_deleted_while_recording_is_skipped_without_aborting_the_fact(db, database_admin_url):
+    await create_webhook(db, ["result_confirmed"])
+    other = await connect(database_admin_url, await db.fetchval("SELECT current_database()"))
+    try:
+        deleting = other.transaction()
+        await deleting.start()
+        await other.execute("DELETE FROM organization_webhooks")
+        recording = asyncio.create_task(record(db))
+        await asyncio.sleep(0.3)
+        await deleting.commit()
+        notice = await asyncio.wait_for(recording, 10)
+    finally:
+        await other.close()
+    assert notice is not None
+    assert await deliveries(db) == []
 
 
 async def test_main_claim_skips_webhooks_and_webhook_claim_is_separate(db):
