@@ -1,11 +1,12 @@
 # Tareas — Spec 047: Webhooks firmados por organización (F6, parte 2)
 
-Estado: borrador, pendiente de aprobación del usuario.
+Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas de la spec 047. Empieza por T1»).
 
 ## Bloque A — backend y migración (PR apilado sobre el #125)
 
-- [ ] **T1. Migración 068.** RF-001, RF-003, RF-005, RF-008, RF-011, RF-013
+- [x] **T1. Migración 068.** RF-001, RF-003, RF-005, RF-008, RF-011, RF-013
 - Hecho cuando: `068_webhooks.sql` sigue el plan §2; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_webhooks_migration.py` pasa sobre un volumen limpio y uno ya migrado, tras ver fallar primero los casos nuevos; `sh -n infra/postgres/migrate.sh` pasa.
+- Evidencia (2026-11-24): `test_webhooks_migration.py` falló primero (sin `068_webhooks.sql`) y ahora pasa 25/25 con PostgreSQL real, incluidos volumen limpio = migrado y reaplicación sin cambios; con `test_notifications_migration.py`, `test_notification_delivery.py` y `test_migration_064.py` pasan 60, y la suite backend completa con base de datos pasa 4709 (sin `test_config.py`, que falla por las variables de Google del `.env` local). `sh -n infra/postgres/migrate.sh` y Ruff limpios.
 - [ ] **T2. Catálogo puro, red y configuración.** RF-002, RF-003, RF-006, RF-007, RF-009, RF-011, RNF-002
 - Hecho cuando: `catalog.py`, `network.py`, `config.py`, `.env.example`, los compose y `check_env_contract.py` siguen el plan §3–§4; `cd backend && pytest -q tests/test_webhook_catalog.py tests/test_webhook_network.py tests/test_config.py` y `python infra/scripts/check_env_contract.py` pasan, tras ver fallar primero los tests nuevos; `ruff check .` limpio.
 - [ ] **T3. API de gestión y auditoría.** RF-001–RF-004, RF-008, RF-012, RF-013

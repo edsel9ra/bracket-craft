@@ -1,6 +1,6 @@
 # Plan — Spec 047: Webhooks firmados por organización (F6, parte 2)
 
-Estado: borrador, pendiente de aprobación del usuario.
+Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas de la spec 047. Empieza por T1»).
 
 ## 1. Alcance y dependencias
 
@@ -24,10 +24,11 @@ Funciones `SECURITY DEFINER` con `search_path` fijo, `REVOKE ... FROM PUBLIC` y 
 
 - `record_notification(...)`: `CREATE OR REPLACE` con la misma firma y el mismo comportamiento de la 067. Añade, para cada webhook activo de la organización suscrito al tipo, una fila en `webhook_deliveries` y un `WEBHOOK_DELIVERY` con `{"delivery_id"}` (RF-005, CL-1, CL-7). Así todos los productores de la 046 crean las entregas en la transacción del hecho sin cambiar su código.
 - `webhook_event_body(type, tournament, match, delivery, occurred_at) RETURNS JSONB`: arma el cuerpo de RF-006 leyendo la proyección pública del momento: nombre del torneo, `match_count`, nombres de los equipos, marcador final y, en el W.O., `winner_team_id`. La sanción solo lleva torneo y partido (DA-2).
-- `enqueue_webhook_test(webhook_id) RETURNS UUID`: entrega de prueba del webhook de la organización del contexto (RF-012).
-- `discard_webhook_deliveries(webhook_id)`: marca `discarded` las entregas `pending` al desactivar (RF-008, CL-2).
+- `webhook_managed(webhook_id)` (interna): exige `MANAGE_WEBHOOKS` en la organización del contexto (`WEBHOOK_MANAGER_REQUIRED`) y devuelve el webhook bloqueado; uno de otra organización o inexistente da el mismo `WEBHOOK_NOT_FOUND`.
+- `enqueue_webhook_test(webhook_id) RETURNS UUID`: entrega de prueba del webhook de la organización del contexto (RF-012); un webhook desactivado responde `WEBHOOK_INACTIVE`.
+- `discard_webhook_deliveries(webhook_id)`: marca `discarded` las entregas `pending` al desactivar y cierra sus eventos aún pendientes (RF-008, CL-2).
 - `webhook_claimed_delivery(event_id, key) RETURNS JSONB`: exige el evento reclamado (`processing`, tipo y payload exactos, como `notification_claimed_event`). Si el webhook ya no existe, está desactivado o no está suscrito al tipo, marca la entrega `discarded` y devuelve `NULL`. Si sigue vigente, devuelve `url`, `secret` (descifrado con `pgp_sym_decrypt` y la clave recibida), `delivery_id`, `event_type` y `body`. Así los intentos siguientes a una rotación firman con el secreto nuevo (CL-3).
-- `record_webhook_attempt(event_id, outcome, status_code)`: `outcome` ∈ `delivered`, `failed`, `rejected`. Actualiza la entrega y el evento. Si falla y quedan intentos, deja el evento `pending` con `available_at` según la tabla de esperas (1, 5, 15 y 30 min y 2 h); al sexto intento o con `rejected`, lo marca final (RF-009, RF-011).
+- `record_webhook_attempt(event_id, outcome, status_code)`: `outcome` ∈ `delivered`, `failed`, `rejected`. Actualiza la entrega y el evento. Si falla y quedan intentos, deja el evento `pending` con `available_at` según la tabla de esperas (1, 5, 15 y 30 min y 2 h); al sexto intento o con `rejected`, lo marca final (RF-009, RF-011). Los estados finales cierran el evento como `processed` (con `last_error` `WEBHOOK_FAILED`/`WEBHOOK_REJECTED`), para que la retención del outbox (034) lo purgue; la entrega guarda el resultado. Si la entrega ya no está pendiente (descartada o eliminada), solo cierra el evento.
 - `claim_outbox_events(p_limit)`: `CREATE OR REPLACE` que además excluye `WEBHOOK_DELIVERY`. `claim_webhook_delivery_events(p_limit)`, nueva, reclama solo `WEBHOOK_DELIVERY` con el mismo bloqueo y la misma caducidad. La retención del outbox (034) no cambia: borra eventos ya terminados y la entrega conserva su historial.
 - `purge_webhook_deliveries(cutoff, batch)`: borra entregas finales de más de 30 días; la llama la purga horaria del worker.
 
