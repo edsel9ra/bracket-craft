@@ -300,6 +300,15 @@ async def test_bodies_by_type_hide_the_sanctioned_player(db):
     assert PLAYER_HOME_FIRST not in text and "Keeper" not in text and TEAM_HOME not in text
 
 
+async def test_an_unpublished_tournament_creates_no_delivery_but_keeps_the_notice(db):
+    await create_webhook(db)
+    await db.execute("UPDATE tournaments SET status='draft', published_version_id=NULL WHERE id=$1", TOURNAMENT)
+    notice = await record(db, "match_scheduled", None, None, 6)
+    assert await db.fetchval("SELECT count(*) FROM notifications WHERE id=$1", notice) == 1
+    assert await deliveries(db) == []
+    assert await db.fetchval("SELECT count(*) FROM outbox_events WHERE event_type='WEBHOOK_DELIVERY'") == 0
+
+
 async def test_rollback_of_the_fact_leaves_no_delivery(db):
     await create_webhook(db)
     with pytest.raises(RuntimeError):

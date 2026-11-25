@@ -190,10 +190,14 @@ BEGIN
             VALUES (v_recipient, v_org, v_notice, v_member, 'email', v_email_event);
         END IF;
     END LOOP;
-    -- Spec 047 (RF-005): una entrega por webhook activo suscrito al tipo.
+    -- Spec 047 (RF-005): una entrega por webhook activo suscrito al tipo, solo
+    -- si el torneo ya es público (RF-006, DA-5): el cuerpo no puede adelantar
+    -- datos que la proyección pública aún no muestra.
     FOR v_webhook IN
         SELECT w.id FROM public.organization_webhooks w
         WHERE w.organization_id = v_org AND w.is_active AND p_type = ANY(w.event_types)
+          AND EXISTS (SELECT 1 FROM public.v_public_tournaments pt
+              WHERE pt.id = p_tournament AND pt.organization_id = v_org)
         ORDER BY w.created_at, w.id
         -- Espera a un borrado o una edición en curso y se salta el webhook si
         -- ya no procede, en vez de abortar el hecho por la clave foránea.
