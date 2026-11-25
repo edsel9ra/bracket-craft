@@ -78,6 +78,15 @@ def test_walkover_and_administrative_resolution_show_reason():
     ("SET_TEAM_CREST", {"tournament_id": "t"}, {}),
     ("REMOVE_TEAM_CREST", {"tournament_id": "t"}, {}),
     ("STAGE_SLOTS_RESOLVED", {"tournament_id": "t", "version_id": "v", "stage_id": "s"}, {}),
+    ("CREATE_WEBHOOK", {"host": "hooks.example.com", "event_types": ["match_scheduled", "result_confirmed"],
+                        "is_active": True},
+     {"host": "hooks.example.com", "event_types": "match_scheduled,result_confirmed", "is_active": True}),
+    ("UPDATE_WEBHOOK", {"host": "h.example", "event_types": ["x" * 65], "is_active": False},
+     {"host": "h.example", "is_active": False}),
+    ("SET_WEBHOOK_ACTIVE", {"host": "h.example", "event_types": [], "is_active": True},
+     {"host": "h.example", "is_active": True}),
+    ("ROTATE_WEBHOOK_SECRET", {"host": "h.example", "secret": "whsec_x"}, {"host": "h.example"}),
+    ("DELETE_WEBHOOK", {"host": "h.example", "url": "https://h.example/p"}, {"host": "h.example"}),
 ])
 def test_projection_per_action(action, payload, expected):
     assert as_dict(project_details(action, payload, {})) == expected
@@ -142,7 +151,7 @@ def test_catalog_has_no_sensitive_paths():
 def test_catalog_entity_types():
     assert {spec.entity_type for spec in CATALOG.values()} == {
         "matches", "sanction_cases", "competitive_impact_procedures", "organization_users",
-        "organization_invitations", "teams", "stage_slot_resolutions",
+        "organization_invitations", "teams", "stage_slot_resolutions", "organization_webhooks",
     }
 
 

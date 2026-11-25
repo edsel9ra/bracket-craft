@@ -105,11 +105,12 @@ API_ENV = frozenset(
         "STORAGE_REGION",
         "STORAGE_SECRET_KEY",
         "STORAGE_SIGNING_ENDPOINT_URL",
+        "WEBHOOK_SECRET_KEY",
     }
 )
 
 #: Variables del outbox: datos, Redis, correo y enlaces de recuperación de contraseña.
-WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "FRONTEND_BASE_URL", "REDIS_URL"}) | frozenset(
+WORKER_ENV = frozenset({"APP_ENV", "DATABASE_URL", "FRONTEND_BASE_URL", "REDIS_URL", "WEBHOOK_SECRET_KEY"}) | frozenset(
     variable for variable in API_ENV if variable.startswith("SMTP_")
 )
 

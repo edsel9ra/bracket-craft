@@ -240,6 +240,7 @@ async def test_main_runs_the_email_loop_beside_the_others(monkeypatch):
     monkeypatch.setattr(
         outbox, "_run_notification_email_loop", loop("notifications"), raising=False
     )
+    monkeypatch.setattr(outbox, "_run_webhook_loop", loop("webhooks"), raising=False)
     monkeypatch.setattr(outbox, "validate_application_role", loop("role"))
     await outbox.main()
     assert {"outbox", "account", "notifications"} <= set(started)

@@ -102,6 +102,8 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
     monkeypatch.setattr(outbox, "purge_once", purge)
     recovery_purge = AsyncMock(side_effect=[RuntimeError("recovery purge unavailable"), (0, 0)])
     monkeypatch.setattr(outbox, "purge_account_recovery_once", recovery_purge)
+    webhook_purge = AsyncMock(side_effect=[RuntimeError("webhook purge unavailable"), 0])
+    monkeypatch.setattr(outbox, "purge_webhook_deliveries_once", webhook_purge)
     monkeypatch.setattr(outbox, "publish_heartbeat", lambda: None)
 
     class StopLoop(Exception):
@@ -123,6 +125,8 @@ async def test_worker_purges_hourly_and_continues_after_a_failure(monkeypatch, c
     assert recovery_purge.await_count == 2
     assert "No se pudo completar la purga periódica" in caplog.text
     assert "No se pudo completar la purga de recuperación de contraseña" in caplog.text
+    assert webhook_purge.await_count == 2
+    assert "No se pudo completar la purga de entregas de webhooks" in caplog.text
 
 
 
@@ -186,6 +190,47 @@ async def test_purge_account_recovery_uses_seven_days_and_bounded_batches(monkey
     assert "purge_account_recovery_records" in str(db.execute.await_args.args[0])
     assert db.execute.await_args.args[1] == {"cutoff": NOW - timedelta(days=7), "batch_limit": 500}
     assert f"enlaces={totals[0]}, correos de cuenta={totals[1]}" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batches,total", [([0], 0), ([500, 500, 3], 1003)])
+async def test_purge_webhook_deliveries_uses_thirty_days_and_bounded_batches(monkeypatch, caplog, batches, total):
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    db.begin = MagicMock(return_value=AsyncMock())
+    db.execute.side_effect = [SimpleNamespace(scalar_one=lambda count=count: count) for count in batches]
+    monkeypatch.setattr(retention, "SessionFactory", lambda: db)
+    caplog.set_level("INFO")
+    assert await retention.purge_webhook_deliveries_once(NOW) == total
+    assert db.execute.await_count == len(batches)
+    assert "purge_webhook_deliveries" in str(db.execute.await_args.args[0])
+    assert db.execute.await_args.args[1] == {"cutoff": NOW - timedelta(days=30), "batch_limit": 500}
+    assert f"entregas={total}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_purge_webhook_deliveries_rejects_a_naive_timestamp():
+    with pytest.raises(ValueError, match="zona horaria"):
+        await retention.purge_webhook_deliveries_once(NOW.replace(tzinfo=None))
+
+
+@pytest.mark.asyncio
+async def test_webhooks_run_in_their_own_loop_and_survive_failures(monkeypatch, caplog):
+    dispatch = AsyncMock(side_effect=[RuntimeError("database down"), 0, 0])
+    monkeypatch.setattr(outbox, "dispatch_webhook_deliveries", dispatch)
+
+    class StopLoop(Exception):
+        pass
+
+    async def advance(_seconds):
+        if dispatch.await_count == 3:
+            raise StopLoop
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", advance)
+    with pytest.raises(StopLoop):
+        await outbox._run_webhook_loop()
+    assert dispatch.await_count == 3
+    assert "Error procesando entregas de webhooks" in caplog.text
 
 
 @pytest.mark.asyncio

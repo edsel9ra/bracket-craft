@@ -8,6 +8,7 @@ from app.core.config import (
     DEVELOPMENT_PLAYER_DATA_KEY,
     DEVELOPMENT_STORAGE_ACCESS_KEY,
     DEVELOPMENT_STORAGE_SECRET_KEY,
+    DEVELOPMENT_WEBHOOK_SECRET_KEY,
     Settings,
 )
 
@@ -25,6 +26,7 @@ def test_production_settings_accept_explicit_secrets():
         database_url="postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
         jwt_secret="production-secret-" + "x" * 48,
         player_data_key="production-player-key-" + "x" * 48,
+        webhook_secret_key="production-webhook-key-" + "x" * 48,
         invitation_token_key="production-invitation-key-" + "x" * 48,
         storage_access_key="production-access-key",
         storage_secret_key="production-storage-secret",
@@ -50,6 +52,7 @@ def test_production_settings_require_secure_auth_cookies():
             database_url="postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
             jwt_secret="production-secret-" + "x" * 48,
             player_data_key="production-player-key-" + "x" * 48,
+            webhook_secret_key="production-webhook-key-" + "x" * 48,
             storage_access_key="production-access-key",
             storage_secret_key="production-storage-secret",
             auth_cookie_secure=False,
@@ -63,6 +66,7 @@ def test_production_settings_reject_postgres_database_role():
             database_url="postgresql+asyncpg://postgres:production-password@db:5432/bracket_craft",
             jwt_secret="production-secret-" + "x" * 48,
             player_data_key="production-player-key-" + "x" * 48,
+            webhook_secret_key="production-webhook-key-" + "x" * 48,
             storage_access_key="production-access-key",
             storage_secret_key="production-storage-secret",
             auth_cookie_secure=True,
@@ -190,6 +194,7 @@ def production_settings(**overrides):
         "database_url": "postgresql+asyncpg://bracket_app:production-password@db:5432/bracket_craft",
         "jwt_secret": "production-secret-" + "x" * 48,
         "player_data_key": "production-player-key-" + "x" * 48,
+        "webhook_secret_key": "production-webhook-key-" + "x" * 48,
         "storage_access_key": "production-access-key",
         "storage_secret_key": "production-storage-secret",
         "auth_cookie_secure": True,
@@ -198,7 +203,7 @@ def production_settings(**overrides):
     return Settings(**values)
 
 
-def test_obsolete_invitation_key_is_optional_in_production(monkeypatch):
+def test_obsolete_invitation_key_is_optional_inproduction_settings(monkeypatch):
     monkeypatch.delenv("INVITATION_TOKEN_KEY", raising=False)
     assert production_settings().invitation_token_key is None
 
@@ -280,3 +285,16 @@ def test_settings_read_the_seven_recovered_variables_from_the_environment(monkey
         == "https://api.example.test/api/v1/auth/google/callback"
     )
     assert settings.storage_signing_endpoint_url == "https://signing.example.test"
+
+
+def test_production_settings_reject_the_development_webhook_key():
+    assert production_settings().webhook_secret_key != DEVELOPMENT_WEBHOOK_SECRET_KEY
+    with pytest.raises(ValidationError, match="WEBHOOK_SECRET_KEY"):
+        production_settings(webhook_secret_key=DEVELOPMENT_WEBHOOK_SECRET_KEY)
+
+
+def test_webhook_key_must_differ_from_player_key_and_be_long():
+    with pytest.raises(ValidationError, match="WEBHOOK_SECRET_KEY"):
+        production_settings(webhook_secret_key="production-player-key-" + "x" * 48)
+    with pytest.raises(ValidationError):
+        Settings(webhook_secret_key="short")
