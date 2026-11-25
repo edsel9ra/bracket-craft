@@ -91,6 +91,7 @@ from app.modules.platform.schemas import (
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.notifications.schemas import NotificationPreferenceItem, NotificationPreferences
+from app.modules.webhooks.schemas import CreateWebhookRequest, UpdateWebhookRequest
 from app.modules.sanction_appeals.schemas import AppealBody, AuthorizationRequest, DecisionRequest, PrejudiceRequest, ProposalBody, WithdrawalRequest
 from app.modules.rules_engine.schemas import (
     CreateTournamentRequest,
@@ -119,6 +120,8 @@ from app.modules.tournaments.schemas import (
 
 EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
     ("PUT", "/api/v1/notification-preferences", "notifications.schemas.NotificationPreferences"),
+    ("POST", "/api/v1/webhooks", "webhooks.schemas.CreateWebhookRequest"),
+    ("PATCH", "/api/v1/webhooks/{webhook_id}", "webhooks.schemas.UpdateWebhookRequest"),
     ("POST", "/api/v1/auth/register", "identity.schemas.RegisterRequest"),
     ("POST", "/api/v1/auth/login", "identity.schemas.LoginRequest"),
     ("POST", "/api/v1/auth/password/forgot", "identity.schemas.ForgotPasswordRequest"),
@@ -332,6 +335,8 @@ MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
     RectificationDecisionRequest: {"decision": "approve", "reason": "Revisado", "expected_base_version": 1},
     CloseCompetitiveImpactRequest: {"reason": "Mantener lo jugado"},
     NotificationPreferenceItem: {"type": "result_confirmed", "channel": "inbox", "enabled": True},
+    CreateWebhookRequest: {"url": "https://hooks.example.test/bc", "event_types": ["result_confirmed"]},
+    UpdateWebhookRequest: {"is_active": False},
     NotificationPreferences: {"items": [
         {"type": kind, "channel": channel, "enabled": channel == "inbox"}
         for kind in ("match_scheduled", "result_confirmed", "walkover_declared", "sanction_generated")
@@ -721,8 +726,8 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 
 
 def test_inventory_has_46_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 52
-    assert len(set(EXPECTED_OPERATIONS)) == 52
+    assert len(EXPECTED_OPERATIONS) == 54
+    assert len(set(EXPECTED_OPERATIONS)) == 54
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -739,19 +744,19 @@ def test_json_operations_match_the_literal_inventory():
         f"50 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 52
+    assert len(derived) == 54
 
 
 def test_inventory_declares_40_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 46
+    assert len(refs) == 48
 
 
 def test_app_yields_40_top_level_and_17_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 46, sorted(model_ref(m) for m in top_level)
+    assert len(top_level) == 48, sorted(model_ref(m) for m in top_level)
     assert len(nested) == 19, sorted(model_ref(m) for m in nested)
 
 
@@ -830,7 +835,7 @@ def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 65, f"el barrido deriva {len(derived)} modelos, no 65"
+    assert len(derived) == 67, f"el barrido deriva {len(derived)} modelos, no 67"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."

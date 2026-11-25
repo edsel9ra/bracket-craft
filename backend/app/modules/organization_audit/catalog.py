@@ -11,10 +11,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-FieldKind = Literal["text", "number", "boolean", "code", "member"]
+FieldKind = Literal["text", "number", "boolean", "code", "codes", "member"]
 
 TEXT_LIMIT = 1000
 CODE_LIMIT = 64
+CODES_LIMIT = 10
 FORBIDDEN_PATH_PARTS = ("email", "token", "url", "link", "document", "birth", "platform_admin")
 
 
@@ -46,6 +47,7 @@ _MATCH_CLOSE = (
 )
 _OFFICIAL = (_field("member", "member", "organization_user_id"), _field("official_role", "code"))
 _PUBLICATION = (_field("is_public", "boolean"),)
+_WEBHOOK = (_field("host", "text"), _field("event_types", "codes"), _field("is_active", "boolean"))
 
 CATALOG: dict[str, ActionSpec] = {
     "CLOSE_MATCH_REPORT": ActionSpec("matches", _MATCH_CLOSE),
@@ -80,6 +82,11 @@ CATALOG: dict[str, ActionSpec] = {
     "SET_TEAM_CREST": ActionSpec("teams"),
     "REMOVE_TEAM_CREST": ActionSpec("teams"),
     "STAGE_SLOTS_RESOLVED": ActionSpec("stage_slot_resolutions"),
+    "CREATE_WEBHOOK": ActionSpec("organization_webhooks", _WEBHOOK),
+    "UPDATE_WEBHOOK": ActionSpec("organization_webhooks", _WEBHOOK),
+    "SET_WEBHOOK_ACTIVE": ActionSpec("organization_webhooks", _WEBHOOK),
+    "ROTATE_WEBHOOK_SECRET": ActionSpec("organization_webhooks", (_field("host", "text"),)),
+    "DELETE_WEBHOOK": ActionSpec("organization_webhooks", (_field("host", "text"),)),
 }
 
 
@@ -111,6 +118,13 @@ def _project(field: FieldSpec, value: Any, member_names: Mapping[str, str]) -> A
         return value if isinstance(value, bool) else None
     if field.kind == "code":
         return value if isinstance(value, str) and 0 < len(value) <= CODE_LIMIT else None
+    if field.kind == "codes":
+        # Lista de códigos mostrada como texto separado por comas; la detalle sigue siendo escalar.
+        if not isinstance(value, list) or not 0 < len(value) <= CODES_LIMIT:
+            return None
+        if not all(isinstance(item, str) and 0 < len(item) <= CODE_LIMIT for item in value):
+            return None
+        return ",".join(value)
     return member_names.get(value) if isinstance(value, str) else None
 
 
