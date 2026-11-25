@@ -333,6 +333,9 @@ class DrawResult:
     def scalar_one_or_none(self):
         return None
 
+    def scalar_one(self):
+        return None
+
 
 class DrawRecordingSession:
     """AsyncSession double for ``_draw_non_swiss_schedule``."""
@@ -389,6 +392,10 @@ async def test_league_draw_persists_the_received_legs(legs):
     assert len(stage_updates) == 1
     assert stage_updates[0]["schedule_legs"] == legs
     assert stage_updates[0]["stage_id"] == str(SOURCE_STAGE_ID)
+    notices = session.parameters_for("SELECT record_notification")
+    assert [(params["notification_type"], params["match_count"]) for params in notices] == [
+        ("match_scheduled", legs)
+    ]
 
 
 @pytest.mark.asyncio

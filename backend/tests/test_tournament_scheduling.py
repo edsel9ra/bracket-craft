@@ -429,7 +429,7 @@ def pairing_context() -> AuthContext:
 
 @pytest.fixture
 async def pairing_harness(database_admin_url):
-    async with throwaway_database(database_admin_url, last=35) as admin:
+    async with throwaway_database(database_admin_url, last=999) as admin:
         await admin.execute(PAIRING_SEED_SQL)
         database = await admin.fetchval("SELECT current_database()")
         engine = create_async_engine(

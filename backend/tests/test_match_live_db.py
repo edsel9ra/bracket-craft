@@ -58,7 +58,7 @@ class LiveFixture:
 
 @pytest.fixture
 async def live_service_db(database_admin_url, request):
-    async with throwaway_database(database_admin_url, last=58) as db:
+    async with throwaway_database(database_admin_url, last=999) as db:
         options = getattr(request, "param", {})
         config = rules_config()
         if options.get("stage_override"):

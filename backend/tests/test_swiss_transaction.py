@@ -251,6 +251,8 @@ class DrawSession:
         if self._is_write(sql):
             self._record_write(sql, params or {})
             return EmptyResult()
+        if sql.startswith("SELECT record_notification"):
+            return ScalarResult(UUID(int=9900))
         raise AssertionError(f"consulta inesperada: {sql}")
 
     @staticmethod

@@ -265,8 +265,9 @@ async def test_loop_blocked_more_than_max_age_is_stale_and_recovers(
     monkeypatch.setattr(outbox, "publish_heartbeat", recording_publish)
     monkeypatch.setattr(outbox, "process_once", process_without_events)
     monkeypatch.setattr(outbox, "purge_once", AsyncMock())
-    # Los correos de cuenta giran en su propio bucle; aquí solo cuenta el del outbox.
+    # Los correos de cuenta y de avisos giran en sus propios bucles; aquí solo cuenta el del outbox.
     monkeypatch.setattr(outbox, "_run_account_email_loop", AsyncMock())
+    monkeypatch.setattr(outbox, "_run_notification_email_loop", AsyncMock())
     monkeypatch.setattr(outbox.asyncio, "sleep", fake_sleep)
 
     with pytest.raises(StopLoop):
@@ -309,8 +310,9 @@ async def test_worker_main_publishes_heartbeat_even_when_processing_fails(
     monkeypatch.setattr(outbox, "publish_heartbeat", recording_publish)
     monkeypatch.setattr(outbox, "process_once", failing_process_once)
     monkeypatch.setattr(outbox, "purge_once", AsyncMock())
-    # Los correos de cuenta giran en su propio bucle; aquí solo cuenta el del outbox.
+    # Los correos de cuenta y de avisos giran en sus propios bucles; aquí solo cuenta el del outbox.
     monkeypatch.setattr(outbox, "_run_account_email_loop", AsyncMock())
+    monkeypatch.setattr(outbox, "_run_notification_email_loop", AsyncMock())
     monkeypatch.setattr(outbox.asyncio, "sleep", fake_sleep)
 
     with pytest.raises(StopLoop):

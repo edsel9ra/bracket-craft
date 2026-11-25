@@ -2123,6 +2123,7 @@ async def _read_walkover_state(engine, match: WalkoverEffect | ClosableMatch) ->
                         SELECT event_type, payload
                         FROM outbox_events
                         WHERE organization_id = :organization_id
+                          AND event_type NOT LIKE 'NOTIFICATION_%'
                         ORDER BY created_at, event_type
                     """),
                     {"organization_id": str(match.tenant.organization_id)},

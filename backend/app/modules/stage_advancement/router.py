@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, set_rls_context
 from app.core.locking import lock_stage_and_version
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.notifications.recorder import record_notification
 from app.modules.stage_advancement.origins import (
     MAX_SLOTS,
     MIN_SLOTS,
@@ -189,9 +190,10 @@ async def put_slot_origins(
             await _clear_stage_schedule(
                 db, context.organization_id, tournament_id, stage["tournament_version_id"], stage_id
             )
-        await _persist_bracket_schedule(
+        match_count = await _persist_bracket_schedule(
             db, context, tournament_id, stage["tournament_version_id"], stage_id, bracket, slot_origins=origins
         )
+        await record_notification(db, "match_scheduled", tournament_id=tournament_id, match_count=match_count)
         return await _slot_origins_payload(db, context.organization_id, stage)
 
 

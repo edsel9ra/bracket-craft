@@ -90,6 +90,7 @@ from app.modules.platform.schemas import (
     SetActiveRequest,
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
+from app.modules.notifications.schemas import NotificationPreferenceItem, NotificationPreferences
 from app.modules.sanction_appeals.schemas import AppealBody, AuthorizationRequest, DecisionRequest, PrejudiceRequest, ProposalBody, WithdrawalRequest
 from app.modules.rules_engine.schemas import (
     CreateTournamentRequest,
@@ -117,6 +118,7 @@ from app.modules.tournaments.schemas import (
 # ---------------------------------------------------------------------------
 
 EXPECTED_OPERATIONS: list[tuple[str, str, str]] = [
+    ("PUT", "/api/v1/notification-preferences", "notifications.schemas.NotificationPreferences"),
     ("POST", "/api/v1/auth/register", "identity.schemas.RegisterRequest"),
     ("POST", "/api/v1/auth/login", "identity.schemas.LoginRequest"),
     ("POST", "/api/v1/auth/password/forgot", "identity.schemas.ForgotPasswordRequest"),
@@ -300,6 +302,7 @@ EXPECTED_NESTED_MODELS: set[str] = {
     "matches.schemas.MatchEventPayload",
     "matches.schemas.MatchLineupEntry",
     "matches.schemas.MatchTeamLineupConfig",
+    "notifications.schemas.NotificationPreferenceItem",
     "rectifications.schemas.RectificationEventPayload",
     "rectifications.schemas.RectificationReportDTO",
     "rules_engine.schemas.TournamentRulesConfig",
@@ -328,6 +331,12 @@ MINIMAL_BODIES: dict[type[BaseModel], dict[str, Any]] = {
     PlatformAuthorizationRequest: {"platform_admin_email": "admin@example.test", "reason": "Revisión independiente"},
     RectificationDecisionRequest: {"decision": "approve", "reason": "Revisado", "expected_base_version": 1},
     CloseCompetitiveImpactRequest: {"reason": "Mantener lo jugado"},
+    NotificationPreferenceItem: {"type": "result_confirmed", "channel": "inbox", "enabled": True},
+    NotificationPreferences: {"items": [
+        {"type": kind, "channel": channel, "enabled": channel == "inbox"}
+        for kind in ("match_scheduled", "result_confirmed", "walkover_declared", "sanction_generated")
+        for channel in ("inbox", "email")
+    ]},
     RectificationReportDTO: {"resolution_type": "regular", "home_score_regular": 0, "away_score_regular": 0},
     RectificationEventPayload: {"client_event_id": "historical-card", "event_type": "yellow_card", "team_id": "00000000-0000-0000-0000-000000000002", "player_id": "00000000-0000-0000-0000-000000000003", "segment_id": "00000000-0000-0000-0000-000000000001", "minute": 1},
     CreateRectificationRequest: {
@@ -712,8 +721,8 @@ STRICT_MODELS, TOP_LEVEL_MODELS = derive_strict_models()
 
 
 def test_inventory_has_46_literal_operations():
-    assert len(EXPECTED_OPERATIONS) == 51
-    assert len(set(EXPECTED_OPERATIONS)) == 51
+    assert len(EXPECTED_OPERATIONS) == 52
+    assert len(set(EXPECTED_OPERATIONS)) == 52
 
 
 def test_json_operations_match_the_literal_inventory():
@@ -730,20 +739,20 @@ def test_json_operations_match_the_literal_inventory():
         f"50 operaciones JSON. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 51
+    assert len(derived) == 52
 
 
 def test_inventory_declares_40_top_level_models():
     refs = {model for _, _, model in EXPECTED_OPERATIONS}
-    assert len(refs) == 45
+    assert len(refs) == 46
 
 
 def test_app_yields_40_top_level_and_17_nested_models():
     operations = collect_json_body_operations(api)
     top_level = {model for _, _, model in operations}
     nested = collect_nested_models(top_level)
-    assert len(top_level) == 45, sorted(model_ref(m) for m in top_level)
-    assert len(nested) == 18, sorted(model_ref(m) for m in nested)
+    assert len(top_level) == 46, sorted(model_ref(m) for m in top_level)
+    assert len(nested) == 19, sorted(model_ref(m) for m in nested)
 
 
 def test_nested_models_match_the_literal_inventory():
@@ -821,7 +830,7 @@ def test_strict_models_are_exactly_the_57_models_of_the_literal_inventory():
         f"del inventario literal. Faltan: {missing or 'ninguna'}; sobran: "
         f"{extra or 'ninguna'}."
     )
-    assert len(derived) == 63, f"el barrido deriva {len(derived)} modelos, no 63"
+    assert len(derived) == 65, f"el barrido deriva {len(derived)} modelos, no 65"
     assert derived == STRICT_MODELS, (
         "STRICT_MODELS (el conjunto que se parametriza) no es el derivado del "
         "barrido actual: la lista parametrizada quedó desactualizada."

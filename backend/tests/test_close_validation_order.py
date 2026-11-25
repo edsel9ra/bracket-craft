@@ -360,6 +360,8 @@ class CloseOrderSession:
             return Result(rows=[self._persist_event_row(params)])
         if sql.startswith("INSERT INTO player_suspensions"):
             return Result(rows=[self._persist_suspension_row(params)])
+        if sql.startswith("SELECT record_notification"):
+            return Result(scalar=UUID(int=9900))
         if sql.startswith(("INSERT", "UPDATE", "DELETE")):
             return Result()
         raise StopExecution(sql)
@@ -908,6 +910,8 @@ async def test_a_report_with_no_defect_closes_and_writes(monkeypatch):
     assert any(sql.startswith("INSERT INTO match_segment_team_state") for sql in session.writes)
     outbox = [params["event_type"] for params in session.parameters("INSERT INTO outbox_events")]
     assert outbox == ["MATCH_CLOSED", "MATCH_UPDATED", "STANDINGS_UPDATED"]
+    notices = [params["notification_type"] for params in session.parameters("SELECT record_notification")]
+    assert notices == ["result_confirmed"]
     assert any(sql.startswith("INSERT INTO administrative_audit_logs") for sql in session.writes)
 
 

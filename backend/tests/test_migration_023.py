@@ -25,6 +25,7 @@ import pytest
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.core.database import set_rls_context
 from app.core.tenancy import AuthContext
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
 from app.modules.tournaments.routes.versions import _create_draft_version_record
@@ -320,7 +321,7 @@ async def test_023_clone_copies_two_legs(database_admin_url):
 
 @pytest.mark.asyncio
 async def test_023_league_draw_persists_two_legs(database_admin_url):
-    async with throwaway_database(database_admin_url, last=35) as connection:
+    async with throwaway_database(database_admin_url, last=999) as connection:
         await connection.execute(SEED_SQL)
         database = await connection.fetchval("SELECT current_database()")
 
@@ -343,6 +344,7 @@ async def test_023_league_draw_persists_two_legs(database_admin_url):
             async with engine.connect() as connection_orm:
                 session = AsyncSession(bind=connection_orm, expire_on_commit=False)
                 async with session.begin():
+                    await set_rls_context(session, UUID(ORG), UUID(USER))
                     response = await _draw_non_swiss_schedule(
                         session,
                         auth_context(),
