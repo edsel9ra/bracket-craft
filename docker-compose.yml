@@ -49,6 +49,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-bracket-craft-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-bracket-craft-web}
       PLAYER_DATA_KEY: ${PLAYER_DATA_KEY:-replace-this-development-player-key-with-at-least-32-characters}
+      WEBHOOK_SECRET_KEY: ${WEBHOOK_SECRET_KEY:-replace-this-development-webhook-key-with-at-least-32-characters}
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-bc_csrf_token}
@@ -121,6 +122,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       APP_ENV: ${APP_ENV:-development}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      WEBHOOK_SECRET_KEY: ${WEBHOOK_SECRET_KEY:-replace-this-development-webhook-key-with-at-least-32-characters}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}

@@ -14,6 +14,7 @@ from app.core.development_credentials import (
 DEVELOPMENT_DATABASE_PASSWORD = "bracket_app_dev_password"
 DEVELOPMENT_JWT_SECRET = "replace-this-development-secret-with-at-least-32-characters"
 DEVELOPMENT_PLAYER_DATA_KEY = "replace-this-development-player-key-with-at-least-32-characters"
+DEVELOPMENT_WEBHOOK_SECRET_KEY = "replace-this-development-webhook-key-with-at-least-32-characters"
 DEVELOPMENT_INVITATION_TOKEN_KEY = "replace-this-development-invitation-key-with-at-least-32-characters"
 DEVELOPMENT_DATABASE_URL = (
     "postgresql+asyncpg://bracket_app:bracket_app_dev_password@localhost:5432/bracket_craft"
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "bracket-craft-api"
     jwt_audience: str = "bracket-craft-web"
     player_data_key: str = Field(default=DEVELOPMENT_PLAYER_DATA_KEY, min_length=32)
+    webhook_secret_key: str = Field(default=DEVELOPMENT_WEBHOOK_SECRET_KEY, min_length=32)
     invitation_token_key: str | None = Field(default=None, min_length=32)
     auth_cookie_name: str = "bc_access_token"
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
@@ -97,6 +99,10 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET debe cambiarse antes de ejecutar fuera de desarrollo")
             if self.player_data_key == DEVELOPMENT_PLAYER_DATA_KEY:
                 raise ValueError("PLAYER_DATA_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
+            if self.webhook_secret_key == DEVELOPMENT_WEBHOOK_SECRET_KEY:
+                raise ValueError("WEBHOOK_SECRET_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
+            if self.webhook_secret_key == self.player_data_key:
+                raise ValueError("WEBHOOK_SECRET_KEY debe ser distinta de PLAYER_DATA_KEY")
             if self.invitation_token_key == DEVELOPMENT_INVITATION_TOKEN_KEY:
                 raise ValueError("INVITATION_TOKEN_KEY debe cambiarse antes de ejecutar fuera de desarrollo")
             if self.database_url == DEVELOPMENT_DATABASE_URL or DEVELOPMENT_DATABASE_PASSWORD in self.database_url:
