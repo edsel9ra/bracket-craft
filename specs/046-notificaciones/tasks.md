@@ -23,9 +23,13 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas»)
 
 ## Bloque B — frontend, E2E y documentación (PR apilado sobre el bloque A)
 
-- [ ] **T6. Bandeja en el Workspace.** RF-008–RF-010, RNF-003
+- [x] **T6. Bandeja en el Workspace.** RF-008–RF-010, RNF-003
 - Hecho cuando: `utils/notifications.ts`, `useNotifications`, la página, `NotificationInbox` y el enlace con no leídos siguen el plan §5; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
-- [ ] **T7. Preferencias y textos ES/EN.** RF-005, RF-006, RNF-003
+- Hecho (2026-11-24): `tests/notifications.test.ts` falló primero (no existía `utils/notifications.ts`) y ahora pasa 17/17; la suite del frontend pasa 1229/0 y typecheck y lint están limpios. El contador del Workspace pide `GET /notifications?limit=1` al montar y al navegar, comparte estado con la bandeja y se oculta si falla. La sanción solo nombra al jugador si la API envía el detalle (DA-5).
+- [x] **T7. Preferencias y textos ES/EN.** RF-005, RF-006, RNF-003
 - Hecho cuando: `useNotificationPreferences` y `NotificationPreferences` siguen el plan §5 y las claves `notification.*` tienen paridad ES/EN; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios, tras ver fallar primero los tests nuevos.
-- [ ] **T8. E2E, documentación y validación.** RNF-003
+- Hecho (2026-11-24): `tests/notification-preferences.test.ts` falló primero en sus 9 casos y ahora pasa 9/9; la suite del frontend pasa 1238/0 y typecheck y lint están limpios. Tabla tipo × canal con casillas nativas con nombre accesible, «Guardar preferencias» deshabilitado sin cambios, `PUT` con los ocho pares en orden fijo, 422 con mensaje propio sin perder lo editado, y paridad ES/EN de todas las claves `notification.*`.
+- [x] **T8. E2E, documentación y validación.** RNF-003
+  - Evidencia (2026-11-24): `e2e/notifications.spec.ts` (proyecto `workspace`, contratos ficticios, sin escribir en la API) pasa 7/7 y 21/21 con `--repeat-each 3`: bandeja con enlaces y detalle de sanción, marcar uno y todo con teclado y contador del menú, preferencias guardadas con teclado como los ocho pares, y axe sin violaciones en ambos temas a 1440 y 390 px. `pnpm run build`, `pnpm run typecheck:e2e`, lint y la suite del frontend (1238/0) pasan; la suite backend con BD pasa 4716 (solo se excluye `test_config::test_google_oauth_requires_a_redirect_uri`, que falla por las variables de Google del `.env` local). README (runbook de la 067: aplicarla antes de la API y el worker), AGENTS, manual, informe y MEMORY actualizados. En local, `theme-workspace` y `stage-advancement` no se pudieron ejecutar porque la sesión guardada de `.auth/state.json` había caducado; los cubre la CI.
 - Hecho cuando: `e2e/notifications.spec.ts` pasa con axe sin violaciones en ambos temas a 1440 y 390 px; README, AGENTS, manual, informe y MEMORY actualizados, incluido el despliegue de la 067; `pnpm run build`, `pnpm run typecheck:e2e` y la suite backend completa con BD pasan; PR del bloque B con la CI en verde.
+- Aceptación (2026-11-24): el usuario aceptó la 046 («Si acepto la 046»). Bloque A en #123 y bloque B en #124, apilados sobre #122; CI 7/7 en ambos y Devin Review sin hallazgos en #124. Orden de fusión #122 → #123 → #124; aplicar la migración 067 antes de la API y el worker.
