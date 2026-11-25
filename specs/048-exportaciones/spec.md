@@ -1,6 +1,13 @@
-# Spec 048 — Exportaciones CSV o PDF (F10)
+# Spec 048 — Exportaciones CSV (F10)
 
-Estado: borrador. Pedida por el usuario el 2026-11-25 («F10: exportaciones CSV o PDF»).
+Estado: borrador. DA-1–DA-4 resueltas el 2026-11-25. Pedida por el usuario el 2026-11-25 («F10: exportaciones CSV o PDF»).
+
+## Decisiones del usuario (2026-11-25)
+
+- **DA-1 = (a).** Las exportaciones solo se descargan en el Workspace, para los miembros de la organización. La vista pública no cambia.
+- **DA-2 = (a).** Solo CSV, para las cinco exportaciones, sin dependencias nuevas. El PDF queda fuera de alcance.
+- **DA-3 = (a).** Las plantillas llevan equipo, dorsal, nombre, apellidos, estado (activo o retirado) y consentimiento de imagen (sí/no), sin edad. Las descarga cualquier miembro, igual que hoy ve la pantalla de plantillas, y cada descarga queda en la auditoría organizacional (041).
+- **DA-4 = (a).** El acta es un archivo por partido cerrado, pedido desde el partido, con las alineaciones y los hechos con el jugador.
 
 ## Contexto y objetivo
 
@@ -18,8 +25,8 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
 
 ## Roles y visibilidad
 
-- **Público (sin sesión):** sin cambios. [NECESITA ACLARACIÓN] DA-1: si la vista pública ofrece también descargas.
-- **Miembro de organización:** descarga los datos de los torneos de su organización que ya puede ver en el Workspace. [NECESITA ACLARACIÓN] DA-1 y DA-3: qué roles descargan cada exportación.
+- **Público (sin sesión):** sin cambios. La vista pública no ofrece descargas (DA-1).
+- **Miembro de organización (cualquier rol, incluido observador):** descarga en el Workspace las cinco exportaciones de los torneos de su organización, porque ya ve esos datos. No hacen falta permisos nuevos (DA-3).
 - **Administrador de plataforma:** sin cambios. No descarga datos de ninguna organización.
 
 ## Historias de usuario
@@ -42,10 +49,10 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
   - **Clasificación:** por fase y grupo, con posición, equipo, partidos jugados, ganados, empatados y perdidos, goles a favor y en contra, diferencia, puntos y puntos de juego limpio.
   - **Calendario:** cada partido con fase, grupo o código de llave, jornada, fecha, local, visitante, estado y, si está cerrado, el marcador.
   - **Estadísticas:** de jugadores (goles, amarillas, rojas, porterías imbatidas y partidos jugados) y de equipos (goles a favor y en contra, porterías imbatidas y juego limpio), con los mismos criterios que la vista pública (020, 022).
-  - **Acta de un partido:** resultado, oficiales por nombre y función, alineación de cada equipo y hechos (minuto, tipo, equipo y jugador). [NECESITA ACLARACIÓN] DA-4.
-  - **Plantillas:** por equipo, con los campos de DA-3.
+  - **Acta de un partido:** un archivo por partido cerrado, pedido desde el partido, con el resultado, los oficiales por nombre y función, la alineación de cada equipo y los hechos (minuto, tipo, equipo y jugador) (DA-4).
+  - **Plantillas:** todos los equipos del torneo, con equipo, dorsal, nombre, apellidos, estado (activo o retirado) y consentimiento de imagen (sí/no). Sin edad (DA-3).
 - **RF-002.** EL SISTEMA generará cada exportación con los datos del momento de pedirla. Las columnas y su orden son fijos y están documentados.
-- **RF-003.** EL SISTEMA generará los archivos en el formato de DA-2. [NECESITA ACLARACIÓN] DA-2.
+- **RF-003.** EL SISTEMA generará las cinco exportaciones en CSV (DA-2).
 
 ### Visibilidad y privacidad
 
@@ -55,7 +62,7 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
 
 ### Auditoría
 
-- **RF-007.** [NECESITA ACLARACIÓN] DA-3: si descargar las plantillas queda registrado en la auditoría organizacional (041).
+- **RF-007.** CUANDO un miembro descargue las plantillas de un torneo, EL SISTEMA lo registrará en la auditoría organizacional (041) con el torneo y el número de filas, sin nombres de jugadores (DA-3). Las demás exportaciones no se auditan.
 
 ### Aislamiento
 
@@ -66,14 +73,14 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
 - **RNF-001.** Los archivos CSV van en UTF-8 con BOM, separados por comas, con cabecera en el idioma de la interfaz (ES/EN), y se abren con acentos correctos en las hojas de cálculo habituales.
 - **RNF-002.** Una celda que empiece por `=`, `+`, `-`, `@`, tabulador o retorno de carro se neutraliza (inyección de fórmulas). Lo verifica un test con nombres de equipo y jugador maliciosos.
 - **RNF-003.** Una exportación contiene el torneo completo, sin paginar, hasta 10.000 filas. SI se supera, ENTONCES EL SISTEMA responde con un error explícito y no genera un archivo truncado.
-- **RNF-004.** Sin campos públicos nuevos ni cambios en la proyección pública, salvo lo que decida DA-1.
+- **RNF-004.** Sin campos públicos nuevos ni cambios en la proyección pública (DA-1).
 - **RNF-005.** Los textos nuevos están en ES y EN. Las descargas se pueden usar con teclado y pasan axe en ambos temas.
 
 ## Datos personales y privacidad
 
 - Las plantillas y las actas llevan nombres de jugadores, que ya ven los miembros en el Workspace. Nunca llevan documento ni fecha de nacimiento (principio 5, §3.4).
 - Los oficiales del acta aparecen por nombre y función, sin su correo.
-- Un archivo descargado sale del control del sistema. Por eso la exportación de plantillas se limita a lo imprescindible (DA-3).
+- Un archivo descargado sale del control del sistema. Por eso la exportación de plantillas se limita a lo imprescindible, sin edad, y cada descarga queda auditada (DA-3).
 
 ## Casos límite
 
@@ -91,35 +98,23 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
 - Exportar la auditoría, las sanciones o los expedientes de la 034.
 - Importar desde estos archivos.
 - Exportaciones de varios torneos a la vez o de la organización completa.
-- Plantillas con documento, fecha de nacimiento o foto.
+- Plantillas con documento, fecha de nacimiento, edad o foto.
+- PDF o vista imprimible (DA-2) y descargas en la vista pública (DA-1).
+- Un archivo de hechos de todo el torneo (DA-4).
 
 ## Criterios de finalización
 
 | # | Criterio | RF |
 |---|---|---|
 | 1 | Las cinco exportaciones, con columnas fijas y documentadas. | RF-001, RF-002 |
-| 2 | Formato decidido en DA-2, con UTF-8, escape correcto y fórmulas neutralizadas. | RF-003, RNF-001, RNF-002 |
+| 2 | CSV en UTF-8, con escape correcto y fórmulas neutralizadas. | RF-003, RNF-001, RNF-002 |
 | 3 | Nada fuera de lo que el miembro ya ve; sin documento, fecha de nacimiento, correo ni foto. | RF-004 |
 | 4 | Mismo error para torneo ajeno o inexistente; aislamiento por RLS. | RF-005, RF-008 |
 | 5 | Acta solo de partidos cerrados, en su versión vigente. | RF-001, RF-006 |
 | 6 | Límite de 10.000 filas sin truncar. | RNF-003 |
-| 7 | ES/EN, teclado y axe en ambos temas. | RNF-005 |
+| 7 | Cada descarga de plantillas queda en la auditoría organizacional, sin nombres. | RF-007 |
+| 8 | ES/EN, teclado y axe en ambos temas. | RNF-005 |
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-1. Dónde se descarga.**
-  - (a) Recomendada: solo en el Workspace, para los miembros de la organización. La vista pública no cambia.
-  - (b) En el Workspace y, además, en la vista pública: la clasificación, el calendario y las estadísticas de los torneos públicos, con los mismos datos que ya muestra.
-  - (c) Solo en la vista pública.
-- [NECESITA ACLARACIÓN] **DA-2. Formato.**
-  - (a) Recomendada: solo CSV, para las cinco exportaciones. Sin dependencias nuevas.
-  - (b) CSV para todo y, además, PDF de la clasificación, el calendario y el acta, generado en el servidor. Requiere una dependencia nueva de PDF.
-  - (c) CSV para todo y una vista imprimible de la clasificación, el calendario y el acta, que el navegador guarda como PDF. Sin dependencias nuevas.
-- [NECESITA ACLARACIÓN] **DA-3. Plantillas: campos, quién las descarga y auditoría.**
-  - (a) Recomendada: equipo, dorsal, nombre, apellidos, estado (activo o retirado) y consentimiento de imagen (sí/no). Sin edad. Las descarga cualquier miembro, igual que hoy ve la pantalla de plantillas, y cada descarga queda en la auditoría organizacional (041).
-  - (b) Lo mismo que (a), pero solo las descargan el owner y el administrador, con un permiso nuevo.
-  - (c) Lo mismo que (a), con la edad del jugador en el año del torneo, que ya muestra la pantalla de plantillas.
-- [NECESITA ACLARACIÓN] **DA-4. Acta: alcance.**
-  - (a) Recomendada: un archivo por partido cerrado, pedido desde el partido. Incluye alineaciones y hechos con el jugador.
-  - (b) Un archivo por torneo con los hechos de todos los partidos cerrados, una fila por hecho.
-  - (c) Ambas.
+Ninguna.
