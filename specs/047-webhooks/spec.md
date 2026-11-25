@@ -1,6 +1,6 @@
 # Spec 047 — Webhooks firmados por organización (F6, parte 2)
 
-Estado: borrador. DA-1–DA-4 resueltas el 2026-11-24. Pedida por el usuario el 2026-11-24 («Sigue con la spec 047»), tras aceptar la 046 (DA-1 de la 046: los webhooks firmados van en una spec aparte).
+Estado: aprobada por el usuario el 2026-11-24 («Apruebo la spec 046 y la enmienda de la constitución y fusiona», en respuesta a la pregunta de aprobar la 047; la 046 ya estaba aceptada). DA-1–DA-4 resueltas el 2026-11-24. Enmienda de la §3.4 (constitución 2.1.0) fusionada en el PR #126. Pedida por el usuario el 2026-11-24 («Sigue con la spec 047»), tras aceptar la 046 (DA-1 de la 046: los webhooks firmados van en una spec aparte).
 
 ## Decisiones del usuario (2026-11-24)
 
