@@ -16,8 +16,9 @@ Estado: aprobado por el usuario el 2026-11-24 («Apruebo el plan y las tareas de
 - [x] **T4. Entrega en el worker.** RF-005–RF-011, RNF-001, RNF-002
 - Hecho cuando: `delivery.py`, el bucle de webhooks y la purga siguen el plan §3; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_webhook_delivery.py tests/test_worker*.py tests/test_retention.py` pasa, tras ver fallar primero los casos nuevos.
 - Evidencia (2026-11-25): `test_webhook_delivery.py` falló primero en la colección (sin `app.modules.webhooks.delivery`) y ahora pasa 21/21 contra un receptor HTTPS local con certificado de `hooks.test`; con `test_retention.py`, `test_worker_heartbeat.py`, `test_outbox_worker.py`, `test_notification_delivery.py` y `test_webhooks_migration.py`, 118/118. Suite backend con BD 4823 (6 omitidos, sin `test_config`, por el `.env` local). Ruff, Bandit y compileall limpios. La conexión va a la IP comprobada con `Host` y SNI del dominio, sin redirecciones ni proxies del entorno y con 10 s de límite total; el bucle de webhooks es el cuarto del worker (10 entregas a la vez) y la purga horaria borra por lotes de 500 las entregas finales de más de 30 días. Los logs solo llevan el ID del evento y el tipo de error. Ajustes en tests existentes: los de `outbox.main` simulan el bucle de webhooks.
-- [ ] **T5. Validación del bloque A y PR.** Todos los RF del bloque
+- [x] **T5. Validación del bloque A y PR.** Todos los RF del bloque
 - Hecho cuando: la suite backend con BD, `ruff check .`, `bandit -r app -ll` y `python -m compileall -q app` están limpios; PR del bloque A con la CI en verde.
+- Evidencia (2026-11-25): PR #128 con la CI 7/7. Suite backend con BD 4826 (sin `test_config`, por el `.env` local); Ruff, Bandit y compileall limpios. Devin Review: cinco hallazgos resueltos, cada uno con su test de regresión (cliente sin cookies, esquema `https` en minúsculas y URLs solo ASCII, `Host` con corchetes en IPv6, `FOR KEY SHARE` ante un borrado concurrente, y DA-5: sin entregas mientras el torneo no sea público).
 
 ## Bloque B — frontend, E2E y documentación (PR apilado sobre el bloque A)
 
