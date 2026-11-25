@@ -61,6 +61,8 @@ async function openInbox(page: Page, fixture: NotificationFixture) {
   });
   await expect(page.getByRole('heading', { level: 1, name: 'Notificaciones' })).toBeVisible();
   await expect(page.locator('.notification-item')).toHaveCount(3);
+  // El Workspace puede recargar la bandeja al resolver la organización; se espera a que termine.
+  await page.waitForLoadState('networkidle');
 }
 
 const inbox = (page: Page) => page.getByRole('region', { name: 'Bandeja' });
