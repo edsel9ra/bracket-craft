@@ -124,6 +124,19 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "active": ("Activo", "Active"),
         "retired": ("Retirado", "Withdrawn"),
     },
+    "report_result": {
+        "home": ("Local", "Home"),
+        "away": ("Visitante", "Away"),
+        "penalties": ("Penales", "Penalties"),
+    },
+    "report_detail": {
+        "assist": ("Asistencia", "Assist"),
+        "player_in": ("Entra", "In"),
+    },
+    "red_card_type": {
+        "direct_red": ("Roja directa", "Straight red"),
+        "double_yellow_red": ("Doble amarilla", "Second yellow"),
+    },
     "yes_no": {
         "yes": ("Sí", "Yes"),
         "no": ("No", "No"),

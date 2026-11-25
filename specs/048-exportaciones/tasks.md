@@ -7,8 +7,9 @@ Estado: aprobado por el usuario el 2026-11-25 («Apruebo el plan y las tareas. E
 - [x] **T1. Catálogo y formato CSV.** RF-001–RF-003, RNF-001–RNF-003
 - Hecho cuando: `exports/catalog.py` y `exports/csv_format.py` siguen el plan §3; `cd backend && pytest -q tests/test_export_csv.py` pasa tras ver fallar primero los tests nuevos; `ruff check .` limpio.
 - Evidencia (2026-11-25): `tests/test_export_csv.py` falló primero en la colección (`ModuleNotFoundError: app.modules.exports`) y ahora pasa 45/45; `ruff check .`, `bandit -r app/modules/exports -ll` y `compileall` limpios.
-- [ ] **T2. Construcción de filas.** RF-001, RF-002, RF-004
+- [x] **T2. Construcción de filas.** RF-001, RF-002, RF-004
 - Hecho cuando: `exports/builders.py` sigue el plan §3 (columnas y orden, CL-3, CL-4 y CL-7, sin claves prohibidas); `cd backend && pytest -q tests/test_export_builders.py` pasa tras ver fallar primero los tests nuevos.
+- Evidencia (2026-11-25): `tests/test_export_builders.py` falló primero en la colección (`cannot import name 'builders'`) y ahora pasa 25/25 (70/70 con `test_export_csv.py`); `ruff check .`, `bandit -r app/modules/exports -ll` y `compileall` limpios. El acta lleva en «Resultado» una fila por equipo con sus goles, otra por equipo con los penales si los hay y una fila con la resolución y su motivo; el minuto añadido se escribe `45+2`.
 - [ ] **T3. Exportaciones de clasificación, calendario y estadísticas.** RF-001, RF-002, RF-004, RF-005, RF-008, RNF-003
 - Hecho cuando: `service.py` y `router.py` sirven `standings`, `calendar`, `player-stats` y `team-stats`, registrados en `main.py`; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_exports_api.py` pasa (cross-tenant con el mismo 404, observador, CL-1, CL-6, límite → 422) tras ver fallar primero los casos nuevos.
 - [ ] **T4. Exportación de plantillas con auditoría.** RF-001, RF-004, RF-007
