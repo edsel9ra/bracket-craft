@@ -25,7 +25,8 @@ def test_catalog_constants_follow_the_spec():
     ["https://hooks.example.com/bc", "https://hooks.example.com:8443/a?b=1", "HTTPS://Hooks.Example.com/"],
 )
 def test_valid_urls_are_accepted(url):
-    assert catalog.validate_url(url) == url.strip()
+    # El esquema se guarda en minúsculas: la base de datos exige ``https://``.
+    assert catalog.validate_url(url) == "https" + url.strip()[5:]
 
 
 @pytest.mark.parametrize(
@@ -40,6 +41,8 @@ def test_valid_urls_are_accepted(url):
         "https://hooks.example.com/" + "a" * 2048,
         "https://hooks.example.com/\nX: y",
         "https://hooks.example.com:0/",
+        "https://bücher.example/",
+        "https://hooks.example.com/ñ",
         "",
     ],
 )

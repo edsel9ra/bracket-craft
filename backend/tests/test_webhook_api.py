@@ -178,6 +178,14 @@ async def test_other_organizations_get_the_same_404_as_a_missing_webhook(hooks):
     assert len(await audits(hooks.admin)) == 1
 
 
+async def test_an_uppercase_scheme_is_saved_in_lowercase(hooks):
+    body = await create(hooks, url="HTTPS://Hooks.Example.com/bc")
+    assert body["url"] == "https://Hooks.Example.com/bc"
+    response = await hooks.client.patch(f"{URL}/{body['id']}", json={"url": "HTTPS://hooks.example.com/other"})
+    assert response.status_code == 200, response.text
+    assert response.json()["url"] == "https://hooks.example.com/other"
+
+
 async def test_edit_url_and_types_is_audited_with_the_domain_only(hooks):
     webhook = await create(hooks)
     response = await hooks.client.patch(

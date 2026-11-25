@@ -30,11 +30,11 @@ SECRET_PREFIX = "whsec_"
 
 
 def validate_url(url: str) -> str:
-    """Devuelve la URL si es HTTPS absoluta, sin credenciales y de longitud acotada."""
+    """Devuelve la URL, con el esquema en minúsculas, si es HTTPS absoluta en ASCII, sin credenciales y acotada."""
     value = url.strip() if isinstance(url, str) else ""
     if not value or len(value) > MAX_URL_LENGTH:
         raise ValueError("WEBHOOK_URL_INVALID")
-    if any(ord(char) < 0x21 or ord(char) == 0x7F for char in value):
+    if not value.isascii() or any(ord(char) < 0x21 or ord(char) == 0x7F for char in value):
         raise ValueError("WEBHOOK_URL_INVALID")
     try:
         parts = urlsplit(value)
@@ -47,7 +47,7 @@ def validate_url(url: str) -> str:
         raise ValueError("WEBHOOK_URL_INVALID")
     if port == 0:
         raise ValueError("WEBHOOK_URL_INVALID")
-    return value
+    return "https" + value[len(parts.scheme):]
 
 
 def audit_host(url: str) -> str:
