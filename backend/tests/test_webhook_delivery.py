@@ -311,6 +311,45 @@ async def test_the_default_resolution_rejects_loopback(setup):
     assert (await deliveries(world))[0]["status"] == "rejected"
 
 
+async def test_cookies_set_by_a_receiver_are_never_sent_again(setup):
+    world, produce = setup
+    world.receiver.responses["/bc"] = (200, 0.0, {"Set-Cookie": "session=leak"})
+    await produce("/bc", "/other")
+    assert await deliver(world) == 2
+    await world.admin.execute("UPDATE webhook_deliveries SET status = 'pending'")
+    await world.admin.execute(
+        "UPDATE outbox_events SET status = 'pending', available_at = CURRENT_TIMESTAMP"
+        " WHERE event_type = 'WEBHOOK_DELIVERY'"
+    )
+    assert await deliver(world) == 2
+    assert len(world.receiver.requests) == 4
+    assert all("cookie" not in request["headers"] for request in world.receiver.requests)
+    assert not world.client.cookies
+
+
+async def test_an_ipv6_literal_keeps_its_brackets_in_the_host_header(setup):
+    world, produce = setup
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(204)
+
+    async def public(host, port):
+        assert (host, port) == ("2001:db8::1", 8443)
+        return ["2001:db8::1"]
+
+    await add_webhook(world.admin, world.organization_id, "https://[2001:DB8::1]:8443/bc")
+    await produce()
+    async with delivery_module.build_client(transport=httpx.MockTransport(handler)) as mocked:
+        world.client = mocked
+        assert await deliver(world, resolve=public) == 1
+    assert [(str(request.url), request.headers["host"]) for request in seen] == [
+        ("https://[2001:db8::1]:8443/bc", "[2001:db8::1]:8443")
+    ]
+    assert [row["status"] for row in await deliveries(world)] == ["delivered"]
+
+
 @pytest.mark.parametrize("change", ["deactivate", "unsubscribe", "delete"])
 async def test_a_deactivated_unsubscribed_or_deleted_webhook_is_not_sent(setup, change):
     world, produce = setup

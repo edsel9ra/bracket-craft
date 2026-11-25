@@ -1,6 +1,7 @@
 """Entrega de webhooks desde el worker (spec 047, RF-006–RF-011, RNF-002)."""
 
 import asyncio
+import http.cookiejar
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -19,9 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 def build_client(**options: Any) -> httpx.AsyncClient:
-    """Cliente sin redirecciones ni proxies del entorno: la conexión va a la IP comprobada."""
+    """Cliente sin redirecciones, proxies del entorno ni cookies: la conexión va a la IP comprobada."""
 
-    return httpx.AsyncClient(follow_redirects=False, trust_env=False, **options)
+    # Sin cookies: el cliente es compartido y un receptor no debe poder dejar
+    # una cookie que viaje a otro destino en la misma IP.
+    no_cookies = http.cookiejar.CookieJar(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
+    return httpx.AsyncClient(follow_redirects=False, trust_env=False, cookies=no_cookies, **options)
 
 
 def _ip_url(ip: str, port: int, path: str, query: str) -> str:
@@ -73,7 +77,8 @@ async def deliver_webhook(
         target["secret"], event_type=target["event_type"], delivery_id=target["delivery_id"],
         timestamp=int(now()), body=body,
     )
-    headers["Host"] = host if port == 443 else f"{host}:{port}"
+    authority = f"[{host}]" if ":" in host else host
+    headers["Host"] = authority if port == 443 else f"{authority}:{port}"
     status_code: int | None = None
     try:
         async with asyncio.timeout(timeout):
