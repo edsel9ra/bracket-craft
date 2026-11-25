@@ -1,6 +1,6 @@
 # Spec 048 — Exportaciones CSV (F10)
 
-Estado: borrador. DA-1–DA-4 resueltas el 2026-11-25. Pedida por el usuario el 2026-11-25 («F10: exportaciones CSV o PDF»).
+Estado: aprobada el 2026-11-25 («Apruebo la 048 solo con CSV; el PDF irá en una spec aparte»). DA-1–DA-4 resueltas el 2026-11-25. Pedida por el usuario el 2026-11-25 («F10: exportaciones CSV o PDF»).
 
 ## Decisiones del usuario (2026-11-25)
 
@@ -99,7 +99,7 @@ Lo que ya existe y se reutiliza: las lecturas privadas del Workspace (calendario
 - Importar desde estos archivos.
 - Exportaciones de varios torneos a la vez o de la organización completa.
 - Plantillas con documento, fecha de nacimiento, edad o foto.
-- PDF o vista imprimible (DA-2) y descargas en la vista pública (DA-1).
+- PDF o vista imprimible (DA-2): irán en una spec aparte, empezando por el acta y la clasificación (decisión del usuario del 2026-11-25). Descargas en la vista pública (DA-1).
 - Un archivo de hechos de todo el torneo (DA-4).
 
 ## Criterios de finalización
