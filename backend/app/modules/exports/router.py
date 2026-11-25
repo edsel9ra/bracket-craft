@@ -18,7 +18,7 @@ router = APIRouter(tags=["exports"])
 TOURNAMENT_NOT_FOUND = "Torneo no encontrado"
 EXPORT_TOO_LARGE = "EXPORT_TOO_LARGE"
 
-TournamentExportKind = Literal["standings", "calendar", "player-stats", "team-stats"]
+TournamentExportKind = Literal["standings", "calendar", "player-stats", "team-stats", "rosters"]
 ExportLang = Literal["es", "en"]
 
 

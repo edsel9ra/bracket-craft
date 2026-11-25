@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
 from app.modules.exports import builders, catalog
+from app.modules.exports.audit import record_roster_export_audit
 from app.modules.exports.csv_format import render_csv
 from app.modules.tournaments.public_stats import compute_player_stats, compute_team_stats
 
@@ -126,6 +127,17 @@ FAIR_PLAY_SQL = text("""
     GROUP BY s.team_id
 """)
 
+# Plantillas (DA-3): sin edad, documento, fecha de nacimiento ni clave de la foto.
+ROSTERS_SQL = text("""
+    SELECT t.name AS team_name, r.dorsal_number, p.first_name, p.last_name, r.is_active, r.photo_consent
+    FROM rosters r
+    JOIN players p ON p.id = r.player_id AND p.organization_id = r.organization_id
+    JOIN teams t ON t.id = r.team_id AND t.organization_id = r.organization_id
+    WHERE r.organization_id = :organization_id AND r.tournament_id = :tournament_id
+    ORDER BY t.name, r.dorsal_number, p.last_name, p.first_name, r.id
+    LIMIT :limit
+""")
+
 TEAMS_SQL = text("""
     SELECT tt.team_id, t.name, t.short_code
     FROM tournament_teams tt
@@ -149,12 +161,22 @@ class ExportService:
             tournament = (await self.db.execute(TOURNAMENT_SQL, params)).mappings().one_or_none()
             if tournament is None:
                 raise ExportNotFound
+            if kind == "rosters":
+                # Las plantillas no dependen de la versión publicada (D3).
+                rows = await self._rosters(params, lang)
+                data = render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+                await record_roster_export_audit(self.db, context, tournament_id, len(rows))
+                return data
             version_id = tournament["published_version_id"]
             rows: list[list[Any]] = []
             if version_id is not None:
                 params["version_id"] = str(version_id)
                 rows = await self._READERS[kind](self, params, lang)
             return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+
+    async def _rosters(self, params, lang) -> list[list[Any]]:
+        data = await self._rows(ROSTERS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
+        return builders.roster_rows(data, lang)
 
     async def _standings(self, params, lang):
         data = await self._rows(STANDINGS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})

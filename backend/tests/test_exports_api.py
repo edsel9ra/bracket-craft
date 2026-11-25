@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -22,7 +23,8 @@ from test_request_schema_strictness import walk_routes
 
 BOM = "\ufeff"
 NOT_FOUND = {"detail": "Torneo no encontrado"}
-TOURNAMENT_KINDS = ("standings", "calendar", "player-stats", "team-stats")
+TOURNAMENT_KINDS = ("standings", "calendar", "player-stats", "team-stats", "rosters")
+UNAUDITED_KINDS = TOURNAMENT_KINDS[:4]
 
 
 @dataclass
@@ -189,7 +191,7 @@ async def test_exports_never_carry_identifiers_or_personal_data(exports):
         assert "@example" not in body
 
 
-@pytest.mark.parametrize("kind", TOURNAMENT_KINDS)
+@pytest.mark.parametrize("kind", UNAUDITED_KINDS)
 async def test_without_published_version_only_the_header_is_returned(exports, kind):
     await exports.admin.execute(
         "UPDATE tournaments SET status='draft', published_version_id=NULL WHERE id=$1",
@@ -244,3 +246,93 @@ async def test_exports_are_read_inside_the_tenant_context(exports):
         "SELECT last_name FROM players WHERE organization_id=$1", exports.owner.organization_id)
     assert owner_players
     assert all(f",{row['last_name']}," not in body for row in owner_players)
+
+
+# ---------------------------------------------------------------- plantillas (T4)
+
+
+async def roster_audits(admin):
+    rows = await admin.fetch(
+        """SELECT organization_id, entity_type, entity_id, payload, performed_by_member_id
+           FROM administrative_audit_logs WHERE action = 'EXPORT_TOURNAMENT_ROSTERS' ORDER BY performed_at, id""")
+    return [{**dict(row), "payload": json.loads(row["payload"])} for row in rows]
+
+
+async def expected_rosters(exports):
+    return await exports.admin.fetch(
+        """SELECT t.name AS team, r.dorsal_number, p.first_name, p.last_name, r.is_active, r.photo_consent
+           FROM rosters r JOIN players p ON p.id = r.player_id JOIN teams t ON t.id = r.team_id
+           WHERE r.tournament_id = $1""", exports.match.tournament_id)
+
+
+async def test_rosters_list_every_player_with_status_and_consent(exports):
+    await exports.admin.execute(
+        "UPDATE rosters SET is_active = FALSE WHERE player_id = $1 AND tournament_id = $2",
+        exports.match.home_assist_id, exports.match.tournament_id)
+    await exports.admin.execute(
+        """UPDATE rosters SET photo_consent = TRUE, photo_object_key = 'org/fotos/secreta-048.jpg'
+           WHERE player_id = $1 AND tournament_id = $2""",
+        exports.match.home_scorer_id, exports.match.tournament_id)
+    response = await download(exports, "rosters")
+    assert response.status_code == 200, response.text
+    rows = parse(response)
+    assert rows[0] == catalog.header("rosters", "es")
+    expected = sorted(
+        [row["team"], str(row["dorsal_number"]), row["first_name"], row["last_name"],
+         "Activo" if row["is_active"] else "Retirado", "Sí" if row["photo_consent"] else "No"]
+        for row in await expected_rosters(exports))
+    assert sorted(rows[1:]) == expected
+    assert ["Retirado"] == [row[4] for row in rows[1:] if row[4] == "Retirado"]
+    assert ["Sí"] == [row[5] for row in rows[1:] if row[5] == "Sí"]
+    body = response.content.decode("utf-8")
+    assert "secreta-048" not in body
+    for row in await exports.admin.fetch(
+            "SELECT id, national_id_hmac FROM players WHERE organization_id=$1", exports.owner.organization_id):
+        assert str(row["id"]) not in body and row["national_id_hmac"] not in body
+
+
+async def test_rosters_do_not_depend_on_the_published_version(exports):
+    await exports.admin.execute(
+        "UPDATE tournaments SET status='draft', published_version_id=NULL WHERE id=$1",
+        exports.match.tournament_id)
+    rows = parse(await download(exports, "rosters", "en"))
+    assert rows[0] == catalog.header("rosters", "en")
+    assert len(rows) - 1 == len(await expected_rosters(exports))
+
+
+async def test_roster_download_is_audited_with_the_row_count_only(exports):
+    response = await download(exports, "rosters")
+    count = len(parse(response)) - 1
+    assert count > 0
+    assert await roster_audits(exports.admin) == [{
+        "organization_id": exports.owner.organization_id,
+        "entity_type": "tournaments",
+        "entity_id": exports.match.tournament_id,
+        "payload": {"row_count": count},
+        "performed_by_member_id": exports.owner.organization_user_id,
+    }]
+    for row in await expected_rosters(exports):
+        assert row["first_name"] not in json.dumps((await roster_audits(exports.admin))[0]["payload"])
+
+
+async def test_viewer_roster_download_is_audited_as_the_viewer(exports):
+    exports.context = exports.viewer
+    assert (await download(exports, "rosters")).status_code == 200
+    [entry] = await roster_audits(exports.admin)
+    assert entry["performed_by_member_id"] == exports.viewer.organization_user_id
+
+
+async def test_other_exports_leave_no_audit_entry(exports):
+    before = await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs")
+    for kind in UNAUDITED_KINDS:
+        assert (await download(exports, kind)).status_code == 200
+    assert await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == before
+
+
+async def test_failed_roster_exports_leave_no_audit_entry(exports, monkeypatch):
+    missing = await download(exports, "rosters", tournament_id=exports.foreign_tournament_id)
+    assert (missing.status_code, missing.json()) == (404, NOT_FOUND)
+    monkeypatch.setattr(catalog, "MAX_ROWS", 1)
+    too_large = await download(exports, "rosters")
+    assert (too_large.status_code, too_large.json()) == (422, {"detail": "EXPORT_TOO_LARGE"})
+    assert await roster_audits(exports.admin) == []
