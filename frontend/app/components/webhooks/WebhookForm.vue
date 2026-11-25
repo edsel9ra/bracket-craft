@@ -16,9 +16,10 @@ const shown = computed(() => localError.value || props.error);
 const urlInvalid = computed(() => shown.value === 'webhook.error.url');
 const describedBy = computed(() => (shown.value ? `${id}-hint ${id}-error` : `${id}-hint`));
 
-watch(() => props.initial, (value) => {
-  url.value = value?.url ?? '';
-  types.value = [...(value?.event_types ?? [])];
+// Se compara por valor: la página pasa un objeto nuevo en cada render (p. ej. al cambiar `busy`).
+watch(() => JSON.stringify([props.initial?.url ?? '', props.initial?.event_types ?? []]), () => {
+  url.value = props.initial?.url ?? '';
+  types.value = [...(props.initial?.event_types ?? [])];
   localError.value = '';
 });
 

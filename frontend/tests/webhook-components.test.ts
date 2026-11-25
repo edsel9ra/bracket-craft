@@ -57,6 +57,39 @@ test('the form has a labelled HTTPS field and one native checkbox per type, with
   assert.match(html, /type="submit"[^>]*>webhook\.form\.create/);
 });
 
+type FakeNode = { tag: string; props: Record<string, unknown>; children: FakeNode[]; parent: FakeNode | null; text: string; value?: string; listeners: Record<string, ((event: unknown) => void)[]>; addEventListener: (name: string, fn: (event: unknown) => void) => void; removeEventListener: () => void; getRootNode: () => { activeElement: null } };
+function fakeNode(tag: string, text = ''): FakeNode {
+  const node: FakeNode = { tag, props: {}, children: [], parent: null, text, listeners: {}, addEventListener: (name, fn) => { (node.listeners[name] ??= []).push(fn); }, removeEventListener: () => undefined, getRootNode: () => ({ activeElement: null }) };
+  return node;
+}
+const fakeRenderer = () => vue.createRenderer<FakeNode, FakeNode>({
+  createElement: (tag) => fakeNode(tag), createText: (text) => fakeNode('#text', text), createComment: (text) => fakeNode('#comment', text),
+  setText: (node, text) => { node.text = text; }, setElementText: (node, text) => { node.children = [fakeNode('#text', text)]; },
+  insert: (child, parent, anchor) => { child.parent = parent; const at = anchor ? parent.children.indexOf(anchor) : -1; if (at < 0) parent.children.push(child); else parent.children.splice(at, 0, child); },
+  remove: (child) => { if (child.parent) child.parent.children.splice(child.parent.children.indexOf(child), 1); child.parent = null; },
+  parentNode: (node) => node.parent, nextSibling: (node) => (node.parent ? node.parent.children[node.parent.children.indexOf(node) + 1] ?? null : null),
+  patchProp: (node, key, _previous, next) => { node.props[key] = next; if (key === 'value') node.value = next as string; },
+});
+const findNode = (node: FakeNode, match: (node: FakeNode) => boolean): FakeNode | undefined => (match(node) ? node : node.children.map((child) => findNode(child, match)).find(Boolean));
+
+test('the edit form keeps the typed draft when the page re-renders it with the same values, and resets when they change', async (context) => {
+  // vModelText compara el foco con `instanceof Document/ShadowRoot`; el renderizador ficticio no tiene DOM.
+  const scope = globalThis as Record<string, unknown>;
+  Object.assign(scope, { Document: class { readonly kind = 'document'; }, ShadowRoot: class { readonly kind = 'shadow-root'; } });
+  context.after(() => { delete scope.Document; delete scope.ShadowRoot; });
+  const form = compile('components/webhooks/WebhookForm.vue', { useI18n: i18n, useId: () => 'f' });
+  const busy = vue.ref(false); const initialUrl = vue.ref('https://a.example/');
+  const parent = vue.defineComponent({ setup: () => () => vue.h(form, { initial: { url: initialUrl.value, event_types: ['walkover_declared'] }, submitLabel: 'webhook.form.save', busy: busy.value, cancellable: true }) });
+  const root = fakeNode('root'); fakeRenderer().createApp(parent).mount(root);
+  const input = findNode(root, (node) => node.tag === 'input' && node.props.type === 'url')!;
+  assert.equal(input.value, 'https://a.example/');
+  input.value = 'https://b.example/hook'; input.listeners.input!.forEach((fn) => fn({ target: input }));
+  busy.value = true; await vue.nextTick(); busy.value = false; await vue.nextTick();
+  assert.equal(input.value, 'https://b.example/hook');
+  initialUrl.value = 'https://c.example/'; await vue.nextTick(); await vue.nextTick();
+  assert.equal(input.value, 'https://c.example/');
+});
+
 test('the secret dialog shows the secret once, with copy and the warning that it will not be shown again', async () => {
   const dialog = compile('components/webhooks/WebhookSecretDialog.vue', { useI18n: i18n, useId: () => 's' });
   const html = await render(dialog, { secret: 'whsec_once' });
