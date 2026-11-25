@@ -1,6 +1,6 @@
 # Tareas — Spec 048: Exportaciones CSV (F10)
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobado por el usuario el 2026-11-25 («Apruebo el plan y las tareas. Empieza por T1»).
 
 ## Bloque A — backend (PR apilado sobre el #130)
 

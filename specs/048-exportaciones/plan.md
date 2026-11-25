@@ -1,6 +1,6 @@
 # Plan — Spec 048: Exportaciones CSV (F10)
 
-Estado: borrador, pendiente de aprobación. Spec aprobada el 2026-11-25.
+Estado: aprobado por el usuario el 2026-11-25 («Apruebo el plan y las tareas. Empieza por T1»). Spec aprobada el 2026-11-25.
 
 ## 1. Resumen
 
