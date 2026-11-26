@@ -10,7 +10,7 @@ Estado: borrador, pendiente de aprobación.
 - Hecho cuando: `tournament_roles/catalog.py` y la rama de `require_permission` siguen D2 y D4; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_roles_catalog.py tests/test_tournament_roles_authorization.py tests/test_permissions_signature.py` pasa tras ver fallar primero los casos nuevos (alineación, segmentos y cierre con sanción en A; 403 en B, en la resolución administrativa y en `MANAGE_TOURNAMENTS`; desactivado y reactivado).
 - [ ] **T3. En vivo y tiempo real.** RF-004, RF-008, RF-010
 - Hecho cuando: `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_roles_live.py tests/test_realtime_policy.py` pasa tras ver fallar primero los casos nuevos (`/live/access`, comando aceptado, 403 tras retirar, `ALLOW` → `DENY` en `authorize_realtime_recipients`, espejo puro).
-- [ ] **T4. Endpoints «Equipo del torneo» y auditoría.** RF-003–RF-006, RF-011–RF-013
+- [ ] **T4. Endpoints «Equipo del torneo» y auditoría.** RF-003–RF-006, RF-003a, RF-011–RF-013
 - Hecho cuando: el router está en `main.py` y sigue el plan §4–§5; las dos acciones están en el catálogo de la 041; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_roles_api.py tests/test_organization_audit_catalog.py` pasa tras ver fallar primero los casos nuevos; `operated_tournament_ids` en el acceso.
 - [ ] **T5. Validación del bloque A y PR.** Todos los RF del bloque
 - Hecho cuando: la suite backend con BD, `ruff check .`, `bandit -r app -ll` y `python -m compileall -q app` están limpios; volumen limpio y migrado verificados; PR del bloque A con la CI en verde.
