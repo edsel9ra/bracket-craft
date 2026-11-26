@@ -10,6 +10,7 @@ import { effectiveRosterLimits, type OpeningBlockedDescription } from '~/utils/r
 import { gameFormatOf } from '~/utils/rulesWizard';
 import { createMatchDraftStore, type MatchDraftStorage } from '~/utils/matchDraft';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
+import { canOperateMatch } from '~/utils/tournamentTeam';
 import { DEFAULT_MATCH_LIMITS, normalizeMatchLimits, normalizeSubstitutionsState, previewCounters, substitutionAvailability, substitutionOptions, teamSubstitutionState, type SubstitutionOption, type SubstitutionUnavailableReason } from '~/utils/substitutions';
 import type { EventType, RedCardType, OfficialRole, LineupRole, InterruptionReason, RosterEntry, MatchOperation, DraftEvent, EventFieldKey, EventFieldIssue } from '~/components/match/types';
 
@@ -168,14 +169,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
 
   const canManageTournaments = computed(() => auth.hasPermission('MANAGE_TOURNAMENTS'));
 
-  const canOperateMatch = computed(() => {
-    if (!auth.hasPermission('CLOSE_MATCH_REPORT')) return false;
-    const role = auth.access?.role_code;
-    if (role === 'owner' || role === 'administrator' || role === 'operator') return true;
-    return Boolean(auth.access?.organization_user_id && operation.value?.officials.some(
-      (official) => official.organization_user_id === auth.access?.organization_user_id,
-    ));
-  });
+  const canOperate = computed(() => canOperateMatch(auth.access, match.value, operation.value?.officials ?? []));
 
   const workspaceBreadcrumbs = computed(() => [
     { label: t('shell.tournaments'), to: '/workspace' },
@@ -516,7 +510,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
     match,
     isTerminal,
     canManageTournaments,
-    canOperateMatch,
+    canOperateMatch: canOperate,
     workspaceBreadcrumbs,
     tournamentContext,
     selectedSegment,

@@ -44,6 +44,7 @@ export interface OrganizationAccess {
   user_id: string;
   role_code: 'owner' | 'administrator' | 'operator' | 'referee' | 'viewer' | string;
   permissions: string[];
+  operated_tournament_ids?: string[];
 }
 
 interface ApiFailure {
