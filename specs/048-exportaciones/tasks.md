@@ -25,8 +25,9 @@ Estado: aprobado por el usuario el 2026-11-25 («Apruebo el plan y las tareas. E
 
 ## Bloque B — Workspace, E2E y documentación (PR apilado sobre el bloque A)
 
-- [ ] **T7. Utilidades, composable y textos.** RF-001, RF-006, RNF-003, RNF-005
+- [x] **T7. Utilidades, composable y textos.** RF-001, RF-006, RNF-003, RNF-005
 - Hecho cuando: `utils/exports.ts`, `useExports` y las claves `export.*` ES/EN siguen el plan §5; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios tras ver fallar primero los tests nuevos.
+- Evidencia (2026-11-25): `frontend/tests/exports.test.ts` falló primero (no existía `utils/exports.ts`) y ahora pasa 12/12: espejo de tipos, `REPORT_KIND` y `MAX_ROWS` del backend, rutas, nombre de archivo ASCII con la fecha como parámetro, errores (también con el cuerpo como `Blob`), una descarga a la vez, respuesta descartada tras cambiar de organización, solo `useApi` y paridad ES/EN de `export.*`. `pnpm test` 1274/0, typecheck y lint limpios. El guardado del archivo va en `utils/exportDownload.ts` (`saveExportFile`), aparte de las funciones puras.
 - [ ] **T8. Página «Exportaciones» y botón del acta.** RF-001, RF-006, RF-007, RNF-005
 - Hecho cuando: la página `/workspace/tournaments/[id]/exports`, su enlace en `WorkspaceShell` y el botón del acta en el partido siguen el plan §5; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios tras ver fallar primero los tests nuevos.
 - [ ] **T9. E2E, documentación y validación.** RNF-004, RNF-005
