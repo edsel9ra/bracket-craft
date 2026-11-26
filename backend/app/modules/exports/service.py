@@ -204,13 +204,20 @@ class ExportService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    async def _begin_snapshot(self, context) -> None:
+        # Todas las lecturas de un archivo salen de la misma instantánea: una rectificación
+        # que se confirma a mitad de la descarga no mezcla el marcador de una versión con
+        # los hechos de otra. Debe ser la primera sentencia de la transacción.
+        await self.db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+        await set_rls_context(self.db, context.organization_id, context.user_id)
+
     async def _rows(self, sql, params: dict[str, Any]) -> list[dict[str, Any]]:
         return [dict(row) for row in (await self.db.execute(sql, params)).mappings().all()]
 
     async def export_tournament(self, context, tournament_id: UUID, kind: str, lang: str) -> bytes:
         header = catalog.header(kind, lang)
         async with self.db.begin():
-            await set_rls_context(self.db, context.organization_id, context.user_id)
+            await self._begin_snapshot(context)
             params = {"organization_id": str(context.organization_id), "tournament_id": str(tournament_id)}
             tournament = (await self.db.execute(TOURNAMENT_SQL, params)).mappings().one_or_none()
             if tournament is None:
@@ -231,7 +238,7 @@ class ExportService:
     async def export_match_report(self, context, match_id: UUID, lang: str) -> bytes:
         header = catalog.header(catalog.REPORT_KIND, lang)
         async with self.db.begin():
-            await set_rls_context(self.db, context.organization_id, context.user_id)
+            await self._begin_snapshot(context)
             params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
             match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
             if match is None:

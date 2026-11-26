@@ -469,3 +469,61 @@ async def test_report_over_the_limit_fails_without_a_file(exports, monkeypatch):
 
 async def test_report_rejects_unknown_lang(exports):
     assert (await download_report(exports, lang="fr")).status_code == 422
+
+
+async def test_report_reads_one_snapshot_even_if_a_rectification_commits_mid_download(exports, monkeypatch):
+    # Una rectificación que se confirma entre dos lecturas no puede mezclar el marcador
+    # de una versión con los hechos de otra: toda el acta sale de la misma instantánea.
+    from app.modules.exports import service
+
+    org, match_id = exports.owner.organization_id, exports.match.match_id
+    goal = await exports.admin.fetchrow(
+        "SELECT segment_id, team_id, player_id FROM match_events WHERE match_id=$1 AND event_type='goal'", match_id)
+    original_rows = service.ExportService._rows
+    fired = []
+
+    async def rectify_during_download(self, sql, params):
+        if sql is service.REPORT_OFFICIALS_SQL and not fired:
+            fired.append(True)
+            request = await exports.admin.fetchval(
+                """INSERT INTO match_report_rectification_requests
+                       (organization_id, match_id, base_version_number, proposed_report, reason,
+                        requested_by_user_id, requested_by_member_id)
+                   VALUES ($1,$2,1,'{}','Corrección',$3,$4) RETURNING id""",
+                org, match_id, exports.owner.user_id, exports.owner.organization_user_id)
+            version = await exports.admin.fetchval(
+                """INSERT INTO match_report_versions
+                       (organization_id, match_id, version_number, supersedes_version_number, resolution_type,
+                        home_score_regular, away_score_regular, home_score, away_score, request_id,
+                        published_by_user_id)
+                   VALUES ($1,$2,2,1,'regular',2,0,2,0,$3,$4) RETURNING id""",
+                org, match_id, request, exports.owner.user_id)
+            await exports.admin.execute(
+                """INSERT INTO match_report_version_events
+                       (organization_id, version_id, match_id, segment_id, team_id, player_id,
+                        event_type, minute, client_event_id)
+                   VALUES ($1,$2,$3,$4,$5,$6,'goal',20,'early'),($1,$2,$3,$4,$5,$6,'goal',70,'late')""",
+                org, version, match_id, goal["segment_id"], goal["team_id"], goal["player_id"])
+        return await original_rows(self, sql, params)
+
+    monkeypatch.setattr(service.ExportService, "_rows", rectify_during_download)
+    rows = parse(await download_report(exports))
+    assert fired
+    assert [row[6] for row in section(rows, "Resultado")[:2]] == ["1", "0"]
+    assert [(row[4], row[5]) for row in section(rows, "Hecho")] == [("Gol", "30"), ("Tarjeta roja", "60")]
+
+
+async def test_tournament_exports_read_one_snapshot(exports, monkeypatch):
+    from app.modules.exports import service
+
+    original_rows = service.ExportService._rows
+    seen = []
+
+    async def record_isolation(self, sql, params):
+        seen.append((await self.db.execute(service.text("SHOW transaction_isolation"))).scalar_one())
+        return await original_rows(self, sql, params)
+
+    monkeypatch.setattr(service.ExportService, "_rows", record_isolation)
+    for kind in TOURNAMENT_KINDS:
+        assert (await download(exports, kind)).status_code == 200
+    assert seen and set(seen) == {"repeatable read"}
