@@ -1,6 +1,6 @@
 # Spec 049 — Roles por torneo (F7)
 
-Estado: borrador, sin dudas abiertas. Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»).
+Estado: aprobada por el usuario el 2026-11-26 («Apruebo la spec 049»). Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»).
 
 ## Contexto y objetivo
 
