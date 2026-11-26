@@ -87,6 +87,7 @@ def test_walkover_and_administrative_resolution_show_reason():
      {"host": "h.example", "is_active": True}),
     ("ROTATE_WEBHOOK_SECRET", {"host": "h.example", "secret": "whsec_x"}, {"host": "h.example"}),
     ("DELETE_WEBHOOK", {"host": "h.example", "url": "https://h.example/p"}, {"host": "h.example"}),
+    ("EXPORT_TOURNAMENT_ROSTERS", {"row_count": 12, "players": ["Ana Ruiz"]}, {"row_count": 12}),
 ])
 def test_projection_per_action(action, payload, expected):
     assert as_dict(project_details(action, payload, {})) == expected
@@ -152,6 +153,7 @@ def test_catalog_entity_types():
     assert {spec.entity_type for spec in CATALOG.values()} == {
         "matches", "sanction_cases", "competitive_impact_procedures", "organization_users",
         "organization_invitations", "teams", "stage_slot_resolutions", "organization_webhooks",
+        "tournaments",
     }
 
 

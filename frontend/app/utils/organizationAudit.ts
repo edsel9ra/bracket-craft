@@ -8,12 +8,12 @@ export const AUDIT_ACTIONS = [
   'GRANT_SANCTION_AUTHORIZATION', 'REVOKE_SANCTION_AUTHORIZATION', 'OPEN_COMPETITIVE_IMPACT',
   'CLOSE_COMPETITIVE_IMPACT', 'CHANGE_MEMBER_ROLE', 'SET_MEMBER_ACTIVE', 'ACCEPT_INVITATION', 'REOPEN_INVITATION',
   'SET_TEAM_CREST', 'REMOVE_TEAM_CREST', 'STAGE_SLOTS_RESOLVED', 'CREATE_WEBHOOK', 'UPDATE_WEBHOOK',
-  'SET_WEBHOOK_ACTIVE', 'ROTATE_WEBHOOK_SECRET', 'DELETE_WEBHOOK',
+  'SET_WEBHOOK_ACTIVE', 'ROTATE_WEBHOOK_SECRET', 'DELETE_WEBHOOK', 'EXPORT_TOURNAMENT_ROSTERS',
 ] as const;
 
 export const AUDIT_ENTITIES = [
   'matches', 'sanction_cases', 'competitive_impact_procedures', 'organization_users',
-  'organization_invitations', 'teams', 'stage_slot_resolutions', 'organization_webhooks',
+  'organization_invitations', 'teams', 'stage_slot_resolutions', 'organization_webhooks', 'tournaments',
 ] as const;
 
 export const AUDIT_PAGE_SIZE = 50;

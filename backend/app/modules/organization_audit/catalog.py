@@ -87,6 +87,7 @@ CATALOG: dict[str, ActionSpec] = {
     "SET_WEBHOOK_ACTIVE": ActionSpec("organization_webhooks", _WEBHOOK),
     "ROTATE_WEBHOOK_SECRET": ActionSpec("organization_webhooks", (_field("host", "text"),)),
     "DELETE_WEBHOOK": ActionSpec("organization_webhooks", (_field("host", "text"),)),
+    "EXPORT_TOURNAMENT_ROSTERS": ActionSpec("tournaments", (_field("row_count", "number"),)),
 }
 
 
