@@ -22,8 +22,9 @@ Estado: aprobado por el usuario el 2026-11-26 («Apruebo el plan y las tareas, e
 
 ## Bloque B — Workspace, E2E y documentación (PR apilado sobre el bloque A)
 
-- [ ] **T6. Utilidades, composable, textos y operación.** RF-012, RF-012a, RNF-002
+- [x] **T6. Utilidades, composable, textos y operación.** RF-012, RF-012a, RNF-002
 - Hecho cuando: `utils/tournamentTeam.ts`, `useTournamentTeam`, el uso de `canOperateMatch` en `useMatchOperationState`, las claves ES/EN y el espejo de auditoría siguen el plan §6; `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios tras ver fallar primero los tests nuevos.
+- Evidencia (2026-11-26): `tests/tournament-team.test.ts` falló primero (no existía `utils/tournamentTeam.ts`) y ahora pasa 9/9: `canOperateMatch` conserva la regla de organización (`CLOSE_MATCH_REPORT` y dueño/administrador/operador u oficial asignado) y añade `operated_tournament_ids.includes(match.tournament_id)` sin exigir permisos de organización; orden por nombre e id; el selector solo ofrece miembros activos sin asignar y sin correo; errores 403/404 (torneo, miembro, asignación) con claves estables; `useTournamentTeam` solo usa `useApi`, pide `/organizations/members` solo con `MANAGE_MEMBERS`, confirma la retirada con `useConfirm({ singleFlight: true })` y tono `danger`, recarga el acceso si cambia la asignación propia y descarta respuestas tras cambiar de organización; `useMatchOperationState` delega en `canOperateMatch`; `OrganizationAccess.operated_tournament_ids`; claves `shell.team` y `tournamentTeam.*` con paridad ES/EN. El espejo de auditoría ya se añadió en T4. `pnpm test` 1291/0, `pnpm run typecheck` y `pnpm run lint` limpios.
 - [ ] **T7. Página «Equipo del torneo» y navegación.** RF-003b, RF-012, RNF-002, RNF-003
 - Hecho cuando: `pages/workspace/tournaments/[id]/team.vue` y la entrada de navegación siguen el plan §6 (aviso DA-4, alta solo con `MANAGE_MEMBERS`, retirada con `useConfirm({ singleFlight: true })`); `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios tras ver fallar primero los tests nuevos.
 - [ ] **T8. E2E, documentación y validación.** RNF-001–RNF-003
