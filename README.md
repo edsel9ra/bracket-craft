@@ -730,6 +730,19 @@ def verify(secret: str, timestamp: str, body: bytes, signature: str, tolerance: 
     return hmac.compare_digest(expected, signature)
 ```
 
+## Migración 069: roles por torneo (runbook)
+
+La **069** (spec 049, F7) crea `tournament_member_roles` (RLS forzado; único por torneo, miembro y rol; `CHECK` limitado a `tournament_operator`; FKs compuestas con `organization_id`; `bracket_app` solo con `SELECT`, `INSERT` y `DELETE`, sin `UPDATE`) y la función `tournament_operator_allows` (`SECURITY INVOKER`). Redefine `match_live_has_permission` (056) y `sanction_can_operate_match` (040) añadiendo solo esa comprobación, sin editar sus migraciones. No añade permisos a los roles de organización ni variables. Es idempotente. **Aplicar la 069 antes que la API.** Sin rollback (*forward-fix*). Verificación: `backend/tests/test_migration_069.py` (opt-in con PostgreSQL).
+
+## Roles por torneo (spec 049)
+
+Un **operador del torneo** (`tournament_operator`) recibe, solo en los partidos de ese torneo, `VIEW_MATCH_LIVE_DRAFT`, `OPERATE_MATCH_LIVE` y `CLOSE_MATCH_REPORT`. Es **aditivo**: se suma a los roles de organización y a `match_officials`, nunca los sustituye. No concede gestionar el torneo, sanciones, auditoría ni la resolución administrativa (que sigue exigiendo dueño o administrador). La lectura no cambia: cualquier miembro sigue viendo todos los torneos. La vista pública no cambia.
+
+- **Endpoints:** `GET /api/v1/tournaments/{id}/team` (cualquier miembro; nombre, rol de organización, estado, `adds_permissions` y fecha, sin correo); `PUT /api/v1/tournaments/{id}/team/{organization_user_id}` (201 la primera vez, 200 si ya estaba, sin fila ni auditoría nuevas) y `DELETE` (204; 404 si no hay asignación). `PUT`/`DELETE` exigen `MANAGE_MEMBERS` (403 sin él). Un torneo o miembro inexistente, inactivo o de otra organización da el mismo 404. `adds_permissions` es falso para dueño, administrador y operador.
+- **Acceso:** `GET /api/v1/organizations/current/access` añade `operated_tournament_ids`. Retirar el rol o desactivar al miembro surte efecto en la siguiente petición y en la siguiente evaluación del tiempo real privado; reactivarlo recupera sus asignaciones.
+- **Autorización:** `require_permission` conserva su firma; con `match_id`, sin `role_codes` y para uno de los tres permisos consulta `tournament_operator_allows`, que también usan el partido en vivo, la apertura de sanciones al cerrar y el filtro privado del tiempo real.
+- **Auditoría:** `ASSIGN_TOURNAMENT_OPERATOR` y `REMOVE_TOURNAMENT_OPERATOR` sobre `tournaments`, con `{organization_user_id, role_code}`, en la misma transacción.
+
 ## Exportaciones CSV (spec 048)
 
 Sin migración ni variables nuevas, y sin dependencias: el CSV lo genera el backend con la biblioteca estándar. Solo en el Workspace; la vista pública no cambia. Cualquier miembro (también el observador) puede descargar.
@@ -813,7 +826,7 @@ Documentos de identidad, fecha de nacimiento, edad y año de referencia de la ed
 - Clasificación Round Robin.
 - Estructura de fases lista para grupos y playoffs.
 - Avance manual de equipos entre fases en versiones en borrador.
-- Autorización por organización y por partido (`match_officials`); sin roles por torneo.
+- Autorización por organización, por partido (`match_officials`) y por torneo (operador del torneo, spec 049).
 
 ## Reglas declaradas: sustituciones, inscripción y minutos
 
@@ -1020,7 +1033,7 @@ La regla vigente se muestra en la interfaz junto a toda cifra que la use, en esp
 
 ## Autorización y avance manual entre fases
 
-- **Modelo real:** RBAC por **organización**. Los permisos (`MANAGE_TOURNAMENTS`, `MANAGE_MEMBERS`, `CLOSE_MATCH_REPORT`, etc.) se resuelven con la membresía y sus roles de organización; no existe un ámbito por torneo. La única delegación menor es por **partido**: `match_officials` permite que el árbitro asignado cierre ese partido. La tabla `tournament_user_roles` fue **retirada** por la migración 019 y no hay endpoint ni UI para asignar roles por torneo.
+- **Modelo real:** RBAC por **organización**. Los permisos (`MANAGE_TOURNAMENTS`, `MANAGE_MEMBERS`, `CLOSE_MATCH_REPORT`, etc.) se resuelven con la membresía y sus roles de organización; las delegaciones menores son por **partido** (`match_officials` permite que el árbitro asignado cierre ese partido) y por **torneo** (el operador del torneo de la spec 049, en `tournament_member_roles`, solo para ver y operar el partido en vivo y cerrar el acta). La antigua `tournament_user_roles` fue **retirada** por la migración 019; la 069 crea una tabla nueva y distinta.
 - **Lectura:** `GET /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams` responde **200** con `{stage_id, version_id, assigned, unassigned}`. `assigned` son los equipos de `stage_teams` de esa fase y versión (deduplicados por `team_id` si hay varias filas en grupos); `unassigned` son los equipos del torneo con estado `registered` que no están asignados a esa fase. No mezcla asignaciones de otras versiones. Un torneo o fase inexistente o de otra organización responde **404**. Es una lectura de organización y no exige `MANAGE_TOURNAMENTS`.
 - **Asignación:** `POST /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams` con `{"team_ids": ["<uuid>", ...]}`. Admite **1 a 64** equipos y rechaza duplicados con **422** sin deduplicar. Responde **201** con `assigned` (nuevos) y `already_assigned` (preexistentes) si hay al menos una alta, **200** con `assigned=[]` si todos ya estaban, **409** si la versión no es borrador o si algún equipo no está `registered` (sin escribir ninguno), **403** sin `MANAGE_TOURNAMENTS`, **404** si el torneo o la fase no existen. El lote es **atómico todo-o-nada**.
 - **Retirada:** `DELETE /api/v1/tournaments/{tournament_id}/stages/{stage_id}/teams/{team_id}` responde **204** de forma idempotente. Precedencia: **404** torneo/fase → **409** versión publicada/archivada (aunque el equipo no estuviera asignado) → **403** sin permiso → **409** equipo no `registered` → **409** si hay un partido de la fase que lo referencie → **409** si tiene fila de `standings` en la fase (aunque no haya partidos). Si tiene varias filas `stage_teams` en la fase, se eliminan todas. No borra partidos, grupos, `phase_slots` ni `standings`.
@@ -1167,7 +1180,7 @@ El `server.log` lleva siempre la cabecera exacta `# server.log — docker compos
 
 El backend establece `app.current_organization_id` y `app.current_user_id` dentro de cada transacción. Las tablas tenant-owned tienen RLS y las vistas públicas no exponen documentos ni fechas de nacimiento.
 
-La autorización efectiva es **RBAC por organización** (roles y permisos de la membresía) más el ámbito menor de **`match_officials`** por partido. No hay roles por torneo: `tournament_user_roles` fue retirada por la 019. La inmutabilidad de versiones publicadas se refuerza con triggers; el conflicto de estructura usa `ZZ409` y la API responde **409** sin comparar el texto.
+La autorización efectiva es **RBAC por organización** (roles y permisos de la membresía) más el ámbito menor de **`match_officials`** por partido y el **operador del torneo** (spec 049, `tournament_member_roles`, migración 069), siempre aditivos. La antigua `tournament_user_roles` fue retirada por la 019. La inmutabilidad de versiones publicadas se refuerza con triggers; el conflicto de estructura usa `ZZ409` y la API responde **409** sin comparar el texto.
 
 Toda escritura valida `Origin` y `Referer` **por separado**: sin ninguna de las dos se admite (renderizado en servidor y clientes externos); si cualquiera está presente y no es un origen permitido, responde **403**, aunque la otra sí lo esté. Un `Referer` vacío o no parseable también se rechaza. Un proxy que reescriba `Referer` a un host interno debe permitir ese origen o retirar la cabecera; de lo contrario sus escrituras serán rechazadas.
 

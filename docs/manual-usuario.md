@@ -246,6 +246,18 @@ Cada descarga de las plantillas queda en la auditoría de la organización («Pl
 
 **Acta de un partido:** en la operación de un partido terminado o resuelto administrativamente y con el resultado confirmado aparece «Descargar acta (CSV)». Tras una rectificación sale la última versión publicada. En un partido en juego, suspendido o sin confirmar el botón no aparece.
 
+### Equipo del torneo (spec 049)
+
+Cada torneo del Workspace tiene la entrada «Equipo del torneo» en su menú. Ahí se ve quién es **operador del torneo**: en los partidos de ese torneo puede ver y operar el partido en vivo y cerrar el acta, aunque su rol en la organización no se lo permita (por ejemplo, un observador). No puede cambiar las reglas, los equipos, las plantillas, el calendario, los oficiales ni la publicación, ni resolver sanciones o rectificaciones. Sigue viendo los mismos torneos que antes.
+
+1. Cualquier miembro ve la tabla con el nombre, el rol en la organización y el estado de cada operador; no se muestran correos.
+2. El dueño y los administradores eligen un miembro activo en «Miembro que asignar» y pulsan «Asignar». Asignar dos veces a la misma persona no la duplica.
+3. Si su rol en la organización ya le permite operar todos los partidos (dueño, administrador u operador), la fila avisa de que «No añade permisos».
+4. «Retirar» pide confirmación. La persona deja de poder operar los partidos del torneo desde su siguiente acción, también en el partido en vivo que tenga abierto.
+5. Un miembro desactivado no puede operar; si se reactiva, recupera sus asignaciones.
+
+Cada asignación y retirada queda en la auditoría de la organización («Operador del torneo asignado» / «Operador del torneo retirado», con el nombre del miembro). La vista pública no cambia.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.
