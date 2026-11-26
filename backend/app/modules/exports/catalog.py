@@ -110,6 +110,12 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "walkover": ("W.O.", "Walkover"),
         "administrative": ("Administrativa", "Administrative"),
     },
+    "walkover_reason": {
+        "no_show": ("Incomparecencia", "No-show"),
+        "withdrawal": ("Retirada", "Withdrawal"),
+        "insufficient_players": ("Jugadores insuficientes", "Insufficient players"),
+        "sanction": ("Sanción", "Sanction"),
+    },
     "lineup_role": {
         "starter": ("Titular", "Starter"),
         "substitute": ("Suplente", "Substitute"),

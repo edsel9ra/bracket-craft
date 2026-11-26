@@ -47,7 +47,8 @@ def _iso_utc(value: datetime | None) -> str | None:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _is_closed(match: Mapping[str, Any]) -> bool:
+def is_closed(match: Mapping[str, Any]) -> bool:
+    """Partido cerrado (D7): finalizado o resuelto administrativamente, con el resultado confirmado."""
     return match.get("status") in CLOSED_STATUSES and bool(match.get("result_confirmed"))
 
 
@@ -92,7 +93,7 @@ def calendar_rows(matches: Iterable[Mapping[str, Any]], lang: str) -> list[Row]:
 
     result: list[Row] = []
     for m in sorted(matches, key=sort_key):
-        closed = _is_closed(m)
+        closed = is_closed(m)
         score = [
             m.get(key) if closed else None
             for key in ("home_score", "away_score", "home_penalties", "away_penalties")
@@ -234,9 +235,11 @@ def match_report_rows(
         rows.append([section["result"], match.get("away_team_name"), None, None, penalties, None,
                      match["away_penalties"]])
     resolution = match.get("resolution_type")
+    reason = match.get("resolution_reason")
+    if resolution == "walkover" and reason:
+        reason = label("walkover_reason", reason, lang)
     rows.append([section["result"], None, None, None,
-                 label("resolution", resolution, lang) if resolution else None, None,
-                 match.get("resolution_reason")])
+                 label("resolution", resolution, lang) if resolution else None, None, reason])
 
     for official in officials:
         rows.append([section["official"], None, None, official.get("full_name"),

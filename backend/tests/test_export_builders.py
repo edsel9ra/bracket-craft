@@ -413,11 +413,18 @@ def test_match_report_rows_add_penalties():
 
 
 def test_walkover_report_has_result_and_reason_without_events():
-    match = _report_match(resolution_type="walkover", home_score=3, away_score=0,
-                          resolution_reason="El visitante no se presentó")
+    match = _report_match(resolution_type="walkover", home_score=3, away_score=0, resolution_reason="no_show")
     rows = builders.match_report_rows(match, OFFICIALS, LINEUP, EVENTS, PLAYERS, "es")
-    assert ["Resultado", None, None, None, "W.O.", None, "El visitante no se presentó"] in rows
+    assert ["Resultado", None, None, None, "W.O.", None, "Incomparecencia"] in rows
     assert not [row for row in rows if row[0] == "Hecho"]
+    english = builders.match_report_rows(match, [], [], EVENTS, PLAYERS, "en")
+    assert english[-1] == ["Result", None, None, None, "Walkover", None, "No-show"]
+
+
+def test_administrative_reason_is_kept_as_written():
+    match = _report_match(resolution_type="administrative", resolution_reason="no_show en el acta")
+    rows = builders.match_report_rows(match, [], [], [], {}, "es")
+    assert rows[-1] == ["Resultado", None, None, None, "Administrativa", None, "no_show en el acta"]
 
 
 def test_match_report_rows_tolerate_unknown_players_and_red_card_without_type():

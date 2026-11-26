@@ -25,6 +25,10 @@ class ExportNotFound(Exception):
     """Torneo o partido inexistente o de otra organización (RF-005)."""
 
 
+class MatchNotClosed(Exception):
+    """El acta solo se exporta de un partido cerrado (RF-006, D7)."""
+
+
 TOURNAMENT_SQL = text("""
     SELECT id, published_version_id
     FROM tournaments
@@ -138,6 +142,56 @@ ROSTERS_SQL = text("""
     LIMIT :limit
 """)
 
+REPORT_MATCH_SQL = text("""
+    SELECT m.id, m.tournament_id, m.status, m.result_confirmed, m.home_team_id, m.away_team_id,
+           home.name AS home_team_name, away.name AS away_team_name, r.resolution_type,
+           r.resolution_reason, r.home_score, r.away_score, r.home_penalties, r.away_penalties
+    FROM matches m
+    JOIN v_match_current_report r ON r.match_id = m.id AND r.organization_id = m.organization_id
+    LEFT JOIN teams home ON home.id = m.home_team_id AND home.organization_id = m.organization_id
+    LEFT JOIN teams away ON away.id = m.away_team_id AND away.organization_id = m.organization_id
+    WHERE m.id = :match_id AND m.organization_id = :organization_id
+""")
+
+# Solo nombre y función: nunca el correo del oficial (RF-004).
+REPORT_OFFICIALS_SQL = text("""
+    SELECT u.full_name, mo.official_role AS role
+    FROM match_officials mo
+    JOIN organization_users ou ON ou.id = mo.organization_user_id AND ou.organization_id = mo.organization_id
+    JOIN users u ON u.id = ou.user_id
+    WHERE mo.match_id = :match_id AND mo.organization_id = :organization_id
+    ORDER BY array_position(ARRAY['main_referee', 'assistant_referee_1', 'assistant_referee_2',
+                                  'fourth_official', 'match_commissioner']::varchar[], mo.official_role),
+             u.full_name, mo.id
+""")
+
+REPORT_LINEUP_SQL = text("""
+    SELECT mr.team_id, mr.player_id, mr.role, r.dorsal_number, p.first_name, p.last_name
+    FROM match_rosters mr
+    JOIN rosters r ON r.id = mr.roster_id AND r.organization_id = mr.organization_id
+    JOIN players p ON p.id = mr.player_id AND p.organization_id = mr.organization_id
+    WHERE mr.match_id = :match_id AND mr.organization_id = :organization_id AND mr.is_valid
+""")
+
+# Jugadores de los dos equipos, para nombrar los hechos; la inscripción vigente primero.
+REPORT_PLAYERS_SQL = text("""
+    SELECT r.player_id, r.dorsal_number, p.first_name, p.last_name
+    FROM rosters r
+    JOIN players p ON p.id = r.player_id AND p.organization_id = r.organization_id
+    WHERE r.organization_id = :organization_id AND r.tournament_id = :tournament_id
+      AND r.team_id = ANY(CAST(:team_ids AS UUID[]))
+    ORDER BY r.is_active DESC, r.valid_from DESC, r.id
+""")
+
+# Hechos de la versión vigente del acta, sin anulados ni borrador en vivo (CL-2).
+REPORT_EVENTS_SQL = text("""
+    SELECT e.id, ms.segment_number, e.team_id, e.player_id, e.event_type, e.minute, e.added_minute,
+           e.assist_player_id, e.player_in_id, e.metadata
+    FROM v_match_current_events e
+    LEFT JOIN match_segments ms ON ms.id = e.segment_id AND ms.organization_id = e.organization_id
+    WHERE e.match_id = :match_id AND e.organization_id = :organization_id
+""")
+
 TEAMS_SQL = text("""
     SELECT tt.team_id, t.name, t.short_code
     FROM tournament_teams tt
@@ -172,6 +226,34 @@ class ExportService:
             if version_id is not None:
                 params["version_id"] = str(version_id)
                 rows = await self._READERS[kind](self, params, lang)
+            return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+
+    async def export_match_report(self, context, match_id: UUID, lang: str) -> bytes:
+        header = catalog.header(catalog.REPORT_KIND, lang)
+        async with self.db.begin():
+            await set_rls_context(self.db, context.organization_id, context.user_id)
+            params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
+            match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
+            if match is None:
+                raise ExportNotFound
+            if not builders.is_closed(match):
+                raise MatchNotClosed
+            officials = await self._rows(REPORT_OFFICIALS_SQL, params)
+            lineup = await self._rows(REPORT_LINEUP_SQL, params)
+            team_ids = [str(team) for team in (match["home_team_id"], match["away_team_id"]) if team]
+            players: dict[Any, dict[str, Any]] = {}
+            for row in await self._rows(
+                REPORT_PLAYERS_SQL,
+                {**params, "tournament_id": str(match["tournament_id"]), "team_ids": team_ids},
+            ):
+                players.setdefault(row["player_id"], row)
+            # La alineación lleva el dorsal de la inscripción con la que jugó.
+            for row in lineup:
+                players[row["player_id"]] = row
+            events: list[dict[str, Any]] = []
+            if match["resolution_type"] != "walkover":
+                events = await self._rows(REPORT_EVENTS_SQL, params)
+            rows = builders.match_report_rows(match, officials, lineup, events, players, lang)
             return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
 
     async def _rosters(self, params, lang) -> list[list[Any]]:

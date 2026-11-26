@@ -93,6 +93,8 @@ def test_columns_never_include_forbidden_fields():
         ("report_section", "event", "Hecho", "Event"),
         ("roster_status", "retired", "Retirado", "Withdrawn"),
         ("yes_no", "yes", "Sí", "Yes"),
+        ("walkover_reason", "no_show", "Incomparecencia", "No-show"),
+        ("walkover_reason", "insufficient_players", "Jugadores insuficientes", "Insufficient players"),
     ],
 )
 def test_labels_are_translated(group, code, es, en):
@@ -108,6 +110,12 @@ def test_label_groups_cover_the_database_catalogs():
     assert set(catalog.LABELS["official_role"]) == {
         "main_referee", "assistant_referee_1", "assistant_referee_2", "fourth_official", "match_commissioner"}
     assert set(catalog.LABELS["resolution"]) == {"regular", "extra_time", "penalties", "walkover", "administrative"}
+    assert set(catalog.LABELS["walkover_reason"]) == {
+        "no_show",
+        "withdrawal",
+        "insufficient_players",
+        "sanction",
+    }
     assert set(catalog.LABELS["report_section"]) == {"result", "official", "lineup", "event"}
 
 

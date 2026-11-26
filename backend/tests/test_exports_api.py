@@ -36,6 +36,8 @@ class Exports:
     stranger: AuthContext
     match: object
     foreign_tournament_id: object
+    live_match_id: object
+    foreign_match_id: object
     context: AuthContext | None = None
 
 
@@ -49,10 +51,10 @@ async def exports(database_admin_url):
             # Un partido en juego en la versión ya publicada: la base de datos de prueba
             # desactiva sus triggers solo para insertarlo (la estructura publicada es inmutable).
             await admin.execute("SET session_replication_role = replica")
-            await admin.execute(
+            live_match_id = await admin.fetchval(
                 """INSERT INTO matches (organization_id, tournament_id, tournament_version_id, stage_id,
                        home_team_id, away_team_id, status, matchday, match_date)
-                   VALUES ($1,$2,$3,$4,$6,$5,'live',2,'2026-12-01T15:00:00-05:00')""",
+                   VALUES ($1,$2,$3,$4,$6,$5,'live',2,'2026-12-01T15:00:00-05:00') RETURNING id""",
                 owner.organization_id, match.tournament_id, match.version_id, match.stage_id,
                 match.home_team_id, match.away_team_id)
             await admin.execute("SET session_replication_role = DEFAULT")
@@ -65,7 +67,8 @@ async def exports(database_admin_url):
                 async with AsyncSession(engine, expire_on_commit=False) as session:
                     yield session
 
-            state = Exports(None, admin, owner, viewer, stranger, match, foreign.tournament_id, owner)
+            state = Exports(None, admin, owner, viewer, stranger, match, foreign.tournament_id,
+                            live_match_id, foreign.match_id, owner)
 
             async def auth_context():
                 return state.context
@@ -336,3 +339,133 @@ async def test_failed_roster_exports_leave_no_audit_entry(exports, monkeypatch):
     too_large = await download(exports, "rosters")
     assert (too_large.status_code, too_large.json()) == (422, {"detail": "EXPORT_TOO_LARGE"})
     assert await roster_audits(exports.admin) == []
+
+
+# ---------------------------------------------------------------- acta (T5)
+
+MATCH_NOT_FOUND = {"detail": "Partido no encontrado"}
+
+
+async def download_report(exports, match_id=None, lang=None):
+    params = {"lang": lang} if lang else {}
+    return await exports.client.get(f"/api/v1/matches/{match_id or exports.match.match_id}/export", params=params)
+
+
+def section(rows, name):
+    return [row for row in rows[1:] if row[0] == name]
+
+
+async def test_report_route_is_registered():
+    routes = {(path, method) for path, route in walk_routes(api.routes) for method in route.methods}
+    assert ("/api/v1/matches/{match_id}/export", "GET") in routes
+
+
+async def test_report_of_a_closed_match_has_result_lineup_and_events(exports):
+    names = await team_names(exports)
+    home, away = names[exports.match.home_team_id][0], names[exports.match.away_team_id][0]
+    response = await download_report(exports)
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["cache-control"] == "no-store"
+    short = str(exports.match.match_id)[:8]
+    assert response.headers["content-disposition"] == f'attachment; filename="match-report-{short}.csv"'
+    rows = parse(response)
+    assert rows[0] == catalog.header(catalog.REPORT_KIND, "es")
+    assert section(rows, "Resultado") == [
+        ["Resultado", home, "", "", "Local", "", "1"],
+        ["Resultado", away, "", "", "Visitante", "", "0"],
+        ["Resultado", "", "", "", "Tiempo reglamentario", "", ""],
+    ]
+    valid = await exports.admin.fetchval(
+        "SELECT count(*) FROM match_rosters WHERE match_id=$1 AND is_valid", exports.match.match_id)
+    lineup = section(rows, "Alineación")
+    assert len(lineup) == valid and lineup[0][1] == home
+    scorer = await exports.admin.fetchrow(
+        "SELECT first_name, last_name FROM players WHERE id=$1", exports.match.home_scorer_id)
+    events = section(rows, "Hecho")
+    assert [(row[1], row[3], row[4], row[5]) for row in events] == [
+        (home, f"{scorer['first_name']} {scorer['last_name']}", "Gol", "30"),
+        (away, events[1][3], "Tarjeta roja", "60"),
+    ]
+    assert events[0][2] == "9"
+
+
+async def test_report_lists_officials_without_email(exports):
+    await exports.admin.execute(
+        """INSERT INTO match_officials (organization_id, match_id, organization_user_id, official_role)
+           VALUES ($1,$2,$3,'main_referee')""",
+        exports.owner.organization_id, exports.match.match_id, exports.viewer.organization_user_id)
+    response = await download_report(exports, lang="en")
+    assert section(parse(response), "Official") == [["Official", "", "", "Olga Observadora", "Referee", "", ""]]
+    assert "observador-048@example.test" not in response.content.decode("utf-8")
+
+
+async def test_report_of_an_open_match_is_a_conflict(exports):
+    response = await download_report(exports, exports.live_match_id)
+    assert (response.status_code, response.json()) == (409, {"detail": "MATCH_NOT_CLOSED"})
+
+
+async def test_foreign_and_missing_matches_get_the_same_404(exports):
+    foreign = await download_report(exports, exports.foreign_match_id)
+    missing = await download_report(exports, uuid4())
+    assert (foreign.status_code, foreign.json()) == (404, MATCH_NOT_FOUND)
+    assert (missing.status_code, missing.json()) == (404, MATCH_NOT_FOUND)
+    exports.context = exports.stranger
+    other = await download_report(exports)
+    assert (other.status_code, other.json()) == (404, MATCH_NOT_FOUND)
+
+
+async def test_viewer_can_download_the_report(exports):
+    exports.context = exports.viewer
+    assert (await download_report(exports)).status_code == 200
+
+
+async def test_rectified_report_uses_the_current_version_without_voided_events(exports):
+    org, match_id = exports.owner.organization_id, exports.match.match_id
+    goal = await exports.admin.fetchrow(
+        "SELECT segment_id, team_id, player_id FROM match_events WHERE match_id=$1 AND event_type='goal'", match_id)
+    request = await exports.admin.fetchval(
+        """INSERT INTO match_report_rectification_requests
+               (organization_id, match_id, base_version_number, proposed_report, reason,
+                requested_by_user_id, requested_by_member_id)
+           VALUES ($1,$2,1,'{}','Corrección',$3,$4) RETURNING id""",
+        org, match_id, exports.owner.user_id, exports.owner.organization_user_id)
+    version = await exports.admin.fetchval(
+        """INSERT INTO match_report_versions
+               (organization_id, match_id, version_number, supersedes_version_number, resolution_type,
+                home_score_regular, away_score_regular, home_score, away_score, request_id, published_by_user_id)
+           VALUES ($1,$2,2,1,'regular',2,0,2,0,$3,$4) RETURNING id""",
+        org, match_id, request, exports.owner.user_id)
+    await exports.admin.execute(
+        """INSERT INTO match_report_version_events
+               (organization_id, version_id, match_id, segment_id, team_id, player_id,
+                event_type, minute, client_event_id, is_voided)
+           SELECT $1,$2,$3,$4,$5,$6,'goal',e.minute,e.client_id,e.voided
+           FROM (VALUES (70,'late',FALSE),(20,'early',FALSE),(80,'voided',TRUE)) AS e(minute, client_id, voided)""",
+        org, version, match_id, goal["segment_id"], goal["team_id"], goal["player_id"])
+    rows = parse(await download_report(exports))
+    assert [row[6] for row in section(rows, "Resultado")[:2]] == ["2", "0"]
+    assert [(row[4], row[5]) for row in section(rows, "Hecho")] == [("Gol", "20"), ("Gol", "70")]
+
+
+async def test_walkover_report_has_the_reason_and_no_events(exports):
+    await exports.admin.execute("SET session_replication_role = replica")
+    await exports.admin.execute(
+        """UPDATE matches SET status='finished', result_confirmed=TRUE, resolution_type='walkover',
+               resolution_reason='no_show', home_score_regular=3, away_score_regular=0,
+               home_score=3, away_score=0, winner_team_id=home_team_id
+           WHERE id=$1""", exports.live_match_id)
+    await exports.admin.execute("SET session_replication_role = DEFAULT")
+    rows = parse(await download_report(exports, exports.live_match_id))
+    assert section(rows, "Resultado")[-1] == ["Resultado", "", "", "", "W.O.", "", "Incomparecencia"]
+    assert section(rows, "Hecho") == []
+
+
+async def test_report_over_the_limit_fails_without_a_file(exports, monkeypatch):
+    monkeypatch.setattr(catalog, "MAX_ROWS", 1)
+    response = await download_report(exports)
+    assert (response.status_code, response.json()) == (422, {"detail": "EXPORT_TOO_LARGE"})
+
+
+async def test_report_rejects_unknown_lang(exports):
+    assert (await download_report(exports, lang="fr")).status_code == 422
