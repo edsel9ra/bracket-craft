@@ -19,8 +19,9 @@ Estado: aprobado por el usuario el 2026-11-25 («Apruebo el plan y las tareas. E
 - [x] **T5. Exportación del acta.** RF-001, RF-004–RF-006, RF-008
 - Hecho cuando: `GET /matches/{id}/export` sigue el plan (409 si no está cerrado, versión vigente tras rectificación, W.O. sin hechos, oficiales sin correo); `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_exports_api.py` pasa tras ver fallar primero los casos nuevos.
 - Evidencia (2026-11-25): primero fallaron 10 casos nuevos de `tests/test_exports_api.py` (la ruta no existía) y 4 puros del motivo del W.O.; ahora `test_exports_api.py` pasa 43/43 con PostgreSQL real y los puros 73/73. Backend sin BD 3384; `ruff check .`, Bandit y compileall limpios. El motivo del W.O. se traduce con el catálogo de la 027 (`no_show` → «Incomparecencia»/«No-show»); el de una resolución administrativa se copia tal cual. Los oficiales salen ordenados por función.
-- [ ] **T6. Validación del bloque A y PR.** Todos los RF del bloque
+- [x] **T6. Validación del bloque A y PR.** Todos los RF del bloque
 - Hecho cuando: la suite backend con BD, `ruff check .`, `bandit -r app -ll` y `python -m compileall -q app` están limpios; PR del bloque A con la CI en verde.
+- Evidencia (2026-11-25): suite backend con BD 4943 en local (sin `test_config`, por las variables de Google del `.env` local); `ruff check .`, `bandit -r app -ll` y `compileall -q app` limpios. PR #131 con la CI 7/7. Devin Review encontró que una rectificación confirmada a mitad de la descarga podía mezclar el marcador de una versión con los hechos de otra: cada exportación abre ahora su transacción en `REPEATABLE READ` (dos tests de regresión, que fallaron primero; `test_exports_api.py` 45/45).
 
 ## Bloque B — Workspace, E2E y documentación (PR apilado sobre el bloque A)
 
