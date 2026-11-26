@@ -94,6 +94,7 @@ const tournamentLinks = computed(() => {
     { key: 'configuration', label: t('shell.configuration') },
     { key: 'calendar', label: t('shell.calendar') },
     { key: 'rosters', label: t('shell.rosters') },
+    { key: 'exports', label: t('shell.exports') },
     { key: 'operation', label: t('shell.operation') },
   ];
   return sections.flatMap((section) => {

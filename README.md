@@ -730,6 +730,15 @@ def verify(secret: str, timestamp: str, body: bytes, signature: str, tolerance: 
     return hmac.compare_digest(expected, signature)
 ```
 
+## Exportaciones CSV (spec 048)
+
+Sin migración ni variables nuevas, y sin dependencias: el CSV lo genera el backend con la biblioteca estándar. Solo en el Workspace; la vista pública no cambia. Cualquier miembro (también el observador) puede descargar.
+
+- **Endpoints:** `GET /api/v1/tournaments/{id}/exports/{standings|calendar|player-stats|team-stats|rosters}?lang=es|en` y `GET /api/v1/matches/{id}/export?lang=es|en` (acta). Un torneo o partido de otra organización da el mismo 404 que uno inexistente; un tipo o idioma no válidos dan 422; el acta de un partido no cerrado (`finished`/`administrative_resolution` con `result_confirmed`) da 409 `MATCH_NOT_CLOSED`; más de 10.000 filas da 422 `EXPORT_TOO_LARGE`, sin archivo truncado.
+- **Formato:** UTF-8 con BOM, comas, CRLF, cabecera ES/EN y fechas ISO 8601 UTC. Las celdas de texto que empiezan por `=`, `+`, `-`, `@`, tabulador o retorno de carro se neutralizan con `'`; los números negativos no. `Cache-Control: no-store`.
+- **Datos:** versión publicada del torneo y acta vigente de cada partido (sin versión publicada, solo la cabecera; las plantillas no dependen de la versión). Cada exportación lee en una transacción `REPEATABLE READ` con contexto RLS, para no mezclar versiones si se confirma una rectificación a mitad de la descarga. Nunca se exportan documento, fecha de nacimiento, edad, correo, foto ni identificadores.
+- **Auditoría:** solo las plantillas dejan `EXPORT_TOURNAMENT_ROSTERS` (entidad `tournaments`, `{"row_count": n}`, sin nombres). Columnas de cada archivo: manual de usuario, «Exportaciones».
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.

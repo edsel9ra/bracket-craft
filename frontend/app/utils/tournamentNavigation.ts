@@ -2,10 +2,11 @@
 // Funciones puras: no leen el reloj, el entorno global ni el almacenamiento;
 // toda la información entra como parámetro.
 
-export type TournamentSection = 'summary' | 'configuration' | 'calendar' | 'rosters' | 'operation';
+export type TournamentSection = 'summary' | 'configuration' | 'calendar' | 'rosters' | 'exports' | 'operation';
 
 const TOURNAMENT_CALENDAR = /^\/workspace\/tournaments\/[^/]+\/calendar\/?$/;
 const TOURNAMENT_ROSTERS = /^\/workspace\/tournaments\/[^/]+\/rosters\/?$/;
+const TOURNAMENT_EXPORTS = /^\/workspace\/tournaments\/[^/]+\/exports\/?$/;
 const MATCH_DETAIL = /^\/workspace\/matches\/([^/]+)\/?$/;
 
 function pathnameOf(path: string): string {
@@ -27,6 +28,7 @@ export function tournamentSectionForPath(path: string, hash = ''): TournamentSec
   if (MATCH_DETAIL.test(pathname)) return 'operation';
   if (TOURNAMENT_CALENDAR.test(pathname)) return 'calendar';
   if (TOURNAMENT_ROSTERS.test(pathname)) return 'rosters';
+  if (TOURNAMENT_EXPORTS.test(pathname)) return 'exports';
   if (!pathname.startsWith('/workspace/tournaments/')) {
     // Fuera de un torneo no hay sección de torneo que marcar.
     return 'summary';
@@ -64,6 +66,8 @@ export function tournamentSectionHref(
       return `${base}/calendar`;
     case 'rosters':
       return `${base}/rosters`;
+    case 'exports':
+      return `${base}/exports`;
     case 'operation':
       return context.matchId ? `/workspace/matches/${context.matchId}#operacion` : null;
   }
