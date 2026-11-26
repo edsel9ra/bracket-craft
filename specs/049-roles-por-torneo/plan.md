@@ -1,6 +1,6 @@
 # Plan — Spec 049: Roles por torneo (F7)
 
-Estado: borrador, pendiente de aprobación. Spec aprobada el 2026-11-26.
+Estado: aprobado por el usuario el 2026-11-26 («Apruebo el plan y las tareas, empieza por T1»). Spec aprobada el 2026-11-26.
 
 ## 1. Resumen
 
