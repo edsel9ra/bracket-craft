@@ -281,3 +281,40 @@ def test_recovery_state_empty_and_obsolete_generation_do_not_resync():
     assert empty.state == policy.DeliveryState('new') and not empty.request_resync
     obsolete = policy.reduce_delivery_state(policy.DeliveryState('old', True), 'ALLOW', 'new', NOW)
     assert obsolete == empty
+
+
+@pytest.mark.parametrize('permission,operator,expected', [
+    ('VIEW_MATCH_LIVE_DRAFT', True, 'ALLOW'),
+    ('OPERATE_MATCH_LIVE', True, 'ALLOW'),
+    ('CLOSE_MATCH_REPORT', True, 'ALLOW'),
+    ('VIEW_MATCH_LIVE_DRAFT', False, 'DENY'),
+    ('VIEW_MATCH_LIVE_DRAFT', None, 'INDETERMINATE'),
+    ('MANAGE_TOURNAMENTS', True, 'DENY'),
+    ('VIEW_SANCTIONS', True, 'DENY'),
+])
+def test_tournament_operator_fact_mirrors_the_069_function(permission, operator, expected):
+    recipient, resource = facts()
+    rule = replace(policy.CATALOG[0], permission=permission, requires_official=True)
+    recipient = replace(recipient, tournament_operator=operator)
+    assert policy.decide_private_delivery(rule, recipient, resource, NOW) == expected
+
+
+def test_tournament_operator_fact_does_not_skip_identity_or_resource_checks():
+    recipient, resource = facts()
+    rule = replace(policy.CATALOG[0], permission='VIEW_MATCH_LIVE_DRAFT', requires_official=True)
+    recipient = replace(recipient, tournament_operator=True)
+    assert policy.decide_private_delivery(rule, replace(recipient, roles=()), resource, NOW) == 'ALLOW'
+    assert policy.decide_private_delivery(rule, replace(recipient, membership_active=False), resource, NOW) == 'DENY'
+    assert policy.decide_private_delivery(rule, recipient, replace(resource, organization_id=uuid4()), NOW) == 'DENY'
+    assert policy.decide_private_delivery(rule, recipient, replace(resource, operation_readable=False), NOW) == 'DENY'
+
+
+def test_tournament_operator_fact_defaults_to_absent():
+    recipient, _ = facts()
+    assert recipient.tournament_operator is False
+
+
+def test_tournament_operator_mirror_uses_the_catalog_permissions():
+    from app.modules.tournament_roles.catalog import TOURNAMENT_OPERATOR_PERMISSIONS
+
+    assert policy.TOURNAMENT_OPERATOR_PERMISSIONS is TOURNAMENT_OPERATOR_PERMISSIONS

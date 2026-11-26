@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
+from app.modules.tournament_roles.catalog import TOURNAMENT_OPERATOR_PERMISSIONS
+
 
 @dataclass(frozen=True)
 class ReadRule:
@@ -100,6 +102,7 @@ class RecipientFacts:
     assigned_official: bool | None
     session_expires_at: datetime | None
     jwt_expires_at: datetime | None
+    tournament_operator: bool | None = False
 
 
 @dataclass(frozen=True)
@@ -163,11 +166,17 @@ def decide_private_delivery(rule, recipient_facts, resource_facts, evaluation_ti
         checks.append(resource_facts.version_readable)
     if any(value is False for value in checks):
         return Decision.DENY
-    if any(value is not True for value in checks) or recipient_facts.roles is None:
+    if any(value is not True for value in checks):
+        return Decision.INDETERMINATE
+    operator_rule = rule.permission in TOURNAMENT_OPERATOR_PERMISSIONS
+    if operator_rule and recipient_facts.tournament_operator is True:
+        return Decision.ALLOW
+    unknown_operator = operator_rule and recipient_facts.tournament_operator is None
+    if recipient_facts.roles is None:
         return Decision.INDETERMINATE
     if not recipient_facts.roles:
-        return Decision.DENY
-    unknown_assignment = False
+        return Decision.INDETERMINATE if unknown_operator else Decision.DENY
+    unknown_assignment = unknown_operator
     for role in recipient_facts.roles:
         if rule.permission is not None and rule.permission not in role.permissions:
             continue
