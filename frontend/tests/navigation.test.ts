@@ -63,6 +63,7 @@ test('derives the active tournament section from the route', () => {
   assert.equal(tournamentSectionForPath(tournamentPath, '#equipos'), 'configuration');
   assert.equal(tournamentSectionForPath(`${tournamentPath}/calendar`), 'calendar');
   assert.equal(tournamentSectionForPath(`${tournamentPath}/rosters/`), 'rosters');
+  assert.equal(tournamentSectionForPath(`${tournamentPath}/exports`), 'exports');
   assert.equal(tournamentSectionForPath('/workspace/matches/m1'), 'operation');
   assert.equal(tournamentSectionForPath('/workspace/matches/m1#operacion'), 'operation');
 });
@@ -75,6 +76,7 @@ test('builds real tournament section links', () => {
   assert.equal(tournamentSectionHref('configuration', { tournamentId }), '/workspace/tournaments/t1#configuracion');
   assert.equal(tournamentSectionHref('calendar', { tournamentId }), '/workspace/tournaments/t1/calendar');
   assert.equal(tournamentSectionHref('rosters', { tournamentId }), '/workspace/tournaments/t1/rosters');
+  assert.equal(tournamentSectionHref('exports', { tournamentId }), '/workspace/tournaments/t1/exports');
   assert.equal(tournamentSectionHref('operation', { tournamentId }), null);
   assert.equal(
     tournamentSectionHref('operation', { tournamentId, matchId: 'm1' }),
@@ -551,8 +553,8 @@ test('the #fases anchor resolves to the configuration section without a redirect
   );
 });
 
-// RF-005: el índice conserva sus cuatro entradas de configuración más la de
-// operación condicionada, y no gana ninguna entrada «Fases».
+// RF-005: el índice conserva sus cuatro entradas de configuración, la de
+// exportaciones (048) y la de operación condicionada, sin entrada «Fases».
 test('the tournament index keeps four configuration entries and never offers phases', () => {
   const start = workspaceShell.indexOf('const tournamentLinks');
   const end = workspaceShell.indexOf('async function resolvePlatformAccess');
@@ -560,12 +562,12 @@ test('the tournament index keeps four configuration entries and never offers pha
   const block = workspaceShell.slice(start, end);
 
   const keys = [...block.matchAll(/\{ key: '([a-z]+)', label:/g)].map((match) => match[1] ?? '');
-  assert.deepEqual(keys, ['summary', 'configuration', 'calendar', 'rosters', 'operation']);
+  assert.deepEqual(keys, ['summary', 'configuration', 'calendar', 'rosters', 'exports', 'operation']);
 
   const context = { tournamentId: 't1' };
   assert.deepEqual(
     keys.filter((key) => tournamentSectionHref(key as TournamentSection, context) !== null),
-    ['summary', 'configuration', 'calendar', 'rosters'],
+    ['summary', 'configuration', 'calendar', 'rosters', 'exports'],
   );
   assert.equal(
     tournamentSectionHref('operation', { ...context, matchId: 'm1' }),
