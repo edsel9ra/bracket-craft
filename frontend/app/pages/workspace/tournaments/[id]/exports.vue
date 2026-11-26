@@ -6,6 +6,7 @@ import Surface from '~/components/ui/Surface.vue';
 import {
   AUDITED_EXPORT_KINDS, TOURNAMENT_EXPORT_KINDS, exportDescriptionKey, exportTitleKey, type TournamentExportKind,
 } from '~/utils/exports';
+import { keepFocusDuring } from '~/utils/exportDownload';
 
 // Exportaciones CSV del torneo (spec 048, RF-001, RF-007): cualquier miembro, solo en el Workspace.
 definePageMeta({ middleware: 'auth' });
@@ -25,8 +26,8 @@ const auditId = (kind: TournamentExportKind) => `export-${kind}-audit`;
 const audited = (kind: TournamentExportKind) => AUDITED_EXPORT_KINDS.includes(kind);
 const describedBy = (kind: TournamentExportKind) => (audited(kind) ? `${titleId(kind)} ${auditId(kind)}` : titleId(kind));
 
-function download(kind: TournamentExportKind) {
-  void downloadTournament(tournamentId, kind, tournamentName.value);
+function download(kind: TournamentExportKind, event: MouseEvent) {
+  void keepFocusDuring(event.currentTarget, () => downloadTournament(tournamentId, kind, tournamentName.value));
 }
 </script>
 
@@ -56,7 +57,7 @@ function download(kind: TournamentExportKind) {
             </div>
             <Button
               variant="secondary" :aria-describedby="describedBy(kind)"
-              :busy="busy === kind" :disabled="Boolean(busy) && busy !== kind" @click="download(kind)"
+              :busy="busy === kind" :disabled="Boolean(busy) && busy !== kind" @click="download(kind, $event)"
             >
               {{ t(busy === kind ? 'export.downloading' : 'export.download') }}
             </Button>

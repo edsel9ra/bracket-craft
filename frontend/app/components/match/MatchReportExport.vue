@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import Button from '~/components/ui/Button.vue';
+import { keepFocusDuring } from '~/utils/exportDownload';
 
 // Descarga del acta de un partido cerrado (spec 048, RF-001, RF-006, D7).
 const props = defineProps<{
@@ -10,9 +11,9 @@ const { t } = useI18n();
 const { busy, error, notice, downloadMatchReport } = useExports();
 const closed = computed(() => ['finished', 'administrative_resolution'].includes(props.match.status) && props.match.result_confirmed);
 
-function download() {
+function download(event: MouseEvent) {
   const match = props.match;
-  void downloadMatchReport(match.id, `${match.home_team_name || ''} vs ${match.away_team_name || ''}`);
+  void keepFocusDuring(event.currentTarget, () => downloadMatchReport(match.id, `${match.home_team_name || ''} vs ${match.away_team_name || ''}`));
 }
 </script>
 

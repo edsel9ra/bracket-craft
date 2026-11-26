@@ -225,6 +225,27 @@ El owner y el administrador (permiso `MANAGE_WEBHOOKS`) ven «Webhooks» en el m
 
 Solo se envían avisos de torneos públicos, con los datos que ya muestra la vista pública: nunca el nombre de un jugador. Si tu receptor no responde con un código 2xx, se reintenta hasta completar 6 intentos en unas 3 horas, con el mismo identificador de entrega; el webhook no se desactiva solo. Cada cambio queda en la auditoría con el dominio de la URL, sin la ruta ni el secreto. El formato de la firma está en el README.
 
+### Exportaciones (spec 048)
+
+Todos los miembros, también el observador, ven «Exportaciones» en el menú de cada torneo del Workspace. Cada archivo es un CSV (UTF-8, separado por comas) que se abre con los acentos correctos en las hojas de cálculo, con la cabecera en el idioma de la interfaz y las fechas en UTC. La vista pública no tiene descargas.
+
+1. Pulsa «Descargar CSV» en el archivo que quieras. Mientras se descarga, los botones quedan deshabilitados; al terminar aparece «Descarga lista» con el nombre del archivo (tipo, torneo o partido y fecha).
+2. Los datos salen de la versión publicada del torneo y del acta vigente de cada partido. Si el torneo no tiene versión publicada, el archivo trae solo la cabecera.
+3. Si un archivo pasa de 10.000 filas no se genera y se muestra un aviso; nunca se descarga cortado.
+
+| Archivo | Columnas |
+|---|---|
+| Clasificación | Fase, Grupo, Posición, Equipo, PJ, G, E, P, GF, GC, DG, Puntos, Juego limpio |
+| Calendario | Fase, Grupo, Llave, Jornada, Fecha (UTC), Local, Visitante, Estado, Goles local, Goles visitante, Penales local, Penales visitante (el marcador solo en partidos cerrados) |
+| Estadísticas de jugadores | Posición, Nombre, Apellidos, Equipo, Goles, Amarillas, Rojas, Porterías imbatidas, Partidos jugados |
+| Estadísticas de equipos | Posición, Equipo, Código, GF, GC, Porterías imbatidas, Juego limpio |
+| Plantillas | Equipo, Dorsal, Nombre, Apellidos, Estado (activo/retirado), Consentimiento de imagen (sí/no) |
+| Acta | Sección (resultado, oficiales, alineación, hechos), Equipo, Dorsal, Jugador, Función o tipo, Minuto, Detalle |
+
+Cada descarga de las plantillas queda en la auditoría de la organización («Plantillas descargadas (CSV)», con el número de filas y sin nombres); las demás no se registran. Ningún archivo lleva documento, fecha de nacimiento, edad, correo ni fotos.
+
+**Acta de un partido:** en la operación de un partido terminado o resuelto administrativamente y con el resultado confirmado aparece «Descargar acta (CSV)». Tras una rectificación sale la última versión publicada. En un partido en juego, suspendido o sin confirmar el botón no aparece.
+
 ## 8. Consulta pública
 
 - Portada `/` lista torneos públicos. Detalle `/tournaments/{id}` muestra fases/grupos, clasificación, partidos con alineaciones publicadas y formaciones publicadas.

@@ -7,6 +7,7 @@ import * as vue from 'vue';
 import { compileScript, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import * as helpers from '../app/utils/exports.ts';
+import * as downloads from '../app/utils/exportDownload.ts';
 
 const read = (path: string) => readFileSync(new URL(`../app/${path}`, import.meta.url), 'utf8');
 const t = (key: string, values?: Record<string, unknown>) => values ? `${key}${JSON.stringify(values)}` : key;
@@ -24,6 +25,7 @@ function compile(path: string, globals: Record<string, unknown>): vue.Component 
   runInNewContext(javascript, { exports, ...vue, ...globals, require: (spec: string) => {
     if (spec === 'vue') return vue;
     if (spec.endsWith('utils/exports')) return helpers;
+    if (spec.endsWith('utils/exportDownload')) return downloads;
     if (spec.endsWith('Button.vue')) return { __esModule: true, default: button };
     if (spec.endsWith('.vue')) return { __esModule: true, default: passthrough };
     throw new Error(`unexpected import ${spec}`);
@@ -85,7 +87,7 @@ test('the notice and the error are announced', async () => {
 
 test('a button downloads its file with the tournament id and name', async () => {
   const source = read('pages/workspace/tournaments/[id]/exports.vue');
-  assert.match(source, /downloadTournament\(tournamentId, kind, tournamentName\.value\)/);
+  assert.match(source, /keepFocusDuring\(event\.currentTarget, \(\) => downloadTournament\(tournamentId, kind, tournamentName\.value\)\)/);
   assert.doesNotMatch(source, /\$fetch|fetch\(|request\(/);
 });
 
