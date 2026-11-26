@@ -47,6 +47,7 @@ _MATCH_CLOSE = (
 )
 _OFFICIAL = (_field("member", "member", "organization_user_id"), _field("official_role", "code"))
 _PUBLICATION = (_field("is_public", "boolean"),)
+_TOURNAMENT_ROLE = (_field("member", "member", "organization_user_id"), _field("role_code", "code"))
 _WEBHOOK = (_field("host", "text"), _field("event_types", "codes"), _field("is_active", "boolean"))
 
 CATALOG: dict[str, ActionSpec] = {
@@ -88,6 +89,8 @@ CATALOG: dict[str, ActionSpec] = {
     "ROTATE_WEBHOOK_SECRET": ActionSpec("organization_webhooks", (_field("host", "text"),)),
     "DELETE_WEBHOOK": ActionSpec("organization_webhooks", (_field("host", "text"),)),
     "EXPORT_TOURNAMENT_ROSTERS": ActionSpec("tournaments", (_field("row_count", "number"),)),
+    "ASSIGN_TOURNAMENT_OPERATOR": ActionSpec("tournaments", _TOURNAMENT_ROLE),
+    "REMOVE_TOURNAMENT_OPERATOR": ActionSpec("tournaments", _TOURNAMENT_ROLE),
 }
 
 

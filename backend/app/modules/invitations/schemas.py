@@ -63,6 +63,7 @@ class OrganizationAccessResponse(BaseModel):
     user_id: UUID
     role_code: str
     permissions: list[str]
+    operated_tournament_ids: list[UUID] = []
 
 
 class MemberResponse(BaseModel):

@@ -3,6 +3,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.tournament_roles.catalog import TOURNAMENT_OPERATOR_PERMISSIONS
+
 
 async def require_permission(
     db: AsyncSession,
@@ -16,8 +18,11 @@ async def require_permission(
     Authorization resolves by organization membership
     (``organization_user_roles``). The optional smaller scope is the match:
     ``match_id`` allows the roles that operate matches or a member assigned as
-    an official of that match through ``match_officials``. There is no
-    tournament scope.
+    an official of that match through ``match_officials``. With ``match_id``
+    and without ``role_codes``, the three match permissions are also granted to
+    the tournament operator of the match's tournament (spec 049), resolved by
+    ``tournament_operator_allows`` from the match itself: there is no
+    ``tournament_id`` parameter.
     """
     query = text("""
         SELECT 1
@@ -55,8 +60,23 @@ async def require_permission(
             "role_codes": list(role_codes) if role_codes else None,
         },
     )
-    if result.scalar_one_or_none() is None:
-        raise PermissionError(f"Permiso requerido: {permission}")
+    if result.scalar_one_or_none() is not None:
+        return
+    if match_id is not None and role_codes is None and permission in TOURNAMENT_OPERATOR_PERMISSIONS:
+        allowed = await db.execute(
+            text(
+                "SELECT public.tournament_operator_allows("
+                "CAST(:organization_id AS UUID), CAST(:match_id AS UUID), :permission)"
+            ),
+            {
+                "organization_id": str(context.organization_id),
+                "match_id": str(match_id),
+                "permission": permission,
+            },
+        )
+        if allowed.scalar_one_or_none() is True:
+            return
+    raise PermissionError(f"Permiso requerido: {permission}")
 
 
 async def require_administrative_resolution(

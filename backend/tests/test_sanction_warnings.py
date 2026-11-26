@@ -48,6 +48,7 @@ async def test_private_warning_is_minimal_read_only_and_previews_pending(readers
     assert await readers.admin.fetchval("SELECT count(*) FROM sanction_match_eligibility") == 0
 
 
+@pytest.mark.parametrize("readers", [{"last": 69}], indirect=True)
 async def test_warning_rejects_non_operator_and_foreign_match(readers, warning_client):
     foreign = MATCH.replace("31000000-", "41000000-")
     assert (await warning_client.get(f"/api/v1/matches/{foreign}/suspension-warnings")).status_code == 404

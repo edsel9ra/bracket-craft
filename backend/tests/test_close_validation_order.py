@@ -312,6 +312,8 @@ class CloseOrderSession:
             # Una sola consulta resuelve la conjunción: permiso **y** (rol
             # operativo **o** asignación como oficial). Sin fila = 403.
             return Result(scalar=1 if self.allowed else None)
+        if "tournament_operator_allows" in sql:
+            return Result(scalar=False)
         if "SELECT id, tournament_version_id" in sql and "FROM stages" in sql:
             return Result(rows=[{"id": STAGE_ID, "tournament_version_id": VERSION_ID}])
         if "SELECT status" in sql and "FROM tournament_versions" in sql:

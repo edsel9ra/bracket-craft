@@ -88,9 +88,13 @@ def test_walkover_and_administrative_resolution_show_reason():
     ("ROTATE_WEBHOOK_SECRET", {"host": "h.example", "secret": "whsec_x"}, {"host": "h.example"}),
     ("DELETE_WEBHOOK", {"host": "h.example", "url": "https://h.example/p"}, {"host": "h.example"}),
     ("EXPORT_TOURNAMENT_ROSTERS", {"row_count": 12, "players": ["Ana Ruiz"]}, {"row_count": 12}),
+    ("ASSIGN_TOURNAMENT_OPERATOR", {"organization_user_id": MEMBER, "role_code": "tournament_operator",
+                                    "email": "ana@example.test"}, {"member": "Ana Ruiz", "role_code": "tournament_operator"}),
+    ("REMOVE_TOURNAMENT_OPERATOR", {"organization_user_id": STRANGER, "role_code": "tournament_operator"},
+     {"role_code": "tournament_operator"}),
 ])
 def test_projection_per_action(action, payload, expected):
-    assert as_dict(project_details(action, payload, {})) == expected
+    assert as_dict(project_details(action, payload, {MEMBER: "Ana Ruiz"})) == expected
 
 
 def test_member_fields_use_member_names_and_skip_foreign_ids():
@@ -191,3 +195,9 @@ def test_inventory_every_written_action_is_cataloged():
     written = written_actions()
     assert written - set(CATALOG) == set()
     assert set(CATALOG) - written == set()
+
+
+@pytest.mark.parametrize("action", ["ASSIGN_TOURNAMENT_OPERATOR", "REMOVE_TOURNAMENT_OPERATOR"])
+def test_tournament_operator_actions_use_the_tournament_entity_and_member_names(action):
+    assert CATALOG[action].entity_type == "tournaments"
+    assert referenced_member_ids(action, {"organization_user_id": MEMBER, "role_code": "tournament_operator"}) == {MEMBER}

@@ -111,6 +111,7 @@ async def test_assigned_official_with_only_close_permission_still_closes(databas
 
 
 @pytest.mark.parametrize("assignment,permission", [("target", True), ("other", True), ("none", True), ("target", False)])
+@pytest.mark.parametrize("readers", [{"last": 69}], indirect=True)
 async def test_official_opening_and_reader_are_limited_to_assigned_match(readers, assignment, permission):
     await readers.admin.execute("""UPDATE roles SET role_definition_id=(SELECT id FROM role_definitions WHERE code='referee'),
         permissions=$1::jsonb""", json.dumps(["CLOSE_MATCH_REPORT"] if permission else []))
