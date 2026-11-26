@@ -4,8 +4,9 @@ Estado: aprobado por el usuario el 2026-11-26 («Apruebo el plan y las tareas, e
 
 ## Bloque A — backend (PR apilado sobre el #133)
 
-- [ ] **T1. Migración 069.** RF-001, RF-005–RF-007, RF-011
+- [x] **T1. Migración 069.** RF-001, RF-005–RF-007, RF-011
 - Hecho cuando: `069_tournament_roles.sql` sigue el plan §3; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_migration_069.py` pasa tras ver fallar primero los tests nuevos; reaplicar la 069 no cambia nada; `sh -n infra/postgres/migrate.sh`.
+- Evidencia (2026-11-26): `tests/test_migration_069.py` falló primero (`UndefinedTableError: tournament_member_roles`) y ahora pasa 16/16 (volumen limpio y migrado desde la 068, reaplicación idempotente, RLS forzado, privilegios sin `UPDATE`, aislamiento, FK compuestas, unicidad, rol cerrado, cascadas, desactivación y reactivación, `match_live_has_permission` y `sanction_can_operate_match`). Con la 069 aplicada pasan 629 tests de partido en vivo, sanciones y migraciones 040/056. `sh -n infra/postgres/migrate.sh`, `ruff check .`, `bandit -r app -ll` y `compileall` limpios.
 - [ ] **T2. Catálogo y autorización por partido.** RF-001, RF-001a, RF-002, RF-008, RF-009
 - Hecho cuando: `tournament_roles/catalog.py` y la rama de `require_permission` siguen D2 y D4; `cd backend && RUN_DATABASE_TESTS=1 pytest -q tests/test_tournament_roles_catalog.py tests/test_tournament_roles_authorization.py tests/test_permissions_signature.py` pasa tras ver fallar primero los casos nuevos (alineación, segmentos y cierre con sanción en A; 403 en B, en la resolución administrativa y en `MANAGE_TOURNAMENTS`; desactivado y reactivado).
 - [ ] **T3. En vivo y tiempo real.** RF-004, RF-008, RF-010
