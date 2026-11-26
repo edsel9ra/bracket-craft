@@ -623,9 +623,29 @@ async def current_access(
             },
         )
         access = result.mappings().one_or_none()
+        operated = await db.execute(
+            text("""
+                SELECT t.tournament_id
+                FROM tournament_member_roles t
+                JOIN organization_users ou
+                  ON ou.id = t.organization_user_id
+                 AND ou.organization_id = t.organization_id
+                 AND ou.is_active
+                WHERE t.organization_id = :organization_id
+                  AND t.organization_user_id = :organization_user_id
+                  AND t.role_code = 'tournament_operator'
+                ORDER BY t.tournament_id
+            """),
+            {
+                "organization_id": str(context.organization_id),
+                "organization_user_id": str(context.organization_user_id),
+            },
+        )
+        operated_tournament_ids = list(operated.scalars().all())
     if access is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Rol activo no encontrado")
     return {
+        "operated_tournament_ids": operated_tournament_ids,
         "organization_id": context.organization_id,
         "organization_user_id": context.organization_user_id,
         "user_id": context.user_id,
