@@ -4,7 +4,7 @@ import Button from '~/components/ui/Button.vue';
 import PageHeader from '~/components/ui/PageHeader.vue';
 import Surface from '~/components/ui/Surface.vue';
 import {
-  AUDITED_EXPORT_KINDS, TOURNAMENT_EXPORT_KINDS, exportDescriptionKey, exportTitleKey, type TournamentExportKind,
+  AUDITED_EXPORT_KINDS, TOURNAMENT_EXPORT_KINDS, exportDescriptionKey, exportSubject, exportTitleKey, type TournamentExportKind,
 } from '~/utils/exports';
 import { keepFocusDuring } from '~/utils/exportDownload';
 
@@ -27,7 +27,7 @@ const audited = (kind: TournamentExportKind) => AUDITED_EXPORT_KINDS.includes(ki
 const describedBy = (kind: TournamentExportKind) => (audited(kind) ? `${titleId(kind)} ${auditId(kind)}` : titleId(kind));
 
 function download(kind: TournamentExportKind, event: MouseEvent) {
-  void keepFocusDuring(event.currentTarget, () => downloadTournament(tournamentId, kind, tournamentName.value));
+  void keepFocusDuring(event.currentTarget, () => downloadTournament(tournamentId, kind, exportSubject(tournamentName.value, tournamentId)));
 }
 </script>
 

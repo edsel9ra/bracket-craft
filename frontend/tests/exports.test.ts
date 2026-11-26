@@ -146,3 +146,13 @@ test('every export key the helpers produce exists in both catalogs', async () =>
   assert.deepEqual(used.filter((key) => !spanishKeys.has(key)), []);
   assert.deepEqual(used.filter((key) => !englishKeys.has(key)), []);
 });
+
+test('a file is named after the tournament id when its name is not loaded', () => {
+  assert.equal(helpers.exportSubject('Copa Ñandú', '1a2b3c4d-0000-4000-8000-000000000000'), 'Copa Ñandú');
+  assert.equal(helpers.exportSubject('  ', '1a2b3c4d-0000-4000-8000-000000000000'), '1a2b3c4d');
+  assert.equal(helpers.exportSubject(null, '1a2b3c4d-0000-4000-8000-000000000000'), '1a2b3c4d');
+  assert.notEqual(
+    helpers.exportFileName('standings', helpers.exportSubject('', '1a2b3c4d-0000'), new Date('2026-11-25T12:00:00Z')),
+    helpers.exportFileName('standings', helpers.exportSubject('', '9f8e7d6c-0000'), new Date('2026-11-25T12:00:00Z')),
+  );
+});

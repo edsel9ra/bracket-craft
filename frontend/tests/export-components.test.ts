@@ -87,7 +87,7 @@ test('the notice and the error are announced', async () => {
 
 test('a button downloads its file with the tournament id and name', async () => {
   const source = read('pages/workspace/tournaments/[id]/exports.vue');
-  assert.match(source, /keepFocusDuring\(event\.currentTarget, \(\) => downloadTournament\(tournamentId, kind, tournamentName\.value\)\)/);
+  assert.match(source, /keepFocusDuring\(event\.currentTarget, \(\) => downloadTournament\(tournamentId, kind, exportSubject\(tournamentName\.value, tournamentId\)\)\)/);
   assert.doesNotMatch(source, /\$fetch|fetch\(|request\(/);
 });
 

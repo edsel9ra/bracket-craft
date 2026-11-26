@@ -30,6 +30,11 @@ function asciiSlug(value: string): string {
 }
 
 /** Nombre del archivo en ASCII; la fecha llega como parámetro (no se lee el reloj aquí). */
+// Sin el nombre cargado, el archivo lleva el prefijo del ID, como el del backend.
+export function exportSubject(name: string | null | undefined, id: string): string {
+  return name?.trim() || id.slice(0, 8);
+}
+
 export function exportFileName(kind: ExportKind, name: string, date: Date): string {
   const slug = asciiSlug(name);
   const day = date.toISOString().slice(0, 10);
