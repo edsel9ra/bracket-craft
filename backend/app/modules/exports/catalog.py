@@ -1,4 +1,4 @@
-"""Catálogo cerrado de exportaciones CSV (spec 048): columnas, cabeceras y etiquetas ES/EN."""
+"""Catálogo cerrado de exportaciones CSV (spec 048) y PDF (spec 050): columnas, cabeceras y etiquetas ES/EN."""
 
 from __future__ import annotations
 
@@ -6,6 +6,27 @@ EXPORT_KINDS: tuple[str, ...] = ("standings", "calendar", "player-stats", "team-
 REPORT_KIND = "match-report"
 MAX_ROWS = 10_000
 LANGS: tuple[str, ...] = ("es", "en")
+# Solo la clasificación y el acta tienen versión PDF (spec 050, DA-1).
+PDF_KINDS: tuple[str, ...] = ("standings", REPORT_KIND)
+
+# Textos fijos del documento PDF; ``{at}``, ``{page}`` y ``{total}`` se rellenan al componerlo.
+PDF_TEXTS: dict[str, dict[str, str]] = {
+    "generated_at": {"es": "Generado el {at} (UTC)", "en": "Generated on {at} (UTC)"},
+    "page": {"es": "Página {page} de {total}", "en": "Page {page} of {total}"},
+    "organization": {"es": "Organización", "en": "Organization"},
+    "tournament": {"es": "Torneo", "en": "Tournament"},
+    "standings_title": {"es": "Clasificación", "en": "Standings"},
+    "no_standings": {"es": "Sin clasificación todavía", "en": "No standings yet"},
+    "report_title": {"es": "Acta del partido", "en": "Match report"},
+    "match": {"es": "Partido", "en": "Match"},
+    "stage": {"es": "Fase", "en": "Stage"},
+    "date": {"es": "Fecha", "en": "Date"},
+    "vs": {"es": "vs", "en": "vs"},
+    "block_result": {"es": "Resultado", "en": "Result"},
+    "block_official": {"es": "Oficiales", "en": "Officials"},
+    "block_lineup": {"es": "Alineación", "en": "Lineup"},
+    "block_event": {"es": "Hechos", "en": "Events"},
+}
 
 # Cada columna: (clave interna, cabecera ES, cabecera EN). El orden es el del archivo.
 COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
@@ -148,6 +169,11 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "no": ("No", "No"),
     },
 }
+
+
+def pdf_text(key: str, lang: str) -> str:
+    _lang_index(lang)
+    return PDF_TEXTS[key][lang]
 
 
 def _lang_index(lang: str) -> int:

@@ -15,9 +15,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
-from app.modules.exports import builders, catalog
+from app.modules.exports import builders, catalog, pdf_layout
 from app.modules.exports.audit import record_roster_export_audit
 from app.modules.exports.csv_format import render_csv
+from app.modules.exports.pdf_format import PdfDocument
 from app.modules.tournaments.public_stats import compute_player_stats, compute_team_stats
 
 
@@ -35,8 +36,15 @@ TOURNAMENT_SQL = text("""
     WHERE id = :tournament_id AND organization_id = :organization_id
 """)
 
+TOURNAMENT_INFO_SQL = text("""
+    SELECT t.id, t.name, t.published_version_id, o.name AS organization_name
+    FROM tournaments t
+    CROSS JOIN get_current_organization() o
+    WHERE t.id = :tournament_id AND t.organization_id = :organization_id
+""")
+
 STANDINGS_SQL = text("""
-    SELECT st.name AS stage_name, st.stage_order, g.name AS group_name, s.team_id,
+    SELECT st.name AS stage_name, st.stage_order, s.stage_id, g.name AS group_name, s.group_id, s.team_id,
            t.name AS team_name, s.played, s.won, s.drawn, s.lost, s.goals_for,
            s.goals_against, s.goal_difference, s.points, s.fair_play_points, s.rank
     FROM standings s
@@ -153,6 +161,17 @@ REPORT_MATCH_SQL = text("""
     WHERE m.id = :match_id AND m.organization_id = :organization_id
 """)
 
+# Cabecera del PDF del acta (spec 050, RF-002): nombres y fecha, nunca identificadores.
+REPORT_INFO_SQL = text("""
+    SELECT t.name AS tournament_name, st.name AS stage_name, m.match_date, o.name AS organization_name
+    FROM matches m
+    JOIN tournaments t ON t.id = m.tournament_id AND t.organization_id = m.organization_id
+    LEFT JOIN stages st
+      ON st.id = m.stage_id AND st.tournament_id = m.tournament_id AND st.organization_id = m.organization_id
+    CROSS JOIN get_current_organization() o
+    WHERE m.id = :match_id AND m.organization_id = :organization_id
+""")
+
 # Solo nombre y función: nunca el correo del oficial (RF-004).
 REPORT_OFFICIALS_SQL = text("""
     SELECT u.full_name, mo.official_role AS role
@@ -235,41 +254,76 @@ class ExportService:
                 rows = await self._READERS[kind](self, params, lang)
             return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
 
+    async def export_standings_pdf(self, context, tournament_id: UUID, lang: str) -> PdfDocument:
+        async with self.db.begin():
+            await self._begin_snapshot(context)
+            params = {"organization_id": str(context.organization_id), "tournament_id": str(tournament_id)}
+            tournament = (await self.db.execute(TOURNAMENT_INFO_SQL, params)).mappings().one_or_none()
+            if tournament is None:
+                raise ExportNotFound
+            data: list[dict[str, Any]] = []
+            if tournament["published_version_id"] is not None:
+                params["version_id"] = str(tournament["published_version_id"])
+                data = await self._standings_data(params)
+            rows = builders.standings_rows(data, lang)
+            info = {"organization": tournament["organization_name"], "tournament": tournament["name"]}
+            return pdf_layout.standings_document(rows, info, lang, builders.standings_section_keys(data))
+
     async def export_match_report(self, context, match_id: UUID, lang: str) -> bytes:
         header = catalog.header(catalog.REPORT_KIND, lang)
         async with self.db.begin():
             await self._begin_snapshot(context)
+            _match, keyed = await self._match_report(context, match_id, lang)
+            return render_csv(header, [row for _, row in keyed], max_rows=catalog.MAX_ROWS)
+
+    async def export_match_report_pdf(self, context, match_id: UUID, lang: str) -> PdfDocument:
+        async with self.db.begin():
+            await self._begin_snapshot(context)
+            match, keyed = await self._match_report(context, match_id, lang)
             params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
-            match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
-            if match is None:
-                raise ExportNotFound
-            if not builders.is_closed(match):
-                raise MatchNotClosed
-            officials = await self._rows(REPORT_OFFICIALS_SQL, params)
-            lineup = await self._rows(REPORT_LINEUP_SQL, params)
-            team_ids = [str(team) for team in (match["home_team_id"], match["away_team_id"]) if team]
-            players: dict[Any, dict[str, Any]] = {}
-            for row in await self._rows(
-                REPORT_PLAYERS_SQL,
-                {**params, "tournament_id": str(match["tournament_id"]), "team_ids": team_ids},
-            ):
-                players.setdefault(row["player_id"], row)
-            # La alineación lleva el dorsal de la inscripción con la que jugó.
-            for row in lineup:
-                players[row["player_id"]] = row
-            events: list[dict[str, Any]] = []
-            if match["resolution_type"] != "walkover":
-                events = await self._rows(REPORT_EVENTS_SQL, params)
-            rows = builders.match_report_rows(match, officials, lineup, events, players, lang)
-            return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+            extra = (await self.db.execute(REPORT_INFO_SQL, params)).mappings().one()
+            info = {
+                "organization": extra["organization_name"], "tournament": extra["tournament_name"],
+                "home": match["home_team_name"], "away": match["away_team_name"],
+                "stage": extra["stage_name"], "match_date": extra["match_date"],
+            }
+            rows, keys = [row for _, row in keyed], [key for key, _ in keyed]
+            return pdf_layout.match_report_document(rows, info, lang, keys)
+
+    async def _match_report(self, context, match_id: UUID, lang: str):
+        """Lecturas del acta compartidas por el CSV y el PDF, dentro de la transacción ya abierta."""
+        params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
+        match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
+        if match is None:
+            raise ExportNotFound
+        if not builders.is_closed(match):
+            raise MatchNotClosed
+        officials = await self._rows(REPORT_OFFICIALS_SQL, params)
+        lineup = await self._rows(REPORT_LINEUP_SQL, params)
+        team_ids = [str(team) for team in (match["home_team_id"], match["away_team_id"]) if team]
+        players: dict[Any, dict[str, Any]] = {}
+        for row in await self._rows(
+            REPORT_PLAYERS_SQL,
+            {**params, "tournament_id": str(match["tournament_id"]), "team_ids": team_ids},
+        ):
+            players.setdefault(row["player_id"], row)
+        # La alineación lleva el dorsal de la inscripción con la que jugó.
+        for row in lineup:
+            players[row["player_id"]] = row
+        events: list[dict[str, Any]] = []
+        if match["resolution_type"] != "walkover":
+            events = await self._rows(REPORT_EVENTS_SQL, params)
+        return match, builders.match_report_keyed(match, officials, lineup, events, players, lang)
 
     async def _rosters(self, params, lang) -> list[list[Any]]:
         data = await self._rows(ROSTERS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
         return builders.roster_rows(data, lang)
 
+    async def _standings_data(self, params) -> list[dict[str, Any]]:
+        return await self._rows(STANDINGS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
+
     async def _standings(self, params, lang):
-        data = await self._rows(STANDINGS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
-        return builders.standings_rows(data, lang)
+        return builders.standings_rows(await self._standings_data(params), lang)
 
     async def _calendar(self, params, lang):
         data = await self._rows(CALENDAR_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
