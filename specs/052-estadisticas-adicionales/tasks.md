@@ -1,6 +1,6 @@
 # Tareas — Spec 052: Estadísticas adicionales (F17)
 
-Estado: borrador, pendiente de aprobación.
+Estado: aprobadas el 2026-11-27 («Apruebo el plan y las tareas, empieza por T1»).
 
 Dos PR de implementación apilados sobre el PR de la spec: bloque A (T1–T5, backend) y bloque B (T6–T8, frontend, E2E y documentación).
 

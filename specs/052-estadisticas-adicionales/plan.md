@@ -1,6 +1,6 @@
 # Plan — Spec 052: Estadísticas adicionales (F17)
 
-Estado: borrador, pendiente de aprobación. Spec aprobada el 2026-11-27 («Apruebo la spec 052»).
+Estado: aprobado el 2026-11-27 («Apruebo el plan y las tareas, empieza por T1»). Spec aprobada el 2026-11-27 («Apruebo la spec 052»).
 
 ## 1. Resumen
 
