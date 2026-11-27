@@ -145,6 +145,26 @@ def test_an_exit_in_added_time_is_capped_at_the_effective_duration(exit_kind):
     assert by_player[a]["minutes_played"] == 60
 
 
+@pytest.mark.parametrize(("resolution", "ends", "expected"), [("regular", (45, 70), 90), ("extra_time", (45, 90, 105), 120)])
+def test_a_match_closed_at_its_last_fact_lasts_at_least_the_phase_maximum(resolution, ends, expected):
+    a, b, c = uuid4(), uuid4(), uuid4()
+    m = match(resolution=resolution)
+    events = [sub(m, HOME, b, c, 30)]
+
+    by_player = stats([m], events, lineup(m, HOME, {a: "GK", b: "ST"}, substitutes=[c]), segments(m, *ends), roster(a, b, c))
+
+    assert {p: by_player[p]["minutes_played"] for p in (a, b, c)} == {a: expected, b: 30, c: expected - 30}
+
+
+def test_a_segment_end_beyond_the_phase_maximum_is_kept():
+    a = uuid4()
+    m = match()
+
+    by_player = stats([m], [], lineup(m, HOME, {a: "GK"}), segments(m, 45, 95), roster(a))
+
+    assert by_player[a]["minutes_played"] == 95
+
+
 def test_a_substitute_replaced_in_the_same_minute_adds_no_minutes_whatever_the_order():
     a, b, c = uuid4(), uuid4(), uuid4()
     m = match()

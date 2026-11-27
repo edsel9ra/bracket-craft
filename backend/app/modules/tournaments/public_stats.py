@@ -73,8 +73,14 @@ def _resolution(match: Any) -> str | None:
 
 
 def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
-    """Duración efectiva del partido: último ``minute_end`` o máximo de la fase."""
+    """Duración efectiva del partido: el mayor entre el último ``minute_end`` y el máximo de la fase.
 
+    El cierre clásico guarda como fin el minuto del último hecho, así que ese fin
+    nunca acorta el partido por debajo del máximo reglamentario o de prórroga
+    (enmienda de la 052 a la 022).
+    """
+
+    phase_maximum = _phase_maximum(match)
     match_id = _match_id(match)
     segs = [
         s for s in (segments or [])
@@ -82,12 +88,15 @@ def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
     ]
     if segs:
         ordered = sorted(segs, key=lambda s: int(_v(s, "segment_number", 0) or 0))
-        last = ordered[-1]
-        minute_end = _v(last, "minute_end")
+        minute_end = _v(ordered[-1], "minute_end")
         if minute_end is not None:
-            return int(minute_end)
+            return max(int(minute_end), phase_maximum)
+    return phase_maximum
 
-    # Máximo efectivo de la fase (reglamentario o de prórroga).
+
+def _phase_maximum(match: Any) -> int:
+    """Máximo efectivo de la fase: reglamentario o, con prórroga o penales, el de la prórroga."""
+
     rules = _v(match, "rules_config")
     stage_defaults: Mapping[str, Any] = {}
     if isinstance(rules, Mapping):
