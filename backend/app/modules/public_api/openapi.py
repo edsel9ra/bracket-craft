@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import FastAPI
@@ -46,4 +47,4 @@ def build_public_openapi(app: FastAPI) -> dict[str, Any]:
         operation["tags"] = ["public-api-v1"]
         if "{" in path:
             operation["responses"]["404"] = NOT_FOUND
-    return document
+    return json.loads(json.dumps(document))

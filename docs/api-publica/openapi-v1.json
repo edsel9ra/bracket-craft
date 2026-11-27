@@ -1,0 +1,2636 @@
+{
+  "components": {
+    "schemas": {
+      "ClassicPublicMatchResponse": {
+        "properties": {
+          "away_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicSlotOriginResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "away_penalties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Penalties"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "away_score_regular": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score Regular"
+          },
+          "away_team_crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Crest Url"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "away_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Name"
+          },
+          "away_team_short_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Short Code"
+          },
+          "bracket_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bracket Code"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "home_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicSlotOriginResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_penalties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Penalties"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "home_score_regular": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score Regular"
+          },
+          "home_team_crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Crest Url"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "home_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Name"
+          },
+          "home_team_short_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Short Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lineup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicMatchLineupResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "match_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Date"
+          },
+          "matchday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchday"
+          },
+          "rectified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rectified At"
+          },
+          "resolution_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Type"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "stage_order": {
+            "title": "Stage Order",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "scheduled",
+              "finished",
+              "cancelled",
+              "administrative_resolution"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          },
+          "winner_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Team Id"
+          }
+        },
+        "required": [
+          "id",
+          "tournament_id",
+          "stage_id",
+          "stage_name",
+          "stage_order",
+          "status"
+        ],
+        "title": "ClassicPublicMatchResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LivePublicMatchResponse": {
+        "properties": {
+          "away_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicSlotOriginResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "away_penalties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Penalties"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "away_score_regular": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score Regular"
+          },
+          "away_team_crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Crest Url"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "away_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Name"
+          },
+          "away_team_short_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Short Code"
+          },
+          "bracket_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bracket Code"
+          },
+          "clock_elapsed_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Elapsed Seconds"
+          },
+          "clock_observed_at": {
+            "format": "date-time",
+            "title": "Clock Observed At",
+            "type": "string"
+          },
+          "clock_segment_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Segment Number"
+          },
+          "clock_state": {
+            "enum": [
+              "not_started",
+              "running",
+              "paused"
+            ],
+            "title": "Clock State",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "home_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicSlotOriginResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_penalties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Penalties"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "home_score_regular": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score Regular"
+          },
+          "home_team_crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Crest Url"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "home_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Name"
+          },
+          "home_team_short_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Short Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_provisional": {
+            "const": true,
+            "default": true,
+            "title": "Is Provisional",
+            "type": "boolean"
+          },
+          "lineup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicMatchLineupResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "match_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Date"
+          },
+          "matchday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchday"
+          },
+          "rectified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rectified At"
+          },
+          "resolution_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Type"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "stage_order": {
+            "title": "Stage Order",
+            "type": "integer"
+          },
+          "status": {
+            "const": "live",
+            "title": "Status",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          },
+          "winner_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Team Id"
+          }
+        },
+        "required": [
+          "clock_segment_number",
+          "clock_elapsed_seconds",
+          "clock_state",
+          "clock_observed_at",
+          "id",
+          "tournament_id",
+          "stage_id",
+          "stage_name",
+          "stage_order",
+          "status"
+        ],
+        "title": "LivePublicMatchResponse",
+        "type": "object"
+      },
+      "PublicError": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PublicError",
+        "type": "object"
+      },
+      "PublicLineupPlayerResponse": {
+        "properties": {
+          "dorsal_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dorsal Number"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          },
+          "position_slot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Slot"
+          },
+          "role": {
+            "enum": [
+              "starter",
+              "substitute"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "player_id",
+          "first_name",
+          "last_name",
+          "role"
+        ],
+        "title": "PublicLineupPlayerResponse",
+        "type": "object"
+      },
+      "PublicMatchLineupResponse": {
+        "properties": {
+          "away": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicTeamLineupResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicTeamLineupResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PublicMatchLineupResponse",
+        "type": "object"
+      },
+      "PublicMatchTimelineResponse": {
+        "additionalProperties": false,
+        "description": "Cronología pública de un partido (spec 037).",
+        "properties": {
+          "availability": {
+            "enum": [
+              "pending",
+              "not_played",
+              "available"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/PublicTimelineEventResponse"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "match_id": {
+            "format": "uuid",
+            "title": "Match Id",
+            "type": "string"
+          },
+          "score_consistent": {
+            "default": true,
+            "title": "Score Consistent",
+            "type": "boolean"
+          },
+          "segment_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Segment Numbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "match_id",
+          "availability"
+        ],
+        "title": "PublicMatchTimelineResponse",
+        "type": "object"
+      },
+      "PublicPlayerProfileResponse": {
+        "additionalProperties": false,
+        "description": "Ficha pública del jugador (spec 038): sin dorsal, posición ni consentimiento.",
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PublicPlayerProfileTotalsResponse"
+          },
+          "tournaments": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPlayerProfileTournamentResponse"
+            },
+            "title": "Tournaments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "player_id",
+          "first_name",
+          "last_name",
+          "totals"
+        ],
+        "title": "PublicPlayerProfileResponse",
+        "type": "object"
+      },
+      "PublicPlayerProfileTotalsResponse": {
+        "additionalProperties": false,
+        "description": "Totales de la ficha pública: suma de las filas por torneo (spec 038 RF-006).",
+        "properties": {
+          "clean_sheets": {
+            "default": 0,
+            "title": "Clean Sheets",
+            "type": "integer"
+          },
+          "goals": {
+            "default": 0,
+            "title": "Goals",
+            "type": "integer"
+          },
+          "matches_played": {
+            "default": 0,
+            "title": "Matches Played",
+            "type": "integer"
+          },
+          "red_cards": {
+            "default": 0,
+            "title": "Red Cards",
+            "type": "integer"
+          },
+          "yellow_cards": {
+            "default": 0,
+            "title": "Yellow Cards",
+            "type": "integer"
+          }
+        },
+        "title": "PublicPlayerProfileTotalsResponse",
+        "type": "object"
+      },
+      "PublicPlayerProfileTournamentResponse": {
+        "additionalProperties": false,
+        "description": "Torneo autorizado de la ficha con las cifras de la 022 (spec 038 RF-005).",
+        "properties": {
+          "clean_sheets": {
+            "default": 0,
+            "title": "Clean Sheets",
+            "type": "integer"
+          },
+          "goals": {
+            "default": 0,
+            "title": "Goals",
+            "type": "integer"
+          },
+          "matches_played": {
+            "default": 0,
+            "title": "Matches Played",
+            "type": "integer"
+          },
+          "red_cards": {
+            "default": 0,
+            "title": "Red Cards",
+            "type": "integer"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          },
+          "tournament_name": {
+            "title": "Tournament Name",
+            "type": "string"
+          },
+          "yellow_cards": {
+            "default": 0,
+            "title": "Yellow Cards",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tournament_id",
+          "tournament_name",
+          "team_id",
+          "team_name"
+        ],
+        "title": "PublicPlayerProfileTournamentResponse",
+        "type": "object"
+      },
+      "PublicPlayerStatsResponse": {
+        "properties": {
+          "clean_sheets": {
+            "default": 0,
+            "title": "Clean Sheets",
+            "type": "integer"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "goals": {
+            "default": 0,
+            "title": "Goals",
+            "type": "integer"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "matches_played": {
+            "default": 0,
+            "title": "Matches Played",
+            "type": "integer"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          },
+          "profile_available": {
+            "default": false,
+            "title": "Profile Available",
+            "type": "boolean"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "red_cards": {
+            "default": 0,
+            "title": "Red Cards",
+            "type": "integer"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "yellow_cards": {
+            "default": 0,
+            "title": "Yellow Cards",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "player_id",
+          "first_name",
+          "last_name"
+        ],
+        "title": "PublicPlayerStatsResponse",
+        "type": "object"
+      },
+      "PublicSlotOriginResponse": {
+        "additionalProperties": false,
+        "description": "Etiqueta pública de una plaza de la llave aún sin resolver (spec 040 §8).",
+        "properties": {
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "kind": {
+            "enum": [
+              "group_position",
+              "best_of_position"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "position"
+        ],
+        "title": "PublicSlotOriginResponse",
+        "type": "object"
+      },
+      "PublicStageResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stage_order": {
+            "title": "Stage Order",
+            "type": "integer"
+          },
+          "stage_type": {
+            "enum": [
+              "round_robin",
+              "single_elimination",
+              "custom_group",
+              "swiss",
+              "double_elimination"
+            ],
+            "title": "Stage Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "stage_type",
+          "stage_order"
+        ],
+        "title": "PublicStageResponse",
+        "type": "object"
+      },
+      "PublicStandingResponse": {
+        "properties": {
+          "calculated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculated At"
+          },
+          "crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crest Url"
+          },
+          "drawn": {
+            "title": "Drawn",
+            "type": "integer"
+          },
+          "fair_play_points": {
+            "title": "Fair Play Points",
+            "type": "integer"
+          },
+          "goal_difference": {
+            "title": "Goal Difference",
+            "type": "integer"
+          },
+          "goals_against": {
+            "title": "Goals Against",
+            "type": "integer"
+          },
+          "goals_for": {
+            "title": "Goals For",
+            "type": "integer"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "lost": {
+            "title": "Lost",
+            "type": "integer"
+          },
+          "played": {
+            "title": "Played",
+            "type": "integer"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "short_code": {
+            "title": "Short Code",
+            "type": "string"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "stage_order": {
+            "title": "Stage Order",
+            "type": "integer"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          },
+          "won": {
+            "title": "Won",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tournament_id",
+          "stage_id",
+          "stage_name",
+          "stage_order",
+          "team_id",
+          "team_name",
+          "short_code",
+          "played",
+          "won",
+          "drawn",
+          "lost",
+          "goals_for",
+          "goals_against",
+          "goal_difference",
+          "points",
+          "fair_play_points",
+          "rank"
+        ],
+        "title": "PublicStandingResponse",
+        "type": "object"
+      },
+      "PublicTeamLineupResponse": {
+        "properties": {
+          "crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crest Url"
+          },
+          "formation_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formation Code"
+          },
+          "segment_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Number"
+          },
+          "starters": {
+            "items": {
+              "$ref": "#/components/schemas/PublicLineupPlayerResponse"
+            },
+            "title": "Starters",
+            "type": "array"
+          },
+          "substitutes": {
+            "items": {
+              "$ref": "#/components/schemas/PublicLineupPlayerResponse"
+            },
+            "title": "Substitutes",
+            "type": "array"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "team_name"
+        ],
+        "title": "PublicTeamLineupResponse",
+        "type": "object"
+      },
+      "PublicTeamStatsResponse": {
+        "properties": {
+          "clean_sheets": {
+            "default": 0,
+            "title": "Clean Sheets",
+            "type": "integer"
+          },
+          "crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crest Url"
+          },
+          "fair_play_points": {
+            "default": 0,
+            "title": "Fair Play Points",
+            "type": "integer"
+          },
+          "goals_against": {
+            "default": 0,
+            "title": "Goals Against",
+            "type": "integer"
+          },
+          "goals_for": {
+            "default": 0,
+            "title": "Goals For",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "short_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Code"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          }
+        },
+        "required": [
+          "rank",
+          "team_id"
+        ],
+        "title": "PublicTeamStatsResponse",
+        "type": "object"
+      },
+      "PublicTimelineEventResponse": {
+        "additionalProperties": false,
+        "description": "Hecho confirmado de la cronología pública (spec 037 RF-006–RF-008).",
+        "properties": {
+          "added_minute": {
+            "title": "Added Minute",
+            "type": "integer"
+          },
+          "beneficiary_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beneficiary Team Id"
+          },
+          "event_type": {
+            "enum": [
+              "goal",
+              "penalty_goal",
+              "own_goal",
+              "yellow_card",
+              "red_card",
+              "substitution"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "minute": {
+            "title": "Minute",
+            "type": "integer"
+          },
+          "player": {
+            "$ref": "#/components/schemas/PublicTimelinePlayerResponse"
+          },
+          "player_in": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicTimelinePlayerResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "red_card_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "direct_red",
+                  "double_yellow_red"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Red Card Type"
+          },
+          "segment_number": {
+            "title": "Segment Number",
+            "type": "integer"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_type",
+          "minute",
+          "added_minute",
+          "segment_number",
+          "team_id",
+          "player"
+        ],
+        "title": "PublicTimelineEventResponse",
+        "type": "object"
+      },
+      "PublicTimelinePlayerResponse": {
+        "additionalProperties": false,
+        "description": "Jugador de un hecho publicado (spec 037 DA-2 a): sin dorsal ni foto.",
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          },
+          "profile_available": {
+            "default": false,
+            "title": "Profile Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "player_id",
+          "first_name",
+          "last_name"
+        ],
+        "title": "PublicTimelinePlayerResponse",
+        "type": "object"
+      },
+      "PublicTournamentResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStageResponse"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/PublicTournamentTeamResponse"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "season",
+          "start_date",
+          "status"
+        ],
+        "title": "PublicTournamentResponse",
+        "type": "object"
+      },
+      "PublicTournamentSummaryResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "season",
+          "start_date",
+          "status"
+        ],
+        "title": "PublicTournamentSummaryResponse",
+        "type": "object"
+      },
+      "PublicTournamentTeamResponse": {
+        "properties": {
+          "crest_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crest Url"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "short_code": {
+            "title": "Short Code",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "name",
+          "short_code"
+        ],
+        "title": "PublicTournamentTeamResponse",
+        "type": "object"
+      },
+      "SuspendedPublicMatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "away_score": {
+            "title": "Away Score",
+            "type": "integer"
+          },
+          "away_team_id": {
+            "format": "uuid",
+            "title": "Away Team Id",
+            "type": "string"
+          },
+          "away_team_name": {
+            "title": "Away Team Name",
+            "type": "string"
+          },
+          "clock_elapsed_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Elapsed Seconds"
+          },
+          "clock_observed_at": {
+            "format": "date-time",
+            "title": "Clock Observed At",
+            "type": "string"
+          },
+          "clock_segment_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Segment Number"
+          },
+          "clock_state": {
+            "enum": [
+              "not_started",
+              "paused"
+            ],
+            "title": "Clock State",
+            "type": "string"
+          },
+          "home_score": {
+            "title": "Home Score",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "format": "uuid",
+            "title": "Home Team Id",
+            "type": "string"
+          },
+          "home_team_name": {
+            "title": "Home Team Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_provisional": {
+            "const": true,
+            "default": true,
+            "title": "Is Provisional",
+            "type": "boolean"
+          },
+          "status": {
+            "const": "suspended",
+            "title": "Status",
+            "type": "string"
+          },
+          "tournament_id": {
+            "format": "uuid",
+            "title": "Tournament Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clock_segment_number",
+          "clock_elapsed_seconds",
+          "clock_state",
+          "clock_observed_at",
+          "id",
+          "tournament_id",
+          "home_team_id",
+          "home_team_name",
+          "away_team_id",
+          "away_team_name",
+          "status",
+          "home_score",
+          "away_score"
+        ],
+        "title": "SuspendedPublicMatchResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Lecturas públicas de torneos, sin sesión ni credenciales. Guía: docs/api-publica.md (ES) y docs/api-publica.en.md (EN).",
+    "title": "Bracket Craft — API pública",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/tournaments/public": {
+      "get": {
+        "operationId": "list_public_tournaments_api_v1_tournaments_public_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicTournamentSummaryResponse"
+                  },
+                  "title": "Response List Public Tournaments Api V1 Tournaments Public Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Public Tournaments",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/players/{player_id}": {
+      "get": {
+        "operationId": "public_player_profile_api_v1_tournaments_public_players__player_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "player_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Player Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPlayerProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Player Profile",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}": {
+      "get": {
+        "operationId": "public_tournament_api_v1_tournaments_public__tournament_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicTournamentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Tournament",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/matches": {
+      "get": {
+        "operationId": "public_matches_api_v1_tournaments_public__tournament_id__matches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "administrative_resolution": "#/components/schemas/ClassicPublicMatchResponse",
+                        "cancelled": "#/components/schemas/ClassicPublicMatchResponse",
+                        "finished": "#/components/schemas/ClassicPublicMatchResponse",
+                        "live": "#/components/schemas/LivePublicMatchResponse",
+                        "scheduled": "#/components/schemas/ClassicPublicMatchResponse",
+                        "suspended": "#/components/schemas/SuspendedPublicMatchResponse"
+                      },
+                      "propertyName": "status"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/SuspendedPublicMatchResponse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LivePublicMatchResponse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ClassicPublicMatchResponse"
+                      }
+                    ]
+                  },
+                  "title": "Response Public Matches Api V1 Tournaments Public  Tournament Id  Matches Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Matches",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/matches/{match_id}": {
+      "get": {
+        "operationId": "public_match_api_v1_tournaments_public__tournament_id__matches__match_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "administrative_resolution": "#/components/schemas/ClassicPublicMatchResponse",
+                      "cancelled": "#/components/schemas/ClassicPublicMatchResponse",
+                      "finished": "#/components/schemas/ClassicPublicMatchResponse",
+                      "live": "#/components/schemas/LivePublicMatchResponse",
+                      "scheduled": "#/components/schemas/ClassicPublicMatchResponse",
+                      "suspended": "#/components/schemas/SuspendedPublicMatchResponse"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SuspendedPublicMatchResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LivePublicMatchResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ClassicPublicMatchResponse"
+                    }
+                  ],
+                  "title": "Response Public Match Api V1 Tournaments Public  Tournament Id  Matches  Match Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Match",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/matches/{match_id}/timeline": {
+      "get": {
+        "operationId": "public_match_timeline_api_v1_tournaments_public__tournament_id__matches__match_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicMatchTimelineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Match Timeline",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/player-stats": {
+      "get": {
+        "operationId": "public_player_stats_api_v1_tournaments_public__tournament_id__player_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicPlayerStatsResponse"
+                  },
+                  "title": "Response Public Player Stats Api V1 Tournaments Public  Tournament Id  Player Stats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Player Stats",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/standings": {
+      "get": {
+        "operationId": "public_standings_api_v1_tournaments_public__tournament_id__standings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicStandingResponse"
+                  },
+                  "title": "Response Public Standings Api V1 Tournaments Public  Tournament Id  Standings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Standings",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    },
+    "/api/v1/tournaments/public/{tournament_id}/team-stats": {
+      "get": {
+        "operationId": "public_team_stats_api_v1_tournaments_public__tournament_id__team_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tournament_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tournament Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicTeamStatsResponse"
+                  },
+                  "title": "Response Public Team Stats Api V1 Tournaments Public  Tournament Id  Team Stats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Recurso inexistente o no visible públicamente; las dos respuestas son idénticas."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Team Stats",
+        "tags": [
+          "public-api-v1"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}
