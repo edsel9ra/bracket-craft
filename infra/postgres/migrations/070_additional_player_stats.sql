@@ -14,6 +14,10 @@ BEGIN;
 -- 3. Repite `v_match_current_events` (035, acta vigente del Workspace) y
 --    `v_public_match_events` (060) y añade `player_in_position` al final. La
 --    cronología pública no la lee ni muestra `penalty_saved`.
+-- 4. `v_public_match_phase_minutes` (DA-5): minutos reglamentarios y de
+--    prórroga efectivos de la fase de cada partido público, resueltos clave a
+--    clave (stage_defaults y override de la fase). Solo la leen los cálculos de
+--    estadísticas públicas; la API no la expone.
 -- Hechos existentes intactos: ninguna fila cambia y la columna nueva es NULL.
 -- ============================================================================
 
@@ -132,5 +136,34 @@ WHERE tr.status IN ('published', 'live', 'finished')
 
 REVOKE ALL ON public.v_public_match_events FROM PUBLIC;
 GRANT SELECT ON public.v_public_match_events TO bracket_app;
+
+CREATE OR REPLACE VIEW public.v_public_match_phase_minutes
+WITH (security_barrier = true) AS
+SELECT
+    m.id AS match_id,
+    m.tournament_id,
+    COALESCE(ov ->> 'regular_time_minutes', sd ->> 'regular_time_minutes', '90')::integer AS regular_time_minutes,
+    COALESCE(ov ->> 'extra_time_minutes', sd ->> 'extra_time_minutes', '120')::integer AS extra_time_minutes,
+    COALESCE(ov ->> 'extra_time_enabled', sd ->> 'extra_time_enabled', 'false')::boolean AS extra_time_enabled
+FROM public.matches m
+JOIN public.tournaments tr
+  ON tr.id = m.tournament_id
+ AND tr.organization_id = m.organization_id
+JOIN public.organizations org
+  ON org.id = tr.organization_id
+ AND org.is_active = TRUE
+JOIN public.tournament_versions tv
+  ON tv.id = m.tournament_version_id
+ AND tv.organization_id = m.organization_id
+CROSS JOIN LATERAL (
+    SELECT tv.rules_config -> 'stage_defaults' AS sd,
+           tv.rules_config -> 'stage_overrides' -> (m.stage_id::text) AS ov
+) rules
+WHERE tr.status IN ('published', 'live', 'finished')
+  AND m.tournament_version_id = tr.published_version_id
+  AND m.status IN ('scheduled', 'live', 'finished', 'administrative_resolution');
+
+REVOKE ALL ON public.v_public_match_phase_minutes FROM PUBLIC;
+GRANT SELECT ON public.v_public_match_phase_minutes TO bracket_app;
 
 COMMIT;

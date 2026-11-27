@@ -76,6 +76,24 @@ async def _share_png(render: Callable[[], bytes]) -> Response:
     )
 
 
+
+async def _attach_public_phase_minutes(db: AsyncSession, matches: list[dict]) -> None:
+    """Minutos efectivos de la fase de cada partido, solo para el cálculo (052 DA-5)."""
+
+    from app.modules.tournaments.public_stats import attach_phase_minutes
+
+    if not matches:
+        return
+    result = await db.execute(
+        text("""
+            SELECT match_id, regular_time_minutes, extra_time_minutes, extra_time_enabled
+            FROM v_public_match_phase_minutes
+            WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
+        """),
+        {"match_ids": [str(match["id"]) for match in matches]},
+    )
+    attach_phase_minutes(matches, result.mappings().all())
+
 @router.get("/public", response_model=list[PublicTournamentSummaryResponse])
 async def list_public_tournaments(
     db: AsyncSession = Depends(get_db),
@@ -253,6 +271,7 @@ async def public_player_profile(
                 )
             ).mappings().all()
         ]
+        await _attach_public_phase_minutes(db, matches)
         # La inscripción del jugador en cada torneo, como en `player-stats`,
         # sin columnas de foto ni dorsal.
         rosters = [
@@ -732,6 +751,7 @@ async def public_player_stats(
             },
         )
         matches = [dict(row) for row in matches_result.mappings().all()]
+        await _attach_public_phase_minutes(db, matches)
 
         match_ids = [str(match["id"]) for match in matches]
         if match_ids:

@@ -112,7 +112,9 @@ def _phase_maximum(match: Any) -> int:
     regular = int(regular or 90)
 
     resolution = _resolution(match)
-    extra_enabled = stage_defaults.get("extra_time_enabled", True)
+    extra_enabled = _v(match, "extra_time_enabled")
+    if extra_enabled is None:
+        extra_enabled = stage_defaults.get("extra_time_enabled", True)
     if resolution in ("extra_time", "penalties") and extra_enabled:
         extra = _v(match, "extra_time_minutes")
         if extra is None:
@@ -121,6 +123,17 @@ def _phase_maximum(match: Any) -> int:
             extra = stage_defaults.get("extra_time_minutes", 120)
         return int(extra or regular)
     return regular
+
+
+def attach_phase_minutes(matches: Iterable[dict], phase_minutes: Iterable[Any]) -> None:
+    """Copia a cada partido los minutos efectivos de su fase (DA-5)."""
+
+    by_match = {str(_v(row, "match_id")): row for row in phase_minutes}
+    for match in matches:
+        row = by_match.get(str(match["id"]))
+        if row is not None:
+            for key in ("regular_time_minutes", "extra_time_minutes", "extra_time_enabled"):
+                match[key] = _v(row, key)
 
 
 def _player_id(row: Any) -> Any:

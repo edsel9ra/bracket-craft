@@ -8,7 +8,7 @@ Estado: aprobada el 2026-11-27 («Apruebo la spec 052»). DA-1–DA-4 resueltas 
 - **DA-2 = (a).** La posición principal es la línea (Portero, Defensa, Centrocampista, Delantero) en la que el jugador jugó más partidos según sus posiciones públicas; en empate, la del partido más reciente.
 - **DA-3 = (a).** La posición de entrada es opcional y sale del catálogo de posiciones de la modalidad; solo es pública si la formación del equipo en ese partido está publicada.
 - **DA-4 = (a).** El penal atajado es un hecho nuevo del acta con el portero que lo ataja, sin efecto en el marcador, solo en juego y fuera de la cronología pública, para no romper `v1`.
-- **DA-5 (2026-11-27, «Acepto tu propuesta.»).** La duración efectiva de un partido disputado es el mayor entre el fin del último segmento y el máximo de la fase (reglamentario o, con prórroga o penales, el de la prórroga). El cierre clásico guarda como fin el minuto del último hecho del acta, y ese fin no debe acortar los minutos. Enmienda también la 022 (minutos del portero y porterías imbatidas).
+- **DA-5 (2026-11-27, «Acepto tu propuesta.»).** La duración efectiva de un partido disputado es el mayor entre el fin del último segmento y el máximo de la fase (reglamentario o, con prórroga o penales, el de la prórroga). El cierre clásico guarda como fin el minuto del último hecho del acta, y ese fin no debe acortar los minutos. Enmienda también la 022 (minutos del portero y porterías imbatidas). El máximo de la fase es el configurado para esa fase (por ejemplo, 50 en una fase de 50 minutos); la superficie pública lo lee de una vista interna que la API no expone (2026-11-27, «La opción (a), que es la recomendada.»).
 
 ## Contexto y objetivo
 

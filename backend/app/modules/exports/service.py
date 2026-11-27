@@ -18,6 +18,7 @@ from app.core.database import set_rls_context
 from app.modules.exports import builders, catalog, pdf_layout
 from app.modules.exports.audit import record_roster_export_audit
 from app.modules.exports.csv_format import render_csv
+from app.modules.matches.service import effective_match_minutes
 from app.modules.exports.pdf_format import PdfDocument
 from app.modules.tournaments.public_stats import compute_player_stats, compute_team_stats
 
@@ -82,9 +83,10 @@ STATS_MATCHES_SQL = text("""
     SELECT m.id, m.tournament_id, m.stage_id, m.group_id, m.home_team_id, m.away_team_id,
            r.home_score, r.away_score, r.home_score_regular, r.away_score_regular, m.status,
            m.result_confirmed, r.resolution_type, r.home_penalties, r.away_penalties, r.winner_team_id,
-           m.match_date
+           m.match_date, tv.rules_config
     FROM matches m
     JOIN v_match_current_report r ON r.match_id = m.id AND r.organization_id = m.organization_id
+    JOIN tournament_versions tv ON tv.id = m.tournament_version_id AND tv.organization_id = m.organization_id
     WHERE m.organization_id = :organization_id AND m.tournament_id = :tournament_id
       AND m.tournament_version_id = :version_id
       AND m.status IN ('scheduled', 'live', 'finished', 'administrative_resolution')
@@ -332,6 +334,10 @@ class ExportService:
 
     async def _match_inputs(self, params, *, with_formations: bool):
         matches = await self._rows(STATS_MATCHES_SQL, params)
+        for match in matches:
+            minutes = effective_match_minutes(match.pop("rules_config"), match["stage_id"])
+            for key in ("regular_time_minutes", "extra_time_minutes", "extra_time_enabled"):
+                match[key] = minutes[key]
         events: list[dict] = []
         segments: list[dict] = []
         formations: list[dict] = []

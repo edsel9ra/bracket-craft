@@ -156,6 +156,23 @@ def test_a_match_closed_at_its_last_fact_lasts_at_least_the_phase_maximum(resolu
     assert {p: by_player[p]["minutes_played"] for p in (a, b, c)} == {a: expected, b: 30, c: expected - 30}
 
 
+def test_the_configured_phase_minutes_bound_the_duration_and_the_clean_sheet():
+    a, b = uuid4(), uuid4()
+    m = {**match(), "regular_time_minutes": 50, "extra_time_minutes": None, "extra_time_enabled": False}
+
+    by_player = stats([m], [], lineup(m, HOME, {a: "GK", b: "ST"}), segments(m, 25, 40), roster(a, b))
+
+    assert (by_player[a]["minutes_played"], by_player[b]["minutes_played"]) == (50, 50)
+    assert by_player[a]["clean_sheets"] == 0
+
+
+def test_extra_time_without_configured_extra_minutes_uses_the_regular_maximum():
+    a = uuid4()
+    m = {**match(resolution="penalties"), "regular_time_minutes": 80, "extra_time_minutes": None, "extra_time_enabled": False}
+
+    assert stats([m], [], lineup(m, HOME, {a: "GK"}), segments(m, 40, 60), roster(a))[a]["minutes_played"] == 80
+
+
 def test_a_segment_end_beyond_the_phase_maximum_is_kept():
     a = uuid4()
     m = match()

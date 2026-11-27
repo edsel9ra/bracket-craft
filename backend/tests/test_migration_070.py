@@ -179,3 +179,29 @@ async def test_070_current_events_view_appends_entry_position(db_070):
     assert await db_070.fetchval(
         "SELECT has_table_privilege('bracket_app', 'public.v_match_current_events', 'SELECT')"
     )
+
+
+async def test_070_phase_minutes_view_resolves_defaults_and_stage_override(db_070):
+    stage = await db_070.fetchval("SELECT stage_id FROM matches WHERE id = $1", MATCH)
+    await db_070.execute("SET session_replication_role = replica")
+    await db_070.execute(
+        """UPDATE tournament_versions tv SET rules_config = jsonb_set(jsonb_set(tv.rules_config,
+               '{stage_defaults}', '{"regular_time_minutes": 50, "extra_time_enabled": false}'::jsonb),
+               '{stage_overrides}', jsonb_build_object($2::text, '{"extra_time_enabled": true, "extra_time_minutes": 70}'::jsonb))
+           FROM matches m WHERE m.id = $1 AND tv.id = m.tournament_version_id""",
+        MATCH, str(stage),
+    )
+    await db_070.execute("SET session_replication_role = origin")
+    row = await db_070.fetchrow(
+        "SELECT regular_time_minutes, extra_time_minutes, extra_time_enabled FROM v_public_match_phase_minutes WHERE match_id = $1",
+        MATCH,
+    )
+    assert tuple(row) == (50, 70, True)
+    columns = [r["column_name"] for r in await db_070.fetch(
+        """SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'v_public_match_phase_minutes' ORDER BY ordinal_position""")]
+    assert columns == ["match_id", "tournament_id", "regular_time_minutes", "extra_time_minutes", "extra_time_enabled"]
+    assert await db_070.fetchval("SELECT has_table_privilege('bracket_app', 'public.v_public_match_phase_minutes', 'SELECT')")
+
+    await db_070.execute("UPDATE tournaments SET status = 'draft' WHERE id = (SELECT tournament_id FROM matches WHERE id = $1)", MATCH)
+    assert await db_070.fetchval("SELECT count(*) FROM v_public_match_phase_minutes WHERE match_id = $1", MATCH) == 0
