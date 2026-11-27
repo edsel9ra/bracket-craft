@@ -1,6 +1,13 @@
 # Spec 052 — Estadísticas adicionales (F17)
 
-Estado: borrador. Pedida por el usuario el 2026-11-27 («Sigue con F17»), última función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+Estado: borrador. DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con F17»), última función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+
+## Decisiones del usuario (2026-11-27)
+
+- **DA-1 = (a).** Los minutos solo cuentan en partidos disputados en los que la alineación del equipo del jugador está publicada, para no revelar titulares privados.
+- **DA-2 = (a).** La posición principal es la línea (Portero, Defensa, Centrocampista, Delantero) en la que el jugador jugó más partidos según sus posiciones públicas; en empate, la del partido más reciente.
+- **DA-3 = (a).** La posición de entrada es opcional y sale del catálogo de posiciones de la modalidad; solo es pública si la formación del equipo en ese partido está publicada.
+- **DA-4 = (a).** El penal atajado es un hecho nuevo del acta con el portero que lo ataja, sin efecto en el marcador, solo en juego y fuera de la cronología pública, para no romper `v1`.
 
 ## Contexto y objetivo
 
@@ -38,10 +45,11 @@ Ninguna otra organización puede ver ni modificar los hechos, las formaciones ni
 
 ## Definiciones
 
-- **Minutos jugados en un partido:** la definición única de la 022 (RF-027), aplicada a todo jugador. Un titular juega desde el minuto 0 hasta su salida (sustitución o expulsión) o hasta la duración efectiva del partido; un suplente, desde su entrada hasta su salida o el final. El minuto de un hecho es minuto + minuto añadido, acotado a la duración efectiva, en el orden canónico del acta. Qué partidos cuentan: [NECESITA ACLARACIÓN] DA-1.
-- **Posición principal:** [NECESITA ACLARACIÓN] DA-2.
-- **Posición de entrada:** la posición en la que entra un suplente en una sustitución. Cómo se registra y cuándo es pública: [NECESITA ACLARACIÓN] DA-3.
-- **Penal atajado:** [NECESITA ACLARACIÓN] DA-4.
+- **Minutos jugados en un partido:** la definición única de la 022 (RF-027), aplicada a todo jugador. Un titular juega desde el minuto 0 hasta su salida (sustitución o expulsión) o hasta la duración efectiva del partido; un suplente, desde su entrada hasta su salida o el final. El minuto de un hecho es minuto + minuto añadido, acotado a la duración efectiva, en el orden canónico del acta. Solo cuentan los partidos disputados (resultado confirmado en tiempo regular, prórroga o penales) en los que la alineación del equipo del jugador está publicada; si no lo está, ese partido no suma minutos a ningún jugador de ese equipo (DA-1).
+- **Línea de una posición:** cada código del catálogo de formaciones (`docs/contrato-reglas.md`) pertenece a una sola línea: Portero (`GK`), Defensa, Centrocampista o Delantero. La tabla fija de códigos a líneas se define en el plan y un test exige que cubra todo el catálogo.
+- **Posición principal:** la línea en la que el jugador jugó más partidos del torneo, contando su posición de titular en formaciones publicadas y sus posiciones de entrada públicas; un partido cuenta una vez por línea. En empate, gana la línea del partido más reciente (fecha programada y, a igualdad, identificador del partido). Sin ninguna posición pública, es nula (DA-2).
+- **Posición de entrada:** la posición en la que entra un suplente en una sustitución. Es opcional y debe ser un código del catálogo de posiciones de la modalidad de la fase. Solo es pública si la formación del equipo en ese partido está publicada (DA-3).
+- **Penal atajado:** hecho nuevo del acta, con minuto y el jugador del equipo que defiende el penal y lo ataja. No cambia el marcador ni cuenta como gol, tarjeta o falta. Solo se registra durante el juego: la tanda de penales no genera hechos. No aparece en la cronología pública (DA-4).
 
 ## Requisitos funcionales
 
@@ -120,19 +128,4 @@ Ninguna otra organización puede ver ni modificar los hechos, las formaciones ni
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-1. ¿En qué partidos cuentan los minutos?**
-  - (a) Solo en partidos disputados en los que la alineación del equipo está publicada, para no revelar titulares privados. Recomendada.
-  - (b) En todo partido disputado, usando la planilla privada.
-  - (c) No publicar minutos; solo el umbral interno de la 022.
-- [NECESITA ACLARACIÓN] **DA-2. ¿Qué es la posición principal?**
-  - (a) La línea (Portero, Defensa, Centrocampista, Delantero) en la que más partidos jugó según las posiciones públicas; en empate, la más reciente. Recomendada.
-  - (b) El código exacto más frecuente (`LCB`, `CM_L`, …).
-  - (c) Todas las posiciones con su número de partidos, solo en la ficha.
-- [NECESITA ACLARACIÓN] **DA-3. ¿Cómo se registra la posición de quien entra?**
-  - (a) Opcional, del catálogo de la modalidad; solo es pública si la formación del equipo en ese partido está publicada. Recomendada.
-  - (b) Obligatoria cuando el equipo tiene formación.
-  - (c) No se registra; la posición solo sale de las formaciones de cada segmento.
-- [NECESITA ACLARACIÓN] **DA-4. ¿Cómo se registra el penal atajado?**
-  - (a) Un hecho nuevo «penal atajado» con el portero que lo ataja, sin efecto en el marcador; solo en juego, y no aparece en la cronología pública para no romper `v1`. Recomendada.
-  - (b) Igual, pero también en la cronología pública (cambio incompatible: exige `v2`).
-  - (c) Fuera de alcance.
+Ninguna. DA-1–DA-4 están resueltas (ver «Decisiones del usuario»).
