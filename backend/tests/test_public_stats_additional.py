@@ -120,6 +120,31 @@ def test_a_substitute_counts_from_entry_to_exit_cl2(exit_kind, expected):
     assert by_player[b]["minutes_played"] == expected
 
 
+def test_a_reentry_adds_a_new_stretch_on_the_field():
+    a, b = uuid4(), uuid4()
+    m = match()
+    events = [sub(m, HOME, a, b, 30), sub(m, HOME, b, a, 60)]
+
+    by_player = stats([m], events, lineup(m, HOME, {a: "CM"}, substitutes=[b]), segments(m), roster(a, b))
+
+    assert by_player[a]["minutes_played"] == 60
+    assert by_player[b]["minutes_played"] == 30
+
+
+@pytest.mark.parametrize("exit_kind", ["red_card", "substitution"])
+def test_an_exit_in_added_time_is_capped_at_the_effective_duration(exit_kind):
+    a, b, c = uuid4(), uuid4(), uuid4()
+    m = match()
+    events = [sub(m, HOME, a, b, 60)]
+    events.append(fact(m, HOME, b, "red_card", 90, added_minute=4) if exit_kind == "red_card"
+                  else sub(m, HOME, b, c, 90, added_minute=4))
+
+    by_player = stats([m], events, lineup(m, HOME, {a: "CM"}, substitutes=[b, c]), segments(m), roster(a, b, c))
+
+    assert by_player[b]["minutes_played"] == 30
+    assert by_player[a]["minutes_played"] == 60
+
+
 def test_extra_time_uses_the_last_segment_and_the_first_segment_lineup():
     a, b = uuid4(), uuid4()
     m = match(resolution="extra_time")

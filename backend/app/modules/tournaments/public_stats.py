@@ -798,6 +798,38 @@ def _recency_key(match: Any) -> tuple:
     return (1, 0.0, str(value), identity)
 
 
+def _on_field_minutes(match: Any, player_id: Any, events: Iterable[Any], segments: Iterable[Any], started: bool) -> int:
+    """Minutos en el campo (spec 052): suma de los tramos entre entradas y salidas.
+
+    Cada minuto de un hecho (minuto + añadido) se acota a la duración efectiva y
+    los hechos se recorren en el orden canónico, así que una reentrada suma un
+    tramo nuevo y una salida en el descuento no supera el final del partido.
+    """
+
+    duration = int(_effective_duration(match, segments))
+    indexed = list(enumerate(_events_for_match(events, match)))
+    indexed.sort(key=lambda pair: (int(_v(pair[1], "minute", 0) or 0), int(_v(pair[1], "added_minute", 0) or 0), pair[0]))
+    total, since = 0, (0 if started else None)
+    for _, e in indexed:
+        at = min(int(_v(e, "minute", 0) or 0) + int(_v(e, "added_minute", 0) or 0), duration)
+        etype = _v(e, "event_type")
+        if etype == "red_card" and _v(e, "player_id") == player_id:
+            if since is not None:
+                total += at - since
+            since = None
+            break
+        if etype != "substitution":
+            continue
+        if since is not None and _v(e, "player_out_id", _v(e, "player_id")) == player_id:
+            total += at - since
+            since = None
+        elif since is None and _v(e, "player_in_id") == player_id:
+            since = at
+    if since is not None:
+        total += duration - since
+    return max(0, total)
+
+
 def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_info, ensure) -> None:
     """Minutos (DA-1) y posición principal (DA-2, DA-3) de la spec 052.
 
@@ -836,12 +868,12 @@ def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_inf
                     if _is_starter(p) and _player_id(p) is not None
                 ]
                 for pid in dict.fromkeys(starters):
-                    ensure(pid)["minutes_played"] += _player_minutes(m, pid, mevents, segs, True)
+                    ensure(pid)["minutes_played"] += _on_field_minutes(m, pid, mevents, segs, True)
                 entering = dict.fromkeys(_v(s, "player_in_id") for s in subs)
                 for pid in entering:
                     if pid is None or pid in starters or pid not in player_info:
                         continue
-                    ensure(pid)["minutes_played"] += _player_minutes(m, pid, mevents, segs, False)
+                    ensure(pid)["minutes_played"] += _on_field_minutes(m, pid, mevents, segs, False)
             for formation in team_formations:
                 for player in _formation_players(formation):
                     pid, slot = _player_id(player), _position_slot(player)
