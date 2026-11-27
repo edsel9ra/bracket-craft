@@ -13,7 +13,8 @@ Un solo PR de implementación (sin frontend), apilado sobre el PR de la spec.
 - [x] **T3. CORS del catálogo.** RF-008, RF-009, RF-009b, RF-010
 - Hecho cuando: `cors.py` montado en `main.py`; `tests/test_public_api_cors.py` falla primero y pasa con `RUN_DATABASE_TESTS=1`; `tests/test_security_headers.py` sigue pasando.
   - Evidencia (2026-11-27): 16 casos en rojo antes de `cors.py`; ahora `test_public_api_cors.py` pasa 38/38 con `RUN_DATABASE_TESTS=1` (130/130 con matriz pública, cabeceras y T1/T2); suite sin BD 3566/0; Ruff, Bandit, compileall y `--check` sin errores. El origen del sitio conserva su CORS con credenciales también en el catálogo (D5).
-- [ ] **T4. Guías ES/EN y límite del proxy.** RF-003, RF-007, RF-011, RF-011b, RNF-003
+- [x] **T4. Guías ES/EN y límite del proxy.** RF-003, RF-007, RF-011, RF-011b, RNF-003
 - Hecho cuando: `docs/api-publica.md`, `docs/api-publica.en.md` y la sección del proxy; `tests/test_public_api_docs.py` falla primero y pasa.
+  - Evidencia (2026-11-27): 12 de 13 casos en rojo antes de las guías y la sección del proxy; ahora 13/13. Los 9 ejemplos de cada guía validan contra el modelo real y son idénticos en ES y EN. El bloque Nginx pasa `nginx -t` (nginx 1.27) y, contra un upstream de prueba, 70 peticiones seguidas a la clasificación dan 61 × 200 y 9 × 429 con `Retry-After: 10` y `Access-Control-Allow-Origin: *`; las imágenes y el Workspace no se limitan. Suite sin BD 3579/0; Ruff y `--check` sin errores.
 - [ ] **T5. Documentación, validación y PR.** RF-012, RNF-001, RNF-004
 - Hecho cuando: README, AGENTS, informe (F15 implementada) y MEMORY actualizados; pasan la suite backend completa con BD, Ruff, Bandit y compileall; PR con la CI en verde.
