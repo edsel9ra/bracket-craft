@@ -25,6 +25,12 @@ NOT_FOUND = {
     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublicError"}}},
 }
 
+TOO_MANY_REQUESTS = {
+    "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+    "headers": {"Retry-After": {"description": "Segundos de espera.", "schema": {"type": "integer"}}},
+    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublicError"}}},
+}
+
 
 def build_public_openapi(app: FastAPI) -> dict[str, Any]:
     missing = missing_routes(app.routes)
@@ -47,4 +53,5 @@ def build_public_openapi(app: FastAPI) -> dict[str, Any]:
         operation["tags"] = ["public-api-v1"]
         if "{" in path:
             operation["responses"]["404"] = NOT_FOUND
+        operation["responses"]["429"] = TOO_MANY_REQUESTS
     return json.loads(json.dumps(document))

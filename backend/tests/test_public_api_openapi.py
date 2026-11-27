@@ -62,6 +62,14 @@ def test_every_operation_documents_success_and_errors(document):
         assert "422" in operation["responses"], path
 
 
+def test_every_operation_documents_the_proxy_rate_limit(document):
+    for path, item in document["paths"].items():
+        too_many = item["get"]["responses"]["429"]
+        ref = too_many["content"]["application/json"]["schema"]["$ref"]
+        assert ref == "#/components/schemas/PublicError", path
+        assert too_many["headers"]["Retry-After"]["schema"] == {"type": "integer"}, path
+
+
 def test_operations_carry_no_internal_notes(document):
     for path, item in document["paths"].items():
         operation = item["get"]

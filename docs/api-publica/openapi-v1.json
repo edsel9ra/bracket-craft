@@ -1888,6 +1888,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "List Public Tournaments",
@@ -1941,6 +1959,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Player Profile",
@@ -1994,6 +2030,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Tournament",
@@ -2129,6 +2183,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Matches",
@@ -2214,6 +2286,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Match",
@@ -2277,6 +2367,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Match Timeline",
@@ -2391,6 +2499,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Player Stats",
@@ -2505,6 +2631,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Standings",
@@ -2619,6 +2763,24 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicError"
+                }
+              }
+            },
+            "description": "Límite de peticiones por IP del proxy superado; reintentar tras Retry-After segundos.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Public Team Stats",
