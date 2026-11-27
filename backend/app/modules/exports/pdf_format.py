@@ -10,9 +10,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
-from itertools import groupby
 from pathlib import Path
 from typing import Any
+from unicodedata import combining
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -93,11 +93,19 @@ def _text(value: Any, font: str = FONT) -> str:
     """
     text = "" if value is None else str(value)
     covered = _covered(font)
-    parts: list[str] = []
-    for missing, run in groupby(text, key=lambda char: not char.isspace() and ord(char) not in covered):
-        chunk = _escape("".join(run))
-        parts.append(f'<font name="{FALLBACK[font]}">{chunk}</font>' if missing else chunk)
-    return "".join(parts)
+    runs: list[tuple[bool, list[str]]] = []
+    for char in text:
+        if runs and combining(char):
+            runs[-1][1].append(char)  # el acento combinante va en la fuente de su letra base
+            continue
+        missing = not char.isspace() and ord(char) not in covered
+        if runs and runs[-1][0] == missing:
+            runs[-1][1].append(char)
+        else:
+            runs.append((missing, [char]))
+    parts = (_escape("".join(chars)) for _, chars in runs)
+    return "".join(f'<font name="{FALLBACK[font]}">{chunk}</font>' if missing else chunk
+                   for (missing, _), chunk in zip(runs, parts, strict=True))
 
 
 def _paragraph(value: Any, style: str) -> Paragraph:

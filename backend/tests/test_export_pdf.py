@@ -206,3 +206,11 @@ def test_letters_missing_in_archivo_fall_back_to_dejavu_sans():
     plain_fonts = {font["/BaseFont"].split("+")[-1] for font in
                    (ref.get_object() for ref in PdfReader(io.BytesIO(plain)).pages[0]["/Resources"]["/Font"].values())}
     assert not any(font.startswith("DejaVu") for font in plain_fonts)
+
+
+def test_combining_marks_stay_in_the_font_of_their_base_letter():
+    from app.modules.exports.pdf_format import FALLBACK, FONT, _text
+
+    assert _text("Kɔ́fi") == f'K<font name="{FALLBACK[FONT]}">ɔ́</font>fi'
+    assert _text("José") == "José"
+    assert _text("\u0301Ana") == "\u0301Ana"
