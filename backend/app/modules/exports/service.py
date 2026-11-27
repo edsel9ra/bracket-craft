@@ -161,6 +161,17 @@ REPORT_MATCH_SQL = text("""
     WHERE m.id = :match_id AND m.organization_id = :organization_id
 """)
 
+# Cabecera del PDF del acta (spec 050, RF-002): nombres y fecha, nunca identificadores.
+REPORT_INFO_SQL = text("""
+    SELECT t.name AS tournament_name, st.name AS stage_name, m.match_date, o.name AS organization_name
+    FROM matches m
+    JOIN tournaments t ON t.id = m.tournament_id AND t.organization_id = m.organization_id
+    LEFT JOIN stages st
+      ON st.id = m.stage_id AND st.tournament_id = m.tournament_id AND st.organization_id = m.organization_id
+    CROSS JOIN get_current_organization() o
+    WHERE m.id = :match_id AND m.organization_id = :organization_id
+""")
+
 # Solo nombre y función: nunca el correo del oficial (RF-004).
 REPORT_OFFICIALS_SQL = text("""
     SELECT u.full_name, mo.official_role AS role
@@ -261,29 +272,47 @@ class ExportService:
         header = catalog.header(catalog.REPORT_KIND, lang)
         async with self.db.begin():
             await self._begin_snapshot(context)
-            params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
-            match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
-            if match is None:
-                raise ExportNotFound
-            if not builders.is_closed(match):
-                raise MatchNotClosed
-            officials = await self._rows(REPORT_OFFICIALS_SQL, params)
-            lineup = await self._rows(REPORT_LINEUP_SQL, params)
-            team_ids = [str(team) for team in (match["home_team_id"], match["away_team_id"]) if team]
-            players: dict[Any, dict[str, Any]] = {}
-            for row in await self._rows(
-                REPORT_PLAYERS_SQL,
-                {**params, "tournament_id": str(match["tournament_id"]), "team_ids": team_ids},
-            ):
-                players.setdefault(row["player_id"], row)
-            # La alineación lleva el dorsal de la inscripción con la que jugó.
-            for row in lineup:
-                players[row["player_id"]] = row
-            events: list[dict[str, Any]] = []
-            if match["resolution_type"] != "walkover":
-                events = await self._rows(REPORT_EVENTS_SQL, params)
-            rows = builders.match_report_rows(match, officials, lineup, events, players, lang)
+            _match, rows = await self._match_report(context, match_id, lang)
             return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+
+    async def export_match_report_pdf(self, context, match_id: UUID, lang: str) -> PdfDocument:
+        async with self.db.begin():
+            await self._begin_snapshot(context)
+            match, rows = await self._match_report(context, match_id, lang)
+            params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
+            extra = (await self.db.execute(REPORT_INFO_SQL, params)).mappings().one()
+            info = {
+                "organization": extra["organization_name"], "tournament": extra["tournament_name"],
+                "home": match["home_team_name"], "away": match["away_team_name"],
+                "stage": extra["stage_name"], "match_date": extra["match_date"],
+            }
+            return pdf_layout.match_report_document(rows, info, lang)
+
+    async def _match_report(self, context, match_id: UUID, lang: str):
+        """Lecturas del acta compartidas por el CSV y el PDF, dentro de la transacción ya abierta."""
+        params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
+        match = (await self.db.execute(REPORT_MATCH_SQL, params)).mappings().one_or_none()
+        if match is None:
+            raise ExportNotFound
+        if not builders.is_closed(match):
+            raise MatchNotClosed
+        officials = await self._rows(REPORT_OFFICIALS_SQL, params)
+        lineup = await self._rows(REPORT_LINEUP_SQL, params)
+        team_ids = [str(team) for team in (match["home_team_id"], match["away_team_id"]) if team]
+        players: dict[Any, dict[str, Any]] = {}
+        for row in await self._rows(
+            REPORT_PLAYERS_SQL,
+            {**params, "tournament_id": str(match["tournament_id"]), "team_ids": team_ids},
+        ):
+            players.setdefault(row["player_id"], row)
+        # La alineación lleva el dorsal de la inscripción con la que jugó.
+        for row in lineup:
+            players[row["player_id"]] = row
+        events: list[dict[str, Any]] = []
+        if match["resolution_type"] != "walkover":
+            events = await self._rows(REPORT_EVENTS_SQL, params)
+        rows = builders.match_report_rows(match, officials, lineup, events, players, lang)
+        return match, rows
 
     async def _rosters(self, params, lang) -> list[list[Any]]:
         data = await self._rows(ROSTERS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})

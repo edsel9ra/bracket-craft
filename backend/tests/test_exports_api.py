@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
 from app.main import api
-from app.modules.exports import catalog
+from app.modules.exports import catalog, pdf_layout
 from migration_helpers import connect
 from test_match_assists_db import close, committed_application, goal_and_red_report, seeded_match
 from test_notification_api import add_member
@@ -420,7 +420,7 @@ async def test_viewer_can_download_the_report(exports):
     assert (await download_report(exports)).status_code == 200
 
 
-async def test_rectified_report_uses_the_current_version_without_voided_events(exports):
+async def rectify_with_voided_goal(exports):
     org, match_id = exports.owner.organization_id, exports.match.match_id
     goal = await exports.admin.fetchrow(
         "SELECT segment_id, team_id, player_id FROM match_events WHERE match_id=$1 AND event_type='goal'", match_id)
@@ -443,6 +443,10 @@ async def test_rectified_report_uses_the_current_version_without_voided_events(e
            SELECT $1,$2,$3,$4,$5,$6,'goal',e.minute,e.client_id,e.voided
            FROM (VALUES (70,'late',FALSE),(20,'early',FALSE),(80,'voided',TRUE)) AS e(minute, client_id, voided)""",
         org, version, match_id, goal["segment_id"], goal["team_id"], goal["player_id"])
+
+
+async def test_rectified_report_uses_the_current_version_without_voided_events(exports):
+    await rectify_with_voided_goal(exports)
     rows = parse(await download_report(exports))
     assert [row[6] for row in section(rows, "Resultado")[:2]] == ["2", "0"]
     assert [(row[4], row[5]) for row in section(rows, "Hecho")] == [("Gol", "20"), ("Gol", "70")]
@@ -637,3 +641,139 @@ async def test_standings_pdf_leaves_no_audit_entry(exports):
     before = await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs")
     assert (await download_standings_pdf(exports)).status_code == 200
     assert await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == before
+
+
+# ---------------------------------------------------------------- PDF del acta (spec 050, T3)
+
+
+async def download_report_pdf(exports, match_id=None, lang=None):
+    params = {"lang": lang} if lang else {}
+    return await exports.client.get(
+        f"/api/v1/matches/{match_id or exports.match.match_id}/export/pdf", params=params)
+
+
+async def test_report_pdf_route_is_registered():
+    routes = {(path, method) for path, route in walk_routes(api.routes) for method in route.methods}
+    assert ("/api/v1/matches/{match_id}/export/pdf", "GET") in routes
+
+
+async def test_report_pdf_is_a_pdf_with_the_header_and_the_csv_content(exports):
+    response = await download_report_pdf(exports)
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["cache-control"] == "no-store"
+    short = str(exports.match.match_id)[:8]
+    assert response.headers["content-disposition"] == f'attachment; filename="match-report-{short}.pdf"'
+    info = await tournament_and_organization(exports)
+    names = await team_names(exports)
+    home, away = names[exports.match.home_team_id][0], names[exports.match.away_team_id][0]
+    text = pdf_text(response)
+    for expected in ("Acta del partido", info["organization"], info["tournament"], f"{home} vs {away}",
+                     "Generado el", "Resultado", "Hechos", "Gol", "Tarjeta roja"):
+        assert expected in text
+    for row in parse(await download_report(exports))[1:]:
+        if row[3]:
+            assert row[3] in text
+
+
+async def test_report_pdf_lists_officials_without_email(exports):
+    await exports.admin.execute(
+        """INSERT INTO match_officials (organization_id, match_id, organization_user_id, official_role)
+           VALUES ($1,$2,$3,'main_referee')""",
+        exports.owner.organization_id, exports.match.match_id, exports.viewer.organization_user_id)
+    text = pdf_text(await download_report_pdf(exports, lang="en"))
+    assert "Match report" in text and "Officials" in text and "Olga Observadora" in text
+    assert "observador-048@example.test" not in text
+
+
+async def test_report_pdf_of_an_open_match_is_a_conflict(exports):
+    response = await download_report_pdf(exports, exports.live_match_id)
+    assert (response.status_code, response.json()) == (409, {"detail": "MATCH_NOT_CLOSED"})
+
+
+async def test_foreign_and_missing_matches_get_the_same_404_in_pdf(exports):
+    foreign = await download_report_pdf(exports, exports.foreign_match_id)
+    missing = await download_report_pdf(exports, uuid4())
+    assert (foreign.status_code, foreign.json()) == (404, MATCH_NOT_FOUND)
+    assert (missing.status_code, missing.json()) == (404, MATCH_NOT_FOUND)
+    exports.context = exports.stranger
+    other = await download_report_pdf(exports)
+    assert (other.status_code, other.json()) == (404, MATCH_NOT_FOUND)
+
+
+async def test_viewer_can_download_the_report_pdf(exports):
+    exports.context = exports.viewer
+    assert (await download_report_pdf(exports)).status_code == 200
+
+
+async def test_walkover_report_pdf_has_the_reason_and_no_events(exports):
+    await exports.admin.execute("SET session_replication_role = replica")
+    await exports.admin.execute(
+        """UPDATE matches SET status='finished', result_confirmed=TRUE, resolution_type='walkover',
+               resolution_reason='no_show', home_score_regular=3, away_score_regular=0,
+               home_score=3, away_score=0, winner_team_id=home_team_id
+           WHERE id=$1""", exports.live_match_id)
+    await exports.admin.execute("SET session_replication_role = DEFAULT")
+    text = pdf_text(await download_report_pdf(exports, exports.live_match_id))
+    assert "W.O." in text and "Incomparecencia" in text
+    assert "Hechos" not in text
+
+
+async def test_report_pdf_never_carries_identifiers_or_personal_data(exports):
+    text = pdf_text(await download_report_pdf(exports))
+    rows = await exports.admin.fetch(
+        "SELECT id, national_id_hmac FROM players WHERE organization_id=$1", exports.owner.organization_id)
+    for row in rows:
+        assert str(row["id"]) not in text
+        if row["national_id_hmac"]:
+            assert row["national_id_hmac"] not in text
+    assert "@example" not in text
+    assert str(exports.match.match_id) not in text
+
+
+async def test_report_pdf_over_the_limit_fails_without_a_file(exports, monkeypatch):
+    monkeypatch.setattr(catalog, "MAX_ROWS", 1)
+    response = await download_report_pdf(exports)
+    assert (response.status_code, response.json()) == (422, {"detail": "EXPORT_TOO_LARGE"})
+
+
+async def test_report_pdf_rejects_unknown_lang(exports):
+    assert (await download_report_pdf(exports, lang="fr")).status_code == 422
+
+
+async def test_report_pdf_leaves_no_audit_entry(exports):
+    before = await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs")
+    assert (await download_report_pdf(exports)).status_code == 200
+    assert await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == before
+
+
+def capture_pdf_rows(monkeypatch) -> list:
+    captured: list = []
+    original = pdf_layout.match_report_document
+
+    def spy(rows, info, lang):
+        captured.extend(rows)
+        return original(rows, info, lang)
+
+    monkeypatch.setattr(pdf_layout, "match_report_document", spy)
+    return captured
+
+
+def as_csv_cells(rows) -> list[list[str]]:
+    return [["" if cell is None else str(cell) for cell in row] for row in rows]
+
+
+async def test_report_pdf_has_exactly_the_csv_rows(exports, monkeypatch):
+    captured = capture_pdf_rows(monkeypatch)
+    assert (await download_report_pdf(exports)).status_code == 200
+    assert as_csv_cells(captured) == parse(await download_report(exports))[1:]
+
+
+async def test_rectified_report_pdf_uses_the_current_version_without_voided_events(exports, monkeypatch):
+    await rectify_with_voided_goal(exports)
+    captured = capture_pdf_rows(monkeypatch)
+    response = await download_report_pdf(exports)
+    assert response.status_code == 200
+    events = [(row[4], row[5]) for row in as_csv_cells(captured) if row[0] == "Hecho"]
+    assert events == [("Gol", "20"), ("Gol", "70")]
+    assert as_csv_cells(captured) == parse(await download_report(exports))[1:]

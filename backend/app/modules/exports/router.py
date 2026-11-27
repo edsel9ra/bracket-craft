@@ -84,6 +84,24 @@ async def export_tournament(
     return _csv(data, f"{kind}-{str(tournament_id)[:8]}.csv")
 
 
+@router.get("/matches/{match_id}/export/pdf")
+async def export_match_report_pdf(
+    match_id: UUID,
+    lang: ExportLang = "es",
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        document = await ExportService(db).export_match_report_pdf(context, match_id, lang)
+        return _pdf(document, lang, f"match-report-{str(match_id)[:8]}.pdf")
+    except ExportNotFound as exc:
+        raise HTTPException(status_code=404, detail=MATCH_NOT_FOUND) from exc
+    except MatchNotClosed as exc:
+        raise HTTPException(status_code=409, detail=MATCH_NOT_CLOSED) from exc
+    except ExportTooLarge as exc:
+        raise HTTPException(status_code=422, detail=EXPORT_TOO_LARGE) from exc
+
+
 @router.get("/matches/{match_id}/export")
 async def export_match_report(
     match_id: UUID,

@@ -17,6 +17,15 @@ PDF_TEXTS: dict[str, dict[str, str]] = {
     "tournament": {"es": "Torneo", "en": "Tournament"},
     "standings_title": {"es": "Clasificación", "en": "Standings"},
     "no_standings": {"es": "Sin clasificación todavía", "en": "No standings yet"},
+    "report_title": {"es": "Acta del partido", "en": "Match report"},
+    "match": {"es": "Partido", "en": "Match"},
+    "stage": {"es": "Fase", "en": "Stage"},
+    "date": {"es": "Fecha", "en": "Date"},
+    "vs": {"es": "vs", "en": "vs"},
+    "block_result": {"es": "Resultado", "en": "Result"},
+    "block_official": {"es": "Oficiales", "en": "Officials"},
+    "block_lineup": {"es": "Alineación", "en": "Lineup"},
+    "block_event": {"es": "Hechos", "en": "Events"},
 }
 
 # Cada columna: (clave interna, cabecera ES, cabecera EN). El orden es el del archivo.
