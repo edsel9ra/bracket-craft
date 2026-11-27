@@ -1,6 +1,6 @@
 # Tareas — Spec 051: API pública documentada para terceros (F15)
 
-Estado: borrador, pendiente de aprobación junto con el plan.
+Estado: aprobadas el 2026-11-27 («Apruebo el plan y las tareas»).
 
 Un solo PR de implementación (sin frontend), apilado sobre el PR de la spec.
 

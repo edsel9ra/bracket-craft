@@ -1,6 +1,6 @@
 # Plan — Spec 051: API pública documentada para terceros (F15)
 
-Estado: borrador, pendiente de aprobación. Spec aprobada el 2026-11-27 («Apruebo la spec 051»).
+Estado: aprobado el 2026-11-27 («Apruebo el plan y las tareas»). Spec aprobada el 2026-11-27 («Apruebo la spec 051»).
 
 ## 1. Resumen
 
