@@ -71,7 +71,8 @@ async function openExports(page: Page, fixture: ExportFixture) {
   await page.waitForLoadState('networkidle');
 }
 
-const exportButton = (page: Page, title: string) => page.locator('.export-item').filter({ has: page.getByRole('heading', { level: 2, name: title, exact: true }) }).getByRole('button');
+const exportButton = (page: Page, title: string, label = 'Descargar CSV') => page.locator('.export-item')
+  .filter({ has: page.getByRole('heading', { level: 2, name: title, exact: true }) }).getByRole('button', { name: label, exact: true });
 
 test('a member downloads the standings with the keyboard and gets a CSV named after the tournament', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
