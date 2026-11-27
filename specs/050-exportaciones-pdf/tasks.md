@@ -19,8 +19,9 @@ Estado: aprobadas el 2026-11-26 junto con el plan («Apruebo el plan y las tarea
 
 ## Bloque B — Workspace, E2E y documentación (otro PR, apilado sobre el A)
 
-- [ ] **T5. Utilidades, composable y textos.** RF-003, RNF-007
+- [x] **T5. Utilidades, composable y textos.** RF-003, RNF-007
 - Hecho cuando: `utils/exports.ts` (formato, rutas PDF, nombre `.pdf`, espejo de `PDF_KINDS`), `useExports` con tipo y formato, y claves ES/EN; tests en rojo primero y `cd frontend && pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios.
+- Evidencia (2026-11-26): los 6 casos nuevos o ampliados de `tests/exports.test.ts` fallaron primero y ahora pasan 18/18; `EXPORT_FORMATS`, `PDF_EXPORT_KINDS` (espejo de `PDF_KINDS`, comprobado contra `catalog.py`), `hasPdf`, rutas `/pdf` (un tipo sin PDF lanza error), nombre `.pdf`, `exportBusyKey` (`standings:pdf`), `exportDownloadKey` y `matchReportTitleKey`; `useExports` acepta el formato y sigue con una descarga a la vez; claves `export.downloadPdf`, `export.format.pdf` y `export.kind.match-report.pdfTitle` en ES/EN. La página «Exportaciones» compara `busy` con `exportBusyKey(kind, 'csv')` para que el CSV no cambie. `pnpm test` 1301/0 (1 omitido previo), typecheck y lint limpios.
 - [ ] **T6. Botones PDF en «Exportaciones» y en el acta.** RF-003, RF-006, RNF-007
 - Hecho cuando: botón «Descargar PDF» en la fila de la clasificación y «Descargar acta (PDF)» en el partido cerrado; tests de componentes en rojo primero y `pnpm test`, `pnpm run typecheck` y `pnpm run lint` limpios.
 - [ ] **T7. E2E, documentación y validación.** RNF-001–RNF-008

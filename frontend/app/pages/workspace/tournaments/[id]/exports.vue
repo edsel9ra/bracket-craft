@@ -4,7 +4,7 @@ import Button from '~/components/ui/Button.vue';
 import PageHeader from '~/components/ui/PageHeader.vue';
 import Surface from '~/components/ui/Surface.vue';
 import {
-  AUDITED_EXPORT_KINDS, TOURNAMENT_EXPORT_KINDS, exportDescriptionKey, exportSubject, exportTitleKey, type TournamentExportKind,
+  AUDITED_EXPORT_KINDS, TOURNAMENT_EXPORT_KINDS, exportBusyKey, exportDescriptionKey, exportSubject, exportTitleKey, type TournamentExportKind,
 } from '~/utils/exports';
 import { keepFocusDuring } from '~/utils/exportDownload';
 
@@ -57,9 +57,9 @@ function download(kind: TournamentExportKind, event: MouseEvent) {
             </div>
             <Button
               variant="secondary" :aria-describedby="describedBy(kind)"
-              :busy="busy === kind" :disabled="Boolean(busy) && busy !== kind" @click="download(kind, $event)"
+              :busy="busy === exportBusyKey(kind, 'csv')" :disabled="Boolean(busy) && busy !== exportBusyKey(kind, 'csv')" @click="download(kind, $event)"
             >
-              {{ t(busy === kind ? 'export.downloading' : 'export.download') }}
+              {{ t(busy === exportBusyKey(kind, 'csv') ? 'export.downloading' : 'export.download') }}
             </Button>
           </Surface>
         </li>

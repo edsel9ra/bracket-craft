@@ -56,8 +56,8 @@ test('API failures map to stable keys, also when the error body arrives as a Blo
 
 type State = {
   busy: vue.Ref<string | null>; error: vue.Ref<string>; notice: vue.Ref<string>;
-  downloadTournament: (tournamentId: string, kind: helpers.TournamentExportKind, tournamentName: string) => Promise<boolean>;
-  downloadMatchReport: (matchId: string, matchName: string) => Promise<boolean>;
+  downloadTournament: (tournamentId: string, kind: helpers.TournamentExportKind, tournamentName: string, format?: helpers.ExportFormat) => Promise<boolean>;
+  downloadMatchReport: (matchId: string, matchName: string, format?: helpers.ExportFormat) => Promise<boolean>;
 };
 type Request = (path: string, options?: Record<string, unknown>) => Promise<unknown>;
 
@@ -89,7 +89,7 @@ test('only one download runs at a time, and a failure leaves a stable key withou
   let settle: (value: unknown) => void = () => {};
   const { state, saved } = composable(() => new Promise((resolve) => { settle = resolve; }));
   const first = state.downloadTournament('t1', 'rosters', 'Copa');
-  assert.equal(state.busy.value, 'rosters');
+  assert.equal(state.busy.value, 'rosters:csv');
   assert.equal(await state.downloadTournament('t1', 'calendar', 'Copa'), false);
   settle(new Blob(['x'])); assert.equal(await first, true);
 
@@ -155,4 +155,57 @@ test('a file is named after the tournament id when its name is not loaded', () =
     helpers.exportFileName('standings', helpers.exportSubject('', '1a2b3c4d-0000'), new Date('2026-11-25T12:00:00Z')),
     helpers.exportFileName('standings', helpers.exportSubject('', '9f8e7d6c-0000'), new Date('2026-11-25T12:00:00Z')),
   );
+});
+
+test('the PDF catalog mirrors PDF_KINDS of the backend and only standings and the match report have a PDF', () => {
+  const kinds = backendCatalog.match(/^PDF_KINDS[^=]*=\s*\(([^)]*)\)/m)![1]!;
+  const mirrored = [...kinds.matchAll(/"([a-z-]+)"|(REPORT_KIND)/g)].map((match) => match[1] ?? helpers.MATCH_REPORT_KIND);
+  assert.deepEqual([...helpers.PDF_EXPORT_KINDS], mirrored);
+  assert.deepEqual([...helpers.EXPORT_FORMATS], ['csv', 'pdf']);
+  assert.deepEqual([...helpers.TOURNAMENT_EXPORT_KINDS, helpers.MATCH_REPORT_KIND].filter(helpers.hasPdf), ['standings', 'match-report']);
+});
+
+test('PDF paths are separate routes and the CSV paths do not change', () => {
+  assert.equal(helpers.tournamentExportPath('t/1', 'standings', 'pdf'), '/tournaments/t%2F1/exports/standings/pdf');
+  assert.equal(helpers.tournamentExportPath('t/1', 'standings', 'csv'), '/tournaments/t%2F1/exports/standings');
+  assert.equal(helpers.matchReportPath('m 1', 'pdf'), '/matches/m%201/export/pdf');
+  assert.equal(helpers.matchReportPath('m 1', 'csv'), '/matches/m%201/export');
+  assert.throws(() => helpers.tournamentExportPath('t1', 'rosters', 'pdf'), /pdf/);
+});
+
+test('PDF file names end in .pdf and busy keys carry the kind and the format', () => {
+  const date = new Date('2026-11-25T23:30:00Z');
+  assert.equal(helpers.exportFileName('standings', 'Copa Ñandú', date, 'pdf'), 'standings-copa-nandu-2026-11-25.pdf');
+  assert.equal(helpers.exportFileName('match-report', '¡!', date, 'pdf'), 'match-report-2026-11-25.pdf');
+  assert.equal(helpers.exportFileName('standings', 'Copa', date), 'standings-copa-2026-11-25.csv');
+  assert.equal(helpers.exportBusyKey('standings', 'pdf'), 'standings:pdf');
+  assert.equal(helpers.exportBusyKey('rosters', 'csv'), 'rosters:csv');
+  assert.equal(helpers.exportDownloadKey('csv'), 'export.download');
+  assert.equal(helpers.exportDownloadKey('pdf'), 'export.downloadPdf');
+  assert.equal(helpers.matchReportTitleKey('csv'), 'export.kind.match-report.title');
+  assert.equal(helpers.matchReportTitleKey('pdf'), 'export.kind.match-report.pdfTitle');
+});
+
+test('a PDF export goes through useApi as a blob, with its own route, name and busy key', async () => {
+  const calls: Array<[string, unknown]> = [];
+  let settle: (value: unknown) => void = () => {};
+  const { state, saved } = composable((path, options) => { calls.push([path, options]); return new Promise((resolve) => { settle = resolve; }); }, 'en');
+  const pending = state.downloadTournament('t1', 'standings', 'Copa', 'pdf');
+  assert.equal(state.busy.value, 'standings:pdf');
+  assert.equal(await state.downloadTournament('t1', 'standings', 'Copa'), false);
+  settle(new Blob(['%PDF-'])); assert.equal(await pending, true);
+  assert.deepEqual(plain(calls), [['/tournaments/t1/exports/standings/pdf', { query: { lang: 'en' }, responseType: 'blob' }]]);
+  assert.match(saved[0]!.name, /^standings-copa-\d{4}-\d{2}-\d{2}\.pdf$/);
+
+  const report = composable(async (path) => { calls.push([path, null]); return new Blob(['%PDF-']); });
+  assert.equal(await report.state.downloadMatchReport('m1', 'A vs B', 'pdf'), true);
+  assert.equal(calls.at(-1)![0], '/matches/m1/export/pdf');
+  assert.match(report.saved[0]!.name, /^match-report-a-vs-b-.*\.pdf$/);
+  assert.equal(report.state.busy.value, null);
+});
+
+test('the PDF texts exist in both catalogs', () => {
+  const used = ['export.format.pdf', helpers.exportDownloadKey('pdf'), helpers.matchReportTitleKey('pdf')];
+  assert.deepEqual(used.filter((key) => !spanishKeys.has(key)), []);
+  assert.deepEqual(used.filter((key) => !englishKeys.has(key)), []);
 });

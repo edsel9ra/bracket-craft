@@ -1,4 +1,4 @@
-/** Utilidades puras de las exportaciones CSV del Workspace (spec 048). */
+/** Utilidades puras de las exportaciones CSV (spec 048) y PDF (spec 050) del Workspace. */
 
 export const TOURNAMENT_EXPORT_KINDS = ['standings', 'calendar', 'player-stats', 'team-stats', 'rosters'] as const;
 export const MATCH_REPORT_KIND = 'match-report' as const;
@@ -6,18 +6,33 @@ export const EXPORT_MAX_ROWS = 10_000;
 /** Solo la descarga de plantillas queda en la auditoría de la organización (RF-007). */
 export const AUDITED_EXPORT_KINDS: readonly string[] = ['rosters'];
 
+export const EXPORT_FORMATS = ['csv', 'pdf'] as const;
+/** Espejo de `PDF_KINDS` del backend: solo la clasificación y el acta tienen PDF (spec 050, DA-1). */
+export const PDF_EXPORT_KINDS = ['standings', MATCH_REPORT_KIND] as const;
+
 export type TournamentExportKind = typeof TOURNAMENT_EXPORT_KINDS[number];
 export type ExportKind = TournamentExportKind | typeof MATCH_REPORT_KIND;
+export type ExportFormat = typeof EXPORT_FORMATS[number];
 export type ExportLang = 'es' | 'en';
+
+export function hasPdf(kind: ExportKind): boolean {
+  return (PDF_EXPORT_KINDS as readonly string[]).includes(kind);
+}
+
+function formatSuffix(kind: ExportKind, format: ExportFormat): string {
+  if (format === 'csv') return '';
+  if (!hasPdf(kind)) throw new Error(`${kind} has no pdf export`);
+  return '/pdf';
+}
 
 const NAME_LIMIT = 60;
 
-export function tournamentExportPath(tournamentId: string, kind: TournamentExportKind): string {
-  return `/tournaments/${encodeURIComponent(tournamentId)}/exports/${kind}`;
+export function tournamentExportPath(tournamentId: string, kind: TournamentExportKind, format: ExportFormat = 'csv'): string {
+  return `/tournaments/${encodeURIComponent(tournamentId)}/exports/${kind}${formatSuffix(kind, format)}`;
 }
 
-export function matchReportPath(matchId: string): string {
-  return `/matches/${encodeURIComponent(matchId)}/export`;
+export function matchReportPath(matchId: string, format: ExportFormat = 'csv'): string {
+  return `/matches/${encodeURIComponent(matchId)}/export${formatSuffix(MATCH_REPORT_KIND, format)}`;
 }
 
 export function exportLang(locale: string): ExportLang {
@@ -35,10 +50,22 @@ export function exportSubject(name: string | null | undefined, id: string): stri
   return name?.trim() || id.slice(0, 8);
 }
 
-export function exportFileName(kind: ExportKind, name: string, date: Date): string {
+export function exportFileName(kind: ExportKind, name: string, date: Date, format: ExportFormat = 'csv'): string {
   const slug = asciiSlug(name);
   const day = date.toISOString().slice(0, 10);
-  return slug ? `${kind}-${slug}-${day}.csv` : `${kind}-${day}.csv`;
+  return slug ? `${kind}-${slug}-${day}.${format}` : `${kind}-${day}.${format}`;
+}
+
+export function exportBusyKey(kind: ExportKind, format: ExportFormat): string {
+  return `${kind}:${format}`;
+}
+
+export function exportDownloadKey(format: ExportFormat): string {
+  return format === 'pdf' ? 'export.downloadPdf' : 'export.download';
+}
+
+export function matchReportTitleKey(format: ExportFormat): string {
+  return format === 'pdf' ? 'export.kind.match-report.pdfTitle' : 'export.kind.match-report.title';
 }
 
 export function exportTitleKey(kind: ExportKind): string {

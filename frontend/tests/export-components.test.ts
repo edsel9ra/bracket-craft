@@ -74,7 +74,7 @@ test('the exports page lists the five tournament files with one native button ea
 });
 
 test('while one file downloads every button is disabled and the busy one says so', async () => {
-  const html = await render(page(exportsState({ busy: vue.ref('calendar') }).state));
+  const html = await render(page(exportsState({ busy: vue.ref('calendar:csv') }).state));
   assert.equal(html.match(/<button[^>]*disabled/g)?.length, helpers.TOURNAMENT_EXPORT_KINDS.length);
   assert.match(html, /aria-describedby="export-calendar-title"[^>]*aria-busy="true"[^>]*>\s*export\.downloading/);
 });
