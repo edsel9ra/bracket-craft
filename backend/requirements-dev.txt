@@ -1,7 +1,7 @@
 # Dependencias de prueba: se instalan junto a requirements.txt (nunca en la imagen de producción).
 pytest==9.2.0
 pytest-asyncio==1.5.0
-ruff==0.17.5
+ruff==0.17.6
 bandit==1.9.4
 pypdf==6.21.4
 openapi-spec-validator==0.9.0
