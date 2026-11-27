@@ -1,6 +1,6 @@
 # Spec 050 — Exportaciones PDF (F10, parte 2)
 
-Estado: borrador. DA-1–DA-4 resueltas el 2026-11-26. Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»), como continuación de la 048 («Apruebo la 048 solo con CSV; el PDF irá en una spec aparte»).
+Estado: aprobada el 2026-11-26 («Apruebo la spec 050»). DA-1–DA-4 resueltas el 2026-11-26. Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»), como continuación de la 048 («Apruebo la 048 solo con CSV; el PDF irá en una spec aparte»).
 
 ## Decisiones del usuario (2026-11-26)
 
