@@ -6,8 +6,9 @@ Dos PR de implementación apilados sobre el PR de la spec: bloque A (T1–T5, ba
 
 ## Bloque A — backend
 
-- [ ] **T1. Migración 070.** RF-007, RF-009, RNF-002
+- [x] **T1. Migración 070.** RF-007, RF-009, RNF-002
 - Hecho cuando: `infra/postgres/migrations/070_additional_player_stats.sql`; `tests/test_migration_070.py` falla primero y pasa con `RUN_DATABASE_TESTS=1` sobre volumen limpio y migrado; `sh -n infra/postgres/migrate.sh`.
+- Evidencia (2026-11-27): `test_migration_070.py` falló primero (4 de 10: sin migración, `penalty_saved` rechazado, sin constraints con nombre estable ni columna en la vista) y pasa 10/10; con 021, 035, 056, 060, 069 y el endpoint de la cronología pasan 120/120 con `RUN_DATABASE_TESTS=1`; `sh -n infra/postgres/migrate.sh` correcto. Los CHECK del catálogo se localizan por definición y se sustituyen por `chk_<tabla>_event_type`.
 - [ ] **T2. Contrato del hecho y validación del catálogo.** RF-007, RF-008, RF-009
 - Hecho cuando: `POSITION_LINES`, `positions_for_game_format`, `EVENT_TYPES` y `player_in_position` en `MatchEventPayload`; tests de esquema y de `rule_contract` fallan primero y pasan con `cd backend && pytest -q tests/test_rule_contract.py tests/test_match_event_payload*.py`.
 - [ ] **T3. Persistencia en cierre clásico, en vivo y rectificación.** RF-006–RF-010, RF-015
