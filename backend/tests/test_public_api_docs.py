@@ -136,31 +136,41 @@ def test_proxy_example_limits_per_ip_with_429_and_retry_after():
     assert zone and burst
     assert "limit_req_status 429;" in block
     assert re.search(r"add_header Retry-After \d+ always;", block)
-    assert 'add_header Access-Control-Allow-Origin "*" always;' in block
+    assert "add_header Access-Control-Allow-Origin $public_api_429_origin always;" in block
+    assert "add_header Access-Control-Allow-Credentials $public_api_429_credentials always;" in block
+    assert "add_header Access-Control-Expose-Headers Retry-After always;" in block
+    assert re.search(r'map \$http_origin \$public_api_429_origin \{\s*default "\*";', block)
     assert "proxy_pass http://api:8000;" in block
     for lang in GUIDES:
         limit = _section(_guide(lang), LIMIT_HEADINGS[lang])
         assert zone[1] in limit and burst[1] in limit
 
 
-def test_proxy_location_covers_exactly_the_catalog():
+def test_proxy_location_covers_the_catalog_in_every_uuid_form():
     location = _nginx_location()
-    accepted = [_concrete(path) for _, path in catalog.PUBLIC_API_V1] + [catalog.OPENAPI_PATH]
+    catalog_paths = [_concrete(path) for _, path in catalog.PUBLIC_API_V1] + [catalog.OPENAPI_PATH]
+    tournament_id = uuid4()
+    # FastAPI acepta otras formas del mismo UUID; el límite no debe poder saltarse con ellas.
+    other_forms = [
+        f"/api/v1/tournaments/public/{form}/standings"
+        for form in (tournament_id.hex, str(tournament_id).upper(), f"{{{tournament_id}}}",
+                     f"urn:uuid:{tournament_id}")
+    ] + ["/api/v1/tournaments/public/no-es-uuid", _concrete("/api/v1/tournaments/public/{t}/standings/extra")]
     rejected = [
         "/api/v1/tournaments/public/share-image",
         _concrete("/api/v1/tournaments/public/{t}/share-image"),
         _concrete("/api/v1/tournaments/public/{t}/matches/{m}/share-image"),
-        "/api/v1/tournaments/public/no-es-uuid",
-        _concrete("/api/v1/tournaments/public/{t}/standings/extra"),
         "/api/v1/tournaments",
         "/api/v1/auth/me",
         _concrete("/api/v1/matches/{m}/live"),
         "/api/v1/public/openapi.json/extra",
         "/api/v1/tournaments/publicx",
     ]
-    for path in accepted:
+    for path in catalog_paths:
         assert location.search(path), path
         assert catalog.is_public_read("GET", path)
+    for path in other_forms:
+        assert location.search(path), path
     for path in rejected:
         assert not location.search(path), path
         assert not catalog.is_public_read("GET", path)
