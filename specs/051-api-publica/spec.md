@@ -1,6 +1,6 @@
 # Spec 051 — API pública documentada para terceros (F15)
 
-Estado: borrador. DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con P3»), primera función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+Estado: aprobada el 2026-11-27 («Apruebo la spec 051»). DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con P3»), primera función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
 
 ## Decisiones del usuario (2026-11-27)
 
