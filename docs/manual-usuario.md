@@ -225,7 +225,7 @@ El owner y el administrador (permiso `MANAGE_WEBHOOKS`) ven «Webhooks» en el m
 
 Solo se envían avisos de torneos públicos, con los datos que ya muestra la vista pública: nunca el nombre de un jugador. Si tu receptor no responde con un código 2xx, se reintenta hasta completar 6 intentos en unas 3 horas, con el mismo identificador de entrega; el webhook no se desactiva solo. Cada cambio queda en la auditoría con el dominio de la URL, sin la ruta ni el secreto. El formato de la firma está en el README.
 
-### Exportaciones (spec 048)
+### Exportaciones (specs 048 y 050)
 
 Todos los miembros, también el observador, ven «Exportaciones» en el menú de cada torneo del Workspace. Cada archivo es un CSV (UTF-8, separado por comas) que se abre con los acentos correctos en las hojas de cálculo, con la cabecera en el idioma de la interfaz y las fechas en UTC. La vista pública no tiene descargas.
 
@@ -244,7 +244,14 @@ Todos los miembros, también el observador, ven «Exportaciones» en el menú de
 
 Cada descarga de las plantillas queda en la auditoría de la organización («Plantillas descargadas (CSV)», con el número de filas y sin nombres); las demás no se registran. Ningún archivo lleva documento, fecha de nacimiento, edad, correo ni fotos.
 
-**Acta de un partido:** en la operación de un partido terminado o resuelto administrativamente y con el resultado confirmado aparece «Descargar acta (CSV)». Tras una rectificación sale la última versión publicada. En un partido en juego, suspendido o sin confirmar el botón no aparece.
+**Acta de un partido:** en la operación de un partido terminado o resuelto administrativamente y con el resultado confirmado aparecen «Descargar acta (CSV)» y «Descargar acta (PDF)». Tras una rectificación sale la última versión publicada. En un partido en juego, suspendido o sin confirmar los botones no aparecen.
+
+**PDF para imprimir (spec 050):** la clasificación tiene también «Descargar PDF», junto a «Descargar CSV»; el resto de archivos solo se descargan en CSV. El PDF es A4 vertical, con la organización, el torneo (y el partido en el acta) y la fecha de generación en UTC en la cabecera, «Página n de m» y la cabecera de cada tabla repetida en cada página. Lleva los mismos datos que el CSV:
+
+- **Clasificación:** una tabla por fase y grupo, con las mismas columnas salvo Fase y Grupo, que pasan al título de la tabla. Sin versión publicada indica «Sin clasificación todavía».
+- **Acta:** bloques de Resultado, Oficiales, una Alineación por equipo y Hechos. En un W.O. aparece el motivo y no hay Hechos.
+
+Es solo texto (sin escudos ni fotos), se puede seleccionar y copiar, y sale igual en cualquier navegador porque lo genera el servidor. Los nombres con acentos, «ñ» u otros caracteres especiales se muestran tal cual. Las descargas en PDF no quedan en la auditoría y el límite de 10.000 filas es el mismo.
 
 ### Equipo del torneo (spec 049)
 

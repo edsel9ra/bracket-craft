@@ -2,13 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { assertTheme, auditTheme, chooseTheme } from './themeChecks.ts';
 
-// Spec 048: descargas CSV del Workspace (página «Exportaciones» y acta del
-// partido), con teclado y axe en ambos temas. Contratos ficticios, sin
-// escribir en la API.
+// Specs 048 y 050: descargas CSV y PDF del Workspace (página «Exportaciones»
+// y acta del partido), con teclado y axe en ambos temas. Contratos ficticios,
+// sin escribir en la API.
 
 const uuid = (value: number) => `04800000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const now = '2026-11-25T20:00:00Z';
 const BOM = '\uFEFF';
+const PDF = '%PDF-1.4\n%fixture\n';
 
 test.use({ actionTimeout: 15_000, reducedMotion: 'reduce', trace: 'off', video: 'off', storageState: { cookies: [], origins: [] } });
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'ignoreErrors' }); });
@@ -27,6 +28,7 @@ class ExportFixture {
     const headers = { 'Access-Control-Allow-Origin': request.headers()['origin'] || 'http://localhost:3000', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'Content-Type,X-Organization-ID,X-CSRF-Token', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS' };
     const reply = (body: unknown, status = 200) => route.fulfill({ status, json: body, headers });
     const csv = (header: string) => route.fulfill({ status: 200, body: `${BOM}${header}\r\n`, contentType: 'text/csv; charset=utf-8', headers });
+    const pdf = () => route.fulfill({ status: 200, body: PDF, contentType: 'application/pdf', headers });
     if (method === 'OPTIONS') return reply({});
     const summary = { id: this.org, name: 'Organización 048', slug: 'org-048', organization_user_id: uuid(80) };
     if (path === '/auth/csrf') return reply({ csrf_token: 'export-fixture-csrf' });
@@ -35,6 +37,8 @@ class ExportFixture {
     if (path === '/organizations/current/access') return reply({ organization_id: this.org, organization_user_id: uuid(80), user_id: uuid(81), role_code: 'observer', permissions: [] });
     if (path === '/platform/access') return reply({ allowed: false });
     if (path === '/tournaments') return reply([{ id: this.tournament, name: 'Copa 048' }]);
+    if (path === `/tournaments/${this.tournament}/exports/standings/pdf`) { this.requests.push(`standings.pdf?lang=${url.searchParams.get('lang')}`); return pdf(); }
+    if (path === `/matches/${this.matchId}/export/pdf`) { this.requests.push(`match-report.pdf?lang=${url.searchParams.get('lang')}`); return pdf(); }
     const exported = path.match(/^\/tournaments\/([^/]+)\/exports\/([a-z-]+)$/);
     if (exported) {
       this.requests.push(`${exported[2]}?lang=${url.searchParams.get('lang')}`);
@@ -71,7 +75,8 @@ async function openExports(page: Page, fixture: ExportFixture) {
   await page.waitForLoadState('networkidle');
 }
 
-const exportButton = (page: Page, title: string) => page.locator('.export-item').filter({ has: page.getByRole('heading', { level: 2, name: title, exact: true }) }).getByRole('button');
+const exportButton = (page: Page, title: string, label = 'Descargar CSV') => page.locator('.export-item')
+  .filter({ has: page.getByRole('heading', { level: 2, name: title, exact: true }) }).getByRole('button', { name: label, exact: true });
 
 test('a member downloads the standings with the keyboard and gets a CSV named after the tournament', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -86,6 +91,22 @@ test('a member downloads the standings with the keyboard and gets a CSV named af
   expect(download.suggestedFilename()).toMatch(/^standings-copa-048-\d{4}-\d{2}-\d{2}\.csv$/);
   expect(await readFile((await download.path())!, 'utf8')).toBe(`${BOM}Posición,Equipo\r\n`);
   expect(fixture.requests).toEqual(['standings?lang=es']);
+  await expect(page.getByRole('status').filter({ hasText: `Descarga lista: ${download.suggestedFilename()}` })).toBeVisible();
+  await expect(button).toBeFocused();
+});
+
+test('a member downloads the standings PDF with the keyboard and only the standings offer a PDF', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fixture = new ExportFixture(); await openExports(page, fixture);
+  await expect(page.getByRole('button', { name: 'Descargar PDF', exact: true })).toHaveCount(1);
+  const button = exportButton(page, 'Clasificación', 'Descargar PDF');
+  await expect(button).toHaveAccessibleDescription('Clasificación');
+  const downloading = page.waitForEvent('download');
+  await button.focus(); await page.keyboard.press('Enter');
+  const download = await downloading;
+  expect(download.suggestedFilename()).toMatch(/^standings-copa-048-\d{4}-\d{2}-\d{2}\.pdf$/);
+  expect((await readFile((await download.path())!)).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  expect(fixture.requests).toEqual(['standings.pdf?lang=es']);
   await expect(page.getByRole('status').filter({ hasText: `Descarga lista: ${download.suggestedFilename()}` })).toBeVisible();
   await expect(button).toBeFocused();
 });
@@ -119,6 +140,21 @@ test('a closed match offers the report download from the operation page', async 
   await expect(button).toBeFocused();
 });
 
+test('a closed match offers the report as PDF too', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fixture = new ExportFixture(); await open(page, fixture, `/workspace/matches/${fixture.matchId}`);
+  const button = page.getByRole('button', { name: 'Descargar acta (PDF)' });
+  await expect(button).toBeVisible();
+  const downloading = page.waitForEvent('download');
+  await button.focus(); await page.keyboard.press('Enter');
+  const download = await downloading;
+  expect(download.suggestedFilename()).toMatch(/^match-report-local-048-vs-visita-048-\d{4}-\d{2}-\d{2}\.pdf$/);
+  expect((await readFile((await download.path())!)).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  expect(fixture.requests).toEqual(['match-report.pdf?lang=es']);
+  await expect(page.getByRole('status').filter({ hasText: 'Descarga lista' })).toBeVisible();
+  await expect(button).toBeFocused();
+});
+
 for (const width of [1440, 390]) for (const theme of ['dark', 'light'] as const) {
   test(`axe has no violations at ${width} px in the ${theme} theme on the exports page`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
@@ -131,5 +167,18 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light'] as const)
     await assertTheme(page, theme, theme);
     await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
     await auditTheme(page, info, `exports-${theme}-${width}`);
+  });
+}
+
+for (const width of [1440, 390]) for (const theme of ['dark', 'light'] as const) {
+  test(`axe has no violations at ${width} px in the ${theme} theme on the report downloads of a closed match`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    const fixture = new ExportFixture(); await open(page, fixture, `/workspace/matches/${fixture.matchId}`);
+    await expect(page.getByRole('button', { name: 'Descargar acta (PDF)' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await chooseTheme(page, theme);
+    await assertTheme(page, theme, theme);
+    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+    await auditTheme(page, info, `match-report-export-${theme}-${width}`);
   });
 }
