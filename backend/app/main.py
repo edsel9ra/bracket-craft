@@ -70,6 +70,7 @@ from app.modules.exports.router import router as exports_router
 from app.modules.tournament_roles.router import router as tournament_roles_router
 from app.modules.public_api.catalog import OPENAPI_PATH as PUBLIC_OPENAPI_PATH
 from app.modules.public_api.catalog import missing_routes as missing_public_api_routes
+from app.modules.public_api.cors import PublicReadCorsMiddleware
 from app.modules.public_api.router import router as public_api_router
 from app.modules.rectifications.router import router as rectifications_router
 from app.modules.sanction_appeals.router import router as sanction_appeals_router
@@ -1022,6 +1023,7 @@ api.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Organization-ID", "X-CSRF-Token"],
 )
+api.add_middleware(PublicReadCorsMiddleware, site_origins=allowed_origins)
 
 
 @api.middleware("http")

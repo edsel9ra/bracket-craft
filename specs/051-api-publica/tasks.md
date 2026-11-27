@@ -10,8 +10,9 @@ Un solo PR de implementación (sin frontend), apilado sobre el PR de la spec.
 - [x] **T2. Referencia y compatibilidad de `v1`.** RF-006, RF-007
 - Hecho cuando: `compat.py`, `docs/api-publica/openapi-v1.json` e `backend/scripts/public_api_reference.py`; `tests/test_public_api_compat.py` falla primero y pasa; `cd backend && python -m scripts.public_api_reference --check` termina con 0.
 - Evidencia (2026-11-27): `tests/test_public_api_compat.py` falló primero (no existían `compat.py` ni el script) y ahora pasa 30/30, y la suite backend sin base de datos pasa 3529/0: 6 cambios compatibles, 18 incompatibles (incluido uno detrás de un `$ref`), el documento actual igual a la referencia y los cuatro modos del script. `--check` termina con 0. El script vive en `backend/scripts/` y no en `infra/scripts/` porque necesita importar la API; los de `infra/scripts/` se ejecutan con el `python3` del sistema. `build_public_openapi` devuelve el documento normalizado a JSON para compararlo con la copia. Ruff, Bandit y compileall sin errores.
-- [ ] **T3. CORS del catálogo.** RF-008, RF-009, RF-009b, RF-010
+- [x] **T3. CORS del catálogo.** RF-008, RF-009, RF-009b, RF-010
 - Hecho cuando: `cors.py` montado en `main.py`; `tests/test_public_api_cors.py` falla primero y pasa con `RUN_DATABASE_TESTS=1`; `tests/test_security_headers.py` sigue pasando.
+  - Evidencia (2026-11-27): 16 casos en rojo antes de `cors.py`; ahora `test_public_api_cors.py` pasa 38/38 con `RUN_DATABASE_TESTS=1` (130/130 con matriz pública, cabeceras y T1/T2); suite sin BD 3566/0; Ruff, Bandit, compileall y `--check` sin errores. El origen del sitio conserva su CORS con credenciales también en el catálogo (D5).
 - [ ] **T4. Guías ES/EN y límite del proxy.** RF-003, RF-007, RF-011, RF-011b, RNF-003
 - Hecho cuando: `docs/api-publica.md`, `docs/api-publica.en.md` y la sección del proxy; `tests/test_public_api_docs.py` falla primero y pasa.
 - [ ] **T5. Documentación, validación y PR.** RF-012, RNF-001, RNF-004
