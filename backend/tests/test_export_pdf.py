@@ -151,3 +151,25 @@ def test_large_documents_render_under_five_seconds():
     for doc in (standings, report):
         assert render_pdf(doc, "es", GENERATED_AT).startswith(b"%PDF-")
     assert time.perf_counter() - started < 5
+
+
+@pytest.mark.parametrize("lang", ["es", "en"])
+def test_numbers_and_minutes_never_split_across_lines(lang):
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from app.modules.exports.pdf_format import FONT, column_widths
+    available = A4[0] - 2 * 18 * 72 / 25.4
+    long_team = "Club Deportivo Muy Largo de la Ciudad Capital " * 3
+    standings = catalog.header("standings", lang)[2:]
+    row = [10, long_team, 103, 99, 4, 0, 1103, 1000, -103, 309, -12]
+    widths = column_widths(standings, [row], available)
+    assert sum(widths) == pytest.approx(available)
+    for value, width in zip(row, widths, strict=True):
+        if value is not row[1]:
+            assert width >= stringWidth(str(value), FONT, 8.5) + 6
+    report = catalog.header(catalog.REPORT_KIND, lang)[1:]
+    row = [long_team, 99, long_team, "Tarjeta amarilla", "90+12", "Asistencia: " + long_team]
+    widths = column_widths(report, [row], available)
+    assert sum(widths) == pytest.approx(available)
+    assert widths[1] >= stringWidth("99", FONT, 8.5) + 6
+    assert widths[4] >= stringWidth("90+12", FONT, 8.5) + 6

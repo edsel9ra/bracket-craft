@@ -31,8 +31,9 @@ FONT = "Archivo"
 FONT_BOLD = "Archivo-Bold"
 MARGIN = 18 * mm
 FOOTER_SIZE = 8
-# Peso mínimo y máximo de una columna al repartir el ancho según su texto más largo.
-MIN_WEIGHT, MAX_WEIGHT = 3, 28
+CELL_SIZE = 8.5
+# Relleno horizontal de cada celda (3 pt por lado) más un margen de redondeo.
+CELL_PADDING = 6.5
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ def _register_fonts() -> None:
 
 @cache
 def _styles() -> dict[str, ParagraphStyle]:
-    base = ParagraphStyle("base", fontName=FONT, fontSize=8.5, leading=10.5)
+    base = ParagraphStyle("base", fontName=FONT, fontSize=CELL_SIZE, leading=10.5)
     return {
         "title": ParagraphStyle("title", base, fontName=FONT_BOLD, fontSize=16, leading=20, spaceAfter=4),
         "meta": ParagraphStyle("meta", base, fontSize=9.5, leading=12.5),
@@ -79,13 +80,34 @@ def _paragraph(value: Any, style: str) -> Paragraph:
     return Paragraph(_text(value), _styles()[style])
 
 
+def _width(text: str, font: str) -> float:
+    return pdfmetrics.stringWidth(text, font, CELL_SIZE) + CELL_PADDING
+
+
 def column_widths(header: Sequence[str], rows: Sequence[Sequence[Any]], available: float) -> list[float]:
-    weights = []
-    for index, title in enumerate(header):
-        longest = max([len(str(title))] + [len(str(row[index] or "")) for row in rows])
-        weights.append(min(max(longest, MIN_WEIGHT), MAX_WEIGHT))
-    total = sum(weights)
-    return [available * weight / total for weight in weights]
+    """Cada columna recibe al menos su palabra más ancha (una cifra o un minuto nunca se parten);
+    el resto del ancho va a las columnas cuyo texto completo no cabe, en proporción a lo que les falta."""
+    _register_fonts()
+    columns = [[(str(title), FONT_BOLD)] + [("" if row[i] is None else str(row[i]), FONT) for row in rows]
+               for i, title in enumerate(header)]
+
+    def least(cells, fonts=(FONT, FONT_BOLD)) -> float:
+        return max([CELL_PADDING] + [_width(word, font) for text, font in cells if font in fonts
+                                     for word in text.split()])
+
+    minimum = [least(cells) for cells in columns]
+    if sum(minimum) > available:
+        # Las cabeceras pueden partirse; las celdas, no, salvo que ni así quepan.
+        minimum = [least(cells, (FONT,)) for cells in columns]
+    if sum(minimum) > available:
+        return [available * width / sum(minimum) for width in minimum]
+    full = [max(_width(text, font) for text, font in cells) for cells in columns]
+    missing = [whole - low for whole, low in zip(full, minimum, strict=True)]
+    spare = available - sum(minimum)
+    if sum(missing) > spare:
+        return [low + spare * gap / sum(missing) for low, gap in zip(minimum, missing, strict=True)]
+    left = spare - sum(missing)
+    return [whole + left * whole / sum(full) for whole in full]
 
 
 def _table(section: PdfSection, available: float) -> Table:
