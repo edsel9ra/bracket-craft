@@ -1,6 +1,13 @@
 # Spec 050 — Exportaciones PDF (F10, parte 2)
 
-Estado: borrador. Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»), como continuación de la 048 («Apruebo la 048 solo con CSV; el PDF irá en una spec aparte»).
+Estado: borrador. DA-1–DA-4 resueltas el 2026-11-26. Pedida por el usuario el 2026-11-26 («Sigamos con F7 y luego pasemos a PDF»), como continuación de la 048 («Apruebo la 048 solo con CSV; el PDF irá en una spec aparte»).
+
+## Decisiones del usuario (2026-11-26)
+
+- **DA-1 = (a).** Solo dos documentos en PDF: el acta de un partido cerrado y la clasificación del torneo.
+- **DA-2 = (a).** El servidor genera el archivo PDF con una dependencia Python madura y se descarga igual que el CSV, idéntico en cualquier navegador.
+- **DA-3 = (a).** Sin imágenes: solo texto, sin escudos.
+- **DA-4 = (a).** Sin auditoría, igual que el CSV del acta y de la clasificación.
 
 ## Contexto y objetivo
 
@@ -36,21 +43,21 @@ Lo que ya existe y se reutiliza: las lecturas de la 048 (los mismos datos del ac
 
 ### Catálogo
 
-- **RF-001.** EL SISTEMA ofrecerá en PDF un catálogo cerrado de dos documentos, con el mismo contenido y los mismos criterios que sus CSV de la 048 ([NECESITA ACLARACIÓN] DA-1):
+- **RF-001.** EL SISTEMA ofrecerá en PDF un catálogo cerrado de dos documentos, con el mismo contenido y los mismos criterios que sus CSV de la 048 (DA-1):
   - **Acta de un partido cerrado:** resultado, oficiales por nombre y función, alineación de cada equipo con dorsal y hechos (minuto, tipo, equipo y jugador). En un W.O. o una resolución administrativa, el resultado y su motivo, sin hechos.
   - **Clasificación del torneo:** una tabla por fase y grupo, con posición, equipo, partidos jugados, ganados, empatados y perdidos, goles a favor y en contra, diferencia, puntos y puntos de juego limpio.
 - **RF-002.** EL SISTEMA generará cada documento con los datos del momento de pedirlo y una cabecera con el nombre de la organización, el nombre del torneo, el partido (en el acta) y la fecha y hora de generación.
-- **RF-003.** EL SISTEMA ofrecerá el PDF junto al CSV existente: en la fila de la clasificación de la página «Exportaciones» y junto al botón del acta del partido ([NECESITA ACLARACIÓN] DA-2 sobre cómo se genera).
+- **RF-003.** EL SISTEMA ofrecerá el PDF junto al CSV existente: en la fila de la clasificación de la página «Exportaciones» y junto al botón del acta del partido. El servidor genera el archivo y se descarga igual que el CSV (DA-2).
 
 ### Visibilidad y privacidad
 
-- **RF-004.** EL SISTEMA solo incluirá en un documento datos que quien lo pide ya puede descargar en el CSV correspondiente. Nunca incluirá documentos de identidad, fechas de nacimiento, edad, correos de cuentas, fotos de jugadores ni el borrador del partido en vivo ([NECESITA ACLARACIÓN] DA-3 sobre los escudos).
+- **RF-004.** EL SISTEMA solo incluirá en un documento datos que quien lo pide ya puede descargar en el CSV correspondiente. Nunca incluirá documentos de identidad, fechas de nacimiento, edad, correos de cuentas, fotos de jugadores ni el borrador del partido en vivo. Los documentos son solo texto, sin escudos ni otras imágenes (DA-3).
 - **RF-005.** SI quien pide el documento no es miembro activo de la organización del torneo, o el torneo o el partido no existen, ENTONCES EL SISTEMA responderá con el mismo error que un torneo o partido inexistente, sin revelar si existen en otra organización.
 - **RF-006.** CUANDO se pida el acta de un partido que no está cerrado, EL SISTEMA la rechazará con el mismo error explícito que el CSV.
 
 ### Auditoría
 
-- **RF-007.** EL SISTEMA no registrará en la auditoría organizacional la obtención de estos documentos, igual que sus CSV en la 048 ([NECESITA ACLARACIÓN] DA-4).
+- **RF-007.** EL SISTEMA no registrará en la auditoría organizacional la obtención de estos documentos, igual que sus CSV en la 048 (DA-4).
 
 ### Aislamiento
 
@@ -65,7 +72,7 @@ Lo que ya existe y se reutiliza: las lecturas de la 048 (los mismos datos del ac
 - **RNF-005.** Un acta de 22 jugadores por equipo y 60 hechos, o una clasificación de 8 grupos de 8 equipos, se genera en menos de 5 segundos en el entorno de CI.
 - **RNF-006.** Sin campos públicos nuevos ni cambios en la proyección pública.
 - **RNF-007.** Los textos nuevos están en ES y EN. Los botones nuevos se pueden usar con teclado y pasan axe en ambos temas.
-- **RNF-008.** Si hace falta una dependencia nueva, debe ser madura y mantenida, y pasar `pip-audit`, la auditoría del frontend y Trivy (constitución §3.4 y §4).
+- **RNF-008.** La dependencia nueva de generación de PDF (DA-2) es madura y mantenida, con versión fijada, y pasa `pip-audit`, la auditoría del frontend y Trivy (constitución §3.4 y §4).
 
 ## Datos personales y privacidad
 
@@ -87,7 +94,9 @@ Lo que ya existe y se reutiliza: las lecturas de la 048 (los mismos datos del ac
 
 - PDF del calendario, de las estadísticas y de las plantillas: quedan para una spec posterior, si se piden.
 - Firmas digitales, códigos QR, marcas de agua o verificación del documento.
-- Logotipo de la organización y personalización del diseño.
+- Logotipo de la organización, escudos de los equipos (DA-3) y personalización del diseño.
+- Vista imprimible en el navegador (DA-2).
+- Auditoría de los documentos generados (DA-4).
 - Descargas en la vista pública.
 - Documentos programados, por correo o por webhook.
 - Documentos de varios torneos o partidos a la vez.
@@ -107,7 +116,4 @@ Lo que ya existe y se reutiliza: las lecturas de la 048 (los mismos datos del ac
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN] **DA-1. Qué documentos.** (a) Solo el acta y la clasificación, como decidiste en la 048 (recomendado). (b) También el calendario y las estadísticas.
-- [NECESITA ACLARACIÓN] **DA-2. Cómo se genera.** (a) El servidor genera un archivo PDF con una dependencia Python madura y se descarga igual que el CSV (recomendado: el documento es idéntico en cualquier navegador y se prueba en CI). (b) Una vista imprimible en el navegador, que el usuario guarda con «Imprimir → Guardar como PDF»; sin dependencias, pero el resultado depende del navegador y no es una descarga directa.
-- [NECESITA ACLARACIÓN] **DA-3. Escudos de los equipos.** (a) Sin imágenes: solo texto (recomendado: más simple y sin leer el almacenamiento de archivos). (b) Con el escudo de cada equipo, si lo tiene.
-- [NECESITA ACLARACIÓN] **DA-4. Auditoría.** (a) Sin auditoría, igual que el CSV del acta y de la clasificación (recomendado). (b) Registrar cada documento generado.
+Ninguna.
