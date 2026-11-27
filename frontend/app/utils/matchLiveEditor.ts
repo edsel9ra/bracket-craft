@@ -14,7 +14,7 @@ const CLOCK_STATES = new Set(['not_started', 'running', 'paused']);
 const EVENT_KEYS = new Set([
   'client_event_id', 'event_type', 'team_id', 'beneficiary_team_id',
   'player_id', 'player_out_id', 'player_in_id', 'assist_player_id',
-  'minute', 'added_minute', 'segment_id', 'metadata',
+  'minute', 'added_minute', 'segment_id', 'metadata', 'player_in_position',
 ]);
 
 export interface LiveClock {
@@ -34,6 +34,7 @@ export interface SharedLiveEvent {
   playerId: string | null;
   playerOutId: string | null;
   playerInId: string | null;
+  playerInPosition: string | null;
   assistPlayerId: string | null;
   minute: number;
   addedMinute: number;
@@ -125,6 +126,7 @@ function normalizeEvent(raw: unknown): SharedLiveEvent | null {
   if (!isNonNegativeInt(candidate.added_minute) || (candidate.added_minute as number) > 30) return null;
   if (!isNonEmptyString(candidate.segment_id)) return null;
   if (candidate.metadata !== null && (typeof candidate.metadata !== 'object' || Array.isArray(candidate.metadata))) return null;
+  if (candidate.player_in_position !== undefined && !isNullableString(candidate.player_in_position)) return null;
 
   return {
     clientEventId: candidate.client_event_id,
@@ -134,6 +136,7 @@ function normalizeEvent(raw: unknown): SharedLiveEvent | null {
     playerId: candidate.player_id as string | null,
     playerOutId: candidate.player_out_id as string | null,
     playerInId: candidate.player_in_id as string | null,
+    playerInPosition: (candidate.player_in_position ?? null) as string | null,
     assistPlayerId: candidate.assist_player_id as string | null,
     minute: candidate.minute,
     addedMinute: candidate.added_minute as number,
