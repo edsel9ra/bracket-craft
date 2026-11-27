@@ -52,9 +52,8 @@ def is_closed(match: Mapping[str, Any]) -> bool:
     return match.get("status") in CLOSED_STATUSES and bool(match.get("result_confirmed"))
 
 
-def standings_rows(rows: Iterable[Mapping[str, Any]], lang: str) -> list[Row]:
-    _check_lang(lang)
-    ordered = sorted(
+def _standings_sorted(rows: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    return sorted(
         rows,
         key=lambda r: (
             r["stage_order"],
@@ -64,6 +63,16 @@ def standings_rows(rows: Iterable[Mapping[str, Any]], lang: str) -> list[Row]:
             str(r["team_id"]),
         ),
     )
+
+
+def standings_section_keys(rows: Iterable[Mapping[str, Any]]) -> list[tuple[Any, Any]]:
+    """Fase y grupo de cada fila de ``standings_rows``, por identidad: dos fases o grupos homónimos no se mezclan."""
+    return [(r.get("stage_id", r["stage_order"]), r.get("group_id")) for r in _standings_sorted(rows)]
+
+
+def standings_rows(rows: Iterable[Mapping[str, Any]], lang: str) -> list[Row]:
+    _check_lang(lang)
+    ordered = _standings_sorted(rows)
     return [
         [
             r["stage_name"],
@@ -212,9 +221,21 @@ def match_report_rows(
     players: Mapping[Any, Mapping[str, Any]],
     lang: str,
 ) -> list[Row]:
+    return [row for _, row in match_report_keyed(match, officials, lineup, events, players, lang)]
+
+
+def match_report_keyed(
+    match: Mapping[str, Any],
+    officials: Sequence[Mapping[str, Any]],
+    lineup: Sequence[Mapping[str, Any]],
+    events: Sequence[Mapping[str, Any]],
+    players: Mapping[Any, Mapping[str, Any]],
+    lang: str,
+) -> list[tuple[tuple[Any, ...], Row]]:
     """Acta en secciones: resultado, oficiales (sin correo), alineación y hechos.
 
-    Un W.O. lleva el resultado y su motivo, sin hechos (CL-3).
+    Cada fila va con su sección y, en la alineación, el lado (0 local, 1 visitante): dos equipos
+    homónimos no se mezclan en el PDF. Un W.O. lleva el resultado y su motivo, sin hechos (CL-3).
     """
     _check_lang(lang)
     section = {code: label("report_section", code, lang) for code in LABELS["report_section"]}
@@ -254,13 +275,15 @@ def match_report_rows(
             _text_key(_full_name(person)),
         )
 
+    sides: list[int] = []
     for entry in sorted(lineup, key=lineup_key):
         person = players.get(entry.get("player_id")) or {}
+        sides.append(side_order.get(entry.get("team_id"), 2))
         rows.append([section["lineup"], team_names.get(entry.get("team_id")), person.get("dorsal_number"),
                      _full_name(person), label("lineup_role", entry["role"], lang), None, None])
 
     if resolution == "walkover":
-        return rows
+        return _report_keys(rows, sides, section)
 
     def event_key(event: Mapping[str, Any]) -> tuple:
         return (
@@ -275,4 +298,10 @@ def match_report_rows(
         rows.append([section["event"], team_names.get(event.get("team_id")), person.get("dorsal_number"),
                      _full_name(person), label("event_type", event["event_type"], lang),
                      _minute(event), _event_detail(event, players, lang)])
-    return rows
+    return _report_keys(rows, sides, section)
+
+
+def _report_keys(rows: list[Row], sides: list[int], section: Mapping[str, str]) -> list[tuple[tuple[Any, ...], Row]]:
+    codes = {text: code for code, text in section.items()}
+    pending = iter(sides)
+    return [((codes[row[0]], next(pending)) if codes[row[0]] == "lineup" else (codes[row[0]],), row) for row in rows]

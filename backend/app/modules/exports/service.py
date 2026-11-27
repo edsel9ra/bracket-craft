@@ -44,7 +44,7 @@ TOURNAMENT_INFO_SQL = text("""
 """)
 
 STANDINGS_SQL = text("""
-    SELECT st.name AS stage_name, st.stage_order, g.name AS group_name, s.team_id,
+    SELECT st.name AS stage_name, st.stage_order, s.stage_id, g.name AS group_name, s.group_id, s.team_id,
            t.name AS team_name, s.played, s.won, s.drawn, s.lost, s.goals_for,
            s.goals_against, s.goal_difference, s.points, s.fair_play_points, s.rank
     FROM standings s
@@ -261,24 +261,25 @@ class ExportService:
             tournament = (await self.db.execute(TOURNAMENT_INFO_SQL, params)).mappings().one_or_none()
             if tournament is None:
                 raise ExportNotFound
-            rows: list[list[Any]] = []
+            data: list[dict[str, Any]] = []
             if tournament["published_version_id"] is not None:
                 params["version_id"] = str(tournament["published_version_id"])
-                rows = await self._standings(params, lang)
+                data = await self._standings_data(params)
+            rows = builders.standings_rows(data, lang)
             info = {"organization": tournament["organization_name"], "tournament": tournament["name"]}
-            return pdf_layout.standings_document(rows, info, lang)
+            return pdf_layout.standings_document(rows, info, lang, builders.standings_section_keys(data))
 
     async def export_match_report(self, context, match_id: UUID, lang: str) -> bytes:
         header = catalog.header(catalog.REPORT_KIND, lang)
         async with self.db.begin():
             await self._begin_snapshot(context)
-            _match, rows = await self._match_report(context, match_id, lang)
-            return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+            _match, keyed = await self._match_report(context, match_id, lang)
+            return render_csv(header, [row for _, row in keyed], max_rows=catalog.MAX_ROWS)
 
     async def export_match_report_pdf(self, context, match_id: UUID, lang: str) -> PdfDocument:
         async with self.db.begin():
             await self._begin_snapshot(context)
-            match, rows = await self._match_report(context, match_id, lang)
+            match, keyed = await self._match_report(context, match_id, lang)
             params = {"organization_id": str(context.organization_id), "match_id": str(match_id)}
             extra = (await self.db.execute(REPORT_INFO_SQL, params)).mappings().one()
             info = {
@@ -286,7 +287,8 @@ class ExportService:
                 "home": match["home_team_name"], "away": match["away_team_name"],
                 "stage": extra["stage_name"], "match_date": extra["match_date"],
             }
-            return pdf_layout.match_report_document(rows, info, lang)
+            rows, keys = [row for _, row in keyed], [key for key, _ in keyed]
+            return pdf_layout.match_report_document(rows, info, lang, keys)
 
     async def _match_report(self, context, match_id: UUID, lang: str):
         """Lecturas del acta compartidas por el CSV y el PDF, dentro de la transacción ya abierta."""
@@ -311,16 +313,17 @@ class ExportService:
         events: list[dict[str, Any]] = []
         if match["resolution_type"] != "walkover":
             events = await self._rows(REPORT_EVENTS_SQL, params)
-        rows = builders.match_report_rows(match, officials, lineup, events, players, lang)
-        return match, rows
+        return match, builders.match_report_keyed(match, officials, lineup, events, players, lang)
 
     async def _rosters(self, params, lang) -> list[list[Any]]:
         data = await self._rows(ROSTERS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
         return builders.roster_rows(data, lang)
 
+    async def _standings_data(self, params) -> list[dict[str, Any]]:
+        return await self._rows(STANDINGS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
+
     async def _standings(self, params, lang):
-        data = await self._rows(STANDINGS_SQL, {**params, "limit": catalog.MAX_ROWS + 1})
-        return builders.standings_rows(data, lang)
+        return builders.standings_rows(await self._standings_data(params), lang)
 
     async def _calendar(self, params, lang):
         data = await self._rows(CALENDAR_SQL, {**params, "limit": catalog.MAX_ROWS + 1})

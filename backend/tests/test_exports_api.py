@@ -751,9 +751,9 @@ def capture_pdf_rows(monkeypatch) -> list:
     captured: list = []
     original = pdf_layout.match_report_document
 
-    def spy(rows, info, lang):
+    def spy(rows, info, lang, keys=None):
         captured.extend(rows)
-        return original(rows, info, lang)
+        return original(rows, info, lang, keys)
 
     monkeypatch.setattr(pdf_layout, "match_report_document", spy)
     return captured

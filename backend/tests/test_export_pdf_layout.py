@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.exports import catalog
+from app.modules.exports import builders, catalog
 from app.modules.exports.pdf_layout import standings_document
 
 INFO = {"organization": "Liga Ñandú", "tournament": "Copa <2026>"}
@@ -122,3 +122,41 @@ def test_report_blocks_in_english():
     rows = [["Result", "Lions", None, None, "Home", None, 2], ["Event", "Lions", 9, "Bea", "Goal", "30", None]]
     titles = [section.title for section in match_report_document(rows, REPORT_INFO, "en").sections]
     assert titles == ["Result", "Events"]
+
+
+def test_homonymous_stages_and_groups_stay_apart_with_their_keys():
+    rows = [["Liga", None, 1, "A", 1, 1, 0, 0, 2, 0, 2, 3, 0],
+            ["Liga", None, 1, "B", 1, 1, 0, 0, 2, 0, 2, 3, 0]]
+    assert len(standings_document(rows, INFO, "es").sections) == 1
+    doc = standings_document(rows, INFO, "es", [("s1", None), ("s2", None)])
+    assert [section.title for section in doc.sections] == ["Liga", "Liga"]
+    assert [len(section.rows) for section in doc.sections] == [1, 1]
+
+
+def test_homonymous_teams_get_one_lineup_block_per_side():
+    rows = [["Resultado", "Leones", None, None, "Local", None, 1],
+            ["Alineación", "Leones", 1, "Ana", "Titular", None, None],
+            ["Alineación", "Leones", 2, "Eva", "Titular", None, None]]
+    keys = [("result",), ("lineup", 0), ("lineup", 1)]
+    doc = match_report_document(rows, REPORT_INFO, "es", keys)
+    assert [section.title for section in doc.sections] == ["Resultado", "Alineación · Leones", "Alineación · Leones"]
+
+
+def test_report_keys_follow_the_builder_rows():
+    match = {"home_team_id": "h", "away_team_id": "a", "home_team_name": "Leones", "away_team_name": "Leones",
+             "home_score": 1, "away_score": 0, "resolution_type": "regular"}
+    lineup = [{"team_id": "a", "player_id": "p2", "role": "starter"},
+              {"team_id": "h", "player_id": "p1", "role": "starter"}]
+    players = {"p1": {"first_name": "Ana", "last_name": "A", "dorsal_number": 1},
+               "p2": {"first_name": "Eva", "last_name": "E", "dorsal_number": 2}}
+    keyed = builders.match_report_keyed(match, [], lineup, [], players, "es")
+    assert [row for _, row in keyed] == builders.match_report_rows(match, [], lineup, [], players, "es")
+    assert [key for key, row in keyed if row[0] == "Alineación"] == [("lineup", 0), ("lineup", 1)]
+
+
+def test_standings_keys_follow_the_builder_rows():
+    data = [{"stage_name": "Liga", "stage_order": order, "stage_id": f"s{order}", "group_name": None,
+             "group_id": None, "team_id": f"t{order}", "team_name": "X", "played": 0, "won": 0, "drawn": 0,
+             "lost": 0, "goals_for": 0, "goals_against": 0, "goal_difference": 0, "points": 0,
+             "fair_play_points": 0, "rank": 1} for order in (2, 1)]
+    assert builders.standings_section_keys(data) == [("s1", None), ("s2", None)]
