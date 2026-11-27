@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
+from itertools import groupby
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
@@ -29,6 +30,8 @@ from app.modules.exports.csv_format import ExportTooLarge
 FONTS_DIR = Path(__file__).parent / "fonts"
 FONT = "Archivo"
 FONT_BOLD = "Archivo-Bold"
+# Respaldo para las letras que Archivo no tiene (p. ej. «Ɓ», «Ŋ»): solo se incrusta si se usa.
+FALLBACK = {FONT: "DejaVuSans", FONT_BOLD: "DejaVuSans-Bold"}
 MARGIN = 18 * mm
 FOOTER_SIZE = 8
 CELL_SIZE = 8.5
@@ -56,6 +59,14 @@ def _register_fonts() -> None:
     pdfmetrics.registerFont(TTFont(FONT, str(FONTS_DIR / "Archivo-Regular.ttf")))
     pdfmetrics.registerFont(TTFont(FONT_BOLD, str(FONTS_DIR / "Archivo-Bold.ttf")))
     pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=FONT_BOLD, italic=FONT, boldItalic=FONT_BOLD)
+    for name in FALLBACK.values():
+        pdfmetrics.registerFont(TTFont(name, str(FONTS_DIR / f"{name}.ttf")))
+
+
+@cache
+def _covered(font: str) -> frozenset[int]:
+    _register_fonts()
+    return frozenset(pdfmetrics.getFont(font).face.charToGlyph)
 
 
 @cache
@@ -71,13 +82,27 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
-def _text(value: Any) -> str:
-    """Texto literal: Platypus interpreta marcas, así que ``<``, ``>``, ``&`` y comillas se escapan."""
-    return escape("" if value is None else str(value), {'"': "&quot;", "'": "&#39;"})
+def _escape(text: str) -> str:
+    return escape(text, {'"': "&quot;", "'": "&#39;"})
+
+
+def _text(value: Any, font: str = FONT) -> str:
+    """Texto literal: Platypus interpreta marcas, así que ``<``, ``>``, ``&`` y comillas se escapan.
+
+    Los tramos con letras que ``font`` no tiene van en la fuente de respaldo, para no perderlas.
+    """
+    text = "" if value is None else str(value)
+    covered = _covered(font)
+    parts: list[str] = []
+    for missing, run in groupby(text, key=lambda char: not char.isspace() and ord(char) not in covered):
+        chunk = _escape("".join(run))
+        parts.append(f'<font name="{FALLBACK[font]}">{chunk}</font>' if missing else chunk)
+    return "".join(parts)
 
 
 def _paragraph(value: Any, style: str) -> Paragraph:
-    return Paragraph(_text(value), _styles()[style])
+    paragraph_style = _styles()[style]
+    return Paragraph(_text(value, paragraph_style.fontName), paragraph_style)
 
 
 def _width(text: str, font: str) -> float:

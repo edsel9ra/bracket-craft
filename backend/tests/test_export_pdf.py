@@ -190,3 +190,19 @@ def test_an_unbreakable_token_wider_than_the_page_still_renders():
     document = PdfDocument("Acta", (), (PdfSection(None, header, (row,)),))
     text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(render_pdf(document, "es", GENERATED_AT))).pages)
     assert "90+12" in text and "aaaa" in text
+
+
+def test_letters_missing_in_archivo_fall_back_to_dejavu_sans():
+    name = "Ɓalla Ŋoma ǅuro"
+    document = PdfDocument(name, ((name, name),), (PdfSection(name, ("Equipo", name), ((name, "ok"),)),))
+    pdf = render_pdf(document, "es", GENERATED_AT)
+    reader = PdfReader(io.BytesIO(pdf))
+    text = reader.pages[0].extract_text()
+    assert text.count(name) >= 5
+    fonts = {font["/BaseFont"].split("+")[-1] for font in
+             (ref.get_object() for ref in reader.pages[0]["/Resources"]["/Font"].values())}
+    assert {"DejaVuSans", "DejaVuSans-Bold"} <= fonts
+    plain = render_pdf(PdfDocument("Acta", (), ()), "es", GENERATED_AT)
+    plain_fonts = {font["/BaseFont"].split("+")[-1] for font in
+                   (ref.get_object() for ref in PdfReader(io.BytesIO(plain)).pages[0]["/Resources"]["/Font"].values())}
+    assert not any(font.startswith("DejaVu") for font in plain_fonts)
