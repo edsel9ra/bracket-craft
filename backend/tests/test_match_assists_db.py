@@ -1035,7 +1035,10 @@ async def test_the_operation_returns_the_assist_as_a_uuid_without_names(
             "is_voided",
             "created_at",
             "assist_player_id",
+            # Spec 052 (RF-009): posición de entrada, aditiva y nula fuera de una sustitución.
+            "player_in_position",
         }
+        assert goal["player_in_position"] is None
 
 
 @pytest.mark.asyncio

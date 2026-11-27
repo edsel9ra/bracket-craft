@@ -36,6 +36,7 @@ DOUBLE_YELLOW_INCONSISTENT = "DOUBLE_YELLOW_INCONSISTENT"
 WALKOVER_STATE_NOT_ALLOWED = "WALKOVER_STATE_NOT_ALLOWED"
 WALKOVER_SCORE_MISMATCH = "WALKOVER_SCORE_MISMATCH"
 WALKOVER_CONFIG_INCONSISTENT = "WALKOVER_CONFIG_INCONSISTENT"
+ENTRY_POSITION_INVALID = "ENTRY_POSITION_INVALID"
 
 # Texto único de los tres puntos. No nombra la resolución para que el mensaje
 # sea el mismo en todos los casos ni se traduce en el servidor: el cliente usa
@@ -230,3 +231,18 @@ class PublishedFormationMustBeUnpublished(HTTPException):
             detail=detail or PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED_DETAIL,
         )
         self.code = PUBLISHED_FORMATION_MUST_BE_UNPUBLISHED
+
+
+# Spec 052 (RF-008, D3): la posición de entrada de una sustitución debe ser una
+# posición de las formaciones de la modalidad del partido. Es un **422** con
+# ``code`` aditivo; el mensaje no repite el código recibido (texto del cliente).
+ENTRY_POSITION_INVALID_DETAIL = "La posición de entrada no pertenece a la modalidad del partido"
+
+
+class EntryPositionInvalid(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=ENTRY_POSITION_INVALID_DETAIL,
+        )
+        self.code = ENTRY_POSITION_INVALID

@@ -161,3 +161,21 @@ async def test_070_public_view_appends_entry_position(db_070):
     assert await db_070.fetchval(
         "SELECT has_table_privilege('bracket_app', 'public.v_public_match_events', 'SELECT')"
     )
+
+
+async def test_070_current_events_view_appends_entry_position(db_070):
+    columns = [
+        row["column_name"]
+        for row in await db_070.fetch(
+            """SELECT column_name FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'v_match_current_events' ORDER BY ordinal_position"""
+        )
+    ]
+    assert columns[-2:] == ["assist_player_id", "player_in_position"]
+    options = await db_070.fetchval(
+        "SELECT reloptions FROM pg_class WHERE oid = 'public.v_match_current_events'::regclass"
+    )
+    assert set(options) == {"security_barrier=true", "security_invoker=true"}
+    assert await db_070.fetchval(
+        "SELECT has_table_privilege('bracket_app', 'public.v_match_current_events', 'SELECT')"
+    )

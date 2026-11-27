@@ -137,6 +137,7 @@ class ReportEventResponse(BaseModel):
     assist_player_id: UUID | None
     player_out_id: UUID | None
     player_in_id: UUID | None
+    player_in_position: str | None = None
     metadata: dict[str, Any]
     is_voided: bool
     voided_at: datetime | None

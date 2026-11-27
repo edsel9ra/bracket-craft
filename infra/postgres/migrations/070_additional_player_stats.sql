@@ -11,8 +11,9 @@ BEGIN;
 --    nombre estable.
 -- 2. Añade `player_in_position` (posición de entrada, DA-3), opcional y solo
 --    en sustituciones. El catálogo por modalidad se valida en la API.
--- 3. Repite `v_public_match_events` (060) y añade `player_in_position` al
---    final. La cronología pública no la lee ni muestra `penalty_saved`.
+-- 3. Repite `v_match_current_events` (035, acta vigente del Workspace) y
+--    `v_public_match_events` (060) y añade `player_in_position` al final. La
+--    cronología pública no la lee ni muestra `penalty_saved`.
 -- Hechos existentes intactos: ninguna fila cambia y la columna nueva es NULL.
 -- ============================================================================
 
@@ -50,6 +51,39 @@ BEGIN
     END LOOP;
 END;
 $$;
+
+CREATE OR REPLACE VIEW public.v_match_current_events
+WITH (security_barrier = true, security_invoker = true) AS
+SELECT me.id, me.organization_id, me.match_id, me.segment_id, me.team_id,
+    me.beneficiary_team_id, me.player_id, me.event_type, me.minute, me.added_minute,
+    me.client_event_id, me.metadata, me.is_voided, me.voided_at, me.voided_by_member_id,
+    me.void_reason, me.created_at, me.player_out_id, me.player_in_id, me.assist_player_id,
+    me.player_in_position
+FROM public.match_events me
+WHERE NOT me.is_voided AND NOT EXISTS (
+        SELECT 1 FROM public.match_report_versions v
+        WHERE v.match_id = me.match_id AND v.organization_id = me.organization_id
+    )
+UNION ALL
+SELECT me.id, me.organization_id, me.match_id, me.segment_id, me.team_id,
+    me.beneficiary_team_id, me.player_id, me.event_type, me.minute, me.added_minute,
+    me.client_event_id, me.metadata, FALSE AS is_voided, me.voided_at, me.voided_by_member_id,
+    me.void_reason, me.created_at, me.player_out_id, me.player_in_id, me.assist_player_id,
+    me.player_in_position
+FROM public.match_report_version_events me
+WHERE NOT me.is_voided AND EXISTS (
+        SELECT 1 FROM public.match_report_versions v
+        WHERE v.id = me.version_id
+          AND v.organization_id = me.organization_id AND v.match_id = me.match_id
+          AND NOT EXISTS (
+              SELECT 1 FROM public.match_report_versions newer
+              WHERE newer.match_id = v.match_id AND newer.organization_id = v.organization_id
+                AND newer.version_number > v.version_number
+          )
+    );
+
+REVOKE ALL ON public.v_match_current_events FROM PUBLIC;
+GRANT SELECT ON public.v_match_current_events TO bracket_app;
 
 CREATE OR REPLACE VIEW public.v_public_match_events
 WITH (security_barrier = true) AS

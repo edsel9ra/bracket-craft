@@ -19,6 +19,7 @@ from app.modules.advancement.service import AdvancementService
 from app.modules.matches.errors import (
     AssistPlayerInvalid,
     DoubleYellowInconsistent,
+    EntryPositionInvalid,
     ResolutionNotEnabled,
     WalkoverConfigInconsistent,
     WalkoverScoreMismatch,
@@ -26,7 +27,7 @@ from app.modules.matches.errors import (
 )
 from app.modules.matches.schemas import CloseMatchReportDTO, MatchEventPayload, client_event_identity
 from app.modules.matches.live_close import freeze_live_report, prepare_live_report
-from app.modules.rule_contract import requires_decisive_winner
+from app.modules.rule_contract import DEFAULT_GAME_FORMAT, positions_for_game_format, requires_decisive_winner
 from app.modules.rules_engine.defaults import DEFAULT_REGULAR_TIME_MINUTES
 from app.modules.rules_engine.engine import (
     MatchOutcome,
@@ -694,6 +695,19 @@ async def load_report_payload_snapshot(
     )
 
 
+def validate_entry_positions(payload: CloseMatchReportDTO, match: Mapping[str, Any]) -> None:
+    """Posición de entrada dentro del catálogo de la modalidad (spec 052, RF-008, D3).
+
+    No se compara con la formación vigente del equipo: puede no existir.
+    """
+
+    game_format = (match.get("rules_config") or {}).get("game_format") or DEFAULT_GAME_FORMAT
+    positions = positions_for_game_format(game_format)
+    for event in payload.events:
+        if event.player_in_position is not None and event.player_in_position not in positions:
+            raise EntryPositionInvalid()
+
+
 def validate_report_payload(
     snapshot: ReportPayloadSnapshot, payload: CloseMatchReportDTO, now: datetime
 ) -> MatchOutcome:
@@ -734,6 +748,7 @@ def validate_report_payload(
         if named - participants - snapshot.known_team_ids:
             raise LookupError("Equipo no encontrado")
     service._validate_event_participants(payload, match, snapshot.rosters)
+    validate_entry_positions(payload, match)
     service._validate_rosters(match, snapshot.rosters)
     limits = SubstitutionLimits.from_config(effective_substitutions(match["rules_config"]))
     service._validate_substitutions(payload, match, snapshot.rosters, limits)
@@ -1637,8 +1652,8 @@ class CloseMatchReportService:
             existing_result = await self.db.execute(
                 text("""
                     SELECT id, event_type, team_id, beneficiary_team_id, player_id,
-                           player_out_id, player_in_id, minute, added_minute, segment_id,
-                           assist_player_id, metadata
+                           player_out_id, player_in_id, player_in_position, minute, added_minute,
+                           segment_id, assist_player_id, metadata
                     FROM match_events
                     WHERE organization_id = :organization_id
                       AND match_id = :match_id
@@ -1664,6 +1679,7 @@ class CloseMatchReportService:
                         "player_id": event.player_id,
                         "player_out_id": event.player_out_id,
                         "player_in_id": event.player_in_id,
+                        "player_in_position": event.player_in_position,
                         "minute": event.minute,
                         "added_minute": event.added_minute,
                         "segment_id": event.segment_id,
@@ -1680,13 +1696,13 @@ class CloseMatchReportService:
                 text("""
                     INSERT INTO match_events
                         (organization_id, match_id, segment_id, team_id, beneficiary_team_id, player_id,
-                         player_out_id, player_in_id, assist_player_id,
+                         player_out_id, player_in_id, player_in_position, assist_player_id,
                          event_type, minute, added_minute, client_event_id, metadata)
                     VALUES (:organization_id, :match_id, :segment_id, :team_id, :beneficiary_team_id, :player_id,
-                            :player_out_id, :player_in_id, :assist_player_id,
+                            :player_out_id, :player_in_id, :player_in_position, :assist_player_id,
                             :event_type, :minute, :added_minute, :client_event_id, CAST(:metadata AS jsonb))
                     RETURNING id, event_type, team_id, beneficiary_team_id, player_id,
-                              player_out_id, player_in_id, assist_player_id,
+                              player_out_id, player_in_id, player_in_position, assist_player_id,
                               minute, added_minute, segment_id, metadata
                 """),
                 {
@@ -1698,6 +1714,7 @@ class CloseMatchReportService:
                     "player_id": str(event.player_id),
                     "player_out_id": str(event.player_out_id) if event.player_out_id else None,
                     "player_in_id": str(event.player_in_id) if event.player_in_id else None,
+                    "player_in_position": event.player_in_position,
                     "assist_player_id": str(event.assist_player_id) if event.assist_player_id else None,
                     "event_type": event.event_type,
                     "minute": event.minute,
