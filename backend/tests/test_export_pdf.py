@@ -214,3 +214,5 @@ def test_combining_marks_stay_in_the_font_of_their_base_letter():
     assert _text("Kɔ́fi") == f'K<font name="{FALLBACK[FONT]}">ɔ́</font>fi'
     assert _text("José") == "José"
     assert _text("\u0301Ana") == "\u0301Ana"
+    # Archivo tiene la «r» pero no el anillo inferior: la letra y su marca van juntas en el respaldo.
+    assert _text("Kr\u0325ṣṇa") == f'K<font name="{FALLBACK[FONT]}">r\u0325</font>ṣ<font name="{FALLBACK[FONT]}">ṇ</font>a'

@@ -93,16 +93,20 @@ def _text(value: Any, font: str = FONT) -> str:
     """
     text = "" if value is None else str(value)
     covered = _covered(font)
-    runs: list[tuple[bool, list[str]]] = []
+    # Una letra y sus marcas combinantes van siempre en la misma fuente, la que las tenga todas.
+    clusters: list[str] = []
     for char in text:
-        if runs and combining(char):
-            runs[-1][1].append(char)  # el acento combinante va en la fuente de su letra base
-            continue
-        missing = not char.isspace() and ord(char) not in covered
-        if runs and runs[-1][0] == missing:
-            runs[-1][1].append(char)
+        if clusters and combining(char):
+            clusters[-1] += char
         else:
-            runs.append((missing, [char]))
+            clusters.append(char)
+    runs: list[tuple[bool, list[str]]] = []
+    for cluster in clusters:
+        missing = any(not char.isspace() and ord(char) not in covered for char in cluster)
+        if runs and runs[-1][0] == missing:
+            runs[-1][1].append(cluster)
+        else:
+            runs.append((missing, [cluster]))
     parts = (_escape("".join(chars)) for _, chars in runs)
     return "".join(f'<font name="{FALLBACK[font]}">{chunk}</font>' if missing else chunk
                    for (missing, _), chunk in zip(runs, parts, strict=True))
