@@ -15,9 +15,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import set_rls_context
-from app.modules.exports import builders, catalog
+from app.modules.exports import builders, catalog, pdf_layout
 from app.modules.exports.audit import record_roster_export_audit
 from app.modules.exports.csv_format import render_csv
+from app.modules.exports.pdf_format import PdfDocument
 from app.modules.tournaments.public_stats import compute_player_stats, compute_team_stats
 
 
@@ -33,6 +34,13 @@ TOURNAMENT_SQL = text("""
     SELECT id, published_version_id
     FROM tournaments
     WHERE id = :tournament_id AND organization_id = :organization_id
+""")
+
+TOURNAMENT_INFO_SQL = text("""
+    SELECT t.id, t.name, t.published_version_id, o.name AS organization_name
+    FROM tournaments t
+    CROSS JOIN get_current_organization() o
+    WHERE t.id = :tournament_id AND t.organization_id = :organization_id
 """)
 
 STANDINGS_SQL = text("""
@@ -234,6 +242,20 @@ class ExportService:
                 params["version_id"] = str(version_id)
                 rows = await self._READERS[kind](self, params, lang)
             return render_csv(header, rows, max_rows=catalog.MAX_ROWS)
+
+    async def export_standings_pdf(self, context, tournament_id: UUID, lang: str) -> PdfDocument:
+        async with self.db.begin():
+            await self._begin_snapshot(context)
+            params = {"organization_id": str(context.organization_id), "tournament_id": str(tournament_id)}
+            tournament = (await self.db.execute(TOURNAMENT_INFO_SQL, params)).mappings().one_or_none()
+            if tournament is None:
+                raise ExportNotFound
+            rows: list[list[Any]] = []
+            if tournament["published_version_id"] is not None:
+                params["version_id"] = str(tournament["published_version_id"])
+                rows = await self._standings(params, lang)
+            info = {"organization": tournament["organization_name"], "tournament": tournament["name"]}
+            return pdf_layout.standings_document(rows, info, lang)
 
     async def export_match_report(self, context, match_id: UUID, lang: str) -> bytes:
         header = catalog.header(catalog.REPORT_KIND, lang)

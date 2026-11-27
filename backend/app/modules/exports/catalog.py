@@ -13,6 +13,10 @@ PDF_KINDS: tuple[str, ...] = ("standings", REPORT_KIND)
 PDF_TEXTS: dict[str, dict[str, str]] = {
     "generated_at": {"es": "Generado el {at} (UTC)", "en": "Generated on {at} (UTC)"},
     "page": {"es": "Página {page} de {total}", "en": "Page {page} of {total}"},
+    "organization": {"es": "Organización", "en": "Organization"},
+    "tournament": {"es": "Torneo", "en": "Tournament"},
+    "standings_title": {"es": "Clasificación", "en": "Standings"},
+    "no_standings": {"es": "Sin clasificación todavía", "en": "No standings yet"},
 }
 
 # Cada columna: (clave interna, cabecera ES, cabecera EN). El orden es el del archivo.

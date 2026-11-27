@@ -1,7 +1,8 @@
-"""Descargas CSV del Workspace (spec 048): cualquier miembro, sin permiso adicional (DA-3)."""
+"""Descargas CSV (spec 048) y PDF (spec 050) del Workspace: cualquier miembro, sin permiso adicional."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -10,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.tenancy import AuthContext, get_auth_context
+from app.modules.exports import catalog
 from app.modules.exports.csv_format import ExportTooLarge
+from app.modules.exports.pdf_format import PdfDocument, render_pdf
 from app.modules.exports.service import ExportNotFound, ExportService, MatchNotClosed
 
 router = APIRouter(tags=["exports"])
@@ -33,6 +36,35 @@ def _csv(data: bytes, filename: str) -> Response:
             "Cache-Control": "no-store",
         },
     )
+
+
+def _pdf(document: PdfDocument, lang: str, filename: str) -> Response:
+    # El límite se lee en cada petición para que las pruebas puedan reducirlo.
+    data = render_pdf(document, lang, datetime.now(UTC), max_rows=catalog.MAX_ROWS)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/tournaments/{tournament_id}/exports/standings/pdf")
+async def export_standings_pdf(
+    tournament_id: UUID,
+    lang: ExportLang = "es",
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        document = await ExportService(db).export_standings_pdf(context, tournament_id, lang)
+        return _pdf(document, lang, f"standings-{str(tournament_id)[:8]}.pdf")
+    except ExportNotFound as exc:
+        raise HTTPException(status_code=404, detail=TOURNAMENT_NOT_FOUND) from exc
+    except ExportTooLarge as exc:
+        raise HTTPException(status_code=422, detail=EXPORT_TOO_LARGE) from exc
 
 
 @router.get("/tournaments/{tournament_id}/exports/{kind}")

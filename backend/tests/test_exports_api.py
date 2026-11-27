@@ -527,3 +527,113 @@ async def test_tournament_exports_read_one_snapshot(exports, monkeypatch):
     for kind in TOURNAMENT_KINDS:
         assert (await download(exports, kind)).status_code == 200
     assert seen and set(seen) == {"repeatable read"}
+
+
+# ---------------------------------------------------------------- PDF de la clasificación (spec 050, T2)
+
+
+def standings_pdf_url(tournament_id):
+    return f"/api/v1/tournaments/{tournament_id}/exports/standings/pdf"
+
+
+async def download_standings_pdf(exports, lang=None, tournament_id=None):
+    params = {"lang": lang} if lang else {}
+    return await exports.client.get(standings_pdf_url(tournament_id or exports.match.tournament_id), params=params)
+
+
+def pdf_text(response) -> str:
+    from pypdf import PdfReader
+
+    assert response.content.startswith(b"%PDF-")
+    return "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(response.content)).pages)
+
+
+async def tournament_and_organization(exports):
+    return await exports.admin.fetchrow(
+        """SELECT t.name AS tournament, o.name AS organization FROM tournaments t
+           JOIN organizations o ON o.id = t.organization_id WHERE t.id=$1""", exports.match.tournament_id)
+
+
+async def test_standings_pdf_route_is_registered():
+    routes = {(path, method) for path, route in walk_routes(api.routes)
+              if "/exports/" in path for method in route.methods}
+    assert ("/api/v1/tournaments/{tournament_id}/exports/standings/pdf", "GET") in routes
+
+
+async def test_standings_pdf_is_a_pdf_download(exports):
+    response = await download_standings_pdf(exports)
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["cache-control"] == "no-store"
+    short = str(exports.match.tournament_id)[:8]
+    assert response.headers["content-disposition"] == f'attachment; filename="standings-{short}.pdf"'
+
+
+async def test_standings_pdf_has_the_header_and_the_csv_content(exports):
+    info = await tournament_and_organization(exports)
+    text = pdf_text(await download_standings_pdf(exports))
+    for expected in ("Clasificación", info["organization"], info["tournament"], "Generado el", "Página 1 de 1"):
+        assert expected in text
+    csv_rows = parse(await download(exports, "standings"))[1:]
+    assert csv_rows
+    for row in csv_rows:
+        assert row[3] in text
+
+
+async def test_standings_pdf_follows_lang(exports):
+    text = pdf_text(await download_standings_pdf(exports, "en"))
+    assert "Standings" in text and "Generated on" in text and "Page 1 of 1" in text
+    assert (await download_standings_pdf(exports, "fr")).status_code == 422
+
+
+async def test_standings_pdf_without_published_version_has_the_notice(exports):
+    await exports.admin.execute(
+        "UPDATE tournaments SET status='draft', published_version_id=NULL WHERE id=$1",
+        exports.match.tournament_id)
+    response = await download_standings_pdf(exports)
+    assert response.status_code == 200
+    assert "Sin clasificación todavía" in pdf_text(response)
+
+
+async def test_standings_pdf_of_an_archived_tournament(exports):
+    await exports.admin.execute("UPDATE tournaments SET status='archived' WHERE id=$1", exports.match.tournament_id)
+    assert (await download_standings_pdf(exports)).status_code == 200
+
+
+async def test_viewer_can_download_the_standings_pdf(exports):
+    exports.context = exports.viewer
+    assert (await download_standings_pdf(exports)).status_code == 200
+
+
+async def test_foreign_and_missing_tournaments_get_the_same_404_in_pdf(exports):
+    foreign = await download_standings_pdf(exports, tournament_id=exports.foreign_tournament_id)
+    missing = await download_standings_pdf(exports, tournament_id=uuid4())
+    assert (foreign.status_code, foreign.json()) == (404, NOT_FOUND)
+    assert (missing.status_code, missing.json()) == (404, NOT_FOUND)
+    exports.context = exports.stranger
+    other = await download_standings_pdf(exports)
+    assert (other.status_code, other.json()) == (404, NOT_FOUND)
+
+
+async def test_standings_pdf_never_carries_identifiers_or_personal_data(exports):
+    text = pdf_text(await download_standings_pdf(exports))
+    rows = await exports.admin.fetch(
+        "SELECT id, national_id_hmac FROM players WHERE organization_id=$1", exports.owner.organization_id)
+    for row in rows:
+        assert str(row["id"]) not in text
+    assert "@example" not in text
+    assert str(exports.match.tournament_id) not in text
+
+
+async def test_standings_pdf_over_the_limit_fails_without_a_file(exports, monkeypatch):
+    monkeypatch.setattr(catalog, "MAX_ROWS", 1)
+    response = await download_standings_pdf(exports)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "EXPORT_TOO_LARGE"}
+    assert response.headers["content-type"] != "application/pdf"
+
+
+async def test_standings_pdf_leaves_no_audit_entry(exports):
+    before = await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs")
+    assert (await download_standings_pdf(exports)).status_code == 200
+    assert await exports.admin.fetchval("SELECT count(*) FROM administrative_audit_logs") == before
