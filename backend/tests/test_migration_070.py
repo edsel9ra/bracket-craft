@@ -205,3 +205,19 @@ async def test_070_phase_minutes_view_resolves_defaults_and_stage_override(db_07
 
     await db_070.execute("UPDATE tournaments SET status = 'draft' WHERE id = (SELECT tournament_id FROM matches WHERE id = $1)", MATCH)
     assert await db_070.fetchval("SELECT count(*) FROM v_public_match_phase_minutes WHERE match_id = $1", MATCH) == 0
+
+
+async def test_070_phase_minutes_view_ignores_an_unused_decimal_extra_time(db_070):
+    await db_070.execute("SET session_replication_role = replica")
+    await db_070.execute(
+        """UPDATE tournament_versions tv SET rules_config = jsonb_set(tv.rules_config, '{stage_defaults}',
+               '{"regular_time_minutes": 50, "extra_time_enabled": false, "extra_time_minutes": 120.0}'::jsonb)
+           FROM matches m WHERE m.id = $1 AND tv.id = m.tournament_version_id""",
+        MATCH,
+    )
+    await db_070.execute("SET session_replication_role = origin")
+    row = await db_070.fetchrow(
+        "SELECT regular_time_minutes, extra_time_minutes, extra_time_enabled FROM v_public_match_phase_minutes WHERE match_id = $1",
+        MATCH,
+    )
+    assert tuple(row) == (50, None, False)

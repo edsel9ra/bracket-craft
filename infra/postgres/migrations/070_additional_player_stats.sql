@@ -142,9 +142,13 @@ WITH (security_barrier = true) AS
 SELECT
     m.id AS match_id,
     m.tournament_id,
-    COALESCE(ov ->> 'regular_time_minutes', sd ->> 'regular_time_minutes', '90')::integer AS regular_time_minutes,
-    COALESCE(ov ->> 'extra_time_minutes', sd ->> 'extra_time_minutes', '120')::integer AS extra_time_minutes,
-    COALESCE(ov ->> 'extra_time_enabled', sd ->> 'extra_time_enabled', 'false')::boolean AS extra_time_enabled
+    COALESCE(raw.ov ->> 'regular_time_minutes', raw.sd ->> 'regular_time_minutes', '90')::numeric::integer
+        AS regular_time_minutes,
+    -- Sin prórroga, su valor no se valida ni se usa (puede ser decimal).
+    CASE WHEN rules.extra_time_enabled
+         THEN COALESCE(raw.ov ->> 'extra_time_minutes', raw.sd ->> 'extra_time_minutes', '120')::numeric::integer
+    END AS extra_time_minutes,
+    rules.extra_time_enabled
 FROM public.matches m
 JOIN public.tournaments tr
   ON tr.id = m.tournament_id
@@ -158,6 +162,10 @@ JOIN public.tournament_versions tv
 CROSS JOIN LATERAL (
     SELECT tv.rules_config -> 'stage_defaults' AS sd,
            tv.rules_config -> 'stage_overrides' -> (m.stage_id::text) AS ov
+) raw
+CROSS JOIN LATERAL (
+    SELECT COALESCE(raw.ov ->> 'extra_time_enabled', raw.sd ->> 'extra_time_enabled', 'false')::boolean
+        AS extra_time_enabled
 ) rules
 WHERE tr.status IN ('published', 'live', 'finished')
   AND m.tournament_version_id = tr.published_version_id
