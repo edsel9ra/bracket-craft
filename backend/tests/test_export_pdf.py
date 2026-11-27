@@ -173,3 +173,20 @@ def test_numbers_and_minutes_never_split_across_lines(lang):
     assert sum(widths) == pytest.approx(available)
     assert widths[1] >= stringWidth("99", FONT, 8.5) + 6
     assert widths[4] >= stringWidth("90+12", FONT, 8.5) + 6
+
+
+def test_an_unbreakable_token_wider_than_the_page_still_renders():
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from app.modules.exports.pdf_format import FONT, column_widths
+    available = A4[0] - 2 * 18 * 72 / 25.4
+    url = "https://example.test/" + "a" * 400
+    header = catalog.header(catalog.REPORT_KIND, "es")[1:]
+    row = ["Leones", 99, "Ana Pérez", "Resolución administrativa", "90+12", url]
+    widths = column_widths(header, [row], available)
+    assert sum(widths) == pytest.approx(available)
+    assert widths[1] >= stringWidth("99", FONT, 8.5) + 6
+    assert widths[4] >= stringWidth("90+12", FONT, 8.5) + 6
+    document = PdfDocument("Acta", (), (PdfSection(None, header, (row,)),))
+    text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(render_pdf(document, "es", GENERATED_AT))).pages)
+    assert "90+12" in text and "aaaa" in text

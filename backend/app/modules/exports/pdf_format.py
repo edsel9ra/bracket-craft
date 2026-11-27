@@ -84,6 +84,18 @@ def _width(text: str, font: str) -> float:
     return pdfmetrics.stringWidth(text, font, CELL_SIZE) + CELL_PADDING
 
 
+def _cap_widest(minimum: list[float], available: float) -> list[float]:
+    """Una palabra más ancha que la página (p. ej. un enlace): las columnas estrechas conservan su
+    mínimo y las más anchas comparten un mismo tope; ReportLab parte esa palabra dentro de su celda."""
+    used, cap = 0.0, available / len(minimum)
+    for count, width in enumerate(sorted(minimum)):
+        cap = (available - used) / (len(minimum) - count)
+        if width > cap:
+            break
+        used += width
+    return [min(width, cap) for width in minimum]
+
+
 def column_widths(header: Sequence[str], rows: Sequence[Sequence[Any]], available: float) -> list[float]:
     """Cada columna recibe al menos su palabra más ancha (una cifra o un minuto nunca se parten);
     el resto del ancho va a las columnas cuyo texto completo no cabe, en proporción a lo que les falta."""
@@ -100,7 +112,7 @@ def column_widths(header: Sequence[str], rows: Sequence[Sequence[Any]], availabl
         # Las cabeceras pueden partirse; las celdas, no, salvo que ni así quepan.
         minimum = [least(cells, (FONT,)) for cells in columns]
     if sum(minimum) > available:
-        return [available * width / sum(minimum) for width in minimum]
+        return _cap_widest(minimum, available)
     full = [max(_width(text, font) for text, font in cells) for cells in columns]
     missing = [whole - low for whole, low in zip(full, minimum, strict=True)]
     spare = available - sum(minimum)
