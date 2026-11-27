@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any, Iterable, Mapping, Sequence
 
+from app.modules.rule_contract import POSITION_LINE_CODES, POSITION_LINES
+
 
 def _v(row: Any, key: str, default: Any = None) -> Any:
     """Lee un campo de una fila sea ``Mapping`` u objeto con atributos."""
@@ -781,6 +783,86 @@ def team_stats_rank_key(row: Any) -> tuple:
     )
 
 
+_PLAYED_RESOLUTIONS = frozenset({"regular", "extra_time", "penalties"})
+
+
+def _recency_key(match: Any) -> tuple:
+    """Orden «más reciente» de la 052 (DA-2): fecha no nula, fecha e identificador."""
+
+    value = _v(match, "match_date")
+    identity = str(_match_id(match))
+    if value is None:
+        return (0, 0.0, "", identity)
+    if hasattr(value, "timestamp"):
+        return (1, value.timestamp(), "", identity)
+    return (1, 0.0, str(value), identity)
+
+
+def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_info, ensure) -> None:
+    """Minutos (DA-1) y posición principal (DA-2, DA-3) de la spec 052.
+
+    ``by_match`` solo tiene formaciones **publicadas** de partidos confirmados.
+    Los minutos cuentan si el equipo publicó la formación del primer segmento;
+    las líneas salen de los titulares de cada formación publicada y de la
+    posición de entrada de las sustituciones de ese equipo.
+    """
+
+    events_by_match: dict[Any, list[Any]] = {}
+    for e in events:
+        if not _truthy(_v(e, "is_voided")):
+            events_by_match.setdefault(_event_match_id(e), []).append(e)
+    lines: dict[Any, dict[Any, set[str]]] = {}
+    recency: dict[Any, tuple] = {}
+    for mid, match_formations in by_match.items():
+        m = matches_by_id.get(mid)
+        if m is None or (_resolution(m) or "regular") not in _PLAYED_RESOLUTIONS:
+            continue
+        recency[mid] = _recency_key(m)
+        segs = _segments_for_match(segments, m)
+        mevents = events_by_match.get(mid, []) + events_by_match.get(None, [])
+        numbers = [int(_v(s, "segment_number")) for s in segs if _v(s, "segment_number") is not None]
+        numbers = numbers or [int(_v(f, "segment_number")) for f in match_formations if _v(f, "segment_number") is not None]
+        first = min(numbers) if numbers else None
+        by_team: "OrderedDict[Any, list[Any]]" = OrderedDict()
+        for formation in match_formations:
+            team = _v(formation, "team_id")
+            by_team.setdefault(_v(m, "home_team_id") if team is None else team, []).append(formation)
+        for team, team_formations in by_team.items():
+            subs = [e for e in mevents if _v(e, "event_type") == "substitution" and _v(e, "team_id") == team]
+            opening = next((f for f in team_formations if first is None or _v(f, "segment_number") == first), None)
+            if opening is not None:
+                starters = [
+                    _player_id(p) for p in _formation_players(opening)
+                    if _is_starter(p) and _player_id(p) is not None
+                ]
+                for pid in dict.fromkeys(starters):
+                    ensure(pid)["minutes_played"] += _player_minutes(m, pid, mevents, segs, True)
+                entering = dict.fromkeys(_v(s, "player_in_id") for s in subs)
+                for pid in entering:
+                    if pid is None or pid in starters or pid not in player_info:
+                        continue
+                    ensure(pid)["minutes_played"] += _player_minutes(m, pid, mevents, segs, False)
+            for formation in team_formations:
+                for player in _formation_players(formation):
+                    pid, slot = _player_id(player), _position_slot(player)
+                    if pid is not None and _is_starter(player) and slot in POSITION_LINES:
+                        lines.setdefault(pid, {}).setdefault(mid, set()).add(POSITION_LINES[slot])
+            for s in subs:
+                pid, slot = _v(s, "player_in_id"), _v(s, "player_in_position")
+                if pid is not None and pid in player_info and slot in POSITION_LINES:
+                    lines.setdefault(pid, {}).setdefault(mid, set()).add(POSITION_LINES[slot])
+    for pid, per_match in lines.items():
+        counts: dict[str, int] = {}
+        latest: dict[str, tuple] = {}
+        for mid, played in per_match.items():
+            for line in played:
+                counts[line] = counts.get(line, 0) + 1
+                latest[line] = max(latest.get(line, recency[mid]), recency[mid])
+        ensure(pid)["main_position"] = max(
+            counts, key=lambda line: (counts[line], latest[line], -POSITION_LINE_CODES.index(line))
+        )
+
+
 def compute_player_stats(
     matches: Any,
     events: Any,
@@ -852,6 +934,9 @@ def compute_player_stats(
                 "red_cards": 0,
                 "clean_sheets": 0,
                 "matches_played": set(),
+                "minutes_played": 0,
+                "main_position": None,
+                "penalties_saved": 0,
             }
             if pid in player_info:
                 for key, value in player_info[pid].items():
@@ -904,6 +989,8 @@ def compute_player_stats(
                 d["yellow_cards"] += 1
             elif credit_type == "red_card":
                 d["red_cards"] += 1
+            elif credit_type == "penalty_saved":
+                d["penalties_saved"] += 1
 
     # Formaciones publicadas: presencia del jugador y agrupación por partido.
     by_match: "OrderedDict[Any, list[Any]]" = OrderedDict()
@@ -939,6 +1026,8 @@ def compute_player_stats(
                     continue
                 ensure(pid)["clean_sheets"] += 1
                 counted.add((pid, mid))
+
+    _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_info, ensure)
 
     # Finalizar matches_played como entero.
     for d in stats.values():

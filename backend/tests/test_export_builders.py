@@ -223,6 +223,9 @@ def _player_stat(pid, first, last, goals, played=3, **overrides):
         "red_cards": 0,
         "clean_sheets": 0,
         "matches_played": played,
+        "minutes_played": 270,
+        "main_position": "forward",
+        "penalties_saved": 0,
         "photo_url": "https://cdn.example/foto.jpg",
         "photo_consent": True,
     }
@@ -233,15 +236,16 @@ def _player_stat(pid, first, last, goals, played=3, **overrides):
 def test_player_stats_rows_rank_like_the_public_view():
     data = [
         _player_stat(P1, "Ana", "Ruiz", 2),
-        _player_stat(P2, "Bea", "Diaz", 5),
-        _player_stat(P3, "Eva", "Ruiz", 2),
+        _player_stat(P2, "Bea", "Diaz", 5, main_position="goalkeeper", penalties_saved=2),
+        _player_stat(P3, "Eva", "Ruiz", 2, minutes_played=0, main_position=None),
     ]
     rows = builders.player_stats_rows(data, "es")
     assert rows == [
-        [1, "Bea", "Diaz", "Halcones", 5, 1, 0, 0, 3],
-        [2, "Ana", "Ruiz", "Halcones", 2, 1, 0, 0, 3],
-        [2, "Eva", "Ruiz", "Halcones", 2, 1, 0, 0, 3],
+        [1, "Bea", "Diaz", "Halcones", 5, 1, 0, 0, 3, 270, "Portero", 2],
+        [2, "Ana", "Ruiz", "Halcones", 2, 1, 0, 0, 3, 270, "Delantero", 0],
+        [2, "Eva", "Ruiz", "Halcones", 2, 1, 0, 0, 3, 0, None, 0],
     ]
+    assert [row[-2] for row in builders.player_stats_rows(data, "en")] == ["Goalkeeper", "Forward", None]
     assert len(rows[0]) == _width("player-stats")
     _assert_no_forbidden(rows, "cdn.example", str(P1))
     assert "rank" not in data[0]
@@ -382,6 +386,23 @@ def test_match_report_rows_have_result_officials_lineup_and_events_in_order():
         ["Hecho", "Halcones", 10, "Ana Ruiz", "Gol", "50", "Asistencia: Eva Sol"],
     ]
     assert {len(row) for row in rows} == {_width(catalog.REPORT_KIND)}
+
+
+def test_match_report_rows_show_the_entry_position_and_the_penalty_saved_rf012():
+    events = [
+        {**EVENTS[2], "player_in_position": "LCB"},
+        {"id": UUID(int=4), "segment_number": 1, "team_id": AWAY, "player_id": P2, "event_type": "penalty_saved",
+         "minute": 20, "added_minute": 0, "assist_player_id": None, "player_in_id": None,
+         "player_in_position": None, "metadata": {}},
+    ]
+    rows = builders.match_report_rows(_report_match(), OFFICIALS, LINEUP, events, PLAYERS, "es")
+    assert rows[-2:] == [
+        ["Hecho", "Águilas", 4, "Bea Diaz", "Penal atajado", "20", None],
+        ["Hecho", "Halcones", 10, "Ana Ruiz", "Sustitución", "30", "Entra: Eva Sol · Posición: LCB"],
+    ]
+    english = builders.match_report_rows(_report_match(), OFFICIALS, LINEUP, events, PLAYERS, "en")
+    assert english[-2][4] == "Penalty saved"
+    assert english[-1][6] == "In: Eva Sol · Position: LCB"
 
 
 def test_match_report_rows_translate_to_english():

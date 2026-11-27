@@ -312,3 +312,72 @@ async def test_rectification_rejects_a_position_outside_the_catalog_without_writ
     assert response.status_code == 422, response.text
     assert response.json()["code"] == ENTRY_POSITION_INVALID
     await assert_empty(flow)
+
+
+# ---------------------------------------------------------------------------
+# Superficie pública (T4: RF-001, RF-003, RF-014)
+# ---------------------------------------------------------------------------
+
+
+async def test_public_player_stats_route_reads_the_new_facts(database_admin_url):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.database import get_db
+    from app.main import api
+
+    async with committed_application(database_admin_url) as engine:
+        context, match = await seeded_match(engine)
+        substitute = await register_substitute(engine, match)
+        await publish_home_lineup(engine, match, substitute)
+        await close(engine, context, match.match_id,
+                    full_report(match, substitute, label="t4-route", position="ST", saved=True))
+
+        async def db():
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                yield session
+
+        previous = api.dependency_overrides.copy()
+        api.dependency_overrides[get_db] = db
+        try:
+            async with AsyncClient(transport=ASGITransport(app=api), base_url="http://test") as client:
+                response = await client.get(f"/api/v1/tournaments/public/{match.tournament_id}/player-stats")
+        finally:
+            api.dependency_overrides.clear()
+            api.dependency_overrides.update(previous)
+
+        assert response.status_code == 200, response.text
+        rows = {row["player_id"]: row for row in response.json()}
+        figures = {
+            player: (rows[str(player)]["minutes_played"], rows[str(player)]["main_position"],
+                     rows[str(player)]["penalties_saved"])
+            for player in (match.home_scorer_id, match.home_assist_id, substitute, match.away_scorer_id)
+        }
+        assert figures == {
+            match.home_scorer_id: (90, "forward", 0),
+            match.home_assist_id: (60, "midfielder", 0),
+            substitute: (30, "forward", 0),
+            # DA-1: el visitante no publicó su alineación: sin minutos ni posición.
+            match.away_scorer_id: (0, None, 1),
+        }
+
+
+async def publish_home_lineup(engine, match: AssistMatch, substitute: UUID) -> None:
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        await set_tenant_context(session, match.tenant)
+        params = {"org": str(match.tenant.organization_id), "match": str(match.match_id),
+                  "segment": str(match.segment_id), "team": str(match.home_team_id)}
+        for player, starter, slot in ((match.home_scorer_id, True, "ST"), (match.home_assist_id, True, "CM"),
+                                      (substitute, False, None)):
+            await session.execute(
+                text("""INSERT INTO match_lineup_snapshots
+                        (organization_id, match_id, segment_id, team_id, player_id, is_starter, position_slot)
+                        VALUES (:org, :match, :segment, :team, :player, :starter, :slot)"""),
+                {**params, "player": str(player), "starter": starter, "slot": slot},
+            )
+        await session.execute(
+            text("""INSERT INTO match_team_lineups
+                    (organization_id, match_id, segment_id, team_id, formation_code, is_public, published_at)
+                    VALUES (:org, :match, :segment, :team, '4-3-3', TRUE, CURRENT_TIMESTAMP)"""),
+            params,
+        )
+        await session.commit()

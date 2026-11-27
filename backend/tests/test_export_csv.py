@@ -7,6 +7,8 @@ import io
 
 import pytest
 
+from app.modules.rule_contract import POSITION_LINE_CODES
+
 from app.modules.exports import catalog
 from app.modules.exports.csv_format import ExportTooLarge, neutralize, render_csv
 
@@ -38,9 +40,10 @@ EXPECTED_HEADERS = {
     ),
     "player-stats": (
         ["Posición", "Nombre", "Apellidos", "Equipo", "Goles", "Amarillas", "Rojas",
-         "Porterías imbatidas", "Partidos jugados"],
+         "Porterías imbatidas", "Partidos jugados", "Minutos jugados", "Posición principal",
+         "Penales atajados"],
         ["Position", "First name", "Last name", "Team", "Goals", "Yellow cards", "Red cards",
-         "Clean sheets", "Matches played"],
+         "Clean sheets", "Matches played", "Minutes played", "Main position", "Penalties saved"],
     ),
     "team-stats": (
         ["Posición", "Equipo", "Código", "GF", "GC", "Porterías imbatidas", "Juego limpio"],
@@ -106,7 +109,8 @@ def test_label_groups_cover_the_database_catalogs():
     assert set(catalog.LABELS["match_status"]) == {
         "scheduled", "live", "finished", "suspended", "cancelled", "administrative_resolution"}
     assert set(catalog.LABELS["event_type"]) == {
-        "goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "substitution", "foul"}
+        "goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "substitution", "foul", "penalty_saved"}
+    assert tuple(catalog.LABELS["main_position"]) == POSITION_LINE_CODES
     assert set(catalog.LABELS["official_role"]) == {
         "main_referee", "assistant_referee_1", "assistant_referee_2", "fourth_official", "match_commissioner"}
     assert set(catalog.LABELS["resolution"]) == {"regular", "extra_time", "penalties", "walkover", "administrative"}

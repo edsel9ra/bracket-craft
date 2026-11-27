@@ -69,6 +69,9 @@ COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("red_cards", "Rojas", "Red cards"),
         ("clean_sheets", "Porterías imbatidas", "Clean sheets"),
         ("matches_played", "Partidos jugados", "Matches played"),
+        ("minutes_played", "Minutos jugados", "Minutes played"),
+        ("main_position", "Posición principal", "Main position"),
+        ("penalties_saved", "Penales atajados", "Penalties saved"),
     ),
     "team-stats": (
         ("position", "Posición", "Position"),
@@ -116,6 +119,13 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "red_card": ("Tarjeta roja", "Red card"),
         "substitution": ("Sustitución", "Substitution"),
         "foul": ("Falta", "Foul"),
+        "penalty_saved": ("Penal atajado", "Penalty saved"),
+    },
+    "main_position": {
+        "goalkeeper": ("Portero", "Goalkeeper"),
+        "defender": ("Defensa", "Defender"),
+        "midfielder": ("Centrocampista", "Midfielder"),
+        "forward": ("Delantero", "Forward"),
     },
     "official_role": {
         "main_referee": ("Árbitro principal", "Referee"),
@@ -159,6 +169,7 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
     "report_detail": {
         "assist": ("Asistencia", "Assist"),
         "player_in": ("Entra", "In"),
+        "position": ("Posición", "Position"),
     },
     "red_card_type": {
         "direct_red": ("Roja directa", "Straight red"),

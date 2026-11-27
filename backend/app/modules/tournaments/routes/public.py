@@ -243,7 +243,7 @@ async def public_player_profile(
                         SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
                                home_team_id, away_team_id, home_score, away_score, home_score_regular,
                                away_score_regular, status, resolution_type, home_penalties, away_penalties,
-                               winner_team_id
+                               winner_team_id, match_date
                         FROM v_public_matches
                         WHERE tournament_id = ANY(CAST(:tournament_ids AS UUID[]))
                           AND (home_team_id = ANY(CAST(:team_ids AS UUID[]))
@@ -282,7 +282,7 @@ async def public_player_profile(
                     await db.execute(
                         text("""
                             SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
-                                   player_out_id, player_in_id, beneficiary_team_id, metadata
+                                   player_out_id, player_in_id, beneficiary_team_id, metadata, player_in_position
                             FROM v_public_match_events
                             WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
                               AND (is_voided IS FALSE OR is_voided IS NULL)
@@ -719,7 +719,7 @@ async def public_player_stats(
                 SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
                        home_team_id, away_team_id, home_score, away_score, home_score_regular,
                        away_score_regular, status, resolution_type, home_penalties, away_penalties,
-                       winner_team_id
+                       winner_team_id, match_date
                 FROM v_public_matches
                 WHERE tournament_id = :tournament_id
                   AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
@@ -738,7 +738,7 @@ async def public_player_stats(
             events_result = await db.execute(
                 text("""
                     SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
-                           player_out_id, player_in_id, beneficiary_team_id, metadata
+                           player_out_id, player_in_id, beneficiary_team_id, metadata, player_in_position
                     FROM v_public_match_events
                     WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
                       AND (is_voided IS FALSE OR is_voided IS NULL)

@@ -922,6 +922,16 @@
             "title": "Matches Played",
             "type": "integer"
           },
+          "minutes_played": {
+            "default": 0,
+            "title": "Minutes Played",
+            "type": "integer"
+          },
+          "penalties_saved": {
+            "default": 0,
+            "title": "Penalties Saved",
+            "type": "integer"
+          },
           "red_cards": {
             "default": 0,
             "title": "Red Cards",
@@ -950,9 +960,36 @@
             "title": "Goals",
             "type": "integer"
           },
+          "main_position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "goalkeeper",
+                  "defender",
+                  "midfielder",
+                  "forward"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Position"
+          },
           "matches_played": {
             "default": 0,
             "title": "Matches Played",
+            "type": "integer"
+          },
+          "minutes_played": {
+            "default": 0,
+            "title": "Minutes Played",
+            "type": "integer"
+          },
+          "penalties_saved": {
+            "default": 0,
+            "title": "Penalties Saved",
             "type": "integer"
           },
           "red_cards": {
@@ -1013,9 +1050,36 @@
             "title": "Last Name",
             "type": "string"
           },
+          "main_position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "goalkeeper",
+                  "defender",
+                  "midfielder",
+                  "forward"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Position"
+          },
           "matches_played": {
             "default": 0,
             "title": "Matches Played",
+            "type": "integer"
+          },
+          "minutes_played": {
+            "default": 0,
+            "title": "Minutes Played",
+            "type": "integer"
+          },
+          "penalties_saved": {
+            "default": 0,
+            "title": "Penalties Saved",
             "type": "integer"
           },
           "photo_url": {

@@ -21,7 +21,9 @@ from test_public_timeline_endpoint import _match_id
 from test_public_timeline_endpoint import _path as _timeline_path
 
 NOT_FOUND = "Torneo público no encontrado"  # RF-002: el mismo 404 que el resto de lecturas públicas
-STAT_FIELDS = ("matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets")
+STAT_FIELDS = (
+    "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets", "minutes_played", "penalties_saved",
+)
 
 
 def _path(player_id):
@@ -85,6 +87,7 @@ async def test_profile_closed_fields_and_same_figures_as_player_stats(db_session
             public = by_player[str(player)]
             assert (body["first_name"], body["last_name"]) == (public["first_name"], public["last_name"])
             assert {k: row[k] for k in STAT_FIELDS} == {k: public[k] for k in STAT_FIELDS}
+            assert row["main_position"] == public["main_position"]
             assert body["totals"] == {k: row[k] for k in STAT_FIELDS}
         assert (await client.get(_path(keeper))).json()["totals"]["clean_sheets"] == 1
         assert (await client.get(_path(scorer))).json()["totals"]["goals"] == 1

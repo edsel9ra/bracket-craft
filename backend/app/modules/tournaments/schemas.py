@@ -457,6 +457,10 @@ class PublicMatchResponse(BaseModel):
     away_origin: PublicSlotOriginResponse | None = None
 
 
+# Spec 052 (DA-2, D6): línea de la posición principal; el sitio la traduce.
+MainPosition = Literal["goalkeeper", "defender", "midfielder", "forward"]
+
+
 class PublicPlayerStatsResponse(BaseModel):
     rank: int
     player_id: UUID
@@ -473,6 +477,10 @@ class PublicPlayerStatsResponse(BaseModel):
     # Spec 038 RF-009: el nombre enlaza a la ficha solo si la inscripción en
     # este torneo tiene consentimiento de imagen.
     profile_available: StrictBool = False
+    # Spec 052 (RF-001–RF-003, RF-014): campos nuevos no obligatorios de `v1`.
+    minutes_played: int = 0
+    main_position: MainPosition | None = None
+    penalties_saved: int = 0
 
 
 class PublicTeamStatsResponse(BaseModel):
@@ -536,6 +544,9 @@ class PublicPlayerProfileTotalsResponse(BaseModel):
     yellow_cards: int = 0
     red_cards: int = 0
     clean_sheets: int = 0
+    # Spec 052 (RF-004): suma por torneo, como el resto de cifras.
+    minutes_played: int = 0
+    penalties_saved: int = 0
 
 
 class PublicPlayerProfileTournamentResponse(PublicPlayerProfileTotalsResponse):
@@ -545,6 +556,7 @@ class PublicPlayerProfileTournamentResponse(PublicPlayerProfileTotalsResponse):
     tournament_name: str
     team_id: UUID
     team_name: str
+    main_position: MainPosition | None = None
 
 
 class PublicPlayerProfileResponse(BaseModel):
