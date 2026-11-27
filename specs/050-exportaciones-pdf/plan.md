@@ -1,6 +1,6 @@
 # Plan — Spec 050: Exportaciones PDF (F10, parte 2)
 
-Estado: borrador, pendiente de aprobación. Spec aprobada el 2026-11-26 («Apruebo la spec 050»).
+Estado: aprobado el 2026-11-26 («Apruebo el plan y las tareas. Empieza con T1»). Spec aprobada el 2026-11-26 («Apruebo la spec 050»).
 
 ## 1. Resumen
 

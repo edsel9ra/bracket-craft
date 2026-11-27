@@ -1,6 +1,6 @@
 # Tareas — Spec 050: Exportaciones PDF (F10, parte 2)
 
-Estado: borrador, pendiente de aprobación junto con el plan.
+Estado: aprobadas el 2026-11-26 junto con el plan («Apruebo el plan y las tareas. Empieza con T1»).
 
 ## Bloque A — Backend (un PR)
 
