@@ -68,6 +68,9 @@ from app.modules.notifications.router import router as notifications_router
 from app.modules.webhooks.router import router as webhooks_router
 from app.modules.exports.router import router as exports_router
 from app.modules.tournament_roles.router import router as tournament_roles_router
+from app.modules.public_api.catalog import OPENAPI_PATH as PUBLIC_OPENAPI_PATH
+from app.modules.public_api.catalog import missing_routes as missing_public_api_routes
+from app.modules.public_api.router import router as public_api_router
 from app.modules.rectifications.router import router as rectifications_router
 from app.modules.sanction_appeals.router import router as sanction_appeals_router
 from app.modules.rectifications.service import RectificationConflict, RectificationSelfApproval
@@ -944,6 +947,7 @@ async def _buffer_request_body(request: Request, max_bytes: int) -> BodyBufferRe
 
 # Spec 043 RNF-004: las rutas públicas de compartir no emiten cookies en ninguna
 # respuesta (tampoco 404/422); un proxy compartido no debe guardar el token.
+# Spec 051: el documento OpenAPI público tampoco.
 COOKIELESS_PUBLIC_PATHS = re.compile(
     r"^/api/v1/tournaments/public/"
     r"(?:share-image|[^/]+/share-image|[^/]+/matches/[^/]+(?:/share-image)?)/?$"
@@ -996,6 +1000,7 @@ async def csrf_and_request_size_middleware(request: Request, call_next):
     if (
         request.method.upper() != "OPTIONS"
         and not COOKIELESS_PUBLIC_PATHS.match(request.url.path)
+        and request.url.path != PUBLIC_OPENAPI_PATH
         and not request.cookies.get(current_settings.csrf_cookie_name)
     ):
         response.set_cookie(
@@ -1087,6 +1092,9 @@ api.include_router(notifications_router, prefix="/api/v1")
 api.include_router(webhooks_router, prefix="/api/v1")
 api.include_router(exports_router, prefix="/api/v1")
 api.include_router(tournament_roles_router, prefix="/api/v1")
+api.include_router(public_api_router, prefix="/api/v1")
+if missing_public_api_routes(api.routes):
+    raise RuntimeError("Faltan rutas del catálogo público v1 (spec 051)")
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=api)
 app = SecurityHeadersMiddleware(sio_app, app_env=settings.app_env)
