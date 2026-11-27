@@ -107,6 +107,8 @@ def _compare_parameters(
             continue
         if cur.get("required") and not ref.get("required"):
             problems.append(f"{name}: pasa a ser obligatorio")
+        if ref.get("schema", {}).get("default") != cur.get("schema", {}).get("default"):
+            problems.append(f"{name}: cambia el valor por defecto")
         _compare_input(ref_doc, ref.get("schema", {}), cur_doc, cur.get("schema", {}), name, problems)
     for key in ref_params.keys() - cur_params.keys():
         problems.append(f"{where}: parámetro {key[1]}: eliminado")

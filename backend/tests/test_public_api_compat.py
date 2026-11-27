@@ -145,6 +145,14 @@ def _param_limit_narrowed(doc):
     _param(doc, "limit")["schema"]["maximum"] = 100
 
 
+def _param_default_changed(doc):
+    _param(doc, "limit")["schema"]["default"] = 100
+
+
+def _param_default_removed(doc):
+    del _param(doc, "limit")["schema"]["default"]
+
+
 def _response_code_removed(doc):
     del _op(doc)["responses"]["404"]
 
@@ -200,6 +208,8 @@ def _error_schema_changed(doc):
     _param_type_change,
     _param_enum_value_removed,
     _param_limit_narrowed,
+    _param_default_changed,
+    _param_default_removed,
     _response_code_removed,
     _property_removed,
     _property_no_longer_required,
