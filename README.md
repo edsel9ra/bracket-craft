@@ -752,6 +752,15 @@ Sin migración ni variables nuevas, y sin dependencias: el CSV lo genera el back
 - **Datos:** versión publicada del torneo y acta vigente de cada partido (sin versión publicada, solo la cabecera; las plantillas no dependen de la versión). Cada exportación lee en una transacción `REPEATABLE READ` con contexto RLS, para no mezclar versiones si se confirma una rectificación a mitad de la descarga. Nunca se exportan documento, fecha de nacimiento, edad, correo, foto ni identificadores.
 - **Auditoría:** solo las plantillas dejan `EXPORT_TOURNAMENT_ROSTERS` (entidad `tournaments`, `{"row_count": n}`, sin nombres). Columnas de cada archivo: manual de usuario, «Exportaciones».
 
+## Exportaciones PDF (spec 050)
+
+Sin migración ni variables nuevas; cambian las dependencias del backend, así que hay que **reconstruir la imagen de la API**. El PDF lo genera el servidor con `reportlab==5.1.0` (BSD, con `charset-normalizer==3.5.2`; `pypdf==6.21.4` solo en desarrollo, para los tests). Solo el acta de un partido cerrado y la clasificación, solo en el Workspace y para cualquier miembro; la vista pública no cambia.
+
+- **Endpoints:** `GET /api/v1/tournaments/{id}/exports/standings/pdf?lang=es|en` y `GET /api/v1/matches/{id}/export/pdf?lang=es|en`. Las rutas CSV no cambian. Mismos errores que el CSV: 404 indistinguible para lo ajeno o inexistente, 422 por idioma no válido o por más de 10.000 filas (`EXPORT_TOO_LARGE`, sin documento truncado) y 409 `MATCH_NOT_CLOSED` en el acta.
+- **Contenido:** las mismas lecturas, RLS, transacción `REPEATABLE READ` y filas que el CSV (`ExportService._match_report` es común; un test compara las celdas). La clasificación lleva una tabla por fase y grupo; el acta, bloques de Resultado, Oficiales, Alineación por equipo y Hechos (sin Hechos en un W.O.). Cabecera con organización, torneo (y partido), fecha de generación en UTC.
+- **Formato:** A4 vertical, «Página n de m», cabecera de tabla repetida y texto seleccionable, solo texto (sin escudos ni imágenes). Fuente Archivo Regular/Bold incrustada (`OFL.txt`) y DejaVu Sans 2.37 de respaldo (`DejaVu-LICENSE.txt`) solo para las letras que Archivo no tiene, con cada letra y sus marcas combinantes en la misma fuente. Los nombres con `<`, `&` o comillas se muestran literalmente. `Cache-Control: no-store`.
+- **Auditoría:** ninguna descarga PDF se registra, igual que el CSV del acta y de la clasificación.
+
 ## Proyección interna de jugadores por torneo
 
 `v_public_tournament_players` es una **proyección interna** de base de datos: ninguna ruta de la API la consulta y ninguna respuesta pública la expone. Se mantiene tal cual por decisión de producto (Q3 de la spec 008); retirarla o consumirla exige una spec propia.
