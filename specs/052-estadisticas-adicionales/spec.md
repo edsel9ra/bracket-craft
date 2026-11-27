@@ -1,6 +1,6 @@
 # Spec 052 — Estadísticas adicionales (F17)
 
-Estado: borrador. DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con F17»), última función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+Estado: aprobada el 2026-11-27 («Apruebo la spec 052»). DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con F17»), última función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
 
 ## Decisiones del usuario (2026-11-27)
 
