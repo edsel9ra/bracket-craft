@@ -1,4 +1,4 @@
-"""Catálogo cerrado de exportaciones CSV (spec 048): columnas, cabeceras y etiquetas ES/EN."""
+"""Catálogo cerrado de exportaciones CSV (spec 048) y PDF (spec 050): columnas, cabeceras y etiquetas ES/EN."""
 
 from __future__ import annotations
 
@@ -6,6 +6,14 @@ EXPORT_KINDS: tuple[str, ...] = ("standings", "calendar", "player-stats", "team-
 REPORT_KIND = "match-report"
 MAX_ROWS = 10_000
 LANGS: tuple[str, ...] = ("es", "en")
+# Solo la clasificación y el acta tienen versión PDF (spec 050, DA-1).
+PDF_KINDS: tuple[str, ...] = ("standings", REPORT_KIND)
+
+# Textos fijos del documento PDF; ``{at}``, ``{page}`` y ``{total}`` se rellenan al componerlo.
+PDF_TEXTS: dict[str, dict[str, str]] = {
+    "generated_at": {"es": "Generado el {at} (UTC)", "en": "Generated on {at} (UTC)"},
+    "page": {"es": "Página {page} de {total}", "en": "Page {page} of {total}"},
+}
 
 # Cada columna: (clave interna, cabecera ES, cabecera EN). El orden es el del archivo.
 COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
@@ -148,6 +156,11 @@ LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "no": ("No", "No"),
     },
 }
+
+
+def pdf_text(key: str, lang: str) -> str:
+    _lang_index(lang)
+    return PDF_TEXTS[key][lang]
 
 
 def _lang_index(lang: str) -> int:
