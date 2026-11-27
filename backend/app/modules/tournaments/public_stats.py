@@ -798,39 +798,50 @@ def _recency_key(match: Any) -> tuple:
     return (1, 0.0, str(value), identity)
 
 
-def _on_field_minutes(match: Any, player_id: Any, events: Iterable[Any], segments: Iterable[Any], started: bool) -> int:
-    """Minutos en el campo (spec 052): suma de los tramos entre entradas y salidas.
+def _on_field_minutes(match: Any, starters: Iterable[Any], events: Iterable[Any], segments: Iterable[Any]) -> dict:
+    """Minutos en el campo de cada jugador del partido (spec 052), en una pasada.
 
-    Cada minuto de un hecho (minuto + añadido) se acota a la duración efectiva y
-    los hechos se recorren en el orden canónico, así que una reentrada suma un
-    tramo nuevo y una salida en el descuento no supera el final del partido.
+    Suma los tramos entre entradas y salidas en el orden canónico (minuto,
+    añadido, índice), con cada minuto acotado a la duración efectiva: una
+    reentrada abre un tramo nuevo y ningún jugador supera esa duración. Si un
+    suplente sale en el mismo minuto en que entra, no suma, sea cual sea el
+    orden de los dos cambios en el acta.
     """
 
     duration = int(_effective_duration(match, segments))
     indexed = list(enumerate(_events_for_match(events, match)))
     indexed.sort(key=lambda pair: (int(_v(pair[1], "minute", 0) or 0), int(_v(pair[1], "added_minute", 0) or 0), pair[0]))
-    total, since = 0, (0 if started else None)
+    since: dict[Any, int] = dict.fromkeys(starters, 0)
+    total: dict[Any, int] = dict.fromkeys(since, 0)
+    expelled: set[Any] = set()
+    early_exit: dict[Any, int] = {}
     for _, e in indexed:
         at = min(int(_v(e, "minute", 0) or 0) + int(_v(e, "added_minute", 0) or 0), duration)
         etype = _v(e, "event_type")
-        if etype == "red_card" and _v(e, "player_id") == player_id:
-            if since is not None:
-                total += at - since
-            since = None
-            break
+        if etype == "red_card":
+            pid = _v(e, "player_id")
+            if pid in since:
+                total[pid] += at - since.pop(pid)
+            expelled.add(pid)
+            continue
         if etype != "substitution":
             continue
-        if since is not None and _v(e, "player_out_id", _v(e, "player_id")) == player_id:
-            total += at - since
-            since = None
-        elif since is None and _v(e, "player_in_id") == player_id:
-            since = at
-    if since is not None:
-        total += duration - since
-    return max(0, total)
+        out_id, in_id = _v(e, "player_out_id", _v(e, "player_id")), _v(e, "player_in_id")
+        if out_id in since:
+            total[out_id] += at - since.pop(out_id)
+        elif out_id is not None:
+            early_exit[out_id] = at
+        if in_id is None or in_id in since or in_id in expelled:
+            continue
+        total.setdefault(in_id, 0)
+        if early_exit.pop(in_id, None) != at:
+            since[in_id] = at
+    for pid, entered in since.items():
+        total[pid] += duration - entered
+    return {pid: min(max(0, minutes), duration) for pid, minutes in total.items()}
 
 
-def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_info, ensure) -> None:
+def _add_minutes_and_lines(by_match, matches_by_id, events, segments_of, player_info, ensure) -> None:
     """Minutos (DA-1) y posición principal (DA-2, DA-3) de la spec 052.
 
     ``by_match`` solo tiene formaciones **publicadas** de partidos confirmados.
@@ -850,7 +861,7 @@ def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_inf
         if m is None or (_resolution(m) or "regular") not in _PLAYED_RESOLUTIONS:
             continue
         recency[mid] = _recency_key(m)
-        segs = _segments_for_match(segments, m)
+        segs = segments_of(m)
         mevents = events_by_match.get(mid, []) + events_by_match.get(None, [])
         numbers = [int(_v(s, "segment_number")) for s in segs if _v(s, "segment_number") is not None]
         numbers = numbers or [int(_v(f, "segment_number")) for f in match_formations if _v(f, "segment_number") is not None]
@@ -867,13 +878,15 @@ def _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_inf
                     _player_id(p) for p in _formation_players(opening)
                     if _is_starter(p) and _player_id(p) is not None
                 ]
-                for pid in dict.fromkeys(starters):
-                    ensure(pid)["minutes_played"] += _on_field_minutes(m, pid, mevents, segs, True)
+                starters = list(dict.fromkeys(starters))
+                minutes = _on_field_minutes(m, starters, mevents, segs)
+                for pid in starters:
+                    ensure(pid)["minutes_played"] += minutes[pid]
                 entering = dict.fromkeys(_v(s, "player_in_id") for s in subs)
                 for pid in entering:
                     if pid is None or pid in starters or pid not in player_info:
                         continue
-                    ensure(pid)["minutes_played"] += _on_field_minutes(m, pid, mevents, segs, False)
+                    ensure(pid)["minutes_played"] += minutes.get(pid, 0)
             for formation in team_formations:
                 for player in _formation_players(formation):
                     pid, slot = _player_id(player), _position_slot(player)
@@ -1041,11 +1054,25 @@ def compute_player_stats(
 
     # Porterías imbatidas por jugador: una sola regla por (partido, equipo).
     counted: set[tuple[Any, Any]] = set()
+    events_by_match: dict[Any, list[Any]] = {}
+    for e in events:
+        events_by_match.setdefault(_event_match_id(e), []).append(e)
+    segments_by_match: dict[Any, list[Any]] = {}
+    for segment in segments:
+        segments_by_match.setdefault(_v(segment, "match_id"), []).append(segment)
+
+    def segments_of(m: Any) -> list[Any]:
+        if None in segments_by_match:
+            return _segments_for_match(segments, m)
+        return segments_by_match.get(_match_id(m), [])
+
     for mid, match_formations in by_match.items():
         m = matches_by_id.get(mid)
         if m is None:
             continue
-        segs = _segments_for_match(segments, m)
+        segs = segments_of(m)
+        # Los hechos sin partido valen para todos: entonces se conserva el orden original.
+        match_events = events if None in events_by_match else events_by_match.get(_match_id(m), [])
         by_team: "OrderedDict[Any, list[Any]]" = OrderedDict()
         for formation in match_formations:
             team = _v(formation, "team_id")
@@ -1053,13 +1080,13 @@ def compute_player_stats(
                 team = _v(m, "home_team_id")
             by_team.setdefault(team, []).append(formation)
         for team_formations in by_team.values():
-            for pid in clean_sheet_goalkeepers(m, team_formations, events, segs):
+            for pid in clean_sheet_goalkeepers(m, team_formations, match_events, segs):
                 if pid is None or (pid, mid) in counted:
                     continue
                 ensure(pid)["clean_sheets"] += 1
                 counted.add((pid, mid))
 
-    _add_minutes_and_lines(by_match, matches_by_id, events, segments, player_info, ensure)
+    _add_minutes_and_lines(by_match, matches_by_id, events, segments_of, player_info, ensure)
 
     # Finalizar matches_played como entero.
     for d in stats.values():

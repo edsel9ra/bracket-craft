@@ -145,6 +145,26 @@ def test_an_exit_in_added_time_is_capped_at_the_effective_duration(exit_kind):
     assert by_player[a]["minutes_played"] == 60
 
 
+def test_a_substitute_replaced_in_the_same_minute_adds_no_minutes_whatever_the_order():
+    a, b, c = uuid4(), uuid4(), uuid4()
+    m = match()
+    events = [sub(m, HOME, b, c, 60), sub(m, HOME, a, b, 60)]
+
+    by_player = stats([m], events, lineup(m, HOME, {a: "CM"}, substitutes=[b, c]), segments(m), roster(a, b, c))
+
+    assert {p: by_player[p]["minutes_played"] for p in (a, b, c)} == {a: 60, b: 0, c: 30}
+
+
+def test_a_reentry_after_added_time_never_exceeds_the_effective_duration():
+    a, b = uuid4(), uuid4()
+    m = match()
+    events = [sub(m, HOME, a, b, 45, added_minute=3), sub(m, HOME, b, a, 46)]
+
+    by_player = stats([m], events, lineup(m, HOME, {a: "CM"}, substitutes=[b]), segments(m), roster(a, b))
+
+    assert by_player[a]["minutes_played"] == 90
+
+
 def test_extra_time_uses_the_last_segment_and_the_first_segment_lineup():
     a, b = uuid4(), uuid4()
     m = match(resolution="extra_time")
