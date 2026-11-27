@@ -1,6 +1,13 @@
 # Spec 051 — API pública documentada para terceros (F15)
 
-Estado: borrador. Pedida por el usuario el 2026-11-27 («Sigue con P3»), primera función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+Estado: borrador. DA-1–DA-4 resueltas el 2026-11-27. Pedida por el usuario el 2026-11-27 («Sigue con P3»), primera función pendiente de P3 en `docs/informe-funciones-adicionales.md`.
+
+## Decisiones del usuario (2026-11-27)
+
+- **DA-1 = (a).** El catálogo solo tiene las 9 lecturas JSON. Las tres imágenes para compartir (PNG) de la 043 siguen siendo del sitio y no forman parte del contrato.
+- **DA-2 = (a).** El contrato `v1` usa las mismas rutas de hoy (`/api/v1/tournaments/public…`), con un documento OpenAPI propio. El sitio público y los terceros usan las mismas lecturas.
+- **DA-3 = (a).** Las lecturas del catálogo se pueden llamar desde el navegador de cualquier origen, sin cookies ni credenciales. El resto de la API conserva su CORS actual.
+- **DA-4 = (a).** El límite de peticiones sigue en el proxy, como hoy. Se documenta una configuración de ejemplo con límite por IP que no afecta al SSR del sitio.
 
 ## Contexto y objetivo
 
@@ -43,26 +50,28 @@ Hoy un tercero (un club, una federación, un medio) puede llamarlas, pero:
 
 ### Catálogo y documentación
 
-- **RF-001.** EL SISTEMA documentará como contrato público `v1` un catálogo cerrado de lecturas públicas existentes: listado de torneos, detalle del torneo, clasificación, partidos, detalle de un partido, cronología del partido, estadísticas de jugadores, estadísticas de equipos y ficha de jugador. [NECESITA ACLARACIÓN DA-1: ¿entran las imágenes para compartir de la 043?]
+- **RF-001.** EL SISTEMA documentará como contrato público `v1` un catálogo cerrado de lecturas públicas existentes: listado de torneos, detalle del torneo, clasificación, partidos, detalle de un partido, cronología del partido, estadísticas de jugadores, estadísticas de equipos y ficha de jugador. Las tres imágenes para compartir de la 043 no forman parte del catálogo (DA-1).
 - **RF-002.** EL SISTEMA publicará, sin sesión, un documento de la API pública en formato OpenAPI que contenga solo las lecturas del catálogo de RF-001, con sus parámetros, los campos de cada respuesta y sus errores. No contendrá ninguna ruta del Workspace, de autenticación ni de la administración de la plataforma.
 - **RF-003.** EL SISTEMA ofrecerá una guía de uso de la API pública, en español y en inglés, con: la URL base, un ejemplo de petición y respuesta por lectura, el significado de cada error, el idioma de los textos, el límite de peticiones y la política de versiones.
 - **RF-004.** Una verificación automática fallará SI el documento de RF-002 contiene una ruta fuera del catálogo de RF-001, le falta una ruta del catálogo, o un campo de respuesta que no está en la lista cerrada de la matriz de la 020 (RF-015 de la 020).
 
 ### Versiones
 
-- **RF-005.** EL SISTEMA identificará el contrato como `v1` en la ruta (`/api/v1`) y en el documento de RF-002. [NECESITA ACLARACIÓN DA-2: ¿mismas rutas de hoy o un prefijo propio?]
+- **RF-005.** EL SISTEMA identificará el contrato como `v1` en la ruta (`/api/v1`) y en el documento de RF-002. Las rutas son las mismas que hoy usa el sitio público, sin prefijo ni duplicados (DA-2).
 - **RF-006.** MIENTRAS el contrato sea `v1`, EL SISTEMA solo admitirá cambios compatibles en sus lecturas. Una verificación automática comparará el documento de RF-002 con una copia de referencia guardada en el repositorio y fallará ante un cambio incompatible.
 - **RF-007.** CUANDO se añada un cambio compatible al contrato, la copia de referencia de RF-006 se actualizará en el mismo cambio y la guía de RF-003 lo registrará en un historial con su fecha.
 
 ### Acceso
 
 - **RF-008.** EL SISTEMA servirá las lecturas del catálogo sin sesión, sin cookies, sin claves de API y sin organización activa, como hoy (RF-013 y RF-018 de la 020).
-- **RF-009.** [NECESITA ACLARACIÓN DA-3: acceso desde el navegador de un sitio de terceros (CORS).]
+- **RF-009.** CUANDO un navegador pida una lectura del catálogo desde cualquier origen, EL SISTEMA responderá permitiendo ese origen sin credenciales: no autoriza el envío de cookies ni de cabeceras de autenticación, y solo admite `GET` y su comprobación previa (DA-3).
+- **RF-009b.** EL SISTEMA conservará el CORS actual en el resto de la API: ninguna ruta fuera del catálogo, ni las imágenes de la 043, se abre a otros orígenes. Una verificación automática lo comprueba con un origen no configurado.
 - **RF-010.** SI un torneo, partido o jugador no es visible públicamente, ENTONCES EL SISTEMA responderá el mismo «no encontrado» de hoy, indistinguible de uno inexistente (RF-014 de la 020).
 
 ### Límite de peticiones
 
-- **RF-011.** [NECESITA ACLARACIÓN DA-4: dónde y cómo se limita.] SI una IP supera el límite, ENTONCES recibe 429 con `Retry-After`, sin afectar al sitio público servido por el SSR.
+- **RF-011.** EL SISTEMA mantendrá el límite de peticiones de las lecturas públicas en el proxy, sin límite en la aplicación (DA-4). La documentación de despliegue incluirá una configuración de ejemplo con límite por IP para las rutas del catálogo: SI una IP lo supera, ENTONCES recibe 429 con `Retry-After`.
+- **RF-011b.** El límite de RF-011 no afecta al sitio público: el SSR llama a la API por la red interna, sin pasar por el proxy, y la guía de RF-003 indica el límite que verá un tercero.
 
 ### Aislamiento
 
@@ -92,6 +101,8 @@ Hoy un tercero (un club, una federación, un medio) puede llamarlas, pero:
 
 ## Fuera de alcance
 
+- Las imágenes para compartir de la 043 como parte del contrato (DA-1).
+- Un límite de peticiones en la aplicación (DA-4).
 - Lecturas o campos públicos nuevos, escrituras, webhooks públicos y tiempo real (Socket.IO) para terceros.
 - Claves de API, registro de terceros, cuotas por cliente y facturación.
 - Un portal para desarrolladores con cuentas.
@@ -105,13 +116,10 @@ Hoy un tercero (un club, una federación, un medio) puede llamarlas, pero:
 | 1 | Documento OpenAPI público con solo el catálogo, válido y verificado contra la lista cerrada. | RF-001, RF-002, RF-004, RNF-002 |
 | 2 | Guía ES/EN con ejemplos verificados, errores, límites y política de versiones. | RF-003, RNF-003 |
 | 3 | Copia de referencia del contrato y test que rechaza cambios incompatibles. | RF-005–RF-007 |
-| 4 | Acceso sin credenciales y mismo «no encontrado» que hoy. | RF-008–RF-010 |
-| 5 | Límite de peticiones documentado y probado según DA-4. | RF-011 |
+| 4 | Acceso sin credenciales, CORS abierto solo en el catálogo y mismo «no encontrado» que hoy. | RF-008–RF-010 |
+| 5 | Configuración de ejemplo del proxy con límite por IP, sin afectar al SSR. | RF-011, RF-011b |
 | 6 | Sin campos públicos nuevos ni mezcla de organizaciones. | RF-012, RNF-001 |
 
 ## Dudas abiertas
 
-- [NECESITA ACLARACIÓN DA-1] ¿Entran en el catálogo las tres imágenes para compartir (PNG) de la 043?
-- [NECESITA ACLARACIÓN DA-2] ¿El contrato `v1` usa las mismas rutas de hoy o un prefijo propio?
-- [NECESITA ACLARACIÓN DA-3] ¿Se puede llamar a la API pública desde el navegador de un sitio de terceros (CORS)?
-- [NECESITA ACLARACIÓN DA-4] ¿Dónde se limitan las peticiones de un tercero?
+Ninguna. DA-1–DA-4 resueltas el 2026-11-27 (ver «Decisiones del usuario»).
