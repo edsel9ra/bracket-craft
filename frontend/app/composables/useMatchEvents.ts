@@ -166,6 +166,7 @@ export function useMatchEvents(state: MatchOperationState) {
       }
       eventForm.player_out_id = '';
       eventForm.player_in_id = '';
+      eventForm.player_in_position = '';
       actionError.value = null;
       return;
     }

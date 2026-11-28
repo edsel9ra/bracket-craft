@@ -6,7 +6,7 @@ import test from 'node:test';
 import { EVENT_TYPES, buildDraftEvent, eventFields, eventSummary } from '../app/utils/matchEvents.ts';
 import { validateLiveEventForm } from '../app/utils/matchLiveCapture.ts';
 import { positionsForGameFormat } from '../app/utils/positions.ts';
-import { EVENT_LABEL_KEYS, reportProposal } from '../app/utils/rectifications.ts';
+import { EVENT_LABEL_KEYS, compareReports, reportProposal } from '../app/utils/rectifications.ts';
 
 const SEGMENT = '11111111-1111-4111-8111-111111111111';
 const TEAM = '22222222-2222-4222-8222-222222222222';
@@ -82,4 +82,18 @@ test('el borrador restaurado conserva la posición de entrada y descarta una inv
   assert.equal(readDraftEvent({ ...sub, player_in_position: 'lcb' }, types), null);
   assert.equal(readDraftEvent({ ...sub, event_type: 'penalty_saved', player_out_id: null, player_in_id: null, player_in_position: 'GK' }, types), null);
   assert.equal(readDraftEvent({ ...sub, event_type: 'penalty_saved', player_out_id: null, player_in_id: null }, types)?.event_type, 'penalty_saved');
+});
+
+test('el historial muestra una posición de entrada eliminada por una rectificación', () => {
+  const substitution = { client_event_id: EVENT, event_type: 'substitution', team_id: TEAM, player_id: OUT, player_out_id: OUT, player_in_id: IN, minute: 60, added_minute: 0, segment_id: SEGMENT };
+  const before = { resolution_type: 'regular', events: [{ ...substitution, player_in_position: 'CB' }] };
+  const after = { resolution_type: 'regular', events: [{ ...substitution, player_in_position: null }] };
+  const changed = compareReports(before, after).events.changed;
+  assert.deepEqual(changed, [{ client_event_id: EVENT, fields: [{ field: 'player_in_position', before: 'CB', after: null }] }]);
+});
+
+test('añadir una sustitución o limpiar el borrador también limpia la posición de entrada', () => {
+  for (const path of ['composables/useMatchEvents.ts', 'composables/useMatchEventsDraft.ts']) {
+    assert.match(source(path), /eventForm\.player_in_id = '';\s*eventForm\.player_in_position = '';/, path);
+  }
 });

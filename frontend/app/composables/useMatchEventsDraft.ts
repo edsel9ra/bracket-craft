@@ -96,6 +96,7 @@ export function useMatchEventsDraft(state: MatchOperationState, dependencies: {
     Object.assign(closeForm, defaultCloseForm);
     eventForm.player_out_id = '';
     eventForm.player_in_id = '';
+    eventForm.player_in_position = '';
     clearEventFieldIssues();
     draftRestored.value = false;
     draftDroppedEvents.value = 0;
