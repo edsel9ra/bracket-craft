@@ -1379,6 +1379,15 @@ export async function runOperationFlow(input: OperationFlowInput): Promise<Opera
       const eventType = eventsPanel.getByRole('combobox', {
         name: namePattern(labelText(E2E_LABELS.operationEventType)),
       });
+      // Spec 052 RF-011/RF-012: el acta ofrece el penal atajado y la posición de entrada.
+      await eventType.selectOption('penalty_saved');
+      await expect(
+        eventsPanel.getByRole('combobox', { name: namePattern(labelText(E2E_LABELS.eventPlayerField)) }).first(),
+      ).toBeVisible();
+      await eventType.selectOption('substitution');
+      await expect(
+        eventsPanel.getByRole('combobox', { name: namePattern(labelText(E2E_LABELS.eventEntryPositionField)) }),
+      ).toBeVisible();
       await eventType.selectOption('yellow_card');
       await selectOptionContaining(
         eventsPanel

@@ -115,6 +115,8 @@ export interface DraftEvent<T extends string = string> {
    * evento; leerlo y sanearlo al restaurar el borrador es T10.
    */
   assist_player_id?: string | null;
+  /** Posición de entrada de una sustitución (spec 052 RF-011). */
+  player_in_position?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -501,6 +503,12 @@ export function readDraftEvent<T extends string>(
     if (!isUuid(assist) || eventType !== 'goal' || assist === playerId) return null;
   }
 
+  // Spec 052 RF-011: la posición de entrada es opcional y solo de la sustitución.
+  const entryPosition = event.player_in_position ?? null;
+  if (entryPosition !== null) {
+    if (eventType !== SUBSTITUTION_EVENT_TYPE || typeof entryPosition !== 'string' || !/^[A-Z][A-Z_]{0,19}$/.test(entryPosition)) return null;
+  }
+
   const metadata = readDraftMetadata(event.metadata, eventType);
   if (!metadata.ok) return null;
 
@@ -517,6 +525,7 @@ export function readDraftEvent<T extends string>(
     player_in_id: playerIn,
     assist_player_id: assist,
   };
+  if (entryPosition !== null) result.player_in_position = entryPosition;
   if (metadata.metadata !== null) {
     result.metadata = metadata.metadata;
   }

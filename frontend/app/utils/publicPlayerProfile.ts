@@ -8,6 +8,8 @@ export interface PublicPlayerProfileTotals {
   yellow_cards: number;
   red_cards: number;
   clean_sheets: number;
+  minutes_played: number;
+  penalties_saved: number;
 }
 
 export interface PublicPlayerProfileTournament extends PublicPlayerProfileTotals {
@@ -15,6 +17,7 @@ export interface PublicPlayerProfileTournament extends PublicPlayerProfileTotals
   tournament_name: string;
   team_id: string;
   team_name: string;
+  main_position: MainPosition | null;
 }
 
 export interface PublicPlayerProfile {
@@ -35,7 +38,24 @@ export const PROFILE_STAT_FIELDS: readonly { key: keyof PublicPlayerProfileTotal
   { key: 'yellow_cards', label: 'public.yellowCards' },
   { key: 'red_cards', label: 'public.redCards' },
   { key: 'clean_sheets', label: 'public.cleanSheets' },
+  { key: 'minutes_played', label: 'public.minutesPlayed' },
+  { key: 'penalties_saved', label: 'public.penaltiesSaved' },
 ];
+
+/** Spec 052 RF-002: línea estable que devuelve la API y su texto ES/EN. */
+export type MainPosition = 'goalkeeper' | 'defender' | 'midfielder' | 'forward';
+
+export const MAIN_POSITION_LABEL_KEYS: Readonly<Record<MainPosition, string>> = {
+  goalkeeper: 'public.mainLine.goalkeeper',
+  defender: 'public.mainLine.defender',
+  midfielder: 'public.mainLine.midfielder',
+  forward: 'public.mainLine.forward',
+};
+
+export function mainPositionLabel(value: unknown, translate: (key: string) => string): string {
+  if (typeof value !== 'string' || !Object.hasOwn(MAIN_POSITION_LABEL_KEYS, value)) return '—';
+  return translate(MAIN_POSITION_LABEL_KEYS[value as MainPosition]);
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

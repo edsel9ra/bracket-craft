@@ -8,6 +8,7 @@ import { WALKOVER_REASON_LABEL_KEYS, WALKOVER_REASONS, walkoverScoreFrom, type C
 import { SEGMENT_PROPOSAL_HINT_LABEL_KEYS, segmentProposalHint } from '~/utils/matchSegments';
 import { effectiveRosterLimits, type OpeningBlockedDescription } from '~/utils/rosterLimits';
 import { gameFormatOf } from '~/utils/rulesWizard';
+import { positionsForGameFormat } from '~/utils/positions';
 import { createMatchDraftStore, type MatchDraftStorage } from '~/utils/matchDraft';
 import { realtimeStatusLabelKey } from '~/utils/realtimeStatusLabel';
 import { canOperateMatch } from '~/utils/tournamentTeam';
@@ -91,6 +92,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
     assist_player_id: string;
     player_out_id: string;
     player_in_id: string;
+    player_in_position: string;
     minute: number;
     added_minute: number;
     red_card_type: RedCardType;
@@ -102,6 +104,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
     assist_player_id: '',
     player_out_id: '',
     player_in_id: '',
+    player_in_position: '',
     minute: 1,
     added_minute: 0,
     red_card_type: 'direct_red',
@@ -147,6 +150,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
     { value: 'red_card', labelKey: 'event.redCard' },
     { value: 'substitution', labelKey: 'event.substitution' },
     { value: 'foul', labelKey: 'event.foul' },
+    { value: 'penalty_saved', labelKey: 'event.penaltySaved' },
   ];
 
   const eventTypeValues = eventTypes.map((item) => item.value);
@@ -354,6 +358,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
   // RF-043: el formato es informativo; la operación advierte cuando la planilla
   // de once no coincide con la modalidad declarada, sin bloquear nada.
   const matchGameFormat = computed(() => gameFormatOf(match.value?.rules_config ?? null));
+  const eventEntryPositions = computed(() => positionsForGameFormat(matchGameFormat.value));
 
   const operationChecklist = computed(() => [
     { label: t('status.published'), ...checklistPresentation(match.value?.version_status === 'published', isTerminal.value) },
@@ -505,6 +510,7 @@ export function useMatchOperationState(bindings: MatchOperationBindings) {
     closeForm,
     officialRoles,
     eventTypes,
+    eventEntryPositions,
     eventTypeValues,
     substitutionReasonKeys,
     match,

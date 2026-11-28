@@ -47,9 +47,9 @@ test('038 RF-005/RF-007: nombre, iniciales y foto con caída a iniciales', () =>
   assert.equal(profilePhotoVisible({ ...profile, photo_url: '  ' }, null), false);
 });
 
-test('038 RF-005: las cinco cifras en orden, sin dorsal ni posición', () => {
-  assert.deepEqual(PROFILE_STAT_FIELDS.map((field) => field.key), ['matches_played', 'goals', 'yellow_cards', 'red_cards', 'clean_sheets']);
-  assert.deepEqual(PROFILE_STAT_FIELDS.map((field) => field.label), ['public.played', 'public.goals', 'public.yellowCards', 'public.redCards', 'public.cleanSheets']);
+test('038 RF-005 y 052 RF-004: las siete cifras en orden, sin dorsal ni posición', () => {
+  assert.deepEqual(PROFILE_STAT_FIELDS.map((field) => field.key), ['matches_played', 'goals', 'yellow_cards', 'red_cards', 'clean_sheets', 'minutes_played', 'penalties_saved']);
+  assert.deepEqual(PROFILE_STAT_FIELDS.map((field) => field.label), ['public.played', 'public.goals', 'public.yellowCards', 'public.redCards', 'public.cleanSheets', 'public.minutesPlayed', 'public.penaltiesSaved']);
   assert.doesNotMatch(PAGE, /dorsal|position_slot|photo_consent|birth|document/);
 });
 

@@ -2,7 +2,7 @@ import { type FormationCode } from '~/constants/formations';
 import { type OperationLimits, type ResolutionType } from '~/utils/matchResolution';
 import { type DraftEvent as DraftEventRecord, type MatchLimits } from '~/utils/substitutions';
 
-export type EventType = 'goal' | 'own_goal' | 'penalty_goal' | 'yellow_card' | 'red_card' | 'substitution' | 'foul';
+export type EventType = 'goal' | 'own_goal' | 'penalty_goal' | 'yellow_card' | 'red_card' | 'substitution' | 'foul' | 'penalty_saved';
 
 export type RedCardType = 'direct_red' | 'double_yellow_red';
 
@@ -145,6 +145,7 @@ export interface MatchEvent {
   player_id: string;
   player_out_id?: string | null;
   player_in_id?: string | null;
+  player_in_position?: string | null;
   assist_player_id?: string | null;
   first_name: string;
   last_name: string;

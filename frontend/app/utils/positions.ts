@@ -14,6 +14,8 @@
  * sin inventar texto ni devolver una etiqueta vacía.
  */
 
+import { FORMATIONS_GRID, formationOptionsFor } from '../constants/formations.ts';
+
 export type PositionSide = 'left' | 'right' | null;
 
 export interface PositionDefinition {
@@ -154,4 +156,10 @@ export function positionLabel(
   if (!definition) return code.trim() ? code : '';
   const label = translate(definition.key);
   return label && label !== definition.key ? label : code;
+}
+
+/** Posiciones de las formaciones de una modalidad (spec 052 RF-011); ausente se lee como 11v11. */
+export function positionsForGameFormat(format: string | null | undefined): PositionCode[] {
+  const slots = new Set(formationOptionsFor(format).flatMap((code) => Object.keys(FORMATIONS_GRID[code])));
+  return POSITION_CODES.filter((code) => slots.has(code));
 }

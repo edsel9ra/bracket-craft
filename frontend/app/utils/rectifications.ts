@@ -68,7 +68,7 @@ export function rectificationErrorKey(cause: unknown): string {
 
 export const SCORE_FIELDS = ['home_score_regular', 'away_score_regular', 'home_score', 'away_score', 'home_penalties', 'away_penalties'] as const;
 export const RECTIFICATION_RESOLUTION_LABEL_KEYS = { regular: 'match.regularTime', extra_time: 'match.overtime', penalties: 'match.penaltyShootout', walkover: 'match.walkover', administrative: 'match.administrative' } as const;
-export const EVENT_LABEL_KEYS = { goal: 'event.goal', own_goal: 'event.ownGoal', penalty_goal: 'event.penaltyGoal', yellow_card: 'event.yellowCard', red_card: 'event.redCard', substitution: 'event.substitution', foul: 'event.foul' } as const;
+export const EVENT_LABEL_KEYS = { goal: 'event.goal', own_goal: 'event.ownGoal', penalty_goal: 'event.penaltyGoal', yellow_card: 'event.yellowCard', red_card: 'event.redCard', substitution: 'event.substitution', foul: 'event.foul', penalty_saved: 'event.penaltySaved' } as const;
 
 export function reportProposal(report: Record<string, unknown>): ReportProposal {
   const resolution = report.resolution_type as ResolutionType;
@@ -77,6 +77,7 @@ export function reportProposal(report: Record<string, unknown>): ReportProposal 
   const events = source.filter((row) => !row.is_voided).map((row) => ({
     ...Object.fromEntries(eventFields.map((key) => [key, row[key] ?? (key === 'metadata' ? {} : null)])),
     client_event_id: isUuid(row.client_event_id) ? row.client_event_id.toLowerCase() : row.client_event_id,
+    ...(typeof row.player_in_position === 'string' ? { player_in_position: row.player_in_position } : {}),
   })) as unknown as DraftEvent[];
   return { resolution_type: resolution, reason: (report.resolution_reason ?? report.reason ?? null) as string | null,
     winner_team_id: report.winner_team_id as string | null, events,
@@ -102,7 +103,8 @@ export function compareReports(before: Record<string, unknown>, after: Record<st
   for (const event of right.events) {
     const original = oldEvents.get(event.client_event_id);
     if (!original) continue;
-    const changes = (Object.keys(event) as (keyof DraftEvent)[]).filter((key) => JSON.stringify(original[key] ?? null) !== JSON.stringify(event[key] ?? null))
+    const keys = [...new Set([...Object.keys(event), ...Object.keys(original)])] as (keyof DraftEvent)[];
+    const changes = keys.filter((key) => JSON.stringify(original[key] ?? null) !== JSON.stringify(event[key] ?? null))
       .map((key) => ({ field: key, before: original[key] ?? null, after: event[key] ?? null }));
     if (changes.length) changed.push({ client_event_id: event.client_event_id, fields: changes });
   }
