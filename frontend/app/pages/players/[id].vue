@@ -5,6 +5,7 @@ import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 import { isNotFound } from '~/utils/api';
 import {
   PROFILE_STAT_FIELDS,
+  mainPositionLabel,
   isPlayerProfileId,
   playerProfileApiPath,
   playerProfileInitials,
@@ -118,6 +119,7 @@ useHead(() => {
               <tr>
                 <th scope="col">{{ t('publicPlayer.tournament') }}</th>
                 <th scope="col">{{ t('public.team') }}</th>
+                <th scope="col">{{ t('public.mainPosition') }}</th>
                 <th v-for="field in PROFILE_STAT_FIELDS" :key="field.key" scope="col">{{ t(field.label) }}</th>
               </tr>
             </thead>
@@ -125,6 +127,7 @@ useHead(() => {
               <tr v-for="row in profile.tournaments" :key="row.tournament_id">
                 <th scope="row"><NuxtLink class="profile-link" :to="`/tournaments/${row.tournament_id}`">{{ row.tournament_name }}</NuxtLink></th>
                 <td>{{ row.team_name }}</td>
+                <td>{{ mainPositionLabel(row.main_position, t) }}</td>
                 <td v-for="field in PROFILE_STAT_FIELDS" :key="field.key">{{ row[field.key] }}</td>
               </tr>
             </tbody>

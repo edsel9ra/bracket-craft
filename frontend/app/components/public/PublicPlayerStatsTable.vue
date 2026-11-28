@@ -5,7 +5,7 @@ import StateMessage from '~/components/ui/StateMessage.vue';
 import HorizontalScroll from '~/components/ui/HorizontalScroll.vue';
 import { playerInitials } from '~/utils/publicLineup';
 import { playerPhotoSource } from '~/utils/publicStats';
-import { profileLinkFor } from '~/utils/publicPlayerProfile';
+import { mainPositionLabel, profileLinkFor } from '~/utils/publicPlayerProfile';
 
 interface PlayerStatRow {
   rank: number;
@@ -19,6 +19,9 @@ interface PlayerStatRow {
   red_cards: number;
   clean_sheets: number;
   matches_played: number;
+  minutes_played?: number;
+  main_position?: string | null;
+  penalties_saved?: number;
   photo_url: string | null;
   profile_available?: boolean;
 }
@@ -90,6 +93,9 @@ function initials(row: PlayerStatRow): string {
             <th scope="col">{{ t('public.redCards') }}</th>
             <th scope="col">{{ t('public.cleanSheets') }}</th>
             <th scope="col">{{ t('public.played') }}</th>
+            <th scope="col">{{ t('public.minutesPlayed') }}</th>
+            <th scope="col">{{ t('public.mainPosition') }}</th>
+            <th scope="col">{{ t('public.penaltiesSaved') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -116,6 +122,9 @@ function initials(row: PlayerStatRow): string {
             <td>{{ row.red_cards }}</td>
             <td>{{ row.clean_sheets }}</td>
             <td>{{ row.matches_played }}</td>
+            <td>{{ row.minutes_played ?? 0 }}</td>
+            <td>{{ mainPositionLabel(row.main_position, t) }}</td>
+            <td>{{ row.penalties_saved ?? 0 }}</td>
           </tr>
         </tbody>
       </table>
@@ -124,6 +133,7 @@ function initials(row: PlayerStatRow): string {
       <p class="stats-definition">{{ t('public.playerStatsOrder') }}</p>
       <p class="stats-definition">{{ t('public.goalsDefinition') }}</p>
       <p class="stats-definition">{{ t('public.cleanSheetDefinition') }}</p>
+      <p class="stats-definition">{{ t('public.minutesDefinition') }}</p>
       <p class="stats-definition">{{ t('public.statsExclusions') }}</p>
     </div>
     <Button variant="secondary" v-if="hasMore" class="button-secondary load-more" type="button" :disabled="loadingMore" @click="emit('load-more')">
