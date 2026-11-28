@@ -103,7 +103,8 @@ export function compareReports(before: Record<string, unknown>, after: Record<st
   for (const event of right.events) {
     const original = oldEvents.get(event.client_event_id);
     if (!original) continue;
-    const changes = (Object.keys(event) as (keyof DraftEvent)[]).filter((key) => JSON.stringify(original[key] ?? null) !== JSON.stringify(event[key] ?? null))
+    const keys = [...new Set([...Object.keys(event), ...Object.keys(original)])] as (keyof DraftEvent)[];
+    const changes = keys.filter((key) => JSON.stringify(original[key] ?? null) !== JSON.stringify(event[key] ?? null))
       .map((key) => ({ field: key, before: original[key] ?? null, after: event[key] ?? null }));
     if (changes.length) changed.push({ client_event_id: event.client_event_id, fields: changes });
   }
