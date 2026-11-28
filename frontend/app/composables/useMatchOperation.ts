@@ -447,6 +447,7 @@ export function useMatchOperation() {
     }
     eventForm.player_out_id = '';
     eventForm.player_in_id = '';
+    eventForm.player_in_position = '';
   });
 
   watch(() => eventForm.event_type, (eventType) => {
@@ -462,6 +463,7 @@ export function useMatchOperation() {
     } else {
       eventForm.player_out_id = '';
       eventForm.player_in_id = '';
+      eventForm.player_in_position = '';
     }
   });
 

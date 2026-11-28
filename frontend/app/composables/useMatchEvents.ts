@@ -1,4 +1,5 @@
 import type { MatchOperationState } from '~/composables/useMatchOperationState';
+import { positionLabel } from '~/utils/positions';
 import { validateEventMinute } from '~/utils/matchResolution';
 import { buildDraftEvent, eventSummary, newClientEventId, validateAssist, validateEventValues, validateSegmentMinute, type EventFormValues } from '~/utils/matchEvents';
 import { SUBSTITUTION_EVENT_TYPE, validateSubstitutionPair, type SubstitutionOption, type SubstitutionUnavailableReason } from '~/utils/substitutions';
@@ -201,6 +202,7 @@ export function useMatchEvents(state: MatchOperationState) {
       ownGoal: t('match.ownGoalBeneficiaryShort'),
       redCardDirect: t('match.redCardDirectShort'),
       redCardDouble: t('match.redCardDoubleShort'),
+      position: (code: string) => `${t('match.positionShort')} ${positionLabel(code, t)}`,
     };
   }
 

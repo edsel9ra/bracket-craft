@@ -24,8 +24,9 @@ Dos PR de implementación apilados sobre el PR de la spec: bloque A (T1–T5, ba
 
 ## Bloque B — frontend, E2E y documentación
 
-- [ ] **T6. Workspace: posición de entrada y penal atajado.** RF-011, RF-012
+- [x] **T6. Workspace: posición de entrada y penal atajado.** RF-011, RF-012
 - Hecho cuando: acta clásica, en vivo y rectificación ofrecen ambos campos y los muestran; ES/EN; tests en rojo primero y en verde con `cd frontend && pnpm test`; `pnpm run typecheck` y `pnpm run lint`.
+- Evidencia (2026-11-27): `tests/additional-stats-workspace.test.ts` falló primero (no existía `positionsForGameFormat`) y pasa 7/7. Catálogo con `penalty_saved` (solo el jugador que ataja) y `player_in_position` opcional solo en la sustitución, con las posiciones de la modalidad (`positionsForGameFormat`). Cierre clásico, captura y corrección en vivo y editor de rectificaciones ofrecen y conservan ambos; el resumen del acta y la lista en vivo muestran la posición; el borrador local restaura la posición y descarta una inválida. `tests/match-events.test.ts` actualizado de siete a ocho tipos. `pnpm test` 1311/0, `pnpm run typecheck` y `pnpm run lint` sin errores.
 - [ ] **T7. Sitio público: tabla y ficha.** RF-001–RF-004, RNF-004
 - Hecho cuando: columnas nuevas en `PublicPlayerStatsTable.vue` y en la ficha, con líneas traducidas; tests en rojo primero y en verde; typecheck y lint.
 - [ ] **T8. E2E, documentación y PR del bloque B.**

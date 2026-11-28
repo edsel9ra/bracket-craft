@@ -4,12 +4,14 @@ import type { MatchRecord } from '~/components/match/types';
 import type { MatchOperationContext } from '~/composables/useMatchOperation';
 import type { SharedLiveEvent } from '~/utils/matchLiveEditor';
 import { clockPresentation } from '~/utils/matchLiveClock';
+import { positionLabel, positionsForGameFormat } from '~/utils/positions';
+import { gameFormatOf } from '~/utils/rulesWizard';
 
 const props = defineProps<{ context: MatchOperationContext; match: MatchRecord }>();
 const { t, liveView, liveEditor, liveTransitions, liveCapture, liveEdit, liveClock, liveReview, liveClose, activeSegment, realtime } = props.context;
 const { match } = toRefs(props);
 
-const EVENT_TYPE_OPTIONS = ['goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul'] as const;
+const EVENT_TYPE_OPTIONS = ['goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul', 'penalty_saved'] as const;
 const RESOLUTION_OPTIONS = ['regular', 'extra_time', 'penalties', 'walkover', 'administrative'] as const;
 const RED_CARD_OPTIONS = ['direct_red', 'double_yellow_red'] as const;
 const liveOutcome = ref('');
@@ -43,8 +45,9 @@ const captureEventId = ref(crypto.randomUUID());
 const captureForm = reactive({
   event_type: 'goal', team_id: '', player_id: '', minute: null as number | null,
   added_minute: 0, beneficiary_team_id: '', player_out_id: '', player_in_id: '',
-  assist_player_id: '', red_card_type: 'direct_red',
+  assist_player_id: '', red_card_type: 'direct_red', player_in_position: '',
 });
+const entryPositions = computed(() => positionsForGameFormat(gameFormatOf(props.match.rules_config ?? null)));
 const editForm = reactive({ minute: null as number | null, added_minute: 0 });
 const reviewForm = reactive({
   resolution_type: 'regular', home_score_regular: null as number | null,
@@ -77,6 +80,7 @@ function captureSubmit() {
     player_id: captureForm.event_type === 'substitution' ? captureForm.player_out_id : captureForm.player_id,
     player_out_id: captureForm.event_type === 'substitution' ? uuidOrNull(captureForm.player_out_id) : null,
     player_in_id: captureForm.event_type === 'substitution' ? uuidOrNull(captureForm.player_in_id) : null,
+    ...(captureForm.event_type === 'substitution' && captureForm.player_in_position ? { player_in_position: captureForm.player_in_position } : {}),
     assist_player_id: captureForm.event_type === 'goal' ? uuidOrNull(captureForm.assist_player_id) : null,
     minute: captureForm.minute,
     added_minute: captureForm.added_minute,
@@ -89,7 +93,8 @@ function captureSubmit() {
 }
 
 function eventLabel(event: SharedLiveEvent): string {
-  return `${t(`live.eventType.${event.eventType}`)} · ${event.minute}'`;
+  const position = event.playerInPosition ? ` · ${t('match.positionShort')} ${positionLabel(event.playerInPosition, t)}` : '';
+  return `${t(`live.eventType.${event.eventType}`)} · ${event.minute}'${position}`;
 }
 function editingEvent(): SharedLiveEvent | null {
   const session = editing.value;
@@ -112,6 +117,7 @@ function saveCorrect() {
     event_type: event.eventType, team_id: event.teamId,
     beneficiary_team_id: event.beneficiaryTeamId, player_id: event.playerId,
     player_out_id: event.playerOutId, player_in_id: event.playerInId,
+    ...(event.playerInPosition ? { player_in_position: event.playerInPosition } : {}),
     assist_player_id: event.assistPlayerId,
     minute: editForm.minute, added_minute: editForm.added_minute,
     segment_id: event.segmentId, metadata: event.metadata,
@@ -192,6 +198,7 @@ const outcomeKey = computed(() => liveOutcome.value === '' ? '' : `live.outcome.
           <template v-if="captureForm.event_type === 'substitution'">
             <FormField :label="t('live.capture.playerOut')" for-id="live-capture-out"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_out_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
             <FormField :label="t('live.capture.playerIn')" for-id="live-capture-in"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.player_in_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
+            <FormField :label="t('live.capture.playerInPosition')" for-id="live-capture-position"><template #default="{ id }"><select :id="id" v-model="captureForm.player_in_position"><option value="">{{ t('match.positionNone') }}</option><option v-for="code in entryPositions" :key="code" :value="code">{{ positionLabel(code, t) }}</option></select></template></FormField>
           </template>
           <FormField v-if="captureForm.event_type === 'goal'" :label="t('live.capture.assist')" for-id="live-capture-assist"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model="captureForm.assist_player_id" type="text" :aria-describedby="ariaDescribedby" /></template></FormField>
           <FormField :label="t('live.capture.minute')" for-id="live-capture-minute"><template #default="{ id, ariaDescribedby }"><input :id="id" v-model.number="captureForm.minute" type="number" min="0" max="180" :aria-describedby="ariaDescribedby" /></template></FormField>

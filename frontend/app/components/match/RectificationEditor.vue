@@ -5,6 +5,8 @@ import { buildDraftEvent, visibleEventFields, type EventField } from '~/utils/ma
 import { WALKOVER_REASONS, WALKOVER_REASON_LABEL_KEYS } from '~/utils/matchClose';
 import { EVENT_LABEL_KEYS, RECTIFICATION_RESOLUTION_LABEL_KEYS, SCORE_FIELDS, reportProposal, rectificationErrorKey, type ReportVersion, type MatchOperation } from '~/utils/rectifications';
 import type { DraftEvent } from './types';
+import { positionLabel, positionsForGameFormat } from '~/utils/positions';
+import { gameFormatOf } from '~/utils/rulesWizard';
 
 const props = defineProps<{ matchId: string; version: ReportVersion }>();
 const emit = defineEmits<{ submitted: []; cancel: [] }>();
@@ -23,7 +25,8 @@ const teams = computed(() => operation.value ? [
 const players = computed(() => operation.value?.rosters || []);
 const playerFields = ['player', 'player_out', 'player_in', 'assist'] as const;
 const playerKeys = { player: 'player_id', player_out: 'player_out_id', player_in: 'player_in_id', assist: 'assist_player_id' } as const;
-const optionalPlayerFields: Record<EventField, string> = { player: 'rectification.player', player_out: 'rectification.playerOut', player_in: 'rectification.playerIn', assist: 'rectification.assist', beneficiary: 'rectification.beneficiary', red_card_type: 'rectification.redCardType' };
+const optionalPlayerFields: Record<EventField, string> = { player: 'rectification.player', player_out: 'rectification.playerOut', player_in: 'rectification.playerIn', assist: 'rectification.assist', beneficiary: 'rectification.beneficiary', red_card_type: 'rectification.redCardType', player_in_position: 'rectification.playerInPosition' };
+const entryPositions = computed(() => positionsForGameFormat(gameFormatOf(operation.value?.match?.rules_config ?? null)));
 function fieldVisible(event: DraftEvent, field: EventField) { return visibleEventFields(event.event_type).includes(field); }
 async function load() {
   error.value = '';
@@ -91,7 +94,7 @@ onMounted(load);
         <label class="field">{{ t('rectification.team') }}<select v-model="event.team_id" required><option value="">—</option><option v-for="team in teams" :key="team.id || ''" :value="team.id">{{ team.name }}</option></select></label>
         <label class="field">{{ t('rectification.minute') }}<input v-model.number="event.minute" type="number" min="0" step="1" required></label>
         <label class="field">{{ t('rectification.addedMinute') }}<input v-model.number="event.added_minute" type="number" min="0" step="1" required></label>
-        <template v-for="field in playerFields" :key="field"><label v-if="fieldVisible(event, field)" class="field">{{ t(optionalPlayerFields[field]) }}<select v-model="event[playerKeys[field]]" :required="field !== 'assist'"><option :value="null">—</option><option v-for="player in players.filter((row) => row.team_id === event.team_id)" :key="player.player_id" :value="player.player_id">{{ player.first_name }} {{ player.last_name }} · {{ player.dorsal_number }}</option></select></label></template>
+        <template v-for="field in playerFields" :key="field"><label v-if="fieldVisible(event, field)" class="field">{{ t(optionalPlayerFields[field]) }}<select v-model="event[playerKeys[field]]" :required="field !== 'assist'"><option :value="null">—</option><option v-for="player in players.filter((row) => row.team_id === event.team_id)" :key="player.player_id" :value="player.player_id">{{ player.first_name }} {{ player.last_name }} · {{ player.dorsal_number }}</option></select></label></template><label v-if="fieldVisible(event, 'player_in_position')" class="field">{{ t('rectification.playerInPosition') }}<select v-model="event.player_in_position"><option :value="null">{{ t('match.positionNone') }}</option><option v-for="code in entryPositions" :key="code" :value="code">{{ positionLabel(code, t) }}</option></select></label>
         <label v-if="fieldVisible(event, 'beneficiary')" class="field">{{ t('rectification.beneficiary') }}<select v-model="event.beneficiary_team_id" required><option :value="null">—</option><option v-for="team in teams.filter((row) => row.id !== event.team_id)" :key="team.id || ''" :value="team.id">{{ team.name }}</option></select></label>
         <label v-if="fieldVisible(event, 'red_card_type')" class="field">{{ t('rectification.redCardType') }}<select :value="event.metadata?.red_card_type || 'direct_red'" @change="event.metadata = { red_card_type: ($event.target as HTMLSelectElement).value }"><option value="direct_red">{{ t('rectification.directRed') }}</option><option value="double_yellow_red">{{ t('rectification.doubleYellow') }}</option></select></label>
         <div class="actions"><Button variant="secondary" :disabled="index === 0" @click="move(index, -1)">{{ t('rectification.moveUp') }}</Button><Button variant="secondary" :disabled="index === draft.events.length - 1" @click="move(index, 1)">{{ t('rectification.moveDown') }}</Button><Button variant="danger" @click="draft.events.splice(index, 1)">{{ t('rectification.removeEvent') }}</Button></div>

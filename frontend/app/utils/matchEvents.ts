@@ -29,6 +29,7 @@ export const EVENT_TYPES = [
   'red_card',
   'substitution',
   'foul',
+  'penalty_saved',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -48,7 +49,8 @@ export type EventField =
   | 'player_in'
   | 'assist'
   | 'beneficiary'
-  | 'red_card_type';
+  | 'red_card_type'
+  | 'player_in_position';
 
 /** Campos propios que un tipo exige, admite o prohíbe (RF-001). */
 export interface EventFields {
@@ -74,38 +76,38 @@ export const EVENT_FIELD_CATALOG: Readonly<Record<EventType, EventFields>> = {
     required: ['player'],
     // RF-007: la asistencia es opcional siempre y solo existe en el gol.
     optional: ['assist'],
-    forbidden: ['beneficiary', 'player_out', 'player_in', 'red_card_type'],
+    forbidden: ['beneficiary', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
   },
   own_goal: {
     type: 'own_goal',
     // El autor pertenece al equipo que concede y el beneficiario es el otro.
     required: ['player', 'beneficiary'],
     optional: [],
-    forbidden: ['assist', 'player_out', 'player_in', 'red_card_type'],
+    forbidden: ['assist', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
   },
   penalty_goal: {
     type: 'penalty_goal',
     required: ['player'],
     optional: [],
-    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type'],
+    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
   },
   yellow_card: {
     type: 'yellow_card',
     required: ['player'],
     optional: [],
-    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type'],
+    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
   },
   red_card: {
     type: 'red_card',
     // La clase de roja viaja dentro de `metadata`, con `direct_red` por defecto.
     required: ['player', 'red_card_type'],
     optional: [],
-    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in'],
+    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'player_in_position'],
   },
   substitution: {
     type: 'substitution',
     required: ['player_out', 'player_in'],
-    optional: [],
+    optional: ['player_in_position'],
     forbidden: ['player', 'assist', 'beneficiary', 'red_card_type'],
   },
   foul: {
@@ -113,7 +115,14 @@ export const EVENT_FIELD_CATALOG: Readonly<Record<EventType, EventFields>> = {
     // RF-004: la falta es informativa y solo añade el jugador.
     required: ['player'],
     optional: [],
-    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type'],
+    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
+  },
+  penalty_saved: {
+    type: 'penalty_saved',
+    // Spec 052 RF-012: `team_id` es el equipo defensor y el jugador, quien ataja.
+    required: ['player'],
+    optional: [],
+    forbidden: ['assist', 'beneficiary', 'player_out', 'player_in', 'red_card_type', 'player_in_position'],
   },
 };
 
@@ -161,6 +170,7 @@ const EVENT_FIELD_LABEL_KEYS: Readonly<Record<EventField, string>> = {
   assist: 'match.assist',
   beneficiary: 'match.beneficiary',
   red_card_type: 'match.redCardType',
+  player_in_position: 'match.playerInPosition',
 };
 
 /** Traductor mínimo del anuncio: el `t` de la pantalla o un doble en la prueba. */
@@ -285,6 +295,7 @@ export interface EventFormValues {
   readonly player_out_id?: unknown;
   readonly player_in_id?: unknown;
   readonly red_card_type?: unknown;
+  readonly player_in_position?: unknown;
   readonly minute?: unknown;
   readonly added_minute?: unknown;
 }
@@ -406,6 +417,7 @@ export function validateSegmentMinute(
  */
 export interface BuiltMatchEvent extends DraftEvent<EventType> {
   assist_player_id: string | null;
+  player_in_position?: string | null;
 }
 
 /**
@@ -460,6 +472,7 @@ export function buildDraftEvent(
     player_in_id: playerIn,
     assist_player_id: type === 'goal' ? text(form.assist_player_id) : null,
   };
+  if (type === 'substitution') event.player_in_position = text(form.player_in_position);
 
   if (type === 'red_card') {
     // `direct_red` es el valor por defecto que aplica el servidor (RF-001).
@@ -562,6 +575,7 @@ export interface SummarizableEvent {
   readonly player_out_id?: unknown;
   readonly player_in_id?: unknown;
   readonly assist_player_id?: unknown;
+  readonly player_in_position?: unknown;
   readonly metadata?: unknown;
 }
 
@@ -577,6 +591,8 @@ export interface EventSummaryLabels {
   readonly redCardDirect?: string | null;
   /** Clase de la roja por doble amarilla (`match.redCardDoubleShort`). */
   readonly redCardDouble?: string | null;
+  /** Texto de la posición de entrada de una sustitución (spec 052). */
+  readonly position?: ((code: string) => string) | null;
 }
 
 const SUMMARY_ARROW = ' → ';
@@ -625,7 +641,10 @@ export function eventSummary(
   if (event.event_type === 'substitution') {
     const parts = [name(event.player_out_id), name(event.player_in_id)]
       .filter((part): part is string => part !== null);
-    return parts.join(SUMMARY_ARROW);
+    const summary = parts.join(SUMMARY_ARROW);
+    const position = text(event.player_in_position);
+    if (!position || !summary) return summary;
+    return `${summary} (${labels.position ? labels.position(position) : position})`;
   }
 
   const scorer = name(event.player_id);

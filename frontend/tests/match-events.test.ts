@@ -57,6 +57,7 @@ const ALL_FIELDS: readonly EventField[] = [
   'assist',
   'beneficiary',
   'red_card_type',
+  'player_in_position',
 ];
 
 const UUID = '9f1c1e2a-3b4c-4d5e-8f60-718293a4b5c6';
@@ -97,7 +98,7 @@ function validForm(type: EventType): EventFormValues {
 // Catálogo por tipo (RF-001, RF-004)
 // ---------------------------------------------------------------------------
 
-test('declares the seven closed event types in order', () => {
+test('declares the eight closed event types in order', () => {
   assert.deepEqual([...EVENT_TYPES], [
     'goal',
     'own_goal',
@@ -106,10 +107,11 @@ test('declares the seven closed event types in order', () => {
     'red_card',
     'substitution',
     'foul',
+    'penalty_saved',
   ]);
 });
 
-test('every type partitions the six own fields into required, optional and forbidden', () => {
+test('every type partitions the seven own fields into required, optional and forbidden', () => {
   for (const type of EVENT_TYPES) {
     const fields = eventFields(type);
     assert.ok(fields, `eventFields('${type}') returned null`);
@@ -134,6 +136,7 @@ test('the catalog of fields per type matches the server contract', () => {
     'player_out',
     'player_in',
     'red_card_type',
+    'player_in_position',
   ]);
 
   assert.deepEqual(eventFields('penalty_goal')?.required, ['player']);
@@ -144,6 +147,7 @@ test('the catalog of fields per type matches the server contract', () => {
     'player_out',
     'player_in',
     'red_card_type',
+    'player_in_position',
   ]);
 
   assert.deepEqual(eventFields('own_goal')?.required, ['player', 'beneficiary']);
@@ -153,6 +157,7 @@ test('the catalog of fields per type matches the server contract', () => {
     'player_out',
     'player_in',
     'red_card_type',
+    'player_in_position',
   ]);
 
   assert.deepEqual(eventFields('yellow_card')?.required, ['player']);
@@ -162,6 +167,7 @@ test('the catalog of fields per type matches the server contract', () => {
     'player_out',
     'player_in',
     'red_card_type',
+    'player_in_position',
   ]);
 
   assert.deepEqual(eventFields('red_card')?.required, ['player', 'red_card_type']);
@@ -170,9 +176,11 @@ test('the catalog of fields per type matches the server contract', () => {
     'beneficiary',
     'player_out',
     'player_in',
+    'player_in_position',
   ]);
 
   assert.deepEqual(eventFields('substitution')?.required, ['player_out', 'player_in']);
+  assert.deepEqual(eventFields('substitution')?.optional, ['player_in_position']);
   assert.deepEqual(eventFields('substitution')?.forbidden, [
     'player',
     'assist',
@@ -188,6 +196,19 @@ test('the catalog of fields per type matches the server contract', () => {
     'player_out',
     'player_in',
     'red_card_type',
+    'player_in_position',
+  ]);
+
+  // Spec 052 RF-012: el penal atajado solo pide al portero que ataja.
+  assert.deepEqual(eventFields('penalty_saved')?.required, ['player']);
+  assert.deepEqual(eventFields('penalty_saved')?.optional, []);
+  assert.deepEqual(eventFields('penalty_saved')?.forbidden, [
+    'assist',
+    'beneficiary',
+    'player_out',
+    'player_in',
+    'red_card_type',
+    'player_in_position',
   ]);
 });
 
@@ -291,6 +312,7 @@ test('the payload of every type has exactly the keys the server declares', () =>
     'player_id',
     'player_out_id',
     'player_in_id',
+    'player_in_position',
     'assist_player_id',
     'minute',
     'added_minute',
@@ -729,8 +751,9 @@ test('the form of each type renders only its own fields, in catalog order', () =
     penalty_goal: ['player'],
     yellow_card: ['player'],
     red_card: ['player', 'red_card_type'],
-    substitution: ['player_out', 'player_in'],
+    substitution: ['player_out', 'player_in', 'player_in_position'],
     foul: ['player'],
+    penalty_saved: ['player'],
   };
 
   for (const type of EVENT_TYPES) {
@@ -818,6 +841,7 @@ test('a payload built for each type never carries a forbidden value', () => {
     assist: 'assist_player_id',
     beneficiary: 'beneficiary_team_id',
     red_card_type: 'metadata',
+    player_in_position: 'player_in_position',
   };
 
   for (const type of EVENT_TYPES) {
@@ -837,7 +861,7 @@ test('a payload built for each type never carries a forbidden value', () => {
       );
     }
     for (const field of visibleEventFields(type)) {
-      if (field === 'assist' || field === 'beneficiary') continue;
+      if (field === 'assist' || field === 'beneficiary' || field === 'player_in_position') continue;
       if (field === 'red_card_type') {
         assert.ok(event.metadata, `${type} lost its red card class`);
         continue;

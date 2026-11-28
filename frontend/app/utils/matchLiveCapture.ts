@@ -14,15 +14,17 @@ import { isAcceptedEvent, isDraftEditable, markPendingEvent, type LiveEditorStat
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const ENTRY_POSITION_PATTERN = /^[A-Z][A-Z_]{0,19}$/;
+
 const EVENT_TYPES = new Set([
-  'goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul',
+  'goal', 'own_goal', 'penalty_goal', 'yellow_card', 'red_card', 'substitution', 'foul', 'penalty_saved',
 ]);
 
 const RED_CARD_TYPES = new Set(['direct_red', 'double_yellow_red']);
 
 const EVENT_KEYS = new Set([
   'client_event_id', 'event_type', 'team_id', 'beneficiary_team_id',
-  'player_id', 'player_out_id', 'player_in_id', 'assist_player_id',
+  'player_id', 'player_out_id', 'player_in_id', 'player_in_position', 'assist_player_id',
   'minute', 'added_minute', 'segment_id', 'metadata',
 ]);
 
@@ -44,6 +46,7 @@ export interface LiveEventFormInput {
   player_id: string | null;
   player_out_id: string | null;
   player_in_id: string | null;
+  player_in_position?: string | null;
   assist_player_id: string | null;
   minute: number;
   added_minute: number;
@@ -92,6 +95,11 @@ export function validateLiveEventForm(raw: unknown): LiveEventFormInput | null {
   } else if (candidate.player_out_id !== null || candidate.player_in_id !== null) {
     return null;
   }
+  // Spec 052 RF-011: la posición de entrada es opcional y solo de la sustitución.
+  const entryPosition = candidate.player_in_position ?? null;
+  if (entryPosition !== null) {
+    if (eventType !== 'substitution' || typeof entryPosition !== 'string' || !ENTRY_POSITION_PATTERN.test(entryPosition)) return null;
+  }
   if (eventType === 'own_goal') {
     if (candidate.beneficiary_team_id === null || candidate.beneficiary_team_id === candidate.team_id) return null;
   } else if (candidate.beneficiary_team_id !== null) {
@@ -133,6 +141,7 @@ export function validateLiveEventForm(raw: unknown): LiveEventFormInput | null {
     added_minute: candidate.added_minute as number,
     segment_id: candidate.segment_id,
     metadata: (metadata ?? null) as Record<string, unknown> | null,
+    ...(entryPosition ? { player_in_position: entryPosition } : {}),
   };
 }
 
