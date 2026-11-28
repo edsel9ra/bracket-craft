@@ -386,6 +386,7 @@ export const E2E_LABELS = {
   },
   eventTeamField: { key: 'setup.teams', es: 'Equipos', en: 'Teams' },
   eventPlayerField: { key: 'match.player', es: 'Jugador', en: 'Player' },
+  eventEntryPositionField: { key: 'match.playerInPosition', es: 'Posición de entrada', en: 'Entry position' },
   eventAddedMinuteField: { key: 'match.addedMinute', es: 'Adición', en: 'Added time' },
   eventAdd: { key: 'match.addEvent', es: 'Añadir evento', en: 'Add event' },
   saveLineup: { key: 'match.saveLineup', es: 'Guardar planilla', en: 'Save lineup' },

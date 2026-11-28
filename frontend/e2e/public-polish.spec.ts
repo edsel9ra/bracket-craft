@@ -22,6 +22,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const panel = page.locator(selector);
         await expect(panel.locator('tbody tr')).toHaveCount(50);
         await expect(panel).toContainText('50 filas mostradas');
+        if (selector.includes('player')) {
+          // Spec 052 RF-001–RF-003: minutos, posición principal y penales atajados.
+          for (const heading of ['Minutos', 'Posición principal', 'Penales atajados']) await expect(panel.locator('thead')).toContainText(heading);
+          await expect(panel.locator('tbody tr').first()).toContainText('Delantero');
+        }
         const columns = await measureColumns(panel);
         expect(columns.slice(0, 3)).toEqual(labels.map(label => ({ label, complete: true })));
         measurements.push({ tab, columns, sticky: await measureSticky(panel.locator('.scroll-content')) });
@@ -146,7 +151,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await expect(page).toHaveURL(/\/players\/03100000-0000-4000-8000-000000002001$/);
       await expect(page.getByRole('heading', { level: 1, name: 'Global Apellido Extenso 1' })).toBeVisible();
       await expect(page.locator('.profile-photo--initials')).toHaveText('GA');
-      await expect(page.locator('.profile-total dd')).toHaveText(['6', '12', '3', '0', '0']);
+      await expect(page.locator('.profile-total dd')).toHaveText(['6', '12', '3', '0', '0', '540', '1']);
       await expect(page.locator('.profile-content tbody tr')).toHaveCount(3);
       await expect(page.locator('.profile-content')).not.toContainText('#');
       const tournamentLink = page.locator('.profile-content tbody .profile-link').first();

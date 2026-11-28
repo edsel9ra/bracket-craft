@@ -64,7 +64,7 @@ export function publicContract(size = 8) {
     team_id: uuid(101), team_name: teamName(1), formation_code: '4-4-2', segment_number: 2, crest_url: null,
     starters: formationSlots('4-4-2').map((slot, i) => ({ player_id: uuid(3000 + i), first_name: 'Nombre', last_name: `Publicado ${i}`, dorsal_number: i + 1, role: 'starter', position_slot: slot, photo_url: null })), substitutes: [],
   }, away: null };
-  const players = Array.from({ length: 53 }, (_, i) => ({ rank: i < 2 ? 1 : i + 1, player_id: uuid(2000 + i), first_name: 'Global', last_name: `Apellido Extenso ${i}`, team_id: uuid(101), team_name: teamName(1), goals: i < 2 ? 53 : 53 - i, yellow_cards: 0, red_cards: 0, clean_sheets: 0, matches_played: 2, photo_url: i === 0 ? '/031-missing-photo.png' : null, profile_available: i === 1 }));
+  const players = Array.from({ length: 53 }, (_, i) => ({ rank: i < 2 ? 1 : i + 1, player_id: uuid(2000 + i), first_name: 'Global', last_name: `Apellido Extenso ${i}`, team_id: uuid(101), team_name: teamName(1), goals: i < 2 ? 53 : 53 - i, yellow_cards: 0, red_cards: 0, clean_sheets: 0, matches_played: 2, minutes_played: 180, main_position: 'forward', penalties_saved: 0, photo_url: i === 0 ? '/031-missing-photo.png' : null, profile_available: i === 1 }));
   const teams = Array.from({ length: 53 }, (_, i) => ({ rank: i < 2 ? 1 : i + 1, team_id: uuid(101 + i), team_name: teamName(i + 1), short_code: `C${i + 1}`, crest_url: null, goals_for: i < 2 ? 53 : 53 - i, goals_against: 0, clean_sheets: 1, fair_play_points: 0 }));
   const player = (n: number, last = `Publicado ${n}`) => ({ player_id: uuid(3000 + n), first_name: 'Nombre', last_name: last, profile_available: n === 23 });
   const event = (type: string, minute: number, added: number, segment: number, team: number, extra: Record<string, unknown> = {}) => ({
@@ -81,14 +81,14 @@ export function publicContract(size = 8) {
       event('red_card', 88, 0, 2, 102, { red_card_type: 'double_yellow_red' }),
     ],
   };
-  const stat = (n: number) => ({ matches_played: n, goals: n * 2, yellow_cards: 1, red_cards: 0, clean_sheets: 0 });
+  const stat = (n: number) => ({ matches_played: n, goals: n * 2, yellow_cards: 1, red_cards: 0, clean_sheets: 0, minutes_played: n * 90, penalties_saved: 0, main_position: 'forward' });
   const profileTournaments = Array.from({ length: 3 }, (_, i) => ({
     tournament_id: i === 0 ? tournament.id : uuid(900 + i), tournament_name: i === 0 ? tournament.name : `Torneo histórico con un nombre muy largo número ${i}`,
     team_id: uuid(101), team_name: teamName(1), ...stat(i + 1),
   }));
   const profile = (playerId: string, lastName: string) => ({
     player_id: playerId, first_name: lastName === 'Publicado 23' ? 'Nombre' : 'Global', last_name: lastName, photo_url: '/031-missing-photo.png',
-    totals: { matches_played: 6, goals: 12, yellow_cards: 3, red_cards: 0, clean_sheets: 0 }, tournaments: profileTournaments,
+    totals: { matches_played: 6, goals: 12, yellow_cards: 3, red_cards: 0, clean_sheets: 0, minutes_played: 540, penalties_saved: 1 }, tournaments: profileTournaments,
   });
   const profiles = new Map([[uuid(2001), profile(uuid(2001), 'Apellido Extenso 1')], [uuid(3023), profile(uuid(3023), 'Publicado 23')]]);
   return { tournament, standings, matches: [published, ...bracketMatches(size)], players, teams, timeline, profiles };

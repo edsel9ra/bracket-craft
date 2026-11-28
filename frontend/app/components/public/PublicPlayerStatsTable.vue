@@ -94,8 +94,8 @@ function initials(row: PlayerStatRow): string {
             <th scope="col">{{ t('public.cleanSheets') }}</th>
             <th scope="col">{{ t('public.played') }}</th>
             <th scope="col">{{ t('public.minutesPlayed') }}</th>
-            <th scope="col">{{ t('public.mainPosition') }}</th>
-            <th scope="col">{{ t('public.penaltiesSaved') }}</th>
+            <th scope="col" class="stats-heading-wrap">{{ t('public.mainPosition') }}</th>
+            <th scope="col" class="stats-heading-wrap">{{ t('public.penaltiesSaved') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -193,6 +193,7 @@ tbody tr:last-child td { border-bottom: 0; }
 }
 .stats-definitions { display: grid; gap: var(--space-1); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
 .stats-definition { margin: 0; font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere; color: var(--color-muted); }
+thead th.stats-heading-wrap { white-space: normal; }
 .load-more { display: block; margin: var(--space-4) auto 0; }
 @media (max-width: 760px) {
   table { table-layout: fixed; min-width: 752px; }
