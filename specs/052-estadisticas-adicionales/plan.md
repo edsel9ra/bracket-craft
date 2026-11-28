@@ -4,7 +4,7 @@ Estado: aprobado el 2026-11-27 («Apruebo el plan y las tareas, empieza por T1»
 
 ## 1. Resumen
 
-- **Migración 070:** tipo de hecho `penalty_saved` y columna `player_in_position` en las tres tablas de hechos (acta, versiones rectificadas y borrador en vivo); `v_public_match_events` añade la columna al final.
+- **Migración 070:** tipo de hecho `penalty_saved` y columna `player_in_position` en las tres tablas de hechos (acta, versiones rectificadas y borrador en vivo); `v_public_match_events` añade la columna al final; `v_public_match_phase_minutes` da los minutos efectivos de la fase de cada partido público, solo para el cálculo (DA-5).
 - **Acta:** `MatchEventPayload` acepta `penalty_saved` y `player_in_position`; la posición se valida contra el catálogo de la modalidad del partido. Se persiste en cierre clásico, en vivo y rectificación.
 - **Cálculo puro:** `compute_player_stats` añade `minutes_played`, `main_position` y `penalties_saved` (RF-001–RF-006).
 - **Superficies:** `player-stats`, ficha pública, CSV de estadísticas, acta exportada, Workspace (formularios y tabla pública) y copia de referencia de `v1`.
@@ -19,6 +19,7 @@ Estado: aprobado el 2026-11-27 («Apruebo el plan y las tareas, empieza por T1»
 | D4 | `POSITION_LINES` en `rule_contract.py`: código → `goalkeeper` / `defender` / `midfielder` / `forward`. `GK` → portero; `CB`, `LCB`, `RCB`, `LB`, `RB`, `LWB`, `RWB` → defensa; `CDM_L`, `CDM_R`, `CM`, `CM_L`, `CM_R`, `LCM`, `RCM`, `LM`, `RM`, `CAM` → centrocampista; `ST`, `ST_L`, `ST_R`, `LW`, `RW` → delantero. Un test exige que cubra exactamente los códigos de `FORMATION_SLOTS`. | Calcular la línea por el índice del código en la formación: frágil y no documentado. |
 | D5 | Las respuestas públicas usan los códigos `goalkeeper`/`defender`/`midfielder`/`forward`; el frontend los traduce. Campos nuevos con valor por defecto (`0` / `null`): cambio compatible de `v1` según `compat.py`. | Texto ES/EN en la API: la API pública no localiza campos de datos. |
 | D6 | La migración localiza cada `CHECK` de `event_type` sin nombre por `pg_constraint` (`contype = 'c'`, definición con `event_type` e `IN`/`ANY`), exige exactamente uno por tabla y lo sustituye por uno con nombre, como la 063. | Suponer el nombre autogenerado: no está garantizado entre volúmenes. |
+| D8 | DA-5: `_effective_duration` devuelve `max(minute_end del último segmento, máximo de la fase)`; sin `minute_end`, el máximo de la fase. Lo usan los minutos de la 052 y los del portero de la 022. El máximo de la fase sale de sus minutos efectivos (`stage_defaults` y override de la fase): las lecturas públicas los leen de `v_public_match_phase_minutes` (070) y las exportaciones, de `tournament_versions.rules_config` con `effective_match_minutes`. Un minuto de hecho sigue acotado a esa duración y ningún jugador la supera. | Corregir el `minute_end` que guarda el cierre clásico: cambiaría los datos guardados y el contrato de los segmentos. |
 | D7 | Bloques: A (backend, T1–T5) y B (Workspace, sitio público, E2E y documentación, T6–T8), como en las 048–050. | Un solo PR: demasiado grande para revisar. |
 
 ## 3. Base de datos — migración `070_additional_player_stats.sql`

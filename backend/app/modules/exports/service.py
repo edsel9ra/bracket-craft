@@ -18,6 +18,7 @@ from app.core.database import set_rls_context
 from app.modules.exports import builders, catalog, pdf_layout
 from app.modules.exports.audit import record_roster_export_audit
 from app.modules.exports.csv_format import render_csv
+from app.modules.matches.service import effective_match_minutes
 from app.modules.exports.pdf_format import PdfDocument
 from app.modules.tournaments.public_stats import compute_player_stats, compute_team_stats
 
@@ -81,9 +82,11 @@ CALENDAR_SQL = text("""
 STATS_MATCHES_SQL = text("""
     SELECT m.id, m.tournament_id, m.stage_id, m.group_id, m.home_team_id, m.away_team_id,
            r.home_score, r.away_score, r.home_score_regular, r.away_score_regular, m.status,
-           m.result_confirmed, r.resolution_type, r.home_penalties, r.away_penalties, r.winner_team_id
+           m.result_confirmed, r.resolution_type, r.home_penalties, r.away_penalties, r.winner_team_id,
+           m.match_date, tv.rules_config
     FROM matches m
     JOIN v_match_current_report r ON r.match_id = m.id AND r.organization_id = m.organization_id
+    JOIN tournament_versions tv ON tv.id = m.tournament_version_id AND tv.organization_id = m.organization_id
     WHERE m.organization_id = :organization_id AND m.tournament_id = :tournament_id
       AND m.tournament_version_id = :version_id
       AND m.status IN ('scheduled', 'live', 'finished', 'administrative_resolution')
@@ -92,7 +95,7 @@ STATS_MATCHES_SQL = text("""
 # Hechos de la versión vigente del acta, sin anulados (035).
 STATS_EVENTS_SQL = text("""
     SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
-           player_out_id, player_in_id, beneficiary_team_id, metadata
+           player_out_id, player_in_id, beneficiary_team_id, metadata, player_in_position
     FROM v_match_current_events
     WHERE organization_id = :organization_id AND match_id = ANY(CAST(:match_ids AS UUID[]))
 """)
@@ -205,7 +208,7 @@ REPORT_PLAYERS_SQL = text("""
 # Hechos de la versión vigente del acta, sin anulados ni borrador en vivo (CL-2).
 REPORT_EVENTS_SQL = text("""
     SELECT e.id, ms.segment_number, e.team_id, e.player_id, e.event_type, e.minute, e.added_minute,
-           e.assist_player_id, e.player_in_id, e.metadata
+           e.assist_player_id, e.player_in_id, e.metadata, e.player_in_position
     FROM v_match_current_events e
     LEFT JOIN match_segments ms ON ms.id = e.segment_id AND ms.organization_id = e.organization_id
     WHERE e.match_id = :match_id AND e.organization_id = :organization_id
@@ -331,6 +334,10 @@ class ExportService:
 
     async def _match_inputs(self, params, *, with_formations: bool):
         matches = await self._rows(STATS_MATCHES_SQL, params)
+        for match in matches:
+            minutes = effective_match_minutes(match.pop("rules_config"), match["stage_id"])
+            for key in ("regular_time_minutes", "extra_time_minutes", "extra_time_enabled"):
+                match[key] = minutes[key]
         events: list[dict] = []
         segments: list[dict] = []
         formations: list[dict] = []

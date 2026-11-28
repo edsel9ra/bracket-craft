@@ -76,6 +76,24 @@ async def _share_png(render: Callable[[], bytes]) -> Response:
     )
 
 
+
+async def _attach_public_phase_minutes(db: AsyncSession, matches: list[dict]) -> None:
+    """Minutos efectivos de la fase de cada partido, solo para el cálculo (052 DA-5)."""
+
+    from app.modules.tournaments.public_stats import attach_phase_minutes
+
+    if not matches:
+        return
+    result = await db.execute(
+        text("""
+            SELECT match_id, regular_time_minutes, extra_time_minutes, extra_time_enabled
+            FROM v_public_match_phase_minutes
+            WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
+        """),
+        {"match_ids": [str(match["id"]) for match in matches]},
+    )
+    attach_phase_minutes(matches, result.mappings().all())
+
 @router.get("/public", response_model=list[PublicTournamentSummaryResponse])
 async def list_public_tournaments(
     db: AsyncSession = Depends(get_db),
@@ -243,7 +261,7 @@ async def public_player_profile(
                         SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
                                home_team_id, away_team_id, home_score, away_score, home_score_regular,
                                away_score_regular, status, resolution_type, home_penalties, away_penalties,
-                               winner_team_id
+                               winner_team_id, match_date
                         FROM v_public_matches
                         WHERE tournament_id = ANY(CAST(:tournament_ids AS UUID[]))
                           AND (home_team_id = ANY(CAST(:team_ids AS UUID[]))
@@ -253,6 +271,7 @@ async def public_player_profile(
                 )
             ).mappings().all()
         ]
+        await _attach_public_phase_minutes(db, matches)
         # La inscripción del jugador en cada torneo, como en `player-stats`,
         # sin columnas de foto ni dorsal.
         rosters = [
@@ -282,7 +301,7 @@ async def public_player_profile(
                     await db.execute(
                         text("""
                             SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
-                                   player_out_id, player_in_id, beneficiary_team_id, metadata
+                                   player_out_id, player_in_id, beneficiary_team_id, metadata, player_in_position
                             FROM v_public_match_events
                             WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
                               AND (is_voided IS FALSE OR is_voided IS NULL)
@@ -719,7 +738,7 @@ async def public_player_stats(
                 SELECT id, tournament_id, stage_id, stage_name, stage_order, group_id, group_name,
                        home_team_id, away_team_id, home_score, away_score, home_score_regular,
                        away_score_regular, status, resolution_type, home_penalties, away_penalties,
-                       winner_team_id
+                       winner_team_id, match_date
                 FROM v_public_matches
                 WHERE tournament_id = :tournament_id
                   AND (CAST(:stage_id AS UUID) IS NULL OR stage_id = CAST(:stage_id AS UUID))
@@ -732,13 +751,14 @@ async def public_player_stats(
             },
         )
         matches = [dict(row) for row in matches_result.mappings().all()]
+        await _attach_public_phase_minutes(db, matches)
 
         match_ids = [str(match["id"]) for match in matches]
         if match_ids:
             events_result = await db.execute(
                 text("""
                     SELECT id, match_id, team_id, player_id, event_type, minute, added_minute,
-                           player_out_id, player_in_id, beneficiary_team_id, metadata
+                           player_out_id, player_in_id, beneficiary_team_id, metadata, player_in_position
                     FROM v_public_match_events
                     WHERE match_id = ANY(CAST(:match_ids AS UUID[]))
                       AND (is_voided IS FALSE OR is_voided IS NULL)

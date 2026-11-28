@@ -635,12 +635,14 @@ async def get_match_operation(
         )
         event_result = await db.execute(
             text("""
+                -- `player_in_position` (spec 052) via `to_jsonb`: NULL on schemas before 070.
                 WITH operation_events AS (
                     SELECT me.id, me.organization_id, me.match_id, me.segment_id, me.team_id,
                            me.beneficiary_team_id, me.player_id, me.event_type, me.minute,
                            me.added_minute, me.client_event_id, me.metadata, me.is_voided,
                            me.voided_at, me.voided_by_member_id, me.void_reason, me.created_at,
-                           me.player_out_id, me.player_in_id, me.assist_player_id
+                           me.player_out_id, me.player_in_id, me.assist_player_id,
+                           to_jsonb(me) ->> 'player_in_position' AS player_in_position
                     FROM match_events me
                     WHERE me.match_id = :match_id AND me.organization_id = :organization_id
                       AND :result_confirmed = FALSE
@@ -649,7 +651,8 @@ async def get_match_operation(
                            me.beneficiary_team_id, me.player_id, me.event_type, me.minute,
                            me.added_minute, me.client_event_id, me.metadata, me.is_voided,
                            me.voided_at, me.voided_by_member_id, me.void_reason, me.created_at,
-                           me.player_out_id, me.player_in_id, me.assist_player_id
+                           me.player_out_id, me.player_in_id, me.assist_player_id,
+                           to_jsonb(me) ->> 'player_in_position' AS player_in_position
                     FROM v_match_current_events me
                     WHERE me.match_id = :match_id AND me.organization_id = :organization_id
                       AND :result_confirmed = TRUE
@@ -657,7 +660,7 @@ async def get_match_operation(
                 SELECT me.id, me.client_event_id, me.event_type, me.team_id,
                        t.name AS team_name, me.beneficiary_team_id, me.player_id,
                        me.player_out_id, me.player_in_id, me.assist_player_id,
-                       p.first_name, p.last_name, me.minute, me.added_minute,
+                       me.player_in_position, p.first_name, p.last_name, me.minute, me.added_minute,
                        me.segment_id, me.metadata, me.is_voided, me.created_at,
                        r.home_score_regular AS current_home_score_regular,
                        r.away_score_regular AS current_away_score_regular,

@@ -28,7 +28,7 @@ function component(globals: Record<string, unknown> = {}) {
 
 const EVENT = {
   clientEventId: 'e1', eventType: 'goal', teamId: 't1', beneficiaryTeamId: null,
-  playerId: 'p1', playerOutId: null, playerInId: null, assistPlayerId: null,
+  playerId: 'p1', playerOutId: null, playerInId: null, playerInPosition: null, assistPlayerId: null,
   minute: 12, addedMinute: 0, segmentId: 's1', metadata: null,
 };
 const SHARED = {

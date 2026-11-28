@@ -41,6 +41,7 @@ from app.modules.matches.service import (
     effective_report_match,
     load_report_payload_snapshot,
     validate_event_minute,
+    validate_entry_positions,
     validate_report_payload,
 )
 from app.modules.rules_engine.engine import effective_substitutions
@@ -539,6 +540,7 @@ class LiveMatchService:
             )
         validators = CloseMatchReportService
         validators._validate_event_participants(report, match, snapshot.rosters)
+        validate_entry_positions(report, match)
         validators._validate_rosters(match, snapshot.rosters)
         validators._validate_substitutions(
             report,
@@ -575,16 +577,16 @@ class LiveMatchService:
                 await self.db.execute(
                     text("""INSERT INTO match_live_events
                     (organization_id,match_id,client_event_id,event_type,team_id,beneficiary_team_id,player_id,
-                     player_out_id,player_in_id,assist_player_id,minute,added_minute,segment_id,metadata)
+                     player_out_id,player_in_id,player_in_position,assist_player_id,minute,added_minute,segment_id,metadata)
                     VALUES (:org,:match,:client_event_id,:event_type,:team_id,:beneficiary_team_id,:player_id,
-                     :player_out_id,:player_in_id,:assist_player_id,:minute,:added_minute,:segment_id,CAST(:metadata AS jsonb))"""),
+                     :player_out_id,:player_in_id,:player_in_position,:assist_player_id,:minute,:added_minute,:segment_id,CAST(:metadata AS jsonb))"""),
                     values,
                 )
             else:
                 await self.db.execute(
                     text("""UPDATE match_live_events SET event_type=:event_type,team_id=:team_id,
                     beneficiary_team_id=:beneficiary_team_id,player_id=:player_id,player_out_id=:player_out_id,
-                    player_in_id=:player_in_id,assist_player_id=:assist_player_id,minute=:minute,added_minute=:added_minute,
+                    player_in_id=:player_in_id,player_in_position=:player_in_position,assist_player_id=:assist_player_id,minute=:minute,added_minute=:added_minute,
                     segment_id=:segment_id,metadata=CAST(:metadata AS jsonb)
                     WHERE organization_id=:org AND match_id=:match AND client_event_id=:client_event_id AND removed_at IS NULL"""),
                     values,

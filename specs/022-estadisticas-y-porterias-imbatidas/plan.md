@@ -134,7 +134,7 @@ def clean_sheet_goalkeeper(match, formations, events, segments):
 
 ```
 def goalkeeper_minutes(match, gk, events, segments, start):
-    duration = effective_duration(segments)      # último minute_end o máximo efectivo de la fase
+    duration = effective_duration(segments)      # max(último minute_end, máximo efectivo de la fase) — DA-5 de la 052
     sub_out  = first_substitution_out(match, gk.id, events)
     if sub_out: return min(sub_out, duration) - start
     red = first_red_card(match, gk.id, events)

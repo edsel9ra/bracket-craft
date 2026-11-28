@@ -106,12 +106,28 @@ def test_build_profile_rows_and_totals_cl7_cl9():
     assert recent == {
         "tournament_id": T2, "tournament_name": "Copa 11", "team_id": TEAM_B, "team_name": "Equipo bb",
         "matches_played": 3, "goals": 2, "yellow_cards": 1, "red_cards": 0, "clean_sheets": 1,
+        "minutes_played": 0, "penalties_saved": 0, "main_position": None,
     }
     assert old["team_id"] == TEAM_A
     assert all(old[k] == 0 for k in ("matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets"))
     assert profile["totals"] == {
         "matches_played": 3, "goals": 2, "yellow_cards": 1, "red_cards": 0, "clean_sheets": 1,
+        "minutes_played": 0, "penalties_saved": 0,
     }
+
+
+def test_build_profile_carries_the_052_figures_per_tournament_rf004():
+    recent, old = row(T2, team=TEAM_B, start=date(2026, 6, 1)), row(T1, team=TEAM_A, start=date(2025, 6, 1))
+    stats = {
+        T2: {"minutes_played": 180, "penalties_saved": 1, "main_position": "goalkeeper"},
+        T1: {"minutes_played": 45, "penalties_saved": 2, "main_position": "defender"},
+    }
+    profile = build_player_profile([recent, old], stats)
+    assert [(t["minutes_played"], t["penalties_saved"], t["main_position"]) for t in profile["tournaments"]] == [
+        (180, 1, "goalkeeper"), (45, 2, "defender"),
+    ]
+    assert (profile["totals"]["minutes_played"], profile["totals"]["penalties_saved"]) == (225, 3)
+    assert "main_position" not in profile["totals"]
 
 
 def test_representative_first_puts_the_cl11_team_first_for_compute_player_stats():

@@ -154,6 +154,7 @@ function normalizeEvent(raw: unknown): SharedLiveEvent | null {
     playerId: (shape.player_id ?? null) as string | null,
     playerOutId: (shape.player_out_id ?? null) as string | null,
     playerInId: (shape.player_in_id ?? null) as string | null,
+    playerInPosition: typeof shape.player_in_position === 'string' ? shape.player_in_position : null,
     assistPlayerId: (shape.assist_player_id ?? null) as string | null,
     minute: shape.minute,
     addedMinute: shape.added_minute,

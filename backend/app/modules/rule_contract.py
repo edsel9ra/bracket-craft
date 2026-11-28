@@ -121,6 +121,32 @@ def starters_for_game_format(game_format: str | None) -> int:
         raise ValueError(f"unknown game format: {game_format!r}") from None
 
 
+# Spec 052 (F17, D4): line of every catalog position. The public statistics
+# derive the main position from it; the API returns the line code.
+POSITION_LINE_CODES: Final[tuple[str, ...]] = ("goalkeeper", "defender", "midfielder", "forward")
+
+POSITION_LINES: Final[dict[str, str]] = {
+    "GK": "goalkeeper",
+    **dict.fromkeys(("CB", "LCB", "RCB", "LB", "RB", "LWB", "RWB"), "defender"),
+    **dict.fromkeys(("CDM_L", "CDM_R", "CM", "CM_L", "CM_R", "LCM", "RCM", "LM", "RM", "CAM"), "midfielder"),
+    **dict.fromkeys(("ST", "ST_L", "ST_R", "LW", "RW"), "forward"),
+}
+
+_POSITIONS_BY_GAME_FORMAT: Final[dict[str, frozenset[str]]] = {
+    game_format: frozenset(slot for code in codes for slot in FORMATION_SLOTS[code])
+    for game_format, codes in FORMATIONS_BY_GAME_FORMAT.items()
+}
+
+
+def positions_for_game_format(game_format: str | None) -> frozenset[str]:
+    """Positions of the formations of ``game_format`` (spec 052, D3); absent reads as 11v11."""
+
+    try:
+        return _POSITIONS_BY_GAME_FORMAT[game_format or DEFAULT_GAME_FORMAT]
+    except KeyError:
+        raise ValueError(f"unknown game format: {game_format!r}") from None
+
+
 def slots_for_formation(formation_code: str) -> tuple[str, ...] | None:
     """Return the positions of a catalog formation, or ``None`` if unknown."""
 

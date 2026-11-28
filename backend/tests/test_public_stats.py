@@ -1285,8 +1285,8 @@ def test_case_10_partido_suspendido_o_cancelado_no_contribuye():
     assert compute_player_stats([m], [], [], [], []) == []
 
 
-def test_case_11_partido_terminado_con_menos_minutos_cuenta():
-    """Caso 11: partido terminado con menos minutos pero acta confirmada → clean sheet si 0 recibidos."""
+def test_case_11_partido_cerrado_en_su_ultimo_hecho_dura_al_menos_el_reglamentario():
+    """Caso 11 (enmienda de la 052): el fin registrado no acorta el partido por debajo del máximo de la fase."""
 
     mid = uuid4()
     home = uuid4()
@@ -1301,7 +1301,7 @@ def test_case_11_partido_terminado_con_menos_minutos_cuenta():
 
     assert clean_sheet_team(m, [], team_id=home) is True
     assert clean_sheet_goalkeepers(m, rows, [], segs) == [gk]
-    assert goalkeeper_minutes(m, [{"player_id": gk, "position_slot": "GK", "is_starter": True}], [], segs) == 60
+    assert goalkeeper_minutes(m, [{"player_id": gk, "position_slot": "GK", "is_starter": True}], [], segs) == 90
 
 
 def test_case_15_portero_que_marca_gol_califica():

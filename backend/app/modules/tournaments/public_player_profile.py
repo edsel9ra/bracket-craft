@@ -10,7 +10,9 @@ from datetime import date, datetime
 from typing import Any, Iterable, Mapping
 
 PROFILE_TOURNAMENT_LIMIT = 50
-STAT_FIELDS = ("matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets")
+STAT_FIELDS = (
+    "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets", "minutes_played", "penalties_saved",
+)
 
 
 def _v(row: Any, key: str, default: Any = None) -> Any:
@@ -106,6 +108,7 @@ def build_player_profile(
             "team_id": _key(_v(row, "team_id")),
             "team_name": _v(row, "team_name"),
             **{field: int(stats.get(field) or 0) for field in STAT_FIELDS},
+            "main_position": stats.get("main_position"),
         })
     return {
         "player_id": _key(_v(first, "player_id")),

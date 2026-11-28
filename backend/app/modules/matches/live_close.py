@@ -16,7 +16,7 @@ async def read_live_events(db, context, match_id):
             await db.execute(
                 text("""
         SELECT client_event_id,event_type,team_id,beneficiary_team_id,player_id,
-            player_out_id,player_in_id,assist_player_id,minute,added_minute,segment_id,metadata
+            player_out_id,player_in_id,player_in_position,assist_player_id,minute,added_minute,segment_id,metadata
         FROM match_live_events WHERE organization_id=:org AND match_id=:id AND removed_at IS NULL
         ORDER BY event_order,id
     """),

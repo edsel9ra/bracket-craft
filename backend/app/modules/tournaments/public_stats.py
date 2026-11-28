@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any, Iterable, Mapping, Sequence
 
+from app.modules.rule_contract import POSITION_LINE_CODES, POSITION_LINES
+
 
 def _v(row: Any, key: str, default: Any = None) -> Any:
     """Lee un campo de una fila sea ``Mapping`` u objeto con atributos."""
@@ -71,8 +73,14 @@ def _resolution(match: Any) -> str | None:
 
 
 def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
-    """Duración efectiva del partido: último ``minute_end`` o máximo de la fase."""
+    """Duración efectiva del partido: el mayor entre el último ``minute_end`` y el máximo de la fase.
 
+    El cierre clásico guarda como fin el minuto del último hecho, así que ese fin
+    nunca acorta el partido por debajo del máximo reglamentario o de prórroga
+    (enmienda de la 052 a la 022).
+    """
+
+    phase_maximum = _phase_maximum(match)
     match_id = _match_id(match)
     segs = [
         s for s in (segments or [])
@@ -80,12 +88,15 @@ def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
     ]
     if segs:
         ordered = sorted(segs, key=lambda s: int(_v(s, "segment_number", 0) or 0))
-        last = ordered[-1]
-        minute_end = _v(last, "minute_end")
+        minute_end = _v(ordered[-1], "minute_end")
         if minute_end is not None:
-            return int(minute_end)
+            return max(int(minute_end), phase_maximum)
+    return phase_maximum
 
-    # Máximo efectivo de la fase (reglamentario o de prórroga).
+
+def _phase_maximum(match: Any) -> int:
+    """Máximo efectivo de la fase: reglamentario o, con prórroga o penales, el de la prórroga."""
+
     rules = _v(match, "rules_config")
     stage_defaults: Mapping[str, Any] = {}
     if isinstance(rules, Mapping):
@@ -101,7 +112,9 @@ def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
     regular = int(regular or 90)
 
     resolution = _resolution(match)
-    extra_enabled = stage_defaults.get("extra_time_enabled", True)
+    extra_enabled = _v(match, "extra_time_enabled")
+    if extra_enabled is None:
+        extra_enabled = stage_defaults.get("extra_time_enabled", True)
     if resolution in ("extra_time", "penalties") and extra_enabled:
         extra = _v(match, "extra_time_minutes")
         if extra is None:
@@ -110,6 +123,17 @@ def _effective_duration(match: Any, segments: Iterable[Any]) -> int:
             extra = stage_defaults.get("extra_time_minutes", 120)
         return int(extra or regular)
     return regular
+
+
+def attach_phase_minutes(matches: Iterable[dict], phase_minutes: Iterable[Any]) -> None:
+    """Copia a cada partido los minutos efectivos de su fase (DA-5)."""
+
+    by_match = {str(_v(row, "match_id")): row for row in phase_minutes}
+    for match in matches:
+        row = by_match.get(str(match["id"]))
+        if row is not None:
+            for key in ("regular_time_minutes", "extra_time_minutes", "extra_time_enabled"):
+                match[key] = _v(row, key)
 
 
 def _player_id(row: Any) -> Any:
@@ -781,6 +805,131 @@ def team_stats_rank_key(row: Any) -> tuple:
     )
 
 
+_PLAYED_RESOLUTIONS = frozenset({"regular", "extra_time", "penalties"})
+
+
+def _recency_key(match: Any) -> tuple:
+    """Orden «más reciente» de la 052 (DA-2): fecha no nula, fecha e identificador."""
+
+    value = _v(match, "match_date")
+    identity = str(_match_id(match))
+    if value is None:
+        return (0, 0.0, "", identity)
+    if hasattr(value, "timestamp"):
+        return (1, value.timestamp(), "", identity)
+    return (1, 0.0, str(value), identity)
+
+
+def _on_field_minutes(match: Any, starters: Iterable[Any], events: Iterable[Any], segments: Iterable[Any]) -> dict:
+    """Minutos en el campo de cada jugador del partido (spec 052), en una pasada.
+
+    Suma los tramos entre entradas y salidas en el orden canónico (minuto,
+    añadido, índice), con cada minuto acotado a la duración efectiva: una
+    reentrada abre un tramo nuevo y ningún jugador supera esa duración. Si un
+    suplente sale en el mismo minuto en que entra, no suma, sea cual sea el
+    orden de los dos cambios en el acta.
+    """
+
+    duration = int(_effective_duration(match, segments))
+    indexed = list(enumerate(_events_for_match(events, match)))
+    indexed.sort(key=lambda pair: (int(_v(pair[1], "minute", 0) or 0), int(_v(pair[1], "added_minute", 0) or 0), pair[0]))
+    since: dict[Any, int] = dict.fromkeys(starters, 0)
+    total: dict[Any, int] = dict.fromkeys(since, 0)
+    expelled: set[Any] = set()
+    early_exit: dict[Any, int] = {}
+    for _, e in indexed:
+        at = min(int(_v(e, "minute", 0) or 0) + int(_v(e, "added_minute", 0) or 0), duration)
+        etype = _v(e, "event_type")
+        if etype == "red_card":
+            pid = _v(e, "player_id")
+            if pid in since:
+                total[pid] += at - since.pop(pid)
+            expelled.add(pid)
+            continue
+        if etype != "substitution":
+            continue
+        out_id, in_id = _v(e, "player_out_id", _v(e, "player_id")), _v(e, "player_in_id")
+        if out_id in since:
+            total[out_id] += at - since.pop(out_id)
+        elif out_id is not None:
+            early_exit[out_id] = at
+        if in_id is None or in_id in since or in_id in expelled:
+            continue
+        total.setdefault(in_id, 0)
+        if early_exit.pop(in_id, None) != at:
+            since[in_id] = at
+    for pid, entered in since.items():
+        total[pid] += duration - entered
+    return {pid: min(max(0, minutes), duration) for pid, minutes in total.items()}
+
+
+def _add_minutes_and_lines(by_match, matches_by_id, events, segments_of, player_info, ensure) -> None:
+    """Minutos (DA-1) y posición principal (DA-2, DA-3) de la spec 052.
+
+    ``by_match`` solo tiene formaciones **publicadas** de partidos confirmados.
+    Los minutos cuentan si el equipo publicó la formación del primer segmento;
+    las líneas salen de los titulares de cada formación publicada y de la
+    posición de entrada de las sustituciones de ese equipo.
+    """
+
+    events_by_match: dict[Any, list[Any]] = {}
+    for e in events:
+        if not _truthy(_v(e, "is_voided")):
+            events_by_match.setdefault(_event_match_id(e), []).append(e)
+    lines: dict[Any, dict[Any, set[str]]] = {}
+    recency: dict[Any, tuple] = {}
+    for mid, match_formations in by_match.items():
+        m = matches_by_id.get(mid)
+        if m is None or (_resolution(m) or "regular") not in _PLAYED_RESOLUTIONS:
+            continue
+        recency[mid] = _recency_key(m)
+        segs = segments_of(m)
+        mevents = events_by_match.get(mid, []) + events_by_match.get(None, [])
+        numbers = [int(_v(s, "segment_number")) for s in segs if _v(s, "segment_number") is not None]
+        numbers = numbers or [int(_v(f, "segment_number")) for f in match_formations if _v(f, "segment_number") is not None]
+        first = min(numbers) if numbers else None
+        by_team: "OrderedDict[Any, list[Any]]" = OrderedDict()
+        for formation in match_formations:
+            team = _v(formation, "team_id")
+            by_team.setdefault(_v(m, "home_team_id") if team is None else team, []).append(formation)
+        for team, team_formations in by_team.items():
+            subs = [e for e in mevents if _v(e, "event_type") == "substitution" and _v(e, "team_id") == team]
+            opening = next((f for f in team_formations if first is None or _v(f, "segment_number") == first), None)
+            if opening is not None:
+                starters = [
+                    _player_id(p) for p in _formation_players(opening)
+                    if _is_starter(p) and _player_id(p) is not None
+                ]
+                starters = list(dict.fromkeys(starters))
+                minutes = _on_field_minutes(m, starters, mevents, segs)
+                for pid in starters:
+                    ensure(pid)["minutes_played"] += minutes[pid]
+                entering = dict.fromkeys(_v(s, "player_in_id") for s in subs)
+                for pid in entering:
+                    if pid is None or pid in starters or pid not in player_info:
+                        continue
+                    ensure(pid)["minutes_played"] += minutes.get(pid, 0)
+            for formation in team_formations:
+                for player in _formation_players(formation):
+                    pid, slot = _player_id(player), _position_slot(player)
+                    if pid is not None and _is_starter(player) and slot in POSITION_LINES:
+                        lines.setdefault(pid, {}).setdefault(mid, set()).add(POSITION_LINES[slot])
+            for s in subs:
+                pid, slot = _v(s, "player_in_id"), _v(s, "player_in_position")
+                if pid is not None and pid in player_info and slot in POSITION_LINES:
+                    lines.setdefault(pid, {}).setdefault(mid, set()).add(POSITION_LINES[slot])
+    for pid, per_match in lines.items():
+        counts: dict[str, int] = {}
+        latest: dict[str, tuple] = {}
+        for mid, played in per_match.items():
+            for line in played:
+                counts[line] = counts.get(line, 0) + 1
+                latest[line] = max(latest.get(line, recency[mid]), recency[mid])
+        ensure(pid)["main_position"] = max(
+            counts, key=lambda line: (counts[line], latest[line], -POSITION_LINE_CODES.index(line))
+        )
+
+
 def compute_player_stats(
     matches: Any,
     events: Any,
@@ -852,6 +1001,9 @@ def compute_player_stats(
                 "red_cards": 0,
                 "clean_sheets": 0,
                 "matches_played": set(),
+                "minutes_played": 0,
+                "main_position": None,
+                "penalties_saved": 0,
             }
             if pid in player_info:
                 for key, value in player_info[pid].items():
@@ -904,6 +1056,8 @@ def compute_player_stats(
                 d["yellow_cards"] += 1
             elif credit_type == "red_card":
                 d["red_cards"] += 1
+            elif credit_type == "penalty_saved":
+                d["penalties_saved"] += 1
 
     # Formaciones publicadas: presencia del jugador y agrupación por partido.
     by_match: "OrderedDict[Any, list[Any]]" = OrderedDict()
@@ -922,11 +1076,25 @@ def compute_player_stats(
 
     # Porterías imbatidas por jugador: una sola regla por (partido, equipo).
     counted: set[tuple[Any, Any]] = set()
+    events_by_match: dict[Any, list[Any]] = {}
+    for e in events:
+        events_by_match.setdefault(_event_match_id(e), []).append(e)
+    segments_by_match: dict[Any, list[Any]] = {}
+    for segment in segments:
+        segments_by_match.setdefault(_v(segment, "match_id"), []).append(segment)
+
+    def segments_of(m: Any) -> list[Any]:
+        if None in segments_by_match:
+            return _segments_for_match(segments, m)
+        return segments_by_match.get(_match_id(m), [])
+
     for mid, match_formations in by_match.items():
         m = matches_by_id.get(mid)
         if m is None:
             continue
-        segs = _segments_for_match(segments, m)
+        segs = segments_of(m)
+        # Los hechos sin partido valen para todos: entonces se conserva el orden original.
+        match_events = events if None in events_by_match else events_by_match.get(_match_id(m), [])
         by_team: "OrderedDict[Any, list[Any]]" = OrderedDict()
         for formation in match_formations:
             team = _v(formation, "team_id")
@@ -934,11 +1102,13 @@ def compute_player_stats(
                 team = _v(m, "home_team_id")
             by_team.setdefault(team, []).append(formation)
         for team_formations in by_team.values():
-            for pid in clean_sheet_goalkeepers(m, team_formations, events, segs):
+            for pid in clean_sheet_goalkeepers(m, team_formations, match_events, segs):
                 if pid is None or (pid, mid) in counted:
                     continue
                 ensure(pid)["clean_sheets"] += 1
                 counted.add((pid, mid))
+
+    _add_minutes_and_lines(by_match, matches_by_id, events, segments_of, player_info, ensure)
 
     # Finalizar matches_played como entero.
     for d in stats.values():

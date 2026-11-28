@@ -137,6 +137,9 @@ def player_stats_rows(stats: Iterable[Mapping[str, Any]], lang: str) -> list[Row
             r.get("red_cards", 0),
             r.get("clean_sheets", 0),
             r.get("matches_played", 0),
+            r.get("minutes_played", 0),
+            label("main_position", r["main_position"], lang) if r.get("main_position") else None,
+            r.get("penalties_saved", 0),
         ]
         for r in ranked
     ]
@@ -202,7 +205,10 @@ def _event_detail(event: Mapping[str, Any], players: Mapping[Any, Mapping[str, A
     etype = event.get("event_type")
     if etype == "substitution":
         name = _full_name(players.get(event.get("player_in_id")))
-        return f"{label('report_detail', 'player_in', lang)}: {name}" if name else None
+        parts = [f"{label('report_detail', 'player_in', lang)}: {name}"] if name else []
+        if event.get("player_in_position"):
+            parts.append(f"{label('report_detail', 'position', lang)}: {event['player_in_position']}")
+        return " · ".join(parts) or None
     if etype in ("goal", "penalty_goal"):
         name = _full_name(players.get(event.get("assist_player_id")))
         return f"{label('report_detail', 'assist', lang)}: {name}" if name else None

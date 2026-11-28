@@ -73,6 +73,18 @@ test('un snapshot F1 completo se normaliza como borrador compartido', () => {
   assert.equal(shared!.events[0]!.clientEventId, 'cccccccc-0000-4000-8000-000000000003');
 });
 
+test('la posición de entrada de la 052 viaja con el hecho y no descarta el borrador', () => {
+  const substitution = liveEvent({
+    client_event_id: 'dddddddd-0000-4000-8000-000000000004', event_type: 'substitution',
+    player_id: TEAM_AWAY, player_out_id: TEAM_AWAY, player_in_id: TEAM_HOME, player_in_position: 'LCB',
+  });
+  const shared = normalizeLiveSnapshot(initialized({ events: [liveEvent({ player_in_position: null }), substitution] }));
+  assert.notEqual(shared, null);
+  assert.deepEqual(shared!.events.map((event) => event.playerInPosition), [null, 'LCB']);
+  assert.equal(normalizeLiveSnapshot(initialized({ events: [liveEvent()] }))!.events[0]!.playerInPosition, null);
+  assert.equal(normalizeLiveSnapshot(initialized({ events: [liveEvent({ player_in_position: 7 })] })), null);
+});
+
 test('snapshot inicializado vacío se muestra vacío, no inventa incidencias', () => {
   const shared = normalizeLiveSnapshot(initialized({ events: [], home_score: 0, away_score: 0 }));
   assert.notEqual(shared, null);

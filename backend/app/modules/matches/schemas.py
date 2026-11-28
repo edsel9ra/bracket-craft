@@ -9,7 +9,8 @@ from app.modules.rule_contract import FORMATION_CODES
 
 
 # Catálogo cerrado de eventos del acta (RF-004). Ampliarlo exige cambiar la
-# spec 015: no es configuración ni se deduce del `rules_config`.
+# spec 015, como hizo la 052 con `penalty_saved`: no es configuración ni se
+# deduce del `rules_config`.
 EVENT_TYPES: tuple[str, ...] = (
     "goal",
     "own_goal",
@@ -18,6 +19,9 @@ EVENT_TYPES: tuple[str, ...] = (
     "red_card",
     "substitution",
     "foul",
+    # Spec 052 (F17, DA-4): penal atajado por el jugador de `team_id`. Sin
+    # efecto en marcador, clasificación, sanciones ni cronología pública.
+    "penalty_saved",
 )
 EventType = Literal[*EVENT_TYPES]
 
@@ -106,6 +110,9 @@ class MatchEventPayload(BaseModel):
     # nunca del propio goleador. La pertenencia a la plantilla, el mismo equipo
     # y la presencia en campo son del motor (RF-008): T4 y T5.
     assist_player_id: UUID | None = None
+    # Posición de entrada (spec 052, DA-3, D1): opcional y solo en una
+    # sustitución. El catálogo de la modalidad del partido lo valida el servicio.
+    player_in_position: str | None = Field(default=None, min_length=1, max_length=20, pattern=r"^[A-Z0-9_]+$")
     minute: int = Field(ge=0, le=180)
     added_minute: int = Field(default=0, ge=0, le=30)
     segment_id: UUID
@@ -131,6 +138,8 @@ class MatchEventPayload(BaseModel):
                 raise ValueError("player_id debe coincidir con player_out_id")
         elif self.player_out_id is not None or self.player_in_id is not None:
             raise ValueError("player_out_id y player_in_id solo aplican a una sustitución")
+        if self.player_in_position is not None and self.event_type != "substitution":
+            raise ValueError("player_in_position solo aplica a una sustitución")
         if self.event_type == "own_goal":
             if self.beneficiary_team_id is None or self.beneficiary_team_id == self.team_id:
                 raise ValueError("Un autogol requiere un equipo beneficiario distinto")

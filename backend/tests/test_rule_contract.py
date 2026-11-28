@@ -39,7 +39,10 @@ from app.modules.rule_contract import (
     ENGINE_VERSION,
     FORMATION_CODES,
     GRAND_FINAL_CODE,
+    POSITION_LINE_CODES,
+    POSITION_LINES,
     RESET_CODE,
+    positions_for_game_format,
     requires_decisive_winner,
 )
 from app.modules.rules_engine.defaults import DEFAULT_RULES_CONFIG
@@ -396,3 +399,45 @@ def test_the_contract_document_lists_every_formation_with_its_positions():
         for slot in slots:
             assert f"`{slot}`" in section, f"falta la posición {slot} de {code}"
     assert document.count("### `") == len(FORMATION_CODES)
+
+
+# ---------------------------------------------------------------------------
+# Spec 052 (F17, D3/D4): línea de cada posición y catálogo por modalidad
+# ---------------------------------------------------------------------------
+
+EXPECTED_POSITION_LINES = {
+    "GK": "goalkeeper",
+    **{code: "defender" for code in ("CB", "LCB", "RCB", "LB", "RB", "LWB", "RWB")},
+    **{
+        code: "midfielder"
+        for code in ("CDM_L", "CDM_R", "CM", "CM_L", "CM_R", "LCM", "RCM", "LM", "RM", "CAM")
+    },
+    **{code: "forward" for code in ("ST", "ST_L", "ST_R", "LW", "RW")},
+}
+
+
+def test_position_lines_cover_exactly_the_catalog_positions():
+    catalog_positions = {slot for slots in FORMATION_SLOTS.values() for slot in slots}
+    assert set(POSITION_LINES) == catalog_positions
+    assert dict(POSITION_LINES) == EXPECTED_POSITION_LINES
+    assert POSITION_LINE_CODES == ("goalkeeper", "defender", "midfielder", "forward")
+    assert set(POSITION_LINES.values()) == set(POSITION_LINE_CODES)
+
+
+def test_positions_for_game_format_are_the_union_of_its_formations():
+    for game_format, codes in FORMATIONS_BY_GAME_FORMAT.items():
+        expected = frozenset(slot for code in codes for slot in FORMATION_SLOTS[code])
+        positions = positions_for_game_format(game_format)
+        assert positions == expected
+        assert isinstance(positions, frozenset)
+        assert "GK" in positions
+    assert positions_for_game_format("5v5") == frozenset(
+        {"GK", "CB", "LCB", "RCB", "LM", "RM", "CM", "ST", "ST_L", "ST_R"}
+    )
+    # LWB only exists in 11v11 (3-5-2): outside the catalog of the reduced formats.
+    assert "LWB" in positions_for_game_format("11v11")
+    assert all("LWB" not in positions_for_game_format(f) for f in ("5v5", "7v7", "9v9"))
+    # A version without game_format reads as 11v11 (spec 024, RF-013).
+    assert positions_for_game_format(None) == positions_for_game_format("11v11")
+    with pytest.raises(ValueError):
+        positions_for_game_format("6v6")

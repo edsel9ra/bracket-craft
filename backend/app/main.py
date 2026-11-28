@@ -51,6 +51,7 @@ from app.modules.invitations.router import router as invitations_router
 from app.modules.matches.errors import (
     AssistPlayerInvalid,
     DoubleYellowInconsistent,
+    EntryPositionInvalid,
     FormationNotSupportedForFormat,
     PublishedFormationMustBeUnpublished,
     ResolutionNotEnabled,
@@ -885,6 +886,7 @@ api.add_exception_handler(InvitationConflict, _invitation_conflict_exception_han
 api.add_exception_handler(ResolutionNotEnabled, _coded_exception_handler)
 api.add_exception_handler(AssistPlayerInvalid, _coded_exception_handler)
 api.add_exception_handler(DoubleYellowInconsistent, _coded_exception_handler)
+api.add_exception_handler(EntryPositionInvalid, _coded_exception_handler)
 api.add_exception_handler(WalkoverStateNotAllowed, _coded_exception_handler)
 api.add_exception_handler(WalkoverScoreMismatch, _coded_exception_handler)
 api.add_exception_handler(WalkoverConfigInconsistent, _coded_exception_handler)

@@ -29,6 +29,7 @@ Todos los identificadores son UUID. Todas las respuestas son `application/json`.
 - **Partidos:** cada partido tiene una forma según `status`. `live` añade el reloj y `is_provisional: true`; `suspended` solo tiene 14 claves (equipos, marcador provisional y reloj). El resto (`scheduled`, `finished`, `cancelled`, `administrative_resolution`) usa la forma completa.
 - **Cronología:** `availability` vale `pending` (el partido aún no está cerrado), `not_played` (cerrado sin juego, como un W.O.) o `available`. `score_consistent` indica si los goles registrados cuadran con el marcador.
 - **`profile_available`:** indica si existe la ficha pública de ese jugador.
+- **`minutes_played`, `main_position` y `penalties_saved`:** minutos jugados (solo cuentan los partidos con la alineación del equipo publicada), línea en la que más partidos jugó (`goalkeeper`, `defender`, `midfielder`, `forward` o `null`) y penales atajados. Están en las estadísticas de jugadores y en la ficha; en la ficha, la línea va por torneo.
 
 ## Autenticación y CORS
 
@@ -333,7 +334,10 @@ curl -s "https://torneos.example.org/api/v1/tournaments/public/3f6c2a9e-1b4d-4c8
     "goals": 4,
     "yellow_cards": 1,
     "red_cards": 0,
-    "clean_sheets": 0
+    "clean_sheets": 0,
+    "minutes_played": 270,
+    "main_position": "forward",
+    "penalties_saved": 0
   }
 ]
 ```
@@ -379,7 +383,9 @@ curl -s "https://torneos.example.org/api/v1/tournaments/public/players/f6a7b8c9-
     "goals": 9,
     "yellow_cards": 2,
     "red_cards": 0,
-    "clean_sheets": 0
+    "clean_sheets": 0,
+    "minutes_played": 720,
+    "penalties_saved": 0
   },
   "tournaments": [
     {
@@ -391,7 +397,10 @@ curl -s "https://torneos.example.org/api/v1/tournaments/public/players/f6a7b8c9-
       "goals": 4,
       "yellow_cards": 1,
       "red_cards": 0,
-      "clean_sheets": 0
+      "clean_sheets": 0,
+      "minutes_played": 270,
+      "penalties_saved": 0,
+      "main_position": "forward"
     },
     {
       "tournament_id": "1b2c3d4e-5f60-4172-8b9c-0d1e2f3a4b5c",
@@ -402,7 +411,10 @@ curl -s "https://torneos.example.org/api/v1/tournaments/public/players/f6a7b8c9-
       "goals": 5,
       "yellow_cards": 1,
       "red_cards": 0,
-      "clean_sheets": 0
+      "clean_sheets": 0,
+      "minutes_played": 450,
+      "penalties_saved": 0,
+      "main_position": "forward"
     }
   ]
 }
@@ -411,3 +423,4 @@ curl -s "https://torneos.example.org/api/v1/tournaments/public/players/f6a7b8c9-
 ## Historial de cambios
 
 - **2026-11-27** · `v1` · Primera versión: 9 lecturas, documento OpenAPI y CORS para cualquier origen (spec 051).
+- **2026-11-27** · `v1` · Cambio compatible: `minutes_played`, `main_position` y `penalties_saved` en las estadísticas de jugadores y en la ficha (spec 052).

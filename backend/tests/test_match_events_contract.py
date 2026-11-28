@@ -33,6 +33,7 @@ EVENT_TYPES = (
     "red_card",
     "substitution",
     "foul",
+    "penalty_saved",
 )
 TYPES_WITHOUT_BENEFICIARY = tuple(event_type for event_type in EVENT_TYPES if event_type != "own_goal")
 TYPES_WITHOUT_ASSIST = tuple(event_type for event_type in EVENT_TYPES if event_type != "goal")
@@ -284,3 +285,40 @@ def test_the_close_request_keeps_the_declared_catalog_fields_valid():
 
     assert dto.events[0].assist_player_id == ASSIST
     assert dto.events[1].metadata == {"red_card_type": "double_yellow_red"}
+
+
+# ---------------------------------------------------------------------------
+# Spec 052 (F17): penal atajado y posición de entrada (RF-007–RF-009, D1, D2)
+# ---------------------------------------------------------------------------
+
+TYPES_WITHOUT_ENTRY_POSITION = tuple(event_type for event_type in EVENT_TYPES if event_type != "substitution")
+
+
+def test_a_penalty_saved_is_a_plain_player_event():
+    event = build("penalty_saved")
+
+    assert event.event_type == "penalty_saved"
+    assert event.player_id == PLAYER
+    assert event.player_in_position is None
+    assert_rejected("penalty_saved", player_id=None)
+    assert_rejected("penalty_saved", metadata={"red_card_type": "direct_red"})
+
+
+@pytest.mark.parametrize("position", ["GK", "LCB", "CDM_L", "ST_R"])
+def test_a_substitution_accepts_an_optional_entry_position(position):
+    assert build("substitution").player_in_position is None
+    assert build("substitution", player_in_position=None).player_in_position is None
+    assert build("substitution", player_in_position=position).player_in_position == position
+
+
+@pytest.mark.parametrize("event_type", TYPES_WITHOUT_ENTRY_POSITION)
+def test_the_entry_position_only_applies_to_a_substitution(event_type):
+    assert build(event_type, player_in_position=None).player_in_position is None
+    with pytest.raises(ValidationError) as excinfo:
+        build(event_type, player_in_position="GK")
+    assert "GK" not in str([error["msg"] for error in excinfo.value.errors()])
+
+
+@pytest.mark.parametrize("position", ["", "lcb", "L-CB", "GK ", "X" * 21, "<b>GK</b>"])
+def test_a_malformed_entry_position_is_rejected(position):
+    assert_rejected("substitution", player_in_position=position)

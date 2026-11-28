@@ -379,6 +379,7 @@ class CloseOrderSession:
             "player_id": UUID(str(params["player_id"])) if params.get("player_id") else None,
             "player_out_id": UUID(str(params["player_out_id"])) if params.get("player_out_id") else None,
             "player_in_id": UUID(str(params["player_in_id"])) if params.get("player_in_id") else None,
+            "player_in_position": params.get("player_in_position"),
             "assist_player_id": (
                 UUID(str(params["assist_player_id"])) if params.get("assist_player_id") else None
             ),
@@ -942,6 +943,7 @@ def stored_row(event: MatchEventPayload) -> dict:
         "player_id": event.player_id,
         "player_out_id": event.player_out_id,
         "player_in_id": event.player_in_id,
+        "player_in_position": event.player_in_position,
         "minute": event.minute,
         "added_minute": event.added_minute,
         "segment_id": event.segment_id,

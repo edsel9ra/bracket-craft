@@ -56,6 +56,8 @@ EXPECTED_FIELDS = {
         "rank", "player_id", "first_name", "last_name", "team_name", "team_id",
         "goals", "yellow_cards", "red_cards", "clean_sheets", "matches_played",
         "photo_url", "profile_available",
+        # Spec 052 (RF-014): campos nuevos no obligatorios.
+        "minutes_played", "main_position", "penalties_saved",
     },
     "PublicTeamStatsResponse": {
         "rank", "team_id", "team_name", "short_code", "crest_url",
@@ -75,9 +77,11 @@ EXPECTED_FIELDS = {
     "PublicPlayerProfileTournamentResponse": {
         "tournament_id", "tournament_name", "team_id", "team_name",
         "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets",
+        "minutes_played", "penalties_saved", "main_position",
     },
     "PublicPlayerProfileTotalsResponse": {
         "matches_played", "goals", "yellow_cards", "red_cards", "clean_sheets",
+        "minutes_played", "penalties_saved",
     },
 }
 

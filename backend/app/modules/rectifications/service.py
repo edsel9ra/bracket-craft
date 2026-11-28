@@ -59,6 +59,26 @@ def _already_open() -> RectificationConflict:
     return RectificationConflict("RECTIFICATION_ALREADY_OPEN", "El partido ya tiene una solicitud pendiente")
 
 
+_INSERT_VERSION_EVENT = text("""
+    INSERT INTO match_report_version_events (organization_id, version_id, match_id,
+        segment_id, team_id, beneficiary_team_id, player_id, event_type, minute,
+        added_minute, client_event_id, assist_player_id, player_out_id, player_in_id, metadata)
+    VALUES (:organization_id, :version_id, :match_id, :segment_id, :team_id,
+        :beneficiary_team_id, :player_id, :event_type, :minute, :added_minute,
+        :client_event_id, :assist_player_id, :player_out_id, :player_in_id, CAST(:metadata AS jsonb))
+""")
+_INSERT_VERSION_EVENT_WITH_POSITION = text("""
+    INSERT INTO match_report_version_events (organization_id, version_id, match_id,
+        segment_id, team_id, beneficiary_team_id, player_id, event_type, minute,
+        added_minute, client_event_id, assist_player_id, player_out_id, player_in_id,
+        player_in_position, metadata)
+    VALUES (:organization_id, :version_id, :match_id, :segment_id, :team_id,
+        :beneficiary_team_id, :player_id, :event_type, :minute, :added_minute,
+        :client_event_id, :assist_player_id, :player_out_id, :player_in_id,
+        :player_in_position, CAST(:metadata AS jsonb))
+""")
+
+
 def _pending_collision(exc: IntegrityError) -> bool:
     error = exc.orig
     while error is not None:
@@ -400,14 +420,10 @@ class RectificationService:
             values = event.model_dump()
             values["client_event_id"] = canonical_client_event_id(values["client_event_id"])
             values["metadata"] = json.dumps(event.metadata or {}, default=str)
-            await self.db.execute(text("""
-                INSERT INTO match_report_version_events (organization_id, version_id, match_id,
-                    segment_id, team_id, beneficiary_team_id, player_id, event_type, minute,
-                    added_minute, client_event_id, assist_player_id, player_out_id, player_in_id, metadata)
-                VALUES (:organization_id, :version_id, :match_id, :segment_id, :team_id,
-                    :beneficiary_team_id, :player_id, :event_type, :minute, :added_minute,
-                    :client_event_id, :assist_player_id, :player_out_id, :player_in_id, CAST(:metadata AS jsonb))
-            """), {**values, "organization_id": context.organization_id,
+            # The entry position (spec 052) is only named when declared: the
+            # column defaults to NULL and schemas before 070 lack it.
+            insert = _INSERT_VERSION_EVENT_WITH_POSITION if event.player_in_position is not None else _INSERT_VERSION_EVENT
+            await self.db.execute(insert, {**values, "organization_id": context.organization_id,
                 "version_id": version["id"], "match_id": request["match_id"]})
         await self.db.execute(text("SELECT set_config('app.rectification_version_id', :version_id, true)"),
             {"version_id": str(version["id"])})
@@ -502,7 +518,11 @@ class RectificationService:
     @staticmethod
     def _version_response(match_id, number, row, events) -> dict:
         report = {key: row[key] for key in ReportContentResponse.model_fields if key != "events"}
-        report["events"] = [{key: event[key] for key in ReportEventResponse.model_fields} for event in events]
+        # `player_in_position` (spec 052) is optional: older schemas lack the column.
+        report["events"] = [
+            {key: event.get(key) if key == "player_in_position" else event[key] for key in ReportEventResponse.model_fields}
+            for event in events
+        ]
         return {"match_id": match_id, "version_number": number,
             **{key: row.get(key) for key in ReportVersionResponse.model_fields
                if key not in {"match_id", "version_number", "report"}}, "report": report}
